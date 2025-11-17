@@ -1,2 +1,2 @@
 # lash
-A simple Markdown task tracker
+Minimalist, ultra-fast, Markdown-native task tracker for devs and agents.
