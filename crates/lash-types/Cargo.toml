@@ -14,5 +14,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 chrono = { workspace = true }
+blake3 = "1.5"
 
 [dev-dependencies]
+tempfile = { workspace = true }
