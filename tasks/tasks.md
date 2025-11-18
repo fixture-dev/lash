@@ -1,0 +1,171 @@
+# Lash Development Tasks - Master Index
+
+This directory contains the comprehensive task breakdown for implementing Lash v1.0.
+
+## Project Status
+
+**Current Phase:** Planning Complete - Ready for Implementation
+**Target:** v1.0 Production Release
+**Estimated Duration:** 40-60 days (8-13 weeks)
+
+## Task Organization
+
+Tasks are organized by major module/component. Each task file contains:
+- Task descriptions with priority levels
+- Dependencies on other tasks
+- Estimated effort
+- Success criteria
+- Subtasks broken down to actionable units
+
+## Task Files
+
+### Foundation & Infrastructure
+- [ ] [tasks.project-setup.md](tasks.project-setup.md) - Project initialization, tooling, error taxonomy
+- [ ] [tasks.core-data-model.md](tasks.core-data-model.md) - Core data structures (Task, File, Dependency, Label models)
+- [ ] [tasks.error-handling.md](tasks.error-handling.md) - Error types, formatting, aggregation
+
+### Parsing & Validation
+- [ ] [tasks.markdown-parser.md](tasks.markdown-parser.md) - Markdown parsing implementation
+- [ ] [tasks.linter.md](tasks.linter.md) - Linting rules, validation, auto-formatting
+
+### Database Layer
+- [ ] [tasks.sqlite-schema.md](tasks.sqlite-schema.md) - SQLite schema, repositories, queries
+- [ ] [tasks.indexing.md](tasks.indexing.md) - File scanning, indexing engine, verification
+- [ ] [tasks.dependency-resolution.md](tasks.dependency-resolution.md) - Dependency graph, cycle detection, state computation
+
+### CLI & Commands
+- [ ] [tasks.cli-framework.md](tasks.cli-framework.md) - CLI infrastructure, output formatting, progress reporting
+- [ ] [tasks.cli-commands.md](tasks.cli-commands.md) - Individual command implementations (list, show, graph, etc.)
+- [ ] [tasks.fuzzy-search.md](tasks.fuzzy-search.md) - Full-text search, ranking, search command
+
+### User Interfaces
+- [ ] [tasks.tui.md](tasks.tui.md) - Terminal UI implementation
+
+### Advanced Features
+- [ ] [tasks.agent-integration.md](tasks.agent-integration.md) - Agent prompts, token minimization
+
+### Quality & Documentation
+- [ ] [tasks.testing.md](tasks.testing.md) - Test strategy, integration tests, benchmarks, CI/CD
+- [ ] [tasks.documentation.md](tasks.documentation.md) - User guide, developer docs, examples, README
+
+## Implementation Phases
+
+### Phase 1: Foundation (Weeks 1-2)
+**Goal:** Set up project infrastructure and core data model
+
+1. tasks.project-setup (ALL)
+2. tasks.core-data-model (ALL)
+3. tasks.error-handling#1
+
+**Deliverable:** Compiling project with core types; can create tasks programmatically
+
+### Phase 2: Core Functionality (Weeks 3-5)
+**Goal:** Parse Markdown files and define database schema
+
+1. tasks.markdown-parser (ALL)
+2. tasks.linter#1-3
+3. tasks.sqlite-schema#1-2
+
+**Deliverable:** Can parse task files into data structures; database initializes
+
+### Phase 3: Indexing & Queries (Weeks 6-7)
+**Goal:** Build index from files; implement core commands
+
+1. tasks.sqlite-schema#3-6
+2. tasks.indexing#1-3
+3. tasks.cli-framework#1-4
+4. tasks.linter#5-6
+
+**Deliverable:** `lash index` and `lash lint` commands work
+
+### Phase 4: Dependencies & Queries (Weeks 7-8)
+**Goal:** Resolve dependencies; implement query commands
+
+1. tasks.dependency-resolution#1-3
+2. tasks.cli-commands#5-6
+3. tasks.linter#4
+
+**Deliverable:** Can query tasks; dependency resolution works
+
+### Phase 5: Search & Advanced Commands (Weeks 9-10)
+**Goal:** Fuzzy search; additional features
+
+1. tasks.fuzzy-search (ALL)
+2. tasks.cli-commands#7-9
+3. tasks.dependency-resolution#4-5
+
+**Deliverable:** All core CLI commands functional
+
+### Phase 6: Agent Integration (Week 11)
+**Goal:** Make Lash usable by AI agents
+
+1. tasks.agent-integration (ALL)
+2. tasks.error-handling#2-4
+
+**Deliverable:** Agents can use Lash effectively
+
+### Phase 7: TUI (Week 12)
+**Goal:** Terminal UI for interactive use
+
+1. tasks.tui (ALL)
+
+**Deliverable:** `lash tui` command provides interactive interface
+
+### Phase 8: Testing & Documentation (Week 13)
+**Goal:** Polish and prepare for release
+
+1. tasks.testing#1, #4
+2. tasks.documentation#1, #4
+3. tasks.testing#2
+4. tasks.documentation#2-3
+
+**Deliverable:** Production-ready v1.0 release
+
+## Critical Path
+
+The following tasks form the critical path and must be completed in order:
+
+```
+Foundation → Parsing → Linting → Schema → Indexing → Dependencies → Commands → Polish
+```
+
+Parallelization opportunities exist within each phase (see individual task files for details).
+
+## Success Criteria for v1.0 Release
+
+### Must Have
+- ✅ Parse valid Lash Markdown files
+- ✅ Lint files with clear error messages
+- ✅ Index files into SQLite database
+- ✅ Resolve dependencies and detect cycles
+- ✅ `lash list`, `lash show`, `lash search` commands work
+- ✅ `lash graph` exports dependency graph
+- ✅ Agent integration (`lash agent-prompt`)
+- ✅ Comprehensive test coverage (>80%)
+- ✅ User documentation
+
+### Should Have
+- ✅ TUI for interactive use
+- ✅ Incremental indexing
+- ✅ Auto-formatting
+- ✅ Performance benchmarks
+
+### Nice to Have
+- ⚠️ Advanced agent views
+- ⚠️ Fuzzy link fixing
+- ⚠️ Archive command
+
+## Supporting Documentation
+
+The following analysis documents informed this task breakdown:
+
+- `/docs/design-doc.md` - Comprehensive design specification
+- `/docs/dependency-graph-analysis.md` - Graph architecture analysis
+- `/docs/rust-architecture-recommendations.md` - Rust implementation guidance
+
+## Notes
+
+- All time estimates are rough guidelines; adjust based on actual progress
+- Dependencies between tasks are clearly marked in individual task files
+- Priority levels: CRITICAL (must have), HIGH (should have), MEDIUM (nice to have), LOW (future)
+- Task files use checkbox format to track progress as work proceeds
