@@ -1,0 +1,17 @@
+[package]
+name = "lash-agent"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Agent integration and prompt generation for Lash"
+
+[dependencies]
+lash-types = { workspace = true }
+lash-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]

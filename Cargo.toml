@@ -1,0 +1,59 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/lash-types",
+    "crates/lash-core",
+    "crates/lash-db",
+    "crates/lash-agent",
+    "crates/lash-tui",
+    "crates/lash-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Lash Contributors"]
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/lash"
+
+[workspace.dependencies]
+# Internal crates
+lash-types = { path = "crates/lash-types" }
+lash-core = { path = "crates/lash-core" }
+lash-db = { path = "crates/lash-db" }
+lash-agent = { path = "crates/lash-agent" }
+lash-tui = { path = "crates/lash-tui" }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "cargo", "wrap_help"] }
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# TUI
+ratatui = "0.28"
+crossterm = "0.28"
+
+# Utilities
+walkdir = "2.5"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Testing (dev dependencies)
+tempfile = "3.15"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

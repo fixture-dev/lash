@@ -1,0 +1,5 @@
+# Clippy configuration
+# Allow certain pedantic lints where they reduce code clarity
+
+# Documented allow lists (from lib.rs files):
+# - module_name_repetitions: Common in Rust, e.g., "LashError" in "lash-types"

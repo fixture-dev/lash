@@ -1,0 +1,18 @@
+[package]
+name = "lash-core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core parsing, validation, and task model for Lash"
+
+[dependencies]
+lash-types = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]

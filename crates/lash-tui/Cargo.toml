@@ -1,0 +1,20 @@
+[package]
+name = "lash-tui"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Terminal UI for Lash"
+
+[dependencies]
+lash-types = { workspace = true }
+lash-core = { workspace = true }
+lash-db = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
