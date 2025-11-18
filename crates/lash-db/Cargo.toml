@@ -1,0 +1,18 @@
+[package]
+name = "lash-db"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQLite indexing and query layer for Lash"
+
+[dependencies]
+lash-types = { workspace = true }
+lash-core = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]

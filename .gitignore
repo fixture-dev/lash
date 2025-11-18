@@ -1,0 +1,32 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock is committed for binaries, ignored for libraries
+# We'll commit it since lash-cli is a binary
+# Cargo.lock
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Lash specific
+.lash/*.db
+.lash/*.db-shm
+.lash/*.db-wal
+
+# Test artifacts
+/tests/tmp/
+
+# Coverage
+*.profraw
+*.profdata
+coverage/
