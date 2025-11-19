@@ -19,7 +19,10 @@ use crate::linter::{LintContext, LintDiagnostic};
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
+/// use lash_core::linter::{LintRule, LintContext, LintDiagnostic};
+/// use lash_types::{Severity, Task, TaskFile};
+///
 /// struct DepthLimitRule {
 ///     max_depth: u8,
 /// }
@@ -39,14 +42,19 @@ use crate::linter::{LintContext, LintDiagnostic};
 ///                 self.code(),
 ///                 format!("Task depth {} exceeds maximum {}", task.depth, self.max_depth),
 ///                 ctx.file_path.clone(),
-///                 /* line */ 0,
-///                 /* column */ 0,
+///                 0, // line
+///                 0, // column
 ///             )]
 ///         } else {
 ///             vec![]
 ///         }
 ///     }
 /// }
+///
+/// // Verify the rule implements the trait
+/// let rule = DepthLimitRule { max_depth: 3 };
+/// assert_eq!(rule.code(), "E_SYNTAX_DEPTH");
+/// assert_eq!(rule.severity(), Severity::Error);
 /// ```
 pub trait LintRule: Send + Sync {
     /// Stable rule code (e.g., `E_DEPTH_EXCEEDED`)

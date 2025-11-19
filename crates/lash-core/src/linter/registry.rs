@@ -28,11 +28,12 @@ pub enum RuleCategory {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
 /// use lash_core::linter::{RuleRegistry, LintConfig};
 ///
 /// let registry = RuleRegistry::new();
 /// let linter = registry.create_linter(LintConfig::default());
+/// assert_eq!(linter.rule_count(), 0);
 /// ```
 pub struct RuleRegistry {
     /// All registered rules

@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
 /// use lash_core::linter::{Fix, Replacement};
 ///
 /// let fix = Fix {
@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 ///         new: "- [ ]".to_string(),
 ///     },
 /// };
+/// assert_eq!(fix.description, "Replace with valid checkbox syntax");
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Fix {

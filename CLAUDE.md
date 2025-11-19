@@ -58,6 +58,47 @@ The project should be developed according to the development practices defined i
 - Do not add special test-related cases to production code to make tests pass.
 - Keep the `README.md` file current with the project's purpose, setup instructions, and usage instructions.
 
+#### Doctest Best Practices
+All public APIs should have executable doctests that serve as both documentation and tests. Follow these guidelines to keep doctests painless and maintainable:
+
+**Default to Executable:**
+- ALL doctests should be runnable by default (`cargo test --doc`)
+- Avoid `rust,ignore` unless absolutely necessary (e.g., requires network, external resources)
+- Use `no_run` for examples that compile but require file I/O or other external resources
+
+**Minimal, Clear Examples:**
+- Use crate-level imports: `use lash_core::parser::parse_file;`
+- Keep examples focused on demonstrating one thing
+- Factor out repetitive setup into hidden lines using `#` prefix
+- Show the simplest possible usage that compiles and runs
+
+**Hidden Lines for Boilerplate:**
+```rust
+/// Example function
+///
+/// ```
+/// # use lash_core::TaskFile;
+/// # use std::path::PathBuf;
+/// # let file = TaskFile {
+/// #     path: PathBuf::from("test.md"),
+/// #     // ... other required fields hidden from docs
+/// # };
+/// // The actual example the user sees
+/// println!("Task count: {}", file.tasks.len());
+/// ```
+```
+
+**When to Use Each Attribute:**
+- No attribute: Fully executable example (preferred)
+- `no_run`: Compiles but doesn't execute (for I/O, network, etc.)
+- `compile_fail`: Example that should fail to compile (for demonstrating errors)
+- `ignore`: Only as last resort when example truly can't be made testable
+
+**Verification:**
+- Run `cargo test --doc` regularly to ensure all doctests pass
+- The pre-commit hook should fail if any doctests are failing
+- Aim for 0 ignored doctests across the codebase
+
 ## Architecture (Planned)
 
 The project will be implemented in Rust with these main components:

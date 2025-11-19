@@ -28,18 +28,29 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
+//! ```
 //! use lash_core::linter::{Linter, LintConfig};
-//! use lash_types::TaskFile;
+//! use lash_types::{LashConfig, TaskFile, FileMetadata, TaskTree};
+//! use std::path::PathBuf;
+//! use std::time::SystemTime;
 //!
 //! let config = LintConfig::default();
 //! let linter = Linter::new(config);
-//! let file: TaskFile = /* parse file */;
 //!
-//! let diagnostics = linter.lint_file(&file);
-//! for diagnostic in diagnostics {
-//!     println!("{}", diagnostic);
-//! }
+//! // Create a simple task file for demonstration
+//! let file = TaskFile {
+//!     path: PathBuf::from("test.md"),
+//!     title: "Test".to_string(),
+//!     id: "test".to_string(),
+//!     metadata: FileMetadata::default(),
+//!     tasks: TaskTree::new(),
+//!     hash: "hash".to_string(),
+//!     mtime: SystemTime::now(),
+//! };
+//!
+//! let project_config = LashConfig::default();
+//! let diagnostics = linter.lint_file(&file, &project_config);
+//! assert_eq!(diagnostics.len(), 0);
 //! ```
 
 pub mod config;

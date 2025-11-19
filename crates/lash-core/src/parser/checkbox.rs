@@ -92,11 +92,15 @@ impl CheckboxLine {
     ///
     /// # Example
     ///
-    /// ```rust,ignore
+    /// ```
+    /// use lash_core::parser::checkbox::CheckboxLine;
+    /// use lash_types::TaskStatus;
+    ///
     /// let line = "  - [x] Complete task #backend";
-    /// let parsed = CheckboxLine::parse(line, 5);
-    /// assert_eq!(parsed.unwrap().depth, 1); // 2 spaces = depth 1
-    /// assert_eq!(parsed.unwrap().status, TaskStatus::Done);
+    /// let parsed = CheckboxLine::parse(line, 5).unwrap();
+    /// assert_eq!(parsed.depth, 1); // 2 spaces = depth 1
+    /// assert_eq!(parsed.status, TaskStatus::Done);
+    /// assert_eq!(parsed.title, "Complete task #backend");
     /// ```
     #[must_use]
     pub fn parse(line: &str, line_num: usize) -> Option<Self> {
@@ -282,9 +286,15 @@ fn extract_trailing_metadata(title: &str) -> (&str, Option<&str>) {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
+/// use lash_core::parser::checkbox::parse_inline_labels;
+///
 /// let labels = parse_inline_labels("Complete backend #api #database");
 /// assert_eq!(labels.len(), 2);
+/// // Labels are stored in a HashSet, so order is not guaranteed
+/// let names: Vec<_> = labels.iter().map(|l| l.name.as_str()).collect();
+/// assert!(names.contains(&"api"));
+/// assert!(names.contains(&"database"));
 /// ```
 #[must_use]
 pub fn parse_inline_labels(title: &str) -> Vec<Label> {

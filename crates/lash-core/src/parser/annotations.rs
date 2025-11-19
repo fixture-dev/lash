@@ -289,7 +289,9 @@ impl Default for AnnotationBlock {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
+/// use lash_core::parser::annotations::parse_annotation;
+///
 /// let (key, value) = parse_annotation("@id: task-123").unwrap();
 /// assert_eq!(key, "id");
 /// assert_eq!(value, "task-123");
@@ -371,10 +373,13 @@ pub fn parse_annotation(line: &str) -> Result<(String, String)> {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
+/// use lash_core::parser::annotations::parse_inline_annotations;
+///
 /// let text = "Task description [@owner: alice, @estimate: 2h]";
-/// let block = parse_inline_annotations(text).unwrap();
+/// let block = parse_inline_annotations(text).unwrap().unwrap();
 /// assert_eq!(block.get_single("owner"), Some("alice"));
+/// assert_eq!(block.get_single("estimate"), Some("2h"));
 /// ```
 pub fn parse_inline_annotations(text: &str) -> Result<Option<AnnotationBlock>> {
     // Find the last occurrence of [@...] pattern

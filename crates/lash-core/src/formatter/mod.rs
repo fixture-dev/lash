@@ -15,16 +15,28 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
+//! ```
 //! use lash_core::formatter::{Formatter, FormatOptions};
-//! use lash_types::LashConfig;
+//! use lash_types::{LashConfig, TaskFile, FileMetadata, TaskTree};
+//! use std::path::PathBuf;
+//! use std::time::SystemTime;
 //!
 //! let config = LashConfig::default();
 //! let options = FormatOptions::default();
 //! let formatter = Formatter::new(config, options);
 //!
-//! let file = parse_file(path, &config)?;
-//! let formatted = formatter.format_file(&file)?;
+//! // Create a simple task file for demonstration
+//! let file = TaskFile {
+//!     path: PathBuf::from("test.md"),
+//!     title: "Test File".to_string(),
+//!     id: "test".to_string(),
+//!     metadata: FileMetadata::default(),
+//!     tasks: TaskTree::new(),
+//!     hash: "hash".to_string(),
+//!     mtime: SystemTime::now(),
+//! };
+//! let formatted = formatter.format_file(&file).unwrap();
+//! assert!(formatted.contains("# Test File"));
 //! ```
 
 pub mod options;
@@ -91,9 +103,26 @@ impl Formatter {
     ///
     /// # Example
     ///
-    /// ```rust,ignore
-    /// let formatted = formatter.format_file(&file)?;
-    /// println!("{}", formatted);
+    /// ```
+    /// use lash_core::formatter::{Formatter, FormatOptions};
+    /// use lash_types::{LashConfig, TaskFile, FileMetadata, TaskTree};
+    /// use std::path::PathBuf;
+    /// use std::time::SystemTime;
+    ///
+    /// # let config = LashConfig::default();
+    /// # let options = FormatOptions::default();
+    /// # let formatter = Formatter::new(config, options);
+    /// # let file = TaskFile {
+    /// #     path: PathBuf::from("test.md"),
+    /// #     title: "Test File".to_string(),
+    /// #     id: "test".to_string(),
+    /// #     metadata: FileMetadata::default(),
+    /// #     tasks: TaskTree::new(),
+    /// #     hash: "hash".to_string(),
+    /// #     mtime: SystemTime::now(),
+    /// # };
+    /// let formatted = formatter.format_file(&file).unwrap();
+    /// assert!(formatted.contains("# Test File"));
     /// ```
     #[allow(clippy::result_large_err)] // LashError is intentionally rich with context
     pub fn format_file(&self, file: &TaskFile) -> Result<String> {
@@ -155,8 +184,16 @@ impl Formatter {
     ///
     /// # Example
     ///
-    /// ```rust,ignore
-    /// formatter.format_file_in_place(Path::new("tasks.md"))?;
+    /// ```no_run
+    /// use lash_core::formatter::{Formatter, FormatOptions};
+    /// use lash_types::LashConfig;
+    /// use std::path::Path;
+    ///
+    /// # let config = LashConfig::default();
+    /// # let options = FormatOptions::default();
+    /// # let formatter = Formatter::new(config, options);
+    /// // This requires actual file I/O, so we mark it no_run
+    /// formatter.format_file_in_place(Path::new("tasks.md")).unwrap();
     /// ```
     #[allow(clippy::result_large_err)] // LashError is intentionally rich with context
     pub fn format_file_in_place(&self, path: &Path) -> Result<()> {

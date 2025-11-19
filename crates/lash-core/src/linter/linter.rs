@@ -19,24 +19,30 @@ use crate::linter::{LintConfig, LintContext, LintDiagnostic, LintRule};
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
 /// use lash_core::linter::{Linter, LintConfig};
-/// use lash_types::TaskFile;
+/// use lash_types::{LashConfig, TaskFile, FileMetadata, TaskTree};
+/// use std::path::PathBuf;
+/// use std::time::SystemTime;
 ///
 /// let lint_config = LintConfig::default();
-/// let mut linter = Linter::new(lint_config);
+/// let linter = Linter::new(lint_config);
 ///
-/// // Register rules
-/// linter.register_rule(Box::new(DepthLimitRule::new(3)));
-/// linter.register_rule(Box::new(DuplicateIdRule::new()));
+/// // Create a simple task file for demonstration
+/// let file = TaskFile {
+///     path: PathBuf::from("test.md"),
+///     title: "Test".to_string(),
+///     id: "test".to_string(),
+///     metadata: FileMetadata::default(),
+///     tasks: TaskTree::new(),
+///     hash: "hash".to_string(),
+///     mtime: SystemTime::now(),
+/// };
 ///
-/// // Lint a file
-/// let file: TaskFile = /* ... */;
-/// let diagnostics = linter.lint_file(&file);
-///
-/// for diagnostic in diagnostics {
-///     println!("{}", diagnostic);
-/// }
+/// let project_config = LashConfig::default();
+/// let diagnostics = linter.lint_file(&file, &project_config);
+/// // No rules registered, so no diagnostics
+/// assert_eq!(diagnostics.len(), 0);
 /// ```
 pub struct Linter {
     /// Registered linting rules
