@@ -1,5 +1,110 @@
 # Lash Development Log
 
+## 2025-11-19 - CLI Integration Complete (Task #6)
+
+### Summary
+Completed Task #6 from tasks.linter.md: Implemented CLI integration for `lash lint` and `lash format` commands (commits: a7d50fe, 2590942). The CLI now provides a polished, production-ready interface for linting and formatting Lash task files.
+
+### Implementation Overview
+
+**New Modules Created:**
+- `lash-cli/src/commands/` - Command implementations
+  - `lint.rs` (311 lines) - Full-featured lint command
+  - `format.rs` (254 lines) - Full-featured format command
+- `lash-cli/src/utils/` - Shared utilities
+  - `file_discovery.rs` (195 lines) - File discovery with gitignore support
+  - `output.rs` (357 lines) - Diagnostic formatting (human & JSON)
+
+**Dependencies Added:**
+- `owo-colors` (v4.1) - Terminal color support
+- `indicatif` (v0.17) - Progress bars and spinners
+- `ignore` (v0.4) - Gitignore pattern matching
+- `similar` (v2.6) - Unified diff generation
+- `toml` - Configuration parsing
+
+### Features Implemented
+
+**`lash lint` Command:**
+- Lint files, directories, or entire project (automatic detection)
+- `--json` - Machine-readable JSON output with stable schema
+- `--fix` - Apply auto-fixes (re-lints to verify success)
+- `--rule <CODE>` - Run only specific rule(s)
+- `--severity <LEVEL>` - Filter by severity (error, warning, info, hint)
+- `--no-color` - Disable colored output
+- Color-coded diagnostics (red=error, yellow=warning, blue=info)
+- Code snippets showing error context
+- Suggestions and auto-fix descriptions
+- Progress bars for multi-file operations
+- Exit codes: 0 (clean), 1 (general error), 2 (lint errors)
+
+**`lash format` Command:**
+- Format files, directories, or entire project
+- `--check` - Dry-run mode (check without modifying)
+- `--diff` - Show unified diff of changes
+- `--no-fix` - Format-only mode (skip lint fixes)
+- Progress bars for multi-file operations
+- Exit codes: 0 (success), 1 (general error), 2 (needs formatting with --check)
+
+**File Discovery:**
+- Recursive directory traversal
+- Respects `.gitignore` patterns
+- Respects `.lashignore` if present
+- Deterministic ordering (sorted paths)
+- Handles both absolute and relative paths
+
+**Output Formatting:**
+- Human-readable: `path/to/file.md:line:col: error[CODE]: message`
+- JSON: Stable schema with all diagnostics and summary counts
+- Code snippets with context (3 lines before/after error)
+- Colored output with severity-based highlighting
+- Unified diffs for format changes
+
+### Testing
+- **14 unit tests** covering all major functionality:
+  - File discovery (5 tests)
+  - Output formatting (5 tests)
+  - Lint command logic (2 tests)
+  - Format command logic (2 tests)
+- All tests pass (`cargo test`)
+- Clippy satisfied (no warnings)
+- Pre-commit hooks pass
+
+### Example Usage
+
+```bash
+# Lint entire project
+lash lint
+
+# Lint specific files with auto-fix
+lash lint tasks/*.md --fix
+
+# Check only errors from specific rule
+lash lint --rule E_SYNTAX_DEPTH --severity error
+
+# Get JSON output for tooling
+lash lint --json > results.json
+
+# Format entire project
+lash format
+
+# Check formatting without modifying
+lash format --check
+
+# Show what would change
+lash format --diff
+```
+
+### Impact
+This completes the linter module implementation (all 6 tasks in tasks.linter.md). The Lash CLI now has:
+- Professional-grade linting with 20 validation rules
+- Auto-formatting with idempotent round-trip safety
+- Machine-readable JSON output for tooling integration
+- User-friendly progress reporting and colored diagnostics
+
+The linter is now ready for integration into pre-commit hooks and CI/CD workflows.
+
+---
+
 ## 2025-11-19 - All Doctests Made Executable
 
 ### Summary
