@@ -69,17 +69,19 @@ impl TaskStatus {
     ///
     /// # Errors
     ///
-    /// Returns `LashError::ParseError` if the character is not a valid checkbox character.
+    /// Returns `LashError::Parse` if the character is not a valid checkbox character.
     pub fn from_checkbox_char(c: char) -> Result<Self> {
         match c {
             ' ' => Ok(Self::Open),
             'x' | 'X' => Ok(Self::Done),
             '-' => Ok(Self::Waived),
             '!' => Ok(Self::Blocked),
-            _ => Err(LashError::ParseError {
-                code: codes::E_PARSE_BAD_CHECKBOX,
+            _ => Err(LashError::Parse {
+                code: codes::E_PARSE_INVALID_CHECKBOX,
                 message: format!("Invalid checkbox character: '{c}'"),
                 location: None,
+                snippet: Some(format!("[{c}]")),
+                help: Some("checkboxes must be one of: [ ], [-], [x], or [!]".to_string()),
             }),
         }
     }
@@ -142,10 +144,12 @@ impl FromStr for TaskStatus {
             "done" => Ok(Self::Done),
             "waived" => Ok(Self::Waived),
             "blocked" => Ok(Self::Blocked),
-            _ => Err(LashError::ParseError {
-                code: codes::E_LINT_INVALID_STATUS,
+            _ => Err(LashError::Parse {
+                code: codes::E_LINT_STATUS_INCONSISTENCY,
                 message: format!("Invalid status string: '{s}'"),
                 location: None,
+                snippet: Some(s.to_string()),
+                help: Some("status must be one of: open, done, waived, or blocked".to_string()),
             }),
         }
     }

@@ -50,10 +50,12 @@ impl DependencyRef {
     /// Returns error if the reference has invalid syntax
     pub fn validate(&self) -> Result<()> {
         if self.target.trim().is_empty() {
-            return Err(LashError::DependencyError {
+            return Err(LashError::Dependency {
                 code: codes::E_DEP_INVALID_REF,
                 message: "Dependency reference cannot be empty".to_string(),
                 location: None,
+                chain: None,
+                help: Some("dependencies must be in format: path/to/file.md#task:id".to_string()),
             });
         }
 
@@ -64,25 +66,33 @@ impl DependencyRef {
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
                 {
-                    return Err(LashError::DependencyError {
+                    return Err(LashError::Dependency {
                         code: codes::E_DEP_INVALID_REF,
                         message: format!(
                             "ExplicitPath dependency must end with '.md': '{}'",
                             self.target
                         ),
                         location: None,
+                        chain: None,
+                        help: Some(
+                            "dependencies must be in format: path/to/file.md#task:id".to_string(),
+                        ),
                     });
                 }
             }
             DependencyKind::Directory => {
                 if !self.target.ends_with('/') {
-                    return Err(LashError::DependencyError {
+                    return Err(LashError::Dependency {
                         code: codes::E_DEP_INVALID_REF,
                         message: format!(
                             "Directory dependency must end with '/': '{}'",
                             self.target
                         ),
                         location: None,
+                        chain: None,
+                        help: Some(
+                            "dependencies must be in format: path/to/file.md#task:id".to_string(),
+                        ),
                     });
                 }
             }
@@ -166,10 +176,12 @@ pub fn parse_dependency_ref(s: &str) -> Result<DependencyRef> {
     let trimmed = s.trim();
 
     if trimmed.is_empty() {
-        return Err(LashError::DependencyError {
+        return Err(LashError::Dependency {
             code: codes::E_DEP_INVALID_REF,
             message: "Dependency reference cannot be empty".to_string(),
             location: None,
+            chain: None,
+            help: Some("dependencies must be in format: path/to/file.md#task:id".to_string()),
         });
     }
 
@@ -236,18 +248,22 @@ pub fn make_full_id(file_id: &str, task_id: &str) -> String {
 pub fn parse_full_id(full_id: &str) -> Result<(String, String)> {
     if let Some((file_id, task_id)) = full_id.split_once('#') {
         if file_id.is_empty() || task_id.is_empty() {
-            return Err(LashError::DependencyError {
+            return Err(LashError::Dependency {
                 code: codes::E_DEP_INVALID_REF,
                 message: format!("Invalid full ID format: '{full_id}'"),
                 location: None,
+                chain: None,
+                help: Some("dependencies must be in format: path/to/file.md#task:id".to_string()),
             });
         }
         Ok((file_id.to_string(), task_id.to_string()))
     } else {
-        Err(LashError::DependencyError {
+        Err(LashError::Dependency {
             code: codes::E_DEP_INVALID_REF,
             message: format!("Full ID must contain '#': '{full_id}'"),
             location: None,
+            chain: None,
+            help: Some("dependencies must be in format: path/to/file.md#task:id".to_string()),
         })
     }
 }

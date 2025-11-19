@@ -1,4 +1,42 @@
 //! Error types and diagnostic structures for Lash
+//!
+//! This module provides a comprehensive error taxonomy for all Lash operations.
+//! Errors are designed to be:
+//! - Expressive for humans (with rich formatting)
+//! - Structured for machines (with stable codes and JSON output)
+//! - Actionable (with suggestions and help text)
+//!
+//! # Error Categories
+//!
+//! - `Parse`: Markdown parsing failures
+//! - `Lint`: Validation and linting errors
+//! - `Index`: Database indexing errors
+//! - `Dependency`: Dependency resolution errors
+//! - `Query`: Search and query errors
+//! - `Config`: Configuration errors
+//! - `IO`: File system errors
+//! - `Internal`: Internal/unexpected errors
+//!
+//! # Examples
+//!
+//! ```
+//! use lash_types::error::{LashError, codes};
+//! use std::path::PathBuf;
+//!
+//! // Create a parse error with location
+//! let err = LashError::parse_invalid_checkbox(
+//!     PathBuf::from("tasks.md"),
+//!     5,
+//!     3,
+//!     "[*] invalid checkbox"
+//! );
+//!
+//! // Get the stable error code
+//! assert_eq!(err.code(), codes::E_PARSE_INVALID_CHECKBOX);
+//!
+//! // Convert to diagnostic for reporting
+//! let diag = err.to_diagnostic();
+//! ```
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -6,95 +44,184 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 /// Result type alias for Lash operations
+///
+/// Note: `LashError` is intentionally large (168 bytes) to provide rich context
+/// for error reporting. This is acceptable for a CLI application where errors
+/// are the exception, not the hot path. Boxing would add allocation overhead
+/// for the common success case.
+#[allow(clippy::result_large_err)]
 pub type Result<T> = std::result::Result<T, LashError>;
 
 /// Main error type for all Lash operations
 #[derive(Error, Debug, Clone)]
 pub enum LashError {
     /// Markdown parsing failures
-    #[error("Parse error: {message}")]
-    ParseError {
+    #[error("parse error: {message}")]
+    Parse {
         code: &'static str,
         message: String,
         location: Option<Location>,
+        snippet: Option<String>,
+        help: Option<String>,
     },
 
     /// Validation/linting failures
-    #[error("Lint error: {message}")]
-    LintError {
+    #[error("lint error: {message}")]
+    Lint {
         code: &'static str,
         message: String,
         location: Option<Location>,
+        snippet: Option<String>,
+        help: Option<String>,
+    },
+
+    /// Database indexing errors
+    #[error("index error: {message}")]
+    Index {
+        code: &'static str,
+        message: String,
+        context: Option<String>,
+        help: Option<String>,
+    },
+
+    /// Dependency resolution errors
+    #[error("dependency error: {message}")]
+    Dependency {
+        code: &'static str,
+        message: String,
+        location: Option<Location>,
+        chain: Option<Vec<String>>,
+        help: Option<String>,
+    },
+
+    /// Query/search errors
+    #[error("query error: {message}")]
+    Query {
+        code: &'static str,
+        message: String,
+        help: Option<String>,
+    },
+
+    /// Configuration errors
+    #[error("configuration error: {message}")]
+    Config {
+        code: &'static str,
+        message: String,
+        path: Option<PathBuf>,
+        help: Option<String>,
     },
 
     /// File system errors
     #[error("I/O error: {message}")]
-    IoError {
+    IO {
         code: &'static str,
         message: String,
         path: Option<PathBuf>,
+        io_error: Option<String>,
     },
 
-    /// Database errors
-    #[error("Database error: {message}")]
-    DatabaseError { code: &'static str, message: String },
-
-    /// Configuration issues
-    #[error("Configuration error: {message}")]
-    ConfigError { code: &'static str, message: String },
-
-    /// Dependency errors (broken references, cycles)
-    #[error("Dependency error: {message}")]
-    DependencyError {
+    /// Internal/unexpected errors
+    #[error("internal error: {message}")]
+    Internal {
         code: &'static str,
         message: String,
-        location: Option<Location>,
+        context: Option<String>,
     },
 }
 
 impl LashError {
-    /// Get the error code for this error
+    /// Get the stable error code for this error
     #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
-            Self::ParseError { code, .. }
-            | Self::LintError { code, .. }
-            | Self::IoError { code, .. }
-            | Self::DatabaseError { code, .. }
-            | Self::ConfigError { code, .. }
-            | Self::DependencyError { code, .. } => code,
+            Self::Parse { code, .. }
+            | Self::Lint { code, .. }
+            | Self::Index { code, .. }
+            | Self::Dependency { code, .. }
+            | Self::Query { code, .. }
+            | Self::Config { code, .. }
+            | Self::IO { code, .. }
+            | Self::Internal { code, .. } => code,
         }
     }
 
-    /// Convert this error to a Diagnostic
+    /// Convert this error to a Diagnostic for rich formatting
     #[must_use]
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
-            Self::ParseError {
+            Self::Parse {
                 code,
                 message,
                 location,
+                snippet,
+                help,
             }
-            | Self::LintError {
+            | Self::Lint {
                 code,
                 message,
                 location,
-            }
-            | Self::DependencyError {
-                code,
-                message,
-                location,
+                snippet,
+                help,
             } => Diagnostic {
                 code,
                 severity: Severity::Error,
                 message: message.clone(),
                 location: location.clone(),
-                suggestion: None,
+                snippet: snippet.clone(),
+                help: help.clone(),
+                labels: None,
             },
-            Self::IoError {
+            Self::Dependency {
+                code,
+                message,
+                location,
+                chain,
+                help,
+            } => Diagnostic {
+                code,
+                severity: Severity::Error,
+                message: message.clone(),
+                location: location.clone(),
+                snippet: None,
+                help: help.clone(),
+                labels: chain
+                    .as_ref()
+                    .map(|c| vec![("dependency chain".to_string(), c.join(" -> "))]),
+            },
+            Self::Index {
+                code,
+                message,
+                context,
+                help,
+            } => Diagnostic {
+                code,
+                severity: Severity::Error,
+                message: message.clone(),
+                location: None,
+                snippet: None,
+                help: help.clone(),
+                labels: context
+                    .as_ref()
+                    .map(|c| vec![("context".to_string(), c.clone())]),
+            },
+            Self::Query {
+                code,
+                message,
+                help,
+            } => Diagnostic {
+                code,
+                severity: Severity::Error,
+                message: message.clone(),
+                location: None,
+                snippet: None,
+                help: help.clone(),
+                labels: None,
+            },
+            Self::Config {
                 code,
                 message,
                 path,
+                help,
             } => Diagnostic {
                 code,
                 severity: Severity::Error,
@@ -105,25 +232,509 @@ impl LashError {
                     column: None,
                     span: None,
                 }),
-                suggestion: None,
+                snippet: None,
+                help: help.clone(),
+                labels: None,
             },
-            Self::DatabaseError { code, message } | Self::ConfigError { code, message } => {
-                Diagnostic {
-                    code,
-                    severity: Severity::Error,
-                    message: message.clone(),
-                    location: None,
-                    suggestion: None,
-                }
-            }
+            Self::IO {
+                code,
+                message,
+                path,
+                io_error,
+            } => Diagnostic {
+                code,
+                severity: Severity::Error,
+                message: message.clone(),
+                location: path.as_ref().map(|p| Location {
+                    file_path: p.clone(),
+                    line: None,
+                    column: None,
+                    span: None,
+                }),
+                snippet: None,
+                help: None,
+                labels: io_error
+                    .as_ref()
+                    .map(|s| vec![("underlying error".to_string(), s.clone())]),
+            },
+            Self::Internal {
+                code,
+                message,
+                context,
+            } => Diagnostic {
+                code,
+                severity: Severity::Error,
+                message: message.clone(),
+                location: None,
+                snippet: None,
+                help: Some("This is an internal error. Please report this as a bug.".to_string()),
+                labels: context
+                    .as_ref()
+                    .map(|c| vec![("context".to_string(), c.clone())]),
+            },
+        }
+    }
+
+    // ===== Parse Error Constructors =====
+
+    /// Invalid checkbox syntax
+    #[must_use]
+    pub fn parse_invalid_checkbox(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        snippet: impl Into<String>,
+    ) -> Self {
+        Self::Parse {
+            code: codes::E_PARSE_INVALID_CHECKBOX,
+            message: "invalid checkbox syntax".to_string(),
+            location: Some(Location::new(file, line, column)),
+            snippet: Some(snippet.into()),
+            help: Some("checkboxes must be one of: [ ], [-], [x], or [!]".to_string()),
+        }
+    }
+
+    /// Malformed annotation
+    #[must_use]
+    pub fn parse_invalid_annotation(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        snippet: impl Into<String>,
+        annotation_name: impl Into<String>,
+    ) -> Self {
+        Self::Parse {
+            code: codes::E_PARSE_INVALID_ANNOTATION,
+            message: format!("invalid annotation format: @{}", annotation_name.into()),
+            location: Some(Location::new(file, line, column)),
+            snippet: Some(snippet.into()),
+            help: Some("annotations must be in format: @key: value".to_string()),
+        }
+    }
+
+    /// Invalid header format
+    #[must_use]
+    pub fn parse_invalid_header(file: PathBuf, line: usize, snippet: impl Into<String>) -> Self {
+        Self::Parse {
+            code: codes::E_PARSE_INVALID_HEADER,
+            message: "invalid header format".to_string(),
+            location: Some(Location::new(file, line, 1)),
+            snippet: Some(snippet.into()),
+            help: Some("headers must start with # and be followed by a space".to_string()),
+        }
+    }
+
+    /// Unexpected nesting depth
+    #[must_use]
+    pub fn parse_unexpected_depth(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        found_depth: usize,
+    ) -> Self {
+        Self::Parse {
+            code: codes::E_PARSE_UNEXPECTED_DEPTH,
+            message: format!("unexpected indentation depth: {found_depth}"),
+            location: Some(Location::new(file, line, column)),
+            snippet: None,
+            help: Some("each level should be indented by exactly 2 spaces".to_string()),
+        }
+    }
+
+    /// Invalid date format
+    #[must_use]
+    pub fn parse_invalid_date(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        date_str: impl Into<String>,
+    ) -> Self {
+        Self::Parse {
+            code: codes::E_PARSE_INVALID_DATE,
+            message: format!("invalid date format: {}", date_str.into()),
+            location: Some(Location::new(file, line, column)),
+            snippet: None,
+            help: Some("dates must be in YYYY-MM-DD format".to_string()),
+        }
+    }
+
+    // ===== Lint Error Constructors =====
+
+    /// Duplicate task ID
+    #[must_use]
+    pub fn lint_duplicate_id(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        id: impl Into<String>,
+        first_occurrence_line: usize,
+    ) -> Self {
+        let id_str = id.into();
+        Self::Lint {
+            code: codes::E_LINT_DUPLICATE_ID,
+            message: format!("duplicate task ID: '{id_str}'"),
+            location: Some(Location::new(file, line, column)),
+            snippet: Some(format!("@id: {id_str}")),
+            help: Some(format!(
+                "task ID '{id_str}' was already defined on line {first_occurrence_line}"
+            )),
+        }
+    }
+
+    /// Unknown annotation
+    #[must_use]
+    pub fn lint_unknown_annotation(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        annotation: impl Into<String>,
+    ) -> Self {
+        let ann = annotation.into();
+        Self::Lint {
+            code: codes::E_LINT_UNKNOWN_ANNOTATION,
+            message: format!("unknown annotation: @{ann}"),
+            location: Some(Location::new(file, line, column)),
+            snippet: Some(format!("@{ann}")),
+            help: Some("valid annotations: @id, @labels, @status, @owner, @estimate, @depends-on, @created, @agent-note".to_string()),
+        }
+    }
+
+    /// Depth limit exceeded
+    #[must_use]
+    pub fn lint_depth_exceeded(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        depth: usize,
+        max_depth: usize,
+    ) -> Self {
+        Self::Lint {
+            code: codes::E_LINT_DEPTH_EXCEEDED,
+            message: format!("task nesting exceeds maximum depth: {depth} > {max_depth}"),
+            location: Some(Location::new(file, line, column)),
+            snippet: None,
+            help: Some(format!(
+                "flatten the hierarchy to {max_depth} levels or fewer"
+            )),
+        }
+    }
+
+    /// Status inconsistency
+    #[must_use]
+    pub fn lint_status_inconsistency(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        parent_status: impl Into<String>,
+    ) -> Self {
+        Self::Lint {
+            code: codes::E_LINT_STATUS_INCONSISTENCY,
+            message: "parent task is marked done but has incomplete children".to_string(),
+            location: Some(Location::new(file, line, column)),
+            snippet: None,
+            help: Some(format!(
+                "parent with status '{}' cannot have incomplete child tasks",
+                parent_status.into()
+            )),
+        }
+    }
+
+    /// Invalid label format
+    #[must_use]
+    pub fn lint_invalid_label(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        label: impl Into<String>,
+    ) -> Self {
+        let lbl = label.into();
+        Self::Lint {
+            code: codes::E_LINT_INVALID_LABEL,
+            message: format!("invalid label format: '{lbl}'"),
+            location: Some(Location::new(file, line, column)),
+            snippet: Some(format!("@labels: {lbl}")),
+            help: Some("labels must be alphanumeric with hyphens, separated by commas".to_string()),
+        }
+    }
+
+    /// Missing required annotation
+    #[must_use]
+    pub fn lint_missing_annotation(
+        file: PathBuf,
+        line: usize,
+        annotation: impl Into<String>,
+    ) -> Self {
+        let ann = annotation.into();
+        Self::Lint {
+            code: codes::E_LINT_MISSING_ANNOTATION,
+            message: format!("missing required annotation: @{ann}"),
+            location: Some(Location::new(file, line, 1)),
+            snippet: None,
+            help: Some(format!("add @{ann} annotation to this task")),
+        }
+    }
+
+    /// Bad indentation
+    #[must_use]
+    pub fn lint_bad_indentation(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        found: usize,
+        expected: usize,
+    ) -> Self {
+        Self::Lint {
+            code: codes::E_LINT_BAD_INDENTATION,
+            message: format!("incorrect indentation: found {found} spaces, expected {expected}"),
+            location: Some(Location::new(file, line, column)),
+            snippet: None,
+            help: Some("run `lash format` to fix indentation automatically".to_string()),
+        }
+    }
+
+    // ===== Dependency Error Constructors =====
+
+    /// Broken reference (target not found)
+    #[must_use]
+    pub fn dep_not_found(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        reference: impl Into<String>,
+    ) -> Self {
+        let ref_str = reference.into();
+        Self::Dependency {
+            code: codes::E_DEP_NOT_FOUND,
+            message: format!("dependency target not found: {ref_str}"),
+            location: Some(Location::new(file, line, column)),
+            chain: None,
+            help: Some("check that the referenced file and task ID exist".to_string()),
+        }
+    }
+
+    /// Circular dependency
+    #[must_use]
+    pub fn dep_cycle(chain: &[String]) -> Self {
+        Self::Dependency {
+            code: codes::E_DEP_CYCLE,
+            message: "circular dependency detected".to_string(),
+            location: None,
+            chain: Some(chain.to_owned()),
+            help: Some(format!(
+                "break the cycle by removing one of these dependencies: {}",
+                chain.join(" -> ")
+            )),
+        }
+    }
+
+    /// Invalid reference format
+    #[must_use]
+    pub fn dep_invalid_ref(
+        file: PathBuf,
+        line: usize,
+        column: usize,
+        reference: impl Into<String>,
+    ) -> Self {
+        let ref_str = reference.into();
+        Self::Dependency {
+            code: codes::E_DEP_INVALID_REF,
+            message: format!("invalid dependency reference format: {ref_str}"),
+            location: Some(Location::new(file, line, column)),
+            chain: None,
+            help: Some("dependencies must be in format: path/to/file.md#task:id".to_string()),
+        }
+    }
+
+    // ===== Index Error Constructors =====
+
+    /// Database corruption
+    #[must_use]
+    pub fn index_corrupted(details: impl Into<String>) -> Self {
+        Self::Index {
+            code: codes::E_INDEX_CORRUPTED,
+            message: "database is corrupted".to_string(),
+            context: Some(details.into()),
+            help: Some(
+                "run `lash index --rebuild` to rebuild the database from scratch".to_string(),
+            ),
+        }
+    }
+
+    /// Schema version mismatch
+    #[must_use]
+    pub fn index_version_mismatch(found: u32, expected: u32) -> Self {
+        Self::Index {
+            code: codes::E_INDEX_VERSION_MISMATCH,
+            message: format!(
+                "database schema version mismatch: found {found}, expected {expected}"
+            ),
+            context: None,
+            help: Some("run `lash index --migrate` to update the database schema".to_string()),
+        }
+    }
+
+    /// Index out of sync
+    #[must_use]
+    pub fn index_out_of_sync(files_changed: usize) -> Self {
+        Self::Index {
+            code: codes::E_INDEX_OUT_OF_SYNC,
+            message: format!("index is out of sync ({files_changed} files changed)"),
+            context: None,
+            help: Some("run `lash index` to update the index".to_string()),
+        }
+    }
+
+    // ===== Query Error Constructors =====
+
+    /// Invalid query syntax
+    #[must_use]
+    pub fn query_invalid_syntax(query: impl Into<String>) -> Self {
+        let q = query.into();
+        Self::Query {
+            code: codes::E_QUERY_INVALID_SYNTAX,
+            message: format!("invalid query syntax: {q}"),
+            help: Some("see `lash help search` for query syntax".to_string()),
+        }
+    }
+
+    /// No results found
+    #[must_use]
+    pub fn query_no_results(query: impl Into<String>) -> Self {
+        Self::Query {
+            code: codes::E_QUERY_NO_RESULTS,
+            message: format!("no results found for query: {}", query.into()),
+            help: Some("try a broader search or check your filters".to_string()),
+        }
+    }
+
+    // ===== Config Error Constructors =====
+
+    /// Root directory not found
+    #[must_use]
+    pub fn config_root_not_found(search_path: PathBuf) -> Self {
+        Self::Config {
+            code: codes::E_CONFIG_ROOT_NOT_FOUND,
+            message: "could not find lash root directory".to_string(),
+            path: Some(search_path),
+            help: Some("run `lash init` to create a new lash project".to_string()),
+        }
+    }
+
+    /// Invalid configuration value
+    #[must_use]
+    pub fn config_invalid_value(key: impl Into<String>, value: impl Into<String>) -> Self {
+        let k = key.into();
+        let v = value.into();
+        Self::Config {
+            code: codes::E_CONFIG_INVALID_VALUE,
+            message: format!("invalid configuration value for '{k}': {v}"),
+            path: None,
+            help: Some(format!(
+                "check the documentation for valid values for '{k}'"
+            )),
+        }
+    }
+
+    /// Config parse error
+    #[must_use]
+    pub fn config_parse_error(path: PathBuf, error: impl Into<String>) -> Self {
+        Self::Config {
+            code: codes::E_CONFIG_PARSE_ERROR,
+            message: format!("failed to parse configuration file: {}", error.into()),
+            path: Some(path),
+            help: Some("check that the configuration file is valid TOML".to_string()),
+        }
+    }
+
+    /// Missing index file
+    #[must_use]
+    pub fn config_missing_index() -> Self {
+        Self::Config {
+            code: codes::E_CONFIG_MISSING_INDEX,
+            message: "index file not found (lash.index.md or index.lash.md)".to_string(),
+            path: None,
+            help: Some("create an index file at the root of your project".to_string()),
+        }
+    }
+
+    // ===== IO Error Constructors =====
+
+    /// File not found
+    #[must_use]
+    pub fn io_file_not_found(path: PathBuf) -> Self {
+        Self::IO {
+            code: codes::E_IO_FILE_NOT_FOUND,
+            message: format!("file not found: {}", path.display()),
+            path: Some(path),
+            io_error: None,
+        }
+    }
+
+    /// Read error
+    #[must_use]
+    pub fn io_read_error(path: PathBuf, error: impl Into<String>) -> Self {
+        Self::IO {
+            code: codes::E_IO_READ_ERROR,
+            message: format!("failed to read file: {}", path.display()),
+            path: Some(path),
+            io_error: Some(error.into()),
+        }
+    }
+
+    /// Write error
+    #[must_use]
+    pub fn io_write_error(path: PathBuf, error: impl Into<String>) -> Self {
+        Self::IO {
+            code: codes::E_IO_WRITE_ERROR,
+            message: format!("failed to write file: {}", path.display()),
+            path: Some(path),
+            io_error: Some(error.into()),
+        }
+    }
+
+    /// Permission denied
+    #[must_use]
+    pub fn io_permission_denied(path: PathBuf) -> Self {
+        Self::IO {
+            code: codes::E_IO_PERMISSION_DENIED,
+            message: format!("permission denied: {}", path.display()),
+            path: Some(path),
+            io_error: None,
+        }
+    }
+
+    /// Invalid path
+    #[must_use]
+    pub fn io_invalid_path(path: PathBuf, reason: impl Into<String>) -> Self {
+        Self::IO {
+            code: codes::E_IO_INVALID_PATH,
+            message: format!("invalid path: {}", path.display()),
+            path: Some(path),
+            io_error: Some(reason.into()),
+        }
+    }
+
+    // ===== Internal Error Constructors =====
+
+    /// Unexpected internal error
+    #[must_use]
+    pub fn internal(message: impl Into<String>, context: Option<String>) -> Self {
+        Self::Internal {
+            code: codes::E_INTERNAL,
+            message: message.into(),
+            context,
         }
     }
 }
 
 /// Diagnostic structure for error reporting
+///
+/// This is the primary structure used for formatting and displaying errors.
+/// It can be serialized to JSON for machine consumption or formatted as
+/// rich text for human consumption.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diagnostic {
-    /// Error code (e.g., `E_PARSE_BAD_CHECKBOX`)
+    /// Stable error code (e.g., `E_PARSE_INVALID_CHECKBOX`)
     pub code: &'static str,
 
     /// Severity level
@@ -136,9 +747,17 @@ pub struct Diagnostic {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<Location>,
 
-    /// Optional suggestion for how to fix
+    /// Code snippet showing the error context
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub suggestion: Option<String>,
+    pub snippet: Option<String>,
+
+    /// Help text or suggestion for fixing the error
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help: Option<String>,
+
+    /// Additional labeled context (for dependency chains, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Vec<(String, String)>>,
 }
 
 impl Diagnostic {
@@ -153,8 +772,22 @@ impl Diagnostic {
 
     /// Create a new diagnostic with a suggestion
     #[must_use]
-    pub fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
-        self.suggestion = Some(suggestion.into());
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
+
+    /// Create a new diagnostic with a snippet
+    #[must_use]
+    pub fn with_snippet(mut self, snippet: impl Into<String>) -> Self {
+        self.snippet = Some(snippet.into());
+        self
+    }
+
+    /// Create a new diagnostic with labels
+    #[must_use]
+    pub fn with_labels(mut self, labels: Vec<(String, String)>) -> Self {
+        self.labels = Some(labels);
         self
     }
 }
@@ -167,8 +800,18 @@ impl fmt::Display for Diagnostic {
             write!(f, "\n  at {location}")?;
         }
 
-        if let Some(suggestion) = &self.suggestion {
-            write!(f, "\n  suggestion: {suggestion}")?;
+        if let Some(snippet) = &self.snippet {
+            write!(f, "\n  snippet: {snippet}")?;
+        }
+
+        if let Some(help) = &self.help {
+            write!(f, "\n  help: {help}")?;
+        }
+
+        if let Some(labels) = &self.labels {
+            for (key, value) in labels {
+                write!(f, "\n  {key}: {value}")?;
+            }
         }
 
         Ok(())
@@ -194,6 +837,37 @@ pub struct Location {
     pub span: Option<(usize, usize)>,
 }
 
+impl Location {
+    /// Create a new location
+    #[must_use]
+    pub fn new(file_path: PathBuf, line: usize, column: usize) -> Self {
+        Self {
+            file_path,
+            line: Some(line),
+            column: Some(column),
+            span: None,
+        }
+    }
+
+    /// Create a location with just a file path
+    #[must_use]
+    pub fn file_only(file_path: PathBuf) -> Self {
+        Self {
+            file_path,
+            line: None,
+            column: None,
+            span: None,
+        }
+    }
+
+    /// Add a span to this location
+    #[must_use]
+    pub fn with_span(mut self, start: usize, end: usize) -> Self {
+        self.span = Some((start, end));
+        self
+    }
+}
+
 impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.file_path.display())?;
@@ -208,7 +882,7 @@ impl fmt::Display for Location {
 }
 
 /// Severity level for diagnostics
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// Fatal error
@@ -217,8 +891,8 @@ pub enum Severity {
     Warning,
     /// Informational message
     Info,
-    /// Helpful suggestion
-    Help,
+    /// Helpful hint
+    Hint,
 }
 
 impl fmt::Display for Severity {
@@ -227,49 +901,123 @@ impl fmt::Display for Severity {
             Self::Error => write!(f, "error"),
             Self::Warning => write!(f, "warning"),
             Self::Info => write!(f, "info"),
-            Self::Help => write!(f, "help"),
+            Self::Hint => write!(f, "hint"),
         }
     }
 }
 
-// Error code constants
+/// Stable error codes for all Lash errors
+///
+/// These codes are stable across versions and can be used for:
+/// - Error documentation lookup
+/// - Automated error handling
+/// - Error filtering and reporting
+/// - Agent integration
 pub mod codes {
     // Parse errors (E_PARSE_*)
-    pub const E_PARSE_BAD_CHECKBOX: &str = "E_PARSE_BAD_CHECKBOX";
+    /// Invalid checkbox syntax
+    pub const E_PARSE_INVALID_CHECKBOX: &str = "E_PARSE_INVALID_CHECKBOX";
+    /// Malformed annotation
     pub const E_PARSE_INVALID_ANNOTATION: &str = "E_PARSE_INVALID_ANNOTATION";
-    pub const E_PARSE_MALFORMED_HEADING: &str = "E_PARSE_MALFORMED_HEADING";
+    /// Invalid header format
+    pub const E_PARSE_INVALID_HEADER: &str = "E_PARSE_INVALID_HEADER";
+    /// Unexpected indentation depth
+    pub const E_PARSE_UNEXPECTED_DEPTH: &str = "E_PARSE_UNEXPECTED_DEPTH";
+    /// Invalid date format
     pub const E_PARSE_INVALID_DATE: &str = "E_PARSE_INVALID_DATE";
 
     // Lint errors (E_LINT_*)
+    /// Task nesting exceeds maximum depth
     pub const E_LINT_DEPTH_EXCEEDED: &str = "E_LINT_DEPTH_EXCEEDED";
+    /// Duplicate task ID within file
     pub const E_LINT_DUPLICATE_ID: &str = "E_LINT_DUPLICATE_ID";
-    pub const E_LINT_MISSING_ID: &str = "E_LINT_MISSING_ID";
-    pub const E_LINT_INVALID_STATUS: &str = "E_LINT_INVALID_STATUS";
+    /// Missing required annotation
+    pub const E_LINT_MISSING_ANNOTATION: &str = "E_LINT_MISSING_ANNOTATION";
+    /// Invalid task status
+    pub const E_LINT_STATUS_INCONSISTENCY: &str = "E_LINT_STATUS_INCONSISTENCY";
+    /// Unknown annotation
     pub const E_LINT_UNKNOWN_ANNOTATION: &str = "E_LINT_UNKNOWN_ANNOTATION";
+    /// Incorrect indentation
     pub const E_LINT_BAD_INDENTATION: &str = "E_LINT_BAD_INDENTATION";
+    /// Invalid label format
+    pub const E_LINT_INVALID_LABEL: &str = "E_LINT_INVALID_LABEL";
 
     // Dependency errors (E_DEP_*)
+    /// Dependency target not found
     pub const E_DEP_NOT_FOUND: &str = "E_DEP_NOT_FOUND";
+    /// Circular dependency detected
     pub const E_DEP_CYCLE: &str = "E_DEP_CYCLE";
+    /// Invalid dependency reference format
     pub const E_DEP_INVALID_REF: &str = "E_DEP_INVALID_REF";
 
+    // Index errors (E_INDEX_*)
+    /// Database is corrupted
+    pub const E_INDEX_CORRUPTED: &str = "E_INDEX_CORRUPTED";
+    /// Database schema version mismatch
+    pub const E_INDEX_VERSION_MISMATCH: &str = "E_INDEX_VERSION_MISMATCH";
+    /// Index is out of sync with files
+    pub const E_INDEX_OUT_OF_SYNC: &str = "E_INDEX_OUT_OF_SYNC";
+
+    // Query errors (E_QUERY_*)
+    /// Invalid query syntax
+    pub const E_QUERY_INVALID_SYNTAX: &str = "E_QUERY_INVALID_SYNTAX";
+    /// No results found
+    pub const E_QUERY_NO_RESULTS: &str = "E_QUERY_NO_RESULTS";
+
     // I/O errors (E_IO_*)
+    /// File not found
     pub const E_IO_FILE_NOT_FOUND: &str = "E_IO_FILE_NOT_FOUND";
+    /// Failed to read file
     pub const E_IO_READ_ERROR: &str = "E_IO_READ_ERROR";
+    /// Failed to write file
     pub const E_IO_WRITE_ERROR: &str = "E_IO_WRITE_ERROR";
+    /// Permission denied
     pub const E_IO_PERMISSION_DENIED: &str = "E_IO_PERMISSION_DENIED";
+    /// Invalid path
+    pub const E_IO_INVALID_PATH: &str = "E_IO_INVALID_PATH";
 
-    // Database errors (E_DB_*)
-    pub const E_DB_CONNECTION: &str = "E_DB_CONNECTION";
-    pub const E_DB_QUERY: &str = "E_DB_QUERY";
-    pub const E_DB_CONSTRAINT: &str = "E_DB_CONSTRAINT";
-    pub const E_DB_MIGRATION: &str = "E_DB_MIGRATION";
+    // Configuration errors (E_CONFIG_*)
+    /// Root directory not found
+    pub const E_CONFIG_ROOT_NOT_FOUND: &str = "E_CONFIG_ROOT_NOT_FOUND";
+    /// Invalid configuration value
+    pub const E_CONFIG_INVALID_VALUE: &str = "E_CONFIG_INVALID_VALUE";
+    /// Configuration parse error
+    pub const E_CONFIG_PARSE_ERROR: &str = "E_CONFIG_PARSE_ERROR";
+    /// Missing index file
+    pub const E_CONFIG_MISSING_INDEX: &str = "E_CONFIG_MISSING_INDEX";
 
-    // Configuration errors (E_CFG_*)
-    pub const E_CFG_ROOT_NOT_FOUND: &str = "E_CFG_ROOT_NOT_FOUND";
-    pub const E_CFG_INVALID_VALUE: &str = "E_CFG_INVALID_VALUE";
-    pub const E_CFG_PARSE_ERROR: &str = "E_CFG_PARSE_ERROR";
-    pub const E_CFG_MISSING_INDEX: &str = "E_CFG_MISSING_INDEX";
+    // Internal errors (E_INTERNAL_*)
+    /// Unexpected internal error
+    pub const E_INTERNAL: &str = "E_INTERNAL";
+
+    // Legacy error code aliases (for backward compatibility with existing code)
+    // These should be removed once all code is updated to use the new naming
+    #[deprecated(note = "Use E_PARSE_INVALID_CHECKBOX instead")]
+    pub const E_PARSE_BAD_CHECKBOX: &str = E_PARSE_INVALID_CHECKBOX;
+    #[deprecated(note = "Use E_PARSE_INVALID_HEADER instead")]
+    pub const E_PARSE_MALFORMED_HEADING: &str = E_PARSE_INVALID_HEADER;
+    #[deprecated(note = "Use E_LINT_MISSING_ANNOTATION instead")]
+    pub const E_LINT_MISSING_ID: &str = E_LINT_MISSING_ANNOTATION;
+    #[deprecated(note = "Use E_LINT_STATUS_INCONSISTENCY instead")]
+    pub const E_LINT_INVALID_STATUS: &str = E_LINT_STATUS_INCONSISTENCY;
+    #[deprecated(note = "Use E_INDEX_CORRUPTED instead")]
+    pub const E_DB_CONNECTION: &str = E_INDEX_CORRUPTED;
+    #[deprecated(note = "Use E_INDEX_CORRUPTED instead")]
+    pub const E_DB_QUERY: &str = E_INDEX_CORRUPTED;
+    #[deprecated(note = "Use E_INDEX_CORRUPTED instead")]
+    pub const E_DB_CONSTRAINT: &str = E_INDEX_CORRUPTED;
+    #[deprecated(note = "Use E_INDEX_VERSION_MISMATCH instead")]
+    pub const E_DB_MIGRATION: &str = E_INDEX_VERSION_MISMATCH;
+    #[deprecated(note = "Use E_CONFIG_ROOT_NOT_FOUND instead")]
+    pub const E_CFG_ROOT_NOT_FOUND: &str = E_CONFIG_ROOT_NOT_FOUND;
+    #[deprecated(note = "Use E_CONFIG_INVALID_VALUE instead")]
+    pub const E_CFG_INVALID_VALUE: &str = E_CONFIG_INVALID_VALUE;
+    #[deprecated(note = "Use E_CONFIG_PARSE_ERROR instead")]
+    pub const E_CFG_PARSE_ERROR: &str = E_CONFIG_PARSE_ERROR;
+    #[deprecated(note = "Use E_CONFIG_MISSING_INDEX instead")]
+    pub const E_CFG_MISSING_INDEX: &str = E_CONFIG_MISSING_INDEX;
+    #[deprecated(note = "Use E_LINT_INVALID_LABEL instead")]
+    pub const E_LINT_INVALID_LABEL_FORMAT: &str = E_LINT_INVALID_LABEL;
 }
 
 #[cfg(test)]
@@ -278,12 +1026,45 @@ mod tests {
 
     #[test]
     fn test_error_code_extraction() {
-        let err = LashError::ParseError {
-            code: codes::E_PARSE_BAD_CHECKBOX,
-            message: "Invalid checkbox syntax".to_string(),
-            location: None,
-        };
-        assert_eq!(err.code(), codes::E_PARSE_BAD_CHECKBOX);
+        let err = LashError::parse_invalid_checkbox(PathBuf::from("test.md"), 5, 3, "[*] invalid");
+        assert_eq!(err.code(), codes::E_PARSE_INVALID_CHECKBOX);
+    }
+
+    #[test]
+    fn test_parse_error_constructor() {
+        let err =
+            LashError::parse_invalid_checkbox(PathBuf::from("test.md"), 10, 5, "[*] bad checkbox");
+
+        assert_eq!(err.code(), codes::E_PARSE_INVALID_CHECKBOX);
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.severity, Severity::Error);
+        assert!(diag.help.is_some());
+        assert!(diag.snippet.is_some());
+    }
+
+    #[test]
+    fn test_lint_duplicate_id() {
+        let err = LashError::lint_duplicate_id(PathBuf::from("tasks.md"), 15, 3, "setup-db", 10);
+
+        assert_eq!(err.code(), codes::E_LINT_DUPLICATE_ID);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("setup-db"));
+        assert!(diag.help.as_ref().unwrap().contains("10"));
+    }
+
+    #[test]
+    fn test_dependency_cycle() {
+        let chain = vec![
+            "task1".to_string(),
+            "task2".to_string(),
+            "task3".to_string(),
+            "task1".to_string(),
+        ];
+        let err = LashError::dep_cycle(&chain);
+
+        assert_eq!(err.code(), codes::E_DEP_CYCLE);
+        let diag = err.to_diagnostic();
+        assert!(diag.labels.is_some());
     }
 
     #[test]
@@ -292,28 +1073,21 @@ mod tests {
             code: codes::E_LINT_DEPTH_EXCEEDED,
             severity: Severity::Error,
             message: "Task nesting exceeds maximum depth".to_string(),
-            location: Some(Location {
-                file_path: PathBuf::from("tasks.md"),
-                line: Some(42),
-                column: Some(5),
-                span: None,
-            }),
-            suggestion: Some("Reduce nesting level to 3 or fewer".to_string()),
+            location: Some(Location::new(PathBuf::from("tasks.md"), 42, 5)),
+            snippet: None,
+            help: Some("Reduce nesting level to 3 or fewer".to_string()),
+            labels: None,
         };
 
         let json = diag.to_json().unwrap();
         assert!(json.contains("E_LINT_DEPTH_EXCEEDED"));
         assert!(json.contains("tasks.md"));
+        assert!(json.contains("42"));
     }
 
     #[test]
     fn test_location_display() {
-        let loc = Location {
-            file_path: PathBuf::from("/path/to/file.md"),
-            line: Some(10),
-            column: Some(5),
-            span: None,
-        };
+        let loc = Location::new(PathBuf::from("/path/to/file.md"), 10, 5);
         let display = format!("{loc}");
         assert!(display.contains("file.md"));
         assert!(display.contains("10"));
@@ -321,24 +1095,117 @@ mod tests {
     }
 
     #[test]
+    fn test_location_file_only() {
+        let loc = Location::file_only(PathBuf::from("test.md"));
+        assert_eq!(loc.line, None);
+        assert_eq!(loc.column, None);
+    }
+
+    #[test]
+    fn test_severity_ordering() {
+        // With derived Ord, earlier variants are < later variants
+        // But semantically, Error is more severe than Warning
+        assert!(Severity::Error < Severity::Warning);
+        assert!(Severity::Warning < Severity::Info);
+        assert!(Severity::Info < Severity::Hint);
+
+        // Test that we can still compare them
+        assert_ne!(Severity::Error, Severity::Warning);
+        assert_eq!(Severity::Error, Severity::Error);
+    }
+
+    #[test]
     fn test_severity_display() {
         assert_eq!(format!("{}", Severity::Error), "error");
         assert_eq!(format!("{}", Severity::Warning), "warning");
         assert_eq!(format!("{}", Severity::Info), "info");
-        assert_eq!(format!("{}", Severity::Help), "help");
+        assert_eq!(format!("{}", Severity::Hint), "hint");
     }
 
     #[test]
-    fn test_diagnostic_with_suggestion() {
+    fn test_diagnostic_builder_methods() {
         let diag = Diagnostic {
             code: codes::E_LINT_DEPTH_EXCEEDED,
             severity: Severity::Error,
             message: "Too deep".to_string(),
             location: None,
-            suggestion: None,
+            snippet: None,
+            help: None,
+            labels: None,
         };
 
-        let with_sugg = diag.with_suggestion("Flatten hierarchy");
-        assert_eq!(with_sugg.suggestion, Some("Flatten hierarchy".to_string()));
+        let with_help = diag.clone().with_help("Flatten hierarchy");
+        assert_eq!(with_help.help, Some("Flatten hierarchy".to_string()));
+
+        let with_snippet = diag.clone().with_snippet("- [ ] task");
+        assert_eq!(with_snippet.snippet, Some("- [ ] task".to_string()));
+
+        let with_labels = diag.with_labels(vec![("key".to_string(), "value".to_string())]);
+        assert!(with_labels.labels.is_some());
+    }
+
+    #[test]
+    fn test_io_errors() {
+        let err = LashError::io_file_not_found(PathBuf::from("missing.md"));
+        assert_eq!(err.code(), codes::E_IO_FILE_NOT_FOUND);
+
+        let err = LashError::io_read_error(PathBuf::from("test.md"), "disk error");
+        assert_eq!(err.code(), codes::E_IO_READ_ERROR);
+
+        let err = LashError::io_permission_denied(PathBuf::from("locked.md"));
+        assert_eq!(err.code(), codes::E_IO_PERMISSION_DENIED);
+    }
+
+    #[test]
+    fn test_config_errors() {
+        let err = LashError::config_root_not_found(PathBuf::from("/tmp"));
+        assert_eq!(err.code(), codes::E_CONFIG_ROOT_NOT_FOUND);
+
+        let err = LashError::config_invalid_value("max_depth", "invalid");
+        assert_eq!(err.code(), codes::E_CONFIG_INVALID_VALUE);
+
+        let err = LashError::config_missing_index();
+        assert_eq!(err.code(), codes::E_CONFIG_MISSING_INDEX);
+    }
+
+    #[test]
+    fn test_index_errors() {
+        let err = LashError::index_corrupted("integrity check failed");
+        assert_eq!(err.code(), codes::E_INDEX_CORRUPTED);
+
+        let err = LashError::index_version_mismatch(1, 2);
+        assert_eq!(err.code(), codes::E_INDEX_VERSION_MISMATCH);
+
+        let err = LashError::index_out_of_sync(5);
+        assert_eq!(err.code(), codes::E_INDEX_OUT_OF_SYNC);
+    }
+
+    #[test]
+    fn test_query_errors() {
+        let err = LashError::query_invalid_syntax("@invalid");
+        assert_eq!(err.code(), codes::E_QUERY_INVALID_SYNTAX);
+
+        let err = LashError::query_no_results("nonexistent");
+        assert_eq!(err.code(), codes::E_QUERY_NO_RESULTS);
+    }
+
+    #[test]
+    fn test_internal_error() {
+        let err = LashError::internal("unexpected state", Some("debug info".to_string()));
+        assert_eq!(err.code(), codes::E_INTERNAL);
+        let diag = err.to_diagnostic();
+        assert!(diag.help.as_ref().unwrap().contains("bug"));
+    }
+
+    #[test]
+    fn test_error_code_stability() {
+        // These codes must never change - they're part of the stable API
+        assert_eq!(codes::E_PARSE_INVALID_CHECKBOX, "E_PARSE_INVALID_CHECKBOX");
+        assert_eq!(codes::E_LINT_DUPLICATE_ID, "E_LINT_DUPLICATE_ID");
+        assert_eq!(codes::E_DEP_CYCLE, "E_DEP_CYCLE");
+        assert_eq!(codes::E_INDEX_CORRUPTED, "E_INDEX_CORRUPTED");
+        assert_eq!(codes::E_CONFIG_ROOT_NOT_FOUND, "E_CONFIG_ROOT_NOT_FOUND");
+        assert_eq!(codes::E_IO_FILE_NOT_FOUND, "E_IO_FILE_NOT_FOUND");
+        assert_eq!(codes::E_QUERY_INVALID_SYNTAX, "E_QUERY_INVALID_SYNTAX");
     }
 }

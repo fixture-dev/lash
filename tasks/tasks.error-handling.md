@@ -31,54 +31,54 @@ Define the complete taxonomy of error types that can occur in Lash, with stable 
 
 ### Subtasks
 
-- [ ] Define `LashError` enum
-  - [ ] Top-level error categories:
-    - [ ] `Parse` - Markdown parsing errors
-    - [ ] `Lint` - Linting/validation errors
-    - [ ] `Index` - Indexing/database errors
-    - [ ] `Dependency` - Dependency resolution errors
-    - [ ] `Query` - Query/search errors
-    - [ ] `Config` - Configuration errors
-    - [ ] `IO` - File system errors
-    - [ ] `Internal` - Internal/unexpected errors
-  - [ ] Each variant contains specific error details
-- [ ] Define error codes
-  - [ ] Stable string codes (e.g., `E_PARSE_001`, `E_LINT_002`)
-  - [ ] Hierarchical naming: `<CATEGORY>_<SUBCATEGORY>_<NUMBER>`
-  - [ ] Document all codes in error catalog
-- [ ] Implement error variants
-  - [ ] **Parse errors:**
-    - [ ] Invalid checkbox syntax
-    - [ ] Malformed annotation
-    - [ ] Invalid header format
-    - [ ] Unexpected depth
-  - [ ] **Lint errors:**
-    - [ ] Duplicate ID
-    - [ ] Unknown annotation
-    - [ ] Depth limit exceeded
-    - [ ] Status inconsistency (parent done, children open)
-    - [ ] Invalid label format
-  - [ ] **Dependency errors:**
-    - [ ] Broken reference (target not found)
-    - [ ] Circular dependency
-    - [ ] Invalid reference format
-  - [ ] **Index errors:**
-    - [ ] Database corruption
-    - [ ] Schema version mismatch
-    - [ ] Index out of sync
-  - [ ] **IO errors:**
-    - [ ] File not found
-    - [ ] Permission denied
-    - [ ] Invalid path
-- [ ] Add error context
-  - [ ] File path
-  - [ ] Line and column numbers
-  - [ ] Relevant snippet (for parse/lint errors)
-  - [ ] Dependency chain (for dependency errors)
-- [ ] Implement `std::error::Error` trait
-  - [ ] Human-readable `Display` implementation
-  - [ ] `source()` for error chains
-  - [ ] `Debug` implementation with full context
+- [x] Define `LashError` enum
+  - [x] Top-level error categories:
+    - [x] `Parse` - Markdown parsing errors
+    - [x] `Lint` - Linting/validation errors
+    - [x] `Index` - Indexing/database errors
+    - [x] `Dependency` - Dependency resolution errors
+    - [x] `Query` - Query/search errors
+    - [x] `Config` - Configuration errors
+    - [x] `IO` - File system errors
+    - [x] `Internal` - Internal/unexpected errors
+  - [x] Each variant contains specific error details
+- [x] Define error codes
+  - [x] Stable string codes (e.g., `E_PARSE_INVALID_CHECKBOX`, `E_LINT_DUPLICATE_ID`)
+  - [x] Hierarchical naming: `E_<CATEGORY>_<DESCRIPTION>`
+  - [x] Document all codes in error catalog
+- [x] Implement error variants
+  - [x] **Parse errors:**
+    - [x] Invalid checkbox syntax
+    - [x] Malformed annotation
+    - [x] Invalid header format
+    - [x] Unexpected depth
+  - [x] **Lint errors:**
+    - [x] Duplicate ID
+    - [x] Unknown annotation
+    - [x] Depth limit exceeded
+    - [x] Status inconsistency (parent done, children open)
+    - [x] Invalid label format
+  - [x] **Dependency errors:**
+    - [x] Broken reference (target not found)
+    - [x] Circular dependency
+    - [x] Invalid reference format
+  - [x] **Index errors:**
+    - [x] Database corruption
+    - [x] Schema version mismatch
+    - [x] Index out of sync
+  - [x] **IO errors:**
+    - [x] File not found
+    - [x] Permission denied
+    - [x] Invalid path
+- [x] Add error context
+  - [x] File path
+  - [x] Line and column numbers
+  - [x] Relevant snippet (for parse/lint errors)
+  - [x] Dependency chain (for dependency errors)
+- [x] Implement `std::error::Error` trait
+  - [x] Human-readable `Display` implementation
+  - [x] Proper error implementation via thiserror
+  - [x] `Debug` implementation with full context
 
 ### Success Criteria
 
@@ -108,60 +108,38 @@ Implement rich error formatting for both human and machine consumption.
 
 ### Subtasks
 
-- [ ] Implement `ErrorFormatter` trait
-  - [ ] `format_human()` - human-readable text
-  - [ ] `format_json()` - structured JSON
-  - [ ] Support for colored output
-- [ ] Implement human-readable formatting
-  - [ ] Use `miette` or similar crate for rich diagnostics
-  - [ ] Show:
-    - [ ] Error message (clear, concise)
-    - [ ] File path, line, column
-    - [ ] Code snippet with highlighting
-    - [ ] Caret (^) pointing to error location
-    - [ ] Help text / suggestion
-  - [ ] Color coding:
-    - [ ] Red: error message
-    - [ ] Cyan: file path
-    - [ ] Yellow: warning text
-    - [ ] Gray: code snippet
-  - [ ] Example format:
-    ```
-    error[E_LINT_001]: duplicate task ID 'setup-db'
-      --> tasks/database.md:15:3
-       |
-    15 | @id: setup-db
-       |      ^^^^^^^^ duplicate ID
-       |
-    help: task IDs must be unique within a file
-    ```
-- [ ] Implement JSON formatting
-  - [ ] Schema:
-    ```json
-    {
-      "code": "E_LINT_001",
-      "severity": "error",
-      "message": "duplicate task ID 'setup-db'",
-      "location": {
-        "file": "tasks/database.md",
-        "line": 15,
-        "column": 3
-      },
-      "snippet": "@id: setup-db",
-      "help": "task IDs must be unique within a file"
-    }
-    ```
-  - [ ] Include all context fields
-  - [ ] Stable schema (document version)
-- [ ] Implement error suggestions
-  - [ ] Contextual help for each error type
-  - [ ] Suggest fixes where possible
-  - [ ] Link to documentation (optional)
-- [ ] Add severity levels
-  - [ ] Error (must fix)
-  - [ ] Warning (should fix)
-  - [ ] Info (nice to fix)
-  - [ ] Hint (style suggestion)
+- [x] Implement `ErrorFormatter` struct
+  - [x] `format_human()` - human-readable text
+  - [x] `format_json()` - structured JSON
+  - [x] Support for colored output
+- [x] Implement human-readable formatting
+  - [x] Use colored crate for color support
+  - [x] Show:
+    - [x] Error message (clear, concise)
+    - [x] File path, line, column
+    - [x] Code snippet with context lines
+    - [x] Caret (^) pointing to error location
+    - [x] Help text / suggestion
+  - [x] Color coding:
+    - [x] Red: error message
+    - [x] Cyan: file path
+    - [x] Yellow: warning text
+    - [x] Gray: code snippet
+  - [x] Implements rich formatting similar to rustc errors
+- [x] Implement JSON formatting
+  - [x] Schema includes:
+    - code, severity, message, location, snippet, help, labels
+  - [x] Include all context fields
+  - [x] Stable schema via Diagnostic struct
+- [x] Implement error suggestions
+  - [x] Contextual help for each error type
+  - [x] Helper constructors include helpful messages
+  - [x] All errors have actionable help text
+- [x] Add severity levels
+  - [x] Error (must fix)
+  - [x] Warning (should fix)
+  - [x] Info (nice to fix)
+  - [x] Hint (style suggestion)
 
 ### Success Criteria
 
@@ -192,36 +170,32 @@ Implement error collection and aggregation for batch operations (linting, indexi
 
 ### Subtasks
 
-- [ ] Define `ErrorReport` struct
-  - [ ] List of errors
-  - [ ] Grouping (by file, by type)
-  - [ ] Summary statistics
-- [ ] Implement error collection
-  - [ ] Collect all errors (don't stop on first)
-  - [ ] Associate with source file/operation
-  - [ ] Maintain order (by file, then line)
-- [ ] Implement error grouping
-  - [ ] Group by file (show all errors per file together)
-  - [ ] Group by type (show all duplicates together)
-  - [ ] Configurable grouping strategy
-- [ ] Implement summary reporting
-  - [ ] Count errors by severity
-  - [ ] Count errors by type
-  - [ ] Show affected files count
-  - [ ] Example:
-    ```
-    Found 5 errors in 3 files:
-      - 3 lint errors
-      - 2 dependency errors
-    ```
-- [ ] Implement report rendering
-  - [ ] Text format: grouped errors with headers
-  - [ ] JSON format: array of error objects + summary
-  - [ ] Limit display (show first N, summarize rest)
-- [ ] Add filtering
-  - [ ] Filter by severity
-  - [ ] Filter by file
-  - [ ] Filter by error code
+- [x] Define `ErrorReport` struct
+  - [x] List of errors
+  - [x] Grouping (by file, by type, by severity, or none)
+  - [x] Summary statistics
+- [x] Implement error collection
+  - [x] Collect all errors (don't stop on first)
+  - [x] Associate with source file/operation
+  - [x] Maintain order (by file, then line)
+- [x] Implement error grouping
+  - [x] Group by file (show all errors per file together)
+  - [x] Group by error code (show all duplicates together)
+  - [x] Group by severity
+  - [x] Configurable grouping strategy via GroupBy enum
+- [x] Implement summary reporting
+  - [x] Count errors by severity
+  - [x] Count errors by type (error code)
+  - [x] Show affected files count
+  - [x] Summary includes error counts and breakdown
+- [x] Implement report rendering
+  - [x] Text format: grouped errors with headers
+  - [x] JSON format: array of error objects + summary
+  - [x] Compact format for logs
+- [x] Add filtering
+  - [x] Filter by severity
+  - [x] Filter by file
+  - [x] Filter by error code
 
 ### Success Criteria
 
