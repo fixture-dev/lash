@@ -122,7 +122,7 @@ impl Default for RuleRegistry {
 /// Creates a registry with all built-in linting rules:
 /// - 7 syntax rules (Task #2 - Complete)
 /// - 8 semantic rules (Task #3 - Complete)
-/// - 5 cross-file rules (Task #4 - TODO)
+/// - 5 cross-file rules (Task #4 - Complete)
 ///
 /// # Syntax Rules
 ///
@@ -144,6 +144,14 @@ impl Default for RuleRegistry {
 /// 6. Valid Estimate Format (`E_SEM_INVALID_ESTIMATE`)
 /// 7. Valid Owner Format (`W_SEM_OWNER_FORMAT`)
 /// 8. Empty Task Title (`E_SEM_EMPTY_TITLE`)
+///
+/// # Cross-File Rules
+///
+/// 1. Dependency Reference Exists (`E_LINK_NOT_FOUND`)
+/// 2. Circular Dependencies (`E_LINK_CYCLE`)
+/// 3. Root Index File References (`E_INDEX_FILE_MISSING`)
+/// 4. Orphaned Files (`W_INDEX_ORPHAN`)
+/// 5. Valid Dependency Path Resolution (`E_LINK_INVALID_PATH`)
 #[must_use]
 pub fn register_default_rules() -> RuleRegistry {
     use crate::linter::rules;
@@ -211,12 +219,27 @@ pub fn register_default_rules() -> RuleRegistry {
         Arc::new(rules::EmptyTitleRule::new()),
     );
 
-    // TODO: Register cross-file rules (Task #4)
-    // registry.register(RuleCategory::CrossFile, Arc::new(DependencyExistsRule::new()));
-    // registry.register(RuleCategory::CrossFile, Arc::new(CircularDepsRule::new()));
-    // registry.register(RuleCategory::CrossFile, Arc::new(IndexFileRefsRule::new()));
-    // registry.register(RuleCategory::CrossFile, Arc::new(OrphanedFilesRule::new()));
-    // registry.register(RuleCategory::CrossFile, Arc::new(ValidPathResolutionRule::new()));
+    // Register cross-file rules (Task #4)
+    registry.register(
+        RuleCategory::CrossFile,
+        Arc::new(rules::DependencyExistsRule::new()),
+    );
+    registry.register(
+        RuleCategory::CrossFile,
+        Arc::new(rules::CircularDepsRule::new()),
+    );
+    registry.register(
+        RuleCategory::CrossFile,
+        Arc::new(rules::IndexFileRefsRule::new()),
+    );
+    registry.register(
+        RuleCategory::CrossFile,
+        Arc::new(rules::OrphanedFilesRule::new()),
+    );
+    registry.register(
+        RuleCategory::CrossFile,
+        Arc::new(rules::ValidPathResolutionRule::new()),
+    );
 
     registry
 }
@@ -326,10 +349,10 @@ mod tests {
     #[test]
     fn test_default_registry() {
         let registry = register_default_rules();
-        // Should have 7 syntax rules (Task #2) + 8 semantic rules (Task #3)
-        assert_eq!(registry.rule_count(), 15);
+        // Should have 7 syntax rules (Task #2) + 8 semantic rules (Task #3) + 5 cross-file rules (Task #4)
+        assert_eq!(registry.rule_count(), 20);
         assert_eq!(registry.category_count(RuleCategory::Syntax), 7);
         assert_eq!(registry.category_count(RuleCategory::Semantic), 8);
-        assert_eq!(registry.category_count(RuleCategory::CrossFile), 0);
+        assert_eq!(registry.category_count(RuleCategory::CrossFile), 5);
     }
 }

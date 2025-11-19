@@ -212,15 +212,15 @@ Implement the linter that validates Lash Markdown files for both syntax and sema
 
 ### 4. Implement Cross-File Validation
 
-- [ ] **Rule: Dependency Reference Exists**
-  - [ ] Code: `E_LINK_NOT_FOUND`
-  - [ ] Check: `@depends-on` targets exist
-  - [ ] For file refs: Check file exists in project
-  - [ ] For task refs: Check file exists AND contains task ID
-  - [ ] Error on: Broken references
-  - [ ] Provide: Path to missing file/task
-  - [ ] Suggestion: Check path spelling, or create the file/task
-  - [ ] Auto-fix: None (can't auto-create tasks)
+- [x] **Rule: Dependency Reference Exists**
+  - [x] Code: `E_LINK_NOT_FOUND`
+  - [x] Check: `@depends-on` targets exist
+  - [x] For file refs: Check file exists in project
+  - [x] For task refs: Check file exists AND contains task ID
+  - [x] Error on: Broken references
+  - [x] Provide: Path to missing file/task
+  - [x] Suggestion: Check path spelling, or create the file/task
+  - [x] Auto-fix: None (can't auto-create tasks)
 - [ ] **Rule: Circular Dependencies**
   - [ ] Code: `E_LINK_CYCLE`
   - [ ] Check: No cycles in dependency graph
