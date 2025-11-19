@@ -24,7 +24,7 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// - [ ] tasks/ui.md
 /// ```
 ///
-/// Invalid (E_INDEX_FILE_MISSING):
+/// Invalid (`E_INDEX_FILE_MISSING`):
 /// ```markdown
 /// # Project Index
 /// - [ ] tasks/missing.md  // File doesn't exist
@@ -39,23 +39,26 @@ impl IndexFileRefsRule {
     }
 
     /// Check if this file is a root index file
-    fn is_root_index(&self, file: &TaskFile) -> bool {
+    fn is_root_index(file: &TaskFile) -> bool {
         let file_name = file.path.file_name().and_then(|n| n.to_str());
-        matches!(file_name, Some("lash.index.md") | Some("index.lash.md"))
+        matches!(file_name, Some("lash.index.md" | "index.lash.md"))
     }
 
     /// Parse index entries from the file
     ///
     /// This extracts file paths from checkbox items in the file.
-    /// The RootIndex type would normally be created by a proper parser,
+    /// The `RootIndex` type would normally be created by a proper parser,
     /// but for linting purposes we can extract paths directly from tasks.
-    fn extract_file_references(&self, file: &TaskFile) -> Vec<String> {
+    fn extract_file_references(file: &TaskFile) -> Vec<String> {
         let mut references = Vec::new();
 
         for task in file.tasks.tasks() {
             // Check if the task title looks like a file reference
             let title = task.title.trim();
-            if title.ends_with(".md") {
+            if std::path::Path::new(title)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+            {
                 references.push(title.to_string());
             }
         }
@@ -87,12 +90,12 @@ impl LintRule for IndexFileRefsRule {
         let mut diagnostics = Vec::new();
 
         // Only check if this is the root index file
-        if !self.is_root_index(file) {
+        if !Self::is_root_index(file) {
             return diagnostics;
         }
 
         // Extract file references from the index
-        let file_refs = self.extract_file_references(file);
+        let file_refs = Self::extract_file_references(file);
 
         // Check each reference
         for file_ref in file_refs {
@@ -115,8 +118,7 @@ impl LintRule for IndexFileRefsRule {
                     LintDiagnostic::error(
                         self.code(),
                         format!(
-                            "File '{}' referenced in index does not exist (resolved to: {})",
-                            file_ref,
+                            "File '{file_ref}' referenced in index does not exist (resolved to: {})",
                             resolved.display()
                         ),
                         file.path.clone(),
@@ -146,13 +148,13 @@ mod tests {
     use std::path::PathBuf;
     use std::time::SystemTime;
 
-    fn make_index_file(path: &str, referenced_files: Vec<&str>) -> TaskFile {
+    fn make_index_file(path: &str, referenced_files: &[&str]) -> TaskFile {
         let mut tasks = TaskTree::new();
 
         for (i, file_ref) in referenced_files.iter().enumerate() {
-            tasks.add_task(Task {
-                id: format!("entry-{}", i),
-                title: file_ref.to_string(),
+            let _ = tasks.add_task(Task {
+                id: format!("entry-{i}"),
+                title: (*file_ref).to_string(),
                 status: TaskStatus::Open,
                 depth: 0,
                 parent_id: None,
@@ -193,7 +195,7 @@ mod tests {
         let mut files = HashMap::new();
 
         // Add index file
-        let index = make_index_file("lash.index.md", vec!["tasks.md", "notes.md"]);
+        let index = make_index_file("lash.index.md", &["tasks.md", "notes.md"]);
         files.insert(PathBuf::from("lash.index.md"), index.clone());
 
         // Add referenced files
@@ -220,7 +222,7 @@ mod tests {
         let mut files = HashMap::new();
 
         // Add index file referencing a missing file
-        let index = make_index_file("lash.index.md", vec!["tasks.md", "missing.md"]);
+        let index = make_index_file("lash.index.md", &["tasks.md", "missing.md"]);
         files.insert(PathBuf::from("lash.index.md"), index.clone());
 
         // Add only one of the referenced files
@@ -246,7 +248,7 @@ mod tests {
 
         let index = make_index_file(
             "lash.index.md",
-            vec!["exists.md", "missing1.md", "missing2.md"],
+            &["exists.md", "missing1.md", "missing2.md"],
         );
         files.insert(PathBuf::from("lash.index.md"), index.clone());
         files.insert(
@@ -270,7 +272,7 @@ mod tests {
         let mut files = HashMap::new();
 
         // Regular file that happens to reference other files
-        let regular = make_index_file("regular.md", vec!["missing.md"]);
+        let regular = make_index_file("regular.md", &["missing.md"]);
         files.insert(PathBuf::from("regular.md"), regular.clone());
 
         let ctx = LintContext::new(&config, PathBuf::from("regular.md"), &files);
@@ -288,7 +290,7 @@ mod tests {
         let mut files = HashMap::new();
 
         // Use the alternate index file name
-        let index = make_index_file("index.lash.md", vec!["missing.md"]);
+        let index = make_index_file("index.lash.md", &["missing.md"]);
         files.insert(PathBuf::from("index.lash.md"), index.clone());
 
         let ctx = LintContext::new(&config, PathBuf::from("index.lash.md"), &files);
@@ -305,7 +307,7 @@ mod tests {
 
         let mut files = HashMap::new();
 
-        let index = make_index_file("lash.index.md", vec!["tasks/api.md", "tasks/ui.md"]);
+        let index = make_index_file("lash.index.md", &["tasks/api.md", "tasks/ui.md"]);
         files.insert(PathBuf::from("lash.index.md"), index.clone());
 
         // Add referenced files with relative paths
@@ -331,7 +333,7 @@ mod tests {
 
         let mut files = HashMap::new();
 
-        let index = make_index_file("lash.index.md", vec![]);
+        let index = make_index_file("lash.index.md", &[]);
         files.insert(PathBuf::from("lash.index.md"), index.clone());
 
         let ctx = LintContext::new(&config, PathBuf::from("lash.index.md"), &files);
@@ -342,16 +344,14 @@ mod tests {
 
     #[test]
     fn test_is_root_index() {
-        let rule = IndexFileRefsRule::new();
-
         let index1 = make_regular_file("lash.index.md", "index");
-        assert!(rule.is_root_index(&index1));
+        assert!(IndexFileRefsRule::is_root_index(&index1));
 
         let index2 = make_regular_file("index.lash.md", "index");
-        assert!(rule.is_root_index(&index2));
+        assert!(IndexFileRefsRule::is_root_index(&index2));
 
         let regular = make_regular_file("tasks.md", "tasks");
-        assert!(!rule.is_root_index(&regular));
+        assert!(!IndexFileRefsRule::is_root_index(&regular));
     }
 
     #[test]
@@ -363,7 +363,7 @@ mod tests {
 
         // Index with non-.md entries (should be ignored)
         let mut tasks = TaskTree::new();
-        tasks.add_task(Task {
+        let _ = tasks.add_task(Task {
             id: "entry-1".to_string(),
             title: "tasks.md".to_string(),
             status: TaskStatus::Open,
@@ -373,7 +373,7 @@ mod tests {
             metadata: TaskMetadata::default(),
             body: None,
         });
-        tasks.add_task(Task {
+        let _ = tasks.add_task(Task {
             id: "entry-2".to_string(),
             title: "Some regular text entry".to_string(), // Not a file reference
             status: TaskStatus::Open,

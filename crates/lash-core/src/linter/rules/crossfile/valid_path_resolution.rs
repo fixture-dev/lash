@@ -27,7 +27,7 @@ use crate::linter::{Fix, LintContext, LintDiagnostic, LintRule, Replacement};
 /// @depends-on: tasks/ui/login.md
 /// ```
 ///
-/// Invalid (E_LINK_INVALID_PATH):
+/// Invalid (`E_LINK_INVALID_PATH`):
 /// ```markdown
 /// @depends-on: ../../../../../../etc/passwd  // Escapes project root
 /// @depends-on: tasks//double-slash.md        // Malformed path
@@ -43,7 +43,7 @@ impl ValidPathResolutionRule {
     }
 
     /// Check if a path has malformed components
-    fn has_malformed_components(&self, path: &str) -> bool {
+    fn has_malformed_components(path: &str) -> bool {
         // Check for double slashes
         if path.contains("//") {
             return true;
@@ -58,13 +58,14 @@ impl ValidPathResolutionRule {
     }
 
     /// Check if a path string has unnecessary . components
-    fn has_unnecessary_dots(&self, path_str: &str) -> bool {
+    fn has_unnecessary_dots(path_str: &str) -> bool {
         // Check the string directly since Path normalizes automatically
         path_str.contains("/./") || path_str.starts_with("./")
     }
 
     /// Check if a path would escape the project root
-    fn escapes_project_root(&self, path_str: &str, current_file: &Path) -> bool {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    fn escapes_project_root(path_str: &str, current_file: &Path) -> bool {
         // Count the depth of the current file
         let current_depth = if let Some(parent) = current_file.parent() {
             parent.components().count() as i32
@@ -89,7 +90,7 @@ impl ValidPathResolutionRule {
     }
 
     /// Normalize a path by removing unnecessary components
-    fn normalize_path(&self, path: &str) -> String {
+    fn normalize_path(path: &str) -> String {
         let p = Path::new(path);
         let mut components = Vec::new();
 
@@ -147,11 +148,11 @@ impl LintRule for ValidPathResolutionRule {
             let path_str = &dep_ref.target;
 
             // Check for malformed components
-            if self.has_malformed_components(path_str) {
+            if Self::has_malformed_components(path_str) {
                 diagnostics.push(
                     LintDiagnostic::error(
                         self.code(),
-                        format!("Malformed path in dependency: '{}'", path_str),
+                        format!("Malformed path in dependency: '{path_str}'"),
                         ctx.file_path.clone(),
                         0,
                         0,
@@ -162,19 +163,19 @@ impl LintRule for ValidPathResolutionRule {
             }
 
             // Check for unnecessary . components
-            if self.has_unnecessary_dots(path_str) {
-                let normalized = self.normalize_path(path_str);
+            if Self::has_unnecessary_dots(path_str) {
+                let normalized = Self::normalize_path(path_str);
                 diagnostics.push(
                     LintDiagnostic::error(
                         self.code(),
-                        format!("Path contains unnecessary '.' components: '{}'", path_str),
+                        format!("Path contains unnecessary '.' components: '{path_str}'"),
                         ctx.file_path.clone(),
                         0,
                         0,
                     )
-                    .with_help(format!("Use normalized path: '{}'", normalized))
+                    .with_help(format!("Use normalized path: '{normalized}'"))
                     .with_fix(Fix {
-                        description: format!("Normalize path to '{}'", normalized),
+                        description: format!("Normalize path to '{normalized}'"),
                         replacement: Replacement::TextReplace {
                             old: path_str.clone(),
                             new: normalized,
@@ -185,15 +186,14 @@ impl LintRule for ValidPathResolutionRule {
             }
 
             // Check if path would escape project root
-            if self.escapes_project_root(path_str, &ctx.file_path) {
+            if Self::escapes_project_root(path_str, &ctx.file_path) {
                 let path = Path::new(path_str);
                 let resolved = ctx.resolve_path(path);
                 diagnostics.push(
                     LintDiagnostic::error(
                         self.code(),
                         format!(
-                            "Path escapes project root: '{}' (resolved to: {})",
-                            path_str,
+                            "Path escapes project root: '{path_str}' (resolved to: {})",
                             resolved.display()
                         ),
                         ctx.file_path.clone(),
@@ -221,8 +221,10 @@ mod tests {
     use std::path::PathBuf;
 
     fn make_task_with_dep(dep_target: &str, kind: DependencyKind) -> Task {
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![DependencyRef::new(dep_target.to_string(), kind)];
+        let metadata = TaskMetadata {
+            depends_on: vec![DependencyRef::new(dep_target.to_string(), kind)],
+            ..Default::default()
+        };
 
         Task {
             id: "test-task".to_string(),
@@ -358,41 +360,54 @@ mod tests {
 
     #[test]
     fn test_normalize_path_simple() {
-        let rule = ValidPathResolutionRule::new();
-        assert_eq!(rule.normalize_path("./tasks/api.md"), "tasks/api.md");
         assert_eq!(
-            rule.normalize_path("tasks/./ui/./login.md"),
+            ValidPathResolutionRule::normalize_path("./tasks/api.md"),
+            "tasks/api.md"
+        );
+        assert_eq!(
+            ValidPathResolutionRule::normalize_path("tasks/./ui/./login.md"),
             "tasks/ui/login.md"
         );
     }
 
     #[test]
     fn test_normalize_path_with_parent_dirs() {
-        let rule = ValidPathResolutionRule::new();
         assert_eq!(
-            rule.normalize_path("tasks/ui/../core/api.md"),
+            ValidPathResolutionRule::normalize_path("tasks/ui/../core/api.md"),
             "tasks/core/api.md"
         );
     }
 
     #[test]
     fn test_has_malformed_components() {
-        let rule = ValidPathResolutionRule::new();
-
-        assert!(rule.has_malformed_components("tasks//api.md"));
-        assert!(rule.has_malformed_components("//tasks/api.md"));
-        assert!(!rule.has_malformed_components("tasks/api.md"));
-        assert!(!rule.has_malformed_components("../tasks/api.md"));
+        assert!(ValidPathResolutionRule::has_malformed_components(
+            "tasks//api.md"
+        ));
+        assert!(ValidPathResolutionRule::has_malformed_components(
+            "//tasks/api.md"
+        ));
+        assert!(!ValidPathResolutionRule::has_malformed_components(
+            "tasks/api.md"
+        ));
+        assert!(!ValidPathResolutionRule::has_malformed_components(
+            "../tasks/api.md"
+        ));
     }
 
     #[test]
     fn test_has_unnecessary_dots() {
-        let rule = ValidPathResolutionRule::new();
-
-        assert!(rule.has_unnecessary_dots("./tasks/api.md"));
-        assert!(rule.has_unnecessary_dots("tasks/./api.md"));
-        assert!(!rule.has_unnecessary_dots("tasks/api.md"));
-        assert!(!rule.has_unnecessary_dots("../tasks/api.md"));
+        assert!(ValidPathResolutionRule::has_unnecessary_dots(
+            "./tasks/api.md"
+        ));
+        assert!(ValidPathResolutionRule::has_unnecessary_dots(
+            "tasks/./api.md"
+        ));
+        assert!(!ValidPathResolutionRule::has_unnecessary_dots(
+            "tasks/api.md"
+        ));
+        assert!(!ValidPathResolutionRule::has_unnecessary_dots(
+            "../tasks/api.md"
+        ));
     }
 
     #[test]
@@ -448,12 +463,14 @@ mod tests {
         let files = HashMap::new();
         let ctx = make_context(&config, PathBuf::from("tasks.md"), &files);
 
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![
-            DependencyRef::new("valid/path.md".to_string(), DependencyKind::ExplicitPath),
-            DependencyRef::new("./invalid.md".to_string(), DependencyKind::ExplicitPath),
-            DependencyRef::new("tasks//broken.md".to_string(), DependencyKind::ExplicitPath),
-        ];
+        let metadata = TaskMetadata {
+            depends_on: vec![
+                DependencyRef::new("valid/path.md".to_string(), DependencyKind::ExplicitPath),
+                DependencyRef::new("./invalid.md".to_string(), DependencyKind::ExplicitPath),
+                DependencyRef::new("tasks//broken.md".to_string(), DependencyKind::ExplicitPath),
+            ],
+            ..Default::default()
+        };
 
         let task = Task {
             id: "test-task".to_string(),

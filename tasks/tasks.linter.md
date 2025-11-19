@@ -221,50 +221,50 @@ Implement the linter that validates Lash Markdown files for both syntax and sema
   - [x] Provide: Path to missing file/task
   - [x] Suggestion: Check path spelling, or create the file/task
   - [x] Auto-fix: None (can't auto-create tasks)
-- [ ] **Rule: Circular Dependencies**
-  - [ ] Code: `E_LINK_CYCLE`
-  - [ ] Check: No cycles in dependency graph
-  - [ ] Build graph from all `@depends-on` annotations
-  - [ ] Run cycle detection (DFS with visited set)
-  - [ ] Error on: Any cycle detected
-  - [ ] Provide: Full cycle path (A → B → C → A)
-  - [ ] Suggestion: "Remove one dependency to break cycle"
-  - [ ] Auto-fix: None (ambiguous which edge to remove)
-- [ ] **Rule: Root Index File References**
-  - [ ] Code: `E_INDEX_FILE_MISSING`
-  - [ ] Check: Files referenced in root index exist
-  - [ ] Parse root index checkbox list
-  - [ ] Verify each referenced file path exists
-  - [ ] Error on: Missing files
-  - [ ] Suggestion: "Create file or remove from index"
-  - [ ] Auto-fix: Option to remove from index
-- [ ] **Rule: Orphaned Files**
-  - [ ] Code: `W_INDEX_ORPHAN`
-  - [ ] Check: All .md files in project are in root index
-  - [ ] Warning on: Files not referenced in index
-  - [ ] Suggestion: "Add to lash.index.md or move to archive"
-  - [ ] Auto-fix: Add to index under appropriate section
-- [ ] **Rule: Valid Dependency Path Resolution**
-  - [ ] Code: `E_LINK_INVALID_PATH`
-  - [ ] Check: Relative paths resolve correctly
-  - [ ] `../core/api.md` from `tasks/ui/login.md` resolves
-  - [ ] Error on: Paths escaping project root
-  - [ ] Error on: Malformed paths (double //, etc.)
-  - [ ] Suggestion: Fix path syntax
-  - [ ] Auto-fix: Normalize path separators
-- [ ] **Implement cross-file context**
-  - [ ] `LintContext` includes all parsed files
-  - [ ] Build dependency graph across project
-  - [ ] Cache file lookups for performance
-  - [ ] Support incremental linting (only check changed files' deps)
-- [ ] **Write tests**
-  - [ ] Valid cross-file dependencies
-  - [ ] Broken file references
-  - [ ] Broken task references
-  - [ ] Circular dependencies (various patterns)
-  - [ ] Index validation
-  - [ ] Orphaned files detection
-  - [ ] 25+ tests for cross-file scenarios
+- [x] **Rule: Circular Dependencies**
+  - [x] Code: `E_LINK_CYCLE`
+  - [x] Check: No cycles in dependency graph
+  - [x] Build graph from all `@depends-on` annotations
+  - [x] Run cycle detection (DFS with visited set)
+  - [x] Error on: Any cycle detected
+  - [x] Provide: Full cycle path (A → B → C → A)
+  - [x] Suggestion: "Remove one dependency to break cycle"
+  - [x] Auto-fix: None (ambiguous which edge to remove)
+- [x] **Rule: Root Index File References**
+  - [x] Code: `E_INDEX_FILE_MISSING`
+  - [x] Check: Files referenced in root index exist
+  - [x] Parse root index checkbox list
+  - [x] Verify each referenced file path exists
+  - [x] Error on: Missing files
+  - [x] Suggestion: "Create file or remove from index"
+  - [x] Auto-fix: Option to remove from index
+- [x] **Rule: Orphaned Files**
+  - [x] Code: `W_INDEX_ORPHAN`
+  - [x] Check: All .md files in project are in root index
+  - [x] Warning on: Files not referenced in index
+  - [x] Suggestion: "Add to lash.index.md or move to archive"
+  - [x] Auto-fix: Add to index under appropriate section
+- [x] **Rule: Valid Dependency Path Resolution**
+  - [x] Code: `E_LINK_INVALID_PATH`
+  - [x] Check: Relative paths resolve correctly
+  - [x] `../core/api.md` from `tasks/ui/login.md` resolves
+  - [x] Error on: Paths escaping project root
+  - [x] Error on: Malformed paths (double //, etc.)
+  - [x] Suggestion: Fix path syntax
+  - [x] Auto-fix: Normalize path separators
+- [x] **Implement cross-file context**
+  - [x] `LintContext` includes all parsed files
+  - [x] Build dependency graph across project
+  - [x] Cache file lookups for performance
+  - [x] Support incremental linting (only check changed files' deps)
+- [x] **Write tests**
+  - [x] Valid cross-file dependencies
+  - [x] Broken file references
+  - [x] Broken task references
+  - [x] Circular dependencies (various patterns)
+  - [x] Index validation
+  - [x] Orphaned files detection
+  - [x] 25+ tests for cross-file scenarios
 
 **Priority:** MEDIUM (can lint single files without this)
 **Estimate:** 2 days

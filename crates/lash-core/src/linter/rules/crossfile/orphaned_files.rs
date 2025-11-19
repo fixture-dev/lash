@@ -23,7 +23,7 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// - [ ] notes.md
 /// ```
 ///
-/// Warning (W_INDEX_ORPHAN):
+/// Warning (`W_INDEX_ORPHAN`):
 /// ```markdown
 /// # Index (lash.index.md)
 /// - [ ] tasks.md
@@ -39,18 +39,21 @@ impl OrphanedFilesRule {
     }
 
     /// Check if this file is a root index file
-    fn is_root_index(&self, file_path: &Path) -> bool {
+    fn is_root_index(file_path: &Path) -> bool {
         let file_name = file_path.file_name().and_then(|n| n.to_str());
-        matches!(file_name, Some("lash.index.md") | Some("index.lash.md"))
+        matches!(file_name, Some("lash.index.md" | "index.lash.md"))
     }
 
     /// Extract file references from the index file
-    fn extract_file_references(&self, file: &TaskFile) -> Vec<String> {
+    fn extract_file_references(file: &TaskFile) -> Vec<String> {
         let mut references = Vec::new();
 
         for task in file.tasks.tasks() {
             let title = task.title.trim();
-            if title.ends_with(".md") {
+            if std::path::Path::new(title)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+            {
                 references.push(title.to_string());
             }
         }
@@ -59,10 +62,10 @@ impl OrphanedFilesRule {
     }
 
     /// Find the root index file in the context
-    fn find_root_index<'a>(&self, ctx: &'a LintContext) -> Option<&'a TaskFile> {
+    fn find_root_index<'a>(ctx: &'a LintContext) -> Option<&'a TaskFile> {
         ctx.all_files
             .iter()
-            .find(|(path, _)| self.is_root_index(path))
+            .find(|(path, _)| Self::is_root_index(path))
             .map(|(_, file)| file)
     }
 }
@@ -90,7 +93,7 @@ impl LintRule for OrphanedFilesRule {
         let mut diagnostics = Vec::new();
 
         // Skip check if this is the index file itself
-        if self.is_root_index(&file.path) {
+        if Self::is_root_index(&file.path) {
             return diagnostics;
         }
 
@@ -100,13 +103,13 @@ impl LintRule for OrphanedFilesRule {
         }
 
         // Find the root index file
-        let Some(index_file) = self.find_root_index(ctx) else {
+        let Some(index_file) = Self::find_root_index(ctx) else {
             // No index file in project, can't check for orphans
             return diagnostics;
         };
 
         // Extract file references from the index
-        let referenced_files = self.extract_file_references(index_file);
+        let referenced_files = Self::extract_file_references(index_file);
 
         // Check if the current file is referenced in the index
         let is_referenced = referenced_files.iter().any(|ref_path| {
@@ -167,13 +170,13 @@ mod tests {
     use std::path::PathBuf;
     use std::time::SystemTime;
 
-    fn make_index_file(path: &str, referenced_files: Vec<&str>) -> TaskFile {
+    fn make_index_file(path: &str, referenced_files: &[&str]) -> TaskFile {
         let mut tasks = TaskTree::new();
 
         for (i, file_ref) in referenced_files.iter().enumerate() {
-            tasks.add_task(Task {
-                id: format!("entry-{}", i),
-                title: file_ref.to_string(),
+            let _ = tasks.add_task(Task {
+                id: format!("entry-{i}"),
+                title: (*file_ref).to_string(),
                 status: TaskStatus::Open,
                 depth: 0,
                 parent_id: None,
@@ -215,7 +218,7 @@ mod tests {
 
         files.insert(
             PathBuf::from("lash.index.md"),
-            make_index_file("lash.index.md", vec!["tasks.md", "notes.md"]),
+            make_index_file("lash.index.md", &["tasks.md", "notes.md"]),
         );
         files.insert(
             PathBuf::from("tasks.md"),
@@ -242,7 +245,7 @@ mod tests {
 
         files.insert(
             PathBuf::from("lash.index.md"),
-            make_index_file("lash.index.md", vec!["tasks.md"]),
+            make_index_file("lash.index.md", &["tasks.md"]),
         );
         files.insert(
             PathBuf::from("tasks.md"),
@@ -269,7 +272,7 @@ mod tests {
 
         let mut files = HashMap::new();
 
-        let index = make_index_file("lash.index.md", vec![]);
+        let index = make_index_file("lash.index.md", &[]);
         files.insert(PathBuf::from("lash.index.md"), index.clone());
 
         let ctx = LintContext::new(&config, PathBuf::from("lash.index.md"), &files);
@@ -305,7 +308,7 @@ mod tests {
 
         files.insert(
             PathBuf::from("lash.index.md"),
-            make_index_file("lash.index.md", vec!["tasks/api.md"]),
+            make_index_file("lash.index.md", &["tasks/api.md"]),
         );
         files.insert(
             PathBuf::from("tasks/api.md"),
@@ -342,7 +345,7 @@ mod tests {
 
         files.insert(
             PathBuf::from("index.lash.md"),
-            make_index_file("index.lash.md", vec!["tasks.md"]),
+            make_index_file("index.lash.md", &["tasks.md"]),
         );
         files.insert(
             PathBuf::from("tasks.md"),
@@ -370,7 +373,7 @@ mod tests {
 
         files.insert(
             PathBuf::from("lash.index.md"),
-            make_index_file("lash.index.md", vec!["tasks.md", "notes.md"]),
+            make_index_file("lash.index.md", &["tasks.md", "notes.md"]),
         );
         files.insert(
             PathBuf::from("tasks.md"),
