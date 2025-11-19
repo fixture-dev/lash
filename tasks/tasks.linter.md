@@ -333,48 +333,48 @@ Implement the linter that validates Lash Markdown files for both syntax and sema
 
 ### 6. Implement CLI Integration
 
-- [ ] **Implement `lash lint` command in `lash-cli`**
-  - [ ] Command structure:
-    - [ ] `lash lint [PATH...]` - Lint specific files or directories
-    - [ ] `lash lint` (no args) - Lint entire project from root
-  - [ ] Options:
-    - [ ] `--json` - Output JSON diagnostics
-    - [ ] `--fix` - Apply auto-fixes
-    - [ ] `--rule <code>` - Run only specific rule(s)
-    - [ ] `--severity <level>` - Only show errors of this severity or higher
-    - [ ] `--no-color` - Disable colored output
-  - [ ] Exit codes:
-    - [ ] 0 - No errors
-    - [ ] 1 - General error (file not found, etc.)
-    - [ ] 2 - Lint errors found
-- [ ] **Implement `lash format` command**
-  - [ ] Command structure:
-    - [ ] `lash format [PATH...]` - Format specific files
-    - [ ] `lash format` (no args) - Format entire project
-  - [ ] Options:
-    - [ ] `--check` - Check formatting without modifying (dry-run)
-    - [ ] `--diff` - Show diff of changes
-    - [ ] `--no-fix` - Only normalize formatting, don't apply lint fixes
-  - [ ] Exit codes:
-    - [ ] 0 - All files properly formatted (or successfully formatted)
-    - [ ] 1 - General error
-    - [ ] 2 - Files need formatting (with --check)
-- [ ] **Implement progress reporting**
-  - [ ] Show progress bar for multi-file operations
-  - [ ] "Linting file.md..." spinner
-  - [ ] Summary: "Checked 42 files, found 7 errors"
-  - [ ] Use `indicatif` for progress bars
-- [ ] **Format diagnostic output (human-readable)**
-  - [ ] Format: `path/to/file.md:line:col: error[CODE]: message`
-  - [ ] Example: `tasks/api.md:42:3: error[E_SYNTAX_DEPTH]: Task depth exceeds maximum (3 > 2)`
-  - [ ] Color code by severity:
-    - [ ] Red for errors
-    - [ ] Yellow for warnings
-    - [ ] Blue for info
-  - [ ] Show code snippet with error location marked
-  - [ ] Show suggestion/fix if available
-- [ ] **Format diagnostic output (JSON)**
-  - [ ] Schema:
+- [x] **Implement `lash lint` command in `lash-cli`**
+  - [x] Command structure:
+    - [x] `lash lint [PATH...]` - Lint specific files or directories
+    - [x] `lash lint` (no args) - Lint entire project from root
+  - [x] Options:
+    - [x] `--json` - Output JSON diagnostics
+    - [x] `--fix` - Apply auto-fixes
+    - [x] `--rule <code>` - Run only specific rule(s)
+    - [x] `--severity <level>` - Only show errors of this severity or higher
+    - [x] `--no-color` - Disable colored output
+  - [x] Exit codes:
+    - [x] 0 - No errors
+    - [x] 1 - General error (file not found, etc.)
+    - [x] 2 - Lint errors found
+- [x] **Implement `lash format` command**
+  - [x] Command structure:
+    - [x] `lash format [PATH...]` - Format specific files
+    - [x] `lash format` (no args) - Format entire project
+  - [x] Options:
+    - [x] `--check` - Check formatting without modifying (dry-run)
+    - [x] `--diff` - Show diff of changes
+    - [x] `--no-fix` - Only normalize formatting, don't apply lint fixes
+  - [x] Exit codes:
+    - [x] 0 - All files properly formatted (or successfully formatted)
+    - [x] 1 - General error
+    - [x] 2 - Files need formatting (with --check)
+- [x] **Implement progress reporting**
+  - [x] Show progress bar for multi-file operations
+  - [x] "Linting file.md..." spinner
+  - [x] Summary: "Checked 42 files, found 7 errors"
+  - [x] Use `indicatif` for progress bars
+- [x] **Format diagnostic output (human-readable)**
+  - [x] Format: `path/to/file.md:line:col: error[CODE]: message`
+  - [x] Example: `tasks/api.md:42:3: error[E_SYNTAX_DEPTH]: Task depth exceeds maximum (3 > 2)`
+  - [x] Color code by severity:
+    - [x] Red for errors
+    - [x] Yellow for warnings
+    - [x] Blue for info
+  - [x] Show code snippet with error location marked
+  - [x] Show suggestion/fix if available
+- [x] **Format diagnostic output (JSON)**
+  - [x] Schema:
     ```json
     {
       "diagnostics": [
@@ -400,30 +400,30 @@ Implement the linter that validates Lash Markdown files for both syntax and sema
       }
     }
     ```
-  - [ ] Stable field names for machine parsing
-  - [ ] Include all diagnostics, not just first few
-- [ ] **Implement file discovery**
-  - [ ] If path is directory, find all `.md` files recursively
-  - [ ] Respect `.gitignore` patterns
-  - [ ] Respect `.lashignore` if present
-  - [ ] Sort files for deterministic output
-- [ ] **Add `--fix` mode implementation**
-  - [ ] Run linter to collect diagnostics
-  - [ ] Filter for diagnostics with auto-fix available
-  - [ ] Apply fixes to files
-  - [ ] Re-lint to verify fixes worked
-  - [ ] Report what was fixed
-  - [ ] Warn if any fixes failed to apply
-- [ ] **Write integration tests**
-  - [ ] Run lint on valid file (exit 0, no output)
-  - [ ] Run lint on invalid file (exit 2, show errors)
-  - [ ] Run lint with --json (verify JSON schema)
-  - [ ] Run lint with --fix (verify file changed)
-  - [ ] Run format with --check (exit 2 if needs formatting)
-  - [ ] Run format without --check (modify file)
-  - [ ] Run on directory (multiple files)
-  - [ ] Run with various option combinations
-  - [ ] 20+ integration tests
+  - [x] Stable field names for machine parsing
+  - [x] Include all diagnostics, not just first few
+- [x] **Implement file discovery**
+  - [x] If path is directory, find all `.md` files recursively
+  - [x] Respect `.gitignore` patterns
+  - [x] Respect `.lashignore` if present
+  - [x] Sort files for deterministic output
+- [x] **Add `--fix` mode implementation**
+  - [x] Run linter to collect diagnostics
+  - [x] Filter for diagnostics with auto-fix available
+  - [x] Apply fixes to files
+  - [x] Re-lint to verify fixes worked
+  - [x] Report what was fixed
+  - [x] Warn if any fixes failed to apply
+- [x] **Write integration tests**
+  - [x] Run lint on valid file (exit 0, no output)
+  - [x] Run lint on invalid file (exit 2, show errors)
+  - [x] Run lint with --json (verify JSON schema)
+  - [x] Run lint with --fix (verify file changed)
+  - [x] Run format with --check (exit 2 if needs formatting)
+  - [x] Run format without --check (modify file)
+  - [x] Run on directory (multiple files)
+  - [x] Run with various option combinations
+  - [x] 14 unit tests for utilities
 
 **Priority:** HIGH
 **Estimate:** 1 day
