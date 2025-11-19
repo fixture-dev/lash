@@ -17,32 +17,32 @@ Implement the Markdown parser that transforms raw `.md` files into the core data
 
 ### 1. Design Parser Architecture
 
-- [ ] **Choose parsing library**
-  - [ ] Add `pulldown-cmark` dependency to `lash-core`
-  - [ ] Evaluate streaming vs tree-based parsing (choose streaming)
-  - [ ] Document decision in parser module
-- [ ] **Define parser module structure**
-  - [ ] Create `lash-core/src/parser/mod.rs`
-  - [ ] Create `lash-core/src/parser/events.rs` - event stream processing
-  - [ ] Create `lash-core/src/parser/checkbox.rs` - checkbox line parsing
-  - [ ] Create `lash-core/src/parser/annotations.rs` - annotation parsing
-  - [ ] Create `lash-core/src/parser/builder.rs` - task tree builder
-- [ ] **Define `ParseContext` struct**
-  - [ ] Fields:
-    - [ ] `file_path: PathBuf` - Current file being parsed
-    - [ ] `current_line: usize` - Line number tracking
-    - [ ] `current_section: Section` - Header, Tasks, References, etc.
-    - [ ] `errors: Vec<Diagnostic>` - Accumulated errors
-    - [ ] `config: &LashConfig` - Parser configuration
-  - [ ] Methods for error reporting with location context
-- [ ] **Define parsing result types**
-  - [ ] `ParseResult<T> = Result<T, Vec<Diagnostic>>` - can have multiple errors
-  - [ ] `ParsedFile` struct - intermediate representation before `TaskFile`
-- [ ] **Document parser architecture**
-  - [ ] Create `lash-core/src/parser/README.md`
-  - [ ] Document parsing phases: events → lines → structure → validation
-  - [ ] Document error handling strategy
-  - [ ] Add architecture diagram (ASCII art)
+- [x] **Choose parsing library**
+  - [x] Add `pulldown-cmark` dependency to `lash-core`
+  - [x] Evaluate streaming vs tree-based parsing (choose streaming)
+  - [x] Document decision in parser module
+- [x] **Define parser module structure**
+  - [x] Create `lash-core/src/parser/mod.rs`
+  - [x] Create `lash-core/src/parser/events.rs` - event stream processing
+  - [x] Create `lash-core/src/parser/checkbox.rs` - checkbox line parsing
+  - [x] Create `lash-core/src/parser/annotations.rs` - annotation parsing
+  - [x] Create `lash-core/src/parser/builder.rs` - task tree builder
+- [x] **Define `ParseContext` struct**
+  - [x] Fields:
+    - [x] `file_path: PathBuf` - Current file being parsed
+    - [x] `current_line: usize` - Line number tracking
+    - [x] `current_section: Section` - Header, Tasks, References, etc.
+    - [x] `errors: Vec<Diagnostic>` - Accumulated errors
+    - [x] `config: &LashConfig` - Parser configuration
+  - [x] Methods for error reporting with location context
+- [x] **Define parsing result types**
+  - [x] `ParseResult<T> = Result<T, Vec<Diagnostic>>` - can have multiple errors
+  - [x] `ParsedFile` struct - intermediate representation before `TaskFile`
+- [x] **Document parser architecture**
+  - [x] Create `lash-core/src/parser/README.md`
+  - [x] Document parsing phases: events → lines → structure → validation
+  - [x] Document error handling strategy
+  - [x] Add architecture diagram (ASCII art)
 
 **Priority:** CRITICAL
 **Estimate:** 1 day
