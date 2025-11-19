@@ -48,12 +48,13 @@ impl LashConfig {
     ///
     /// # Errors
     ///
-    /// Returns `E_CFG_ROOT_NOT_FOUND` if no project root is found
+    /// Returns `E_CONFIG_ROOT_NOT_FOUND` if no project root is found
     pub fn find_project_root(start_dir: &Path) -> Result<PathBuf> {
-        let mut current = start_dir.canonicalize().map_err(|e| LashError::IoError {
+        let mut current = start_dir.canonicalize().map_err(|e| LashError::IO {
             code: codes::E_IO_READ_ERROR,
             message: format!("Failed to canonicalize path: {e}"),
             path: Some(start_dir.to_path_buf()),
+            io_error: Some(e.to_string()),
         })?;
 
         // Search upward until we find a marker
@@ -77,12 +78,14 @@ impl LashConfig {
             match current.parent() {
                 Some(parent) => current = parent.to_path_buf(),
                 None => {
-                    return Err(LashError::ConfigError {
-                        code: codes::E_CFG_ROOT_NOT_FOUND,
+                    return Err(LashError::Config {
+                        code: codes::E_CONFIG_ROOT_NOT_FOUND,
                         message: format!(
                             "No Lash project found (searched from {})",
                             start_dir.display()
                         ),
+                        path: Some(start_dir.to_path_buf()),
+                        help: Some("run `lash init` to create a new lash project".to_string()),
                     });
                 }
             }
@@ -111,17 +114,19 @@ impl LashConfig {
 
         // Load config file if it exists
         if config_path.exists() {
-            let content =
-                std::fs::read_to_string(&config_path).map_err(|e| LashError::IoError {
-                    code: codes::E_IO_READ_ERROR,
-                    message: format!("Failed to read config file: {e}"),
-                    path: Some(config_path.clone()),
-                })?;
+            let content = std::fs::read_to_string(&config_path).map_err(|e| LashError::IO {
+                code: codes::E_IO_READ_ERROR,
+                message: format!("Failed to read config file: {e}"),
+                path: Some(config_path.clone()),
+                io_error: Some(e.to_string()),
+            })?;
 
             let file_config: ConfigFile =
-                toml::from_str(&content).map_err(|e| LashError::ConfigError {
-                    code: codes::E_CFG_PARSE_ERROR,
+                toml::from_str(&content).map_err(|e| LashError::Config {
+                    code: codes::E_CONFIG_PARSE_ERROR,
                     message: format!("Failed to parse config file: {e}"),
+                    path: Some(config_path.clone()),
+                    help: Some("check that the configuration file is valid TOML".to_string()),
                 })?;
 
             // Merge file config with defaults
@@ -153,26 +158,31 @@ impl LashConfig {
     fn validate(&self) -> Result<()> {
         // Validate max_depth
         if !(2..=5).contains(&self.max_depth) {
-            return Err(LashError::ConfigError {
-                code: codes::E_CFG_INVALID_VALUE,
+            return Err(LashError::Config {
+                code: codes::E_CONFIG_INVALID_VALUE,
                 message: format!("max_depth must be between 2 and 5, got {}", self.max_depth),
+                path: None,
+                help: Some("max_depth must be between 2 and 5".to_string()),
             });
         }
 
         // Validate indent_spaces
         if self.indent_spaces != 2 && self.indent_spaces != 4 {
-            return Err(LashError::ConfigError {
-                code: codes::E_CFG_INVALID_VALUE,
+            return Err(LashError::Config {
+                code: codes::E_CONFIG_INVALID_VALUE,
                 message: format!("indent_spaces must be 2 or 4, got {}", self.indent_spaces),
+                path: None,
+                help: Some("indent_spaces must be either 2 or 4".to_string()),
             });
         }
 
         // Validate root_path exists
         if !self.root_path.exists() {
-            return Err(LashError::IoError {
+            return Err(LashError::IO {
                 code: codes::E_IO_FILE_NOT_FOUND,
                 message: format!("Root path does not exist: {}", self.root_path.display()),
                 path: Some(self.root_path.clone()),
+                io_error: None,
             });
         }
 
@@ -303,8 +313,8 @@ mod tests {
     fn test_invalid_max_depth() {
         let result = ConfigBuilder::new().root("/tmp").max_depth(10).build();
         assert!(result.is_err());
-        if let Err(LashError::ConfigError { code, .. }) = result {
-            assert_eq!(code, codes::E_CFG_INVALID_VALUE);
+        if let Err(LashError::Config { code, .. }) = result {
+            assert_eq!(code, codes::E_CONFIG_INVALID_VALUE);
         } else {
             panic!("Expected ConfigError");
         }
@@ -350,8 +360,8 @@ mod tests {
         let result = LashConfig::find_project_root(&temp_dir);
         assert!(result.is_err());
 
-        if let Err(LashError::ConfigError { code, .. }) = result {
-            assert_eq!(code, codes::E_CFG_ROOT_NOT_FOUND);
+        if let Err(LashError::Config { code, .. }) = result {
+            assert_eq!(code, codes::E_CONFIG_ROOT_NOT_FOUND);
         } else {
             panic!("Expected ConfigError");
         }

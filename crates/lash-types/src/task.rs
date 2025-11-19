@@ -54,31 +54,39 @@ impl Task {
     pub fn validate(&self, max_depth: u8) -> Result<()> {
         // Check depth limit
         if self.depth > max_depth {
-            return Err(LashError::LintError {
+            return Err(LashError::Lint {
                 code: codes::E_LINT_DEPTH_EXCEEDED,
                 message: format!(
                     "Task depth {} exceeds maximum depth {}",
                     self.depth, max_depth
                 ),
                 location: None,
+                snippet: None,
+                help: Some(format!(
+                    "flatten the hierarchy to {max_depth} levels or fewer"
+                )),
             });
         }
 
         // Check title not empty
         if self.title.trim().is_empty() {
-            return Err(LashError::LintError {
-                code: codes::E_LINT_INVALID_STATUS,
+            return Err(LashError::Lint {
+                code: codes::E_LINT_STATUS_INCONSISTENCY,
                 message: "Task title cannot be empty".to_string(),
                 location: None,
+                snippet: None,
+                help: Some("provide a non-empty title for the task".to_string()),
             });
         }
 
         // Check ID validity (alphanumeric, dash, underscore, colon)
         if !is_valid_id(&self.id) {
-            return Err(LashError::LintError {
-                code: codes::E_LINT_MISSING_ID,
+            return Err(LashError::Lint {
+                code: codes::E_LINT_MISSING_ANNOTATION,
                 message: format!("Invalid task ID: '{}'", self.id),
                 location: None,
+                snippet: None,
+                help: Some("task IDs must contain only alphanumeric characters, dashes, underscores, and colons".to_string()),
             });
         }
 
@@ -323,10 +331,12 @@ impl TaskTree {
     pub fn add_task(&mut self, task: Task) -> Result<()> {
         // Check for duplicate ID
         if self.id_to_index.contains_key(&task.id) {
-            return Err(LashError::LintError {
+            return Err(LashError::Lint {
                 code: codes::E_LINT_DUPLICATE_ID,
                 message: format!("Duplicate task ID: '{}'", task.id),
                 location: None,
+                snippet: None,
+                help: Some("task IDs must be unique within a file".to_string()),
             });
         }
 
@@ -384,13 +394,15 @@ impl TaskTree {
             // Check parent exists if specified
             if let Some(ref parent_id) = task.parent_id {
                 if !self.id_to_index.contains_key(parent_id) {
-                    return Err(LashError::LintError {
-                        code: codes::E_LINT_MISSING_ID,
+                    return Err(LashError::Lint {
+                        code: codes::E_LINT_MISSING_ANNOTATION,
                         message: format!(
                             "Task '{}' references non-existent parent '{}'",
                             task.id, parent_id
                         ),
                         location: None,
+                        snippet: None,
+                        help: Some(format!("ensure parent task '{parent_id}' exists")),
                     });
                 }
             }
@@ -472,7 +484,7 @@ mod tests {
     fn test_task_validation_depth() {
         let task = TaskBuilder::new("Deep task").depth(15).build().unwrap_err();
 
-        assert!(matches!(task, LashError::LintError { .. }));
+        assert!(matches!(task, LashError::Lint { .. }));
     }
 
     #[test]
@@ -535,7 +547,7 @@ mod tests {
         tree.add_task(task1).unwrap();
         let err = tree.add_task(task2).unwrap_err();
 
-        assert!(matches!(err, LashError::LintError { .. }));
+        assert!(matches!(err, LashError::Lint { .. }));
     }
 
     #[test]
@@ -638,7 +650,7 @@ mod tests {
         tree.add_task(task).unwrap();
 
         let err = tree.validate(10).unwrap_err();
-        assert!(matches!(err, LashError::LintError { .. }));
+        assert!(matches!(err, LashError::Lint { .. }));
     }
 
     #[test]

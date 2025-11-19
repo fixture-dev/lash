@@ -41,10 +41,12 @@ impl Label {
     /// Returns error if the label doesn't meet validation criteria
     pub fn validate(&self) -> Result<()> {
         if !is_valid_label(&self.name) {
-            return Err(LashError::LintError {
-                code: codes::E_LINT_INVALID_STATUS,
+            return Err(LashError::Lint {
+                code: codes::E_LINT_INVALID_LABEL,
                 message: format!("Invalid label: '{}'", self.name),
                 location: None,
+                snippet: None,
+                help: Some("labels must be alphanumeric with hyphens".to_string()),
             });
         }
         Ok(())

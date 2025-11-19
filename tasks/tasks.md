@@ -4,10 +4,10 @@ This directory contains the comprehensive task breakdown for implementing Lash v
 
 ## Project Status
 
-**Current Phase:** Phase 1 - Foundation (In Progress)
+**Current Phase:** Phase 1 - Foundation (Complete) → Phase 2 - Core Functionality
 **Target:** v1.0 Production Release
 **Estimated Duration:** 40-60 days (8-13 weeks)
-**Completed:** Project Setup
+**Completed:** Project Setup, Core Data Model
 
 ## Task Organization
 
@@ -22,7 +22,7 @@ Tasks are organized by major module/component. Each task file contains:
 
 ### Foundation & Infrastructure
 - [x] [tasks.project-setup.md](tasks.project-setup.md) - Project initialization, tooling, error taxonomy ✅
-- [ ] [tasks.core-data-model.md](tasks.core-data-model.md) - Core data structures (Task, File, Dependency, Label models)
+- [x] [tasks.core-data-model.md](tasks.core-data-model.md) - Core data structures (Task, File, Dependency, Label models) ✅
 - [ ] [tasks.error-handling.md](tasks.error-handling.md) - Error types, formatting, aggregation
 
 ### Parsing & Validation

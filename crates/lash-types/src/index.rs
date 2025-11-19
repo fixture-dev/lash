@@ -79,10 +79,12 @@ impl RootIndex {
         }
 
         if !errors.is_empty() {
-            return Err(LashError::LintError {
-                code: codes::E_LINT_INVALID_STATUS,
+            return Err(LashError::Lint {
+                code: codes::E_LINT_STATUS_INCONSISTENCY,
                 message: format!("Index validation failed:\n  - {}", errors.join("\n  - ")),
                 location: None,
+                snippet: None,
+                help: Some("fix the validation errors listed above".to_string()),
             });
         }
 
@@ -214,12 +216,14 @@ pub fn find_index_file(dir: &Path) -> Result<PathBuf> {
         return Ok(fallback);
     }
 
-    Err(LashError::ConfigError {
-        code: codes::E_CFG_MISSING_INDEX,
+    Err(LashError::Config {
+        code: codes::E_CONFIG_MISSING_INDEX,
         message: format!(
             "No index file found in {} (looked for lash.index.md and index.lash.md)",
             dir.display()
         ),
+        path: Some(dir.to_path_buf()),
+        help: Some("create an index file at the root of your project".to_string()),
     })
 }
 
