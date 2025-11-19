@@ -119,23 +119,52 @@ impl Default for RuleRegistry {
 
 /// Register all default built-in rules
 ///
-/// This function will be implemented in Task #2 and #3 when individual
-/// linting rules are created. For now, it returns an empty registry.
+/// Creates a registry with all built-in linting rules:
+/// - 7 syntax rules (Task #2 - Complete)
+/// - 8 semantic rules (Task #3 - TODO)
+/// - 5 cross-file rules (Task #4 - TODO)
 ///
-/// Once rules are implemented, this will register:
-/// - 7 syntax rules
-/// - 8 semantic rules
-/// - 5 cross-file rules
+/// # Syntax Rules
+///
+/// 1. Valid Checkbox Pattern (`E_SYNTAX_CHECKBOX`)
+/// 2. Consistent Indentation (`E_SYNTAX_INDENT`)
+/// 3. Depth Limit (`E_SYNTAX_DEPTH`)
+/// 4. Valid Annotation Syntax (`E_SYNTAX_ANNOTATION`)
+/// 5. Unknown Annotation Keys (`E_SYNTAX_UNKNOWN_KEY`)
+/// 6. Header Structure (`W_SYNTAX_HEADER`)
+/// 7. Annotation Ordering (`I_SYNTAX_ORDER`)
 #[must_use]
 pub fn register_default_rules() -> RuleRegistry {
-    // TODO: Register syntax rules (Task #2)
-    // registry.register(RuleCategory::Syntax, Arc::new(ValidCheckboxRule::new()));
-    // registry.register(RuleCategory::Syntax, Arc::new(ConsistentIndentRule::new()));
-    // registry.register(RuleCategory::Syntax, Arc::new(DepthLimitRule::new()));
-    // registry.register(RuleCategory::Syntax, Arc::new(ValidAnnotationSyntaxRule::new()));
-    // registry.register(RuleCategory::Syntax, Arc::new(UnknownAnnotationRule::new()));
-    // registry.register(RuleCategory::Syntax, Arc::new(HeaderStructureRule::new()));
-    // registry.register(RuleCategory::Syntax, Arc::new(AnnotationOrderRule::new()));
+    use crate::linter::rules;
+
+    let mut registry = RuleRegistry::new();
+
+    // Register syntax rules (Task #2)
+    registry.register(
+        RuleCategory::Syntax,
+        Arc::new(rules::CheckboxPatternRule::new()),
+    );
+    registry.register(
+        RuleCategory::Syntax,
+        Arc::new(rules::IndentationRule::new()),
+    );
+    registry.register(RuleCategory::Syntax, Arc::new(rules::DepthLimitRule::new()));
+    registry.register(
+        RuleCategory::Syntax,
+        Arc::new(rules::AnnotationSyntaxRule::new()),
+    );
+    registry.register(
+        RuleCategory::Syntax,
+        Arc::new(rules::UnknownAnnotationRule::new()),
+    );
+    registry.register(
+        RuleCategory::Syntax,
+        Arc::new(rules::HeaderStructureRule::new()),
+    );
+    registry.register(
+        RuleCategory::Syntax,
+        Arc::new(rules::AnnotationOrderRule::new()),
+    );
 
     // TODO: Register semantic rules (Task #3)
     // registry.register(RuleCategory::Semantic, Arc::new(DuplicateIdRule::new()));
@@ -154,7 +183,7 @@ pub fn register_default_rules() -> RuleRegistry {
     // registry.register(RuleCategory::CrossFile, Arc::new(OrphanedFilesRule::new()));
     // registry.register(RuleCategory::CrossFile, Arc::new(ValidPathResolutionRule::new()));
 
-    RuleRegistry::new()
+    registry
 }
 
 #[cfg(test)]
@@ -262,7 +291,10 @@ mod tests {
     #[test]
     fn test_default_registry() {
         let registry = register_default_rules();
-        // For now, should be empty until rules are implemented
-        assert_eq!(registry.rule_count(), 0);
+        // Should have 7 syntax rules (Task #2 complete)
+        assert_eq!(registry.rule_count(), 7);
+        assert_eq!(registry.category_count(RuleCategory::Syntax), 7);
+        assert_eq!(registry.category_count(RuleCategory::Semantic), 0);
+        assert_eq!(registry.category_count(RuleCategory::CrossFile), 0);
     }
 }

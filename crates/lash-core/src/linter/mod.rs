@@ -49,6 +49,7 @@ pub mod fix;
 pub mod linter;
 pub mod registry;
 pub mod rule;
+pub mod rules;
 
 pub use config::LintConfig;
 pub use context::LintContext;
