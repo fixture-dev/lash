@@ -9,10 +9,12 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
-// Parser module - Task #1 implemented
+// Parser module - implemented
 pub mod parser;
 
+// Linter module - Task #1 (infrastructure) implemented
+pub mod linter;
+
 // Module placeholders - will be implemented in subsequent tasks
-// pub mod linter;
 // pub mod validator;
 // pub mod dependency;

@@ -11,6 +11,8 @@ description = "Core parsing, validation, and task model for Lash"
 [dependencies]
 lash-types = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
 walkdir = { workspace = true }

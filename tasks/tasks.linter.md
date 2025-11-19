@@ -17,58 +17,58 @@ Implement the linter that validates Lash Markdown files for both syntax and sema
 
 ### 1. Define Linter Rules Engine
 
-- [ ] **Create `LintRule` trait in `lash-core/src/linter/rule.rs`**
-  - [ ] Methods:
-    - [ ] `fn code(&self) -> &'static str` - Stable rule code (e.g., "E_DEPTH_EXCEEDED")
-    - [ ] `fn severity(&self) -> Severity` - Error, Warning, or Info
-    - [ ] `fn check_file(&self, file: &TaskFile, ctx: &LintContext) -> Vec<Diagnostic>`
-    - [ ] `fn check_task(&self, task: &Task, ctx: &LintContext) -> Vec<Diagnostic>`
-  - [ ] Some rules apply to whole file, some to individual tasks
-- [ ] **Define `Diagnostic` struct** (extend from error-handling)
-  - [ ] Fields:
-    - [ ] `code: &'static str` - Rule code
-    - [ ] `severity: Severity`
-    - [ ] `message: String`
-    - [ ] `location: Location` - File, line, column, span
-    - [ ] `suggestion: Option<Fix>` - Auto-fix if available
-  - [ ] Methods:
-    - [ ] `to_human_string() -> String` - Colored, formatted for terminal
-    - [ ] `to_json() -> String` - Machine-readable format
-- [ ] **Define `Fix` struct for auto-fixes**
-  - [ ] Fields:
-    - [ ] `description: String` - What the fix does
-    - [ ] `replacement: Replacement` - Text replacement or operation
-  - [ ] Support types:
-    - [ ] Text replacement (old → new)
-    - [ ] Insertion (at position)
-    - [ ] Deletion (range)
-    - [ ] Reformat (whole file)
-- [ ] **Create `Linter` struct**
-  - [ ] Fields:
-    - [ ] `rules: Vec<Box<dyn LintRule>>` - Registered rules
-    - [ ] `config: LintConfig` - Enable/disable rules, severity overrides
-  - [ ] Methods:
-    - [ ] `new(config: LintConfig) -> Self`
-    - [ ] `register_rule(rule: Box<dyn LintRule>)` - Add rule
-    - [ ] `lint_file(file: &TaskFile) -> Vec<Diagnostic>` - Run all rules
-    - [ ] `lint_project(root: &Path) -> Vec<Diagnostic>` - Lint all files
-- [ ] **Create `LintContext` for rule execution**
-  - [ ] Provides shared data to rules:
-    - [ ] `config: &LashConfig` - Project config
-    - [ ] `file_path: &Path` - Current file
-    - [ ] `all_files: &HashMap<PathBuf, TaskFile>` - For cross-file validation
-    - [ ] `custom_annotations: &[CustomAnnotation]` - From config
-- [ ] **Define `LintConfig` for linter configuration**
-  - [ ] Fields:
-    - [ ] `enabled_rules: HashSet<String>` - Which rules to run
-    - [ ] `disabled_rules: HashSet<String>` - Which to skip
-    - [ ] `severity_overrides: HashMap<String, Severity>` - Override default severity
-    - [ ] `auto_fix: bool` - Apply fixes automatically
-  - [ ] Load from `.lash/config.toml` under `[linter]` section
-- [ ] **Create rule registry**
-  - [ ] Function `register_default_rules(linter: &mut Linter)`
-  - [ ] Adds all built-in rules
-  - [ ] Organized by category: syntax, semantic, cross-file
+- [x] **Create `LintRule` trait in `lash-core/src/linter/rule.rs`**
+  - [x] Methods:
+    - [x] `fn code(&self) -> &'static str` - Stable rule code (e.g., "E_DEPTH_EXCEEDED")
+    - [x] `fn severity(&self) -> Severity` - Error, Warning, or Info
+    - [x] `fn check_file(&self, file: &TaskFile, ctx: &LintContext) -> Vec<Diagnostic>`
+    - [x] `fn check_task(&self, task: &Task, ctx: &LintContext) -> Vec<Diagnostic>`
+  - [x] Some rules apply to whole file, some to individual tasks
+- [x] **Define `Diagnostic` struct** (extend from error-handling)
+  - [x] Fields:
+    - [x] `code: &'static str` - Rule code
+    - [x] `severity: Severity`
+    - [x] `message: String`
+    - [x] `location: Location` - File, line, column, span
+    - [x] `suggestion: Option<Fix>` - Auto-fix if available
+  - [x] Methods:
+    - [x] `to_human_string() -> String` - Colored, formatted for terminal (via Display trait)
+    - [x] `to_json() -> String` - Machine-readable format
+- [x] **Define `Fix` struct for auto-fixes**
+  - [x] Fields:
+    - [x] `description: String` - What the fix does
+    - [x] `replacement: Replacement` - Text replacement or operation
+  - [x] Support types:
+    - [x] Text replacement (old → new)
+    - [x] Insertion (at position)
+    - [x] Deletion (range)
+    - [x] Reformat (whole file)
+- [x] **Create `Linter` struct**
+  - [x] Fields:
+    - [x] `rules: Vec<Arc<dyn LintRule>>` - Registered rules (using Arc for shared ownership)
+    - [x] `config: LintConfig` - Enable/disable rules, severity overrides
+  - [x] Methods:
+    - [x] `new(config: LintConfig) -> Self`
+    - [x] `register_rule(rule: Arc<dyn LintRule>)` - Add rule
+    - [x] `lint_file(file: &TaskFile) -> Vec<Diagnostic>` - Run all rules
+    - [x] `lint_project(files: &HashMap<PathBuf, TaskFile>) -> Vec<Diagnostic>` - Lint all files
+- [x] **Create `LintContext` for rule execution**
+  - [x] Provides shared data to rules:
+    - [x] `config: &LashConfig` - Project config
+    - [x] `file_path: PathBuf` - Current file
+    - [x] `all_files: &HashMap<PathBuf, TaskFile>` - For cross-file validation
+    - [x] Method: `is_annotation_allowed(&self, key: &str)` - Validates custom annotations
+- [x] **Define `LintConfig` for linter configuration**
+  - [x] Fields:
+    - [x] `enabled_rules: HashSet<String>` - Which rules to run
+    - [x] `disabled_rules: HashSet<String>` - Which to skip
+    - [x] `severity_overrides: HashMap<String, Severity>` - Override default severity
+    - [x] `auto_fix: bool` - Apply fixes automatically
+  - [x] Serde support for loading from `.lash/config.toml` under `[linter]` section
+- [x] **Create rule registry**
+  - [x] Struct `RuleRegistry` with category-based organization
+  - [x] Function `register_default_rules() -> RuleRegistry` - Returns registry (rules will be added in Task #2/#3)
+  - [x] Organized by category: syntax, semantic, cross-file
 
 **Priority:** CRITICAL
 **Estimate:** 1 day
