@@ -23,7 +23,7 @@ Tasks are organized by major module/component. Each task file contains:
 ### Foundation & Infrastructure
 - [x] [tasks.project-setup.md](tasks.project-setup.md) - Project initialization, tooling, error taxonomy ✅
 - [x] [tasks.core-data-model.md](tasks.core-data-model.md) - Core data structures (Task, File, Dependency, Label models) ✅
-- [ ] [tasks.error-handling.md](tasks.error-handling.md) - Error types, formatting, aggregation
+- [x] [tasks.error-handling.md](tasks.error-handling.md) - Error types, formatting, aggregation (Tasks 1-3 complete) ✅
 
 ### Parsing & Validation
 - [ ] [tasks.markdown-parser.md](tasks.markdown-parser.md) - Markdown parsing implementation
