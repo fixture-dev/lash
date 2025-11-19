@@ -1,5 +1,93 @@
 # Lash Development Log
 
+## 2025-11-18 - Error Handling Module Complete (Tasks 1-3)
+
+### Summary
+Completed comprehensive error handling implementation (Tasks 1-3 from `tasks/tasks.error-handling.md`). This provides the foundation for all error reporting throughout Lash with rich diagnostics, machine-readable output, and error aggregation capabilities.
+
+### Implementation Details
+
+**Task 1: Error Type Taxonomy** (CRITICAL - Complete)
+- Enhanced `LashError` enum with 8 comprehensive error categories:
+  - Parse, Lint, Index, Dependency, Query, Config, IO, Internal
+- Added 30+ stable error codes following `E_<CATEGORY>_<NUMBER>` convention
+- Rich context in all errors: file locations, line/column numbers, code snippets, help text
+- Ergonomic helper constructors for every error type (e.g., `LashError::parse_invalid_checkbox(...)`)
+- Legacy error code aliases for backward compatibility
+- All errors implement `std::error::Error` via thiserror
+
+**Task 2: Error Formatting** (CRITICAL - Complete)
+- Created `ErrorFormatter` module (`crates/lash-types/src/formatter.rs`) with three output formats:
+  - **Human-readable**: Rich terminal output with colors, context lines, carets pointing to errors (similar to rustc)
+  - **JSON**: Structured output with stable schema for machine consumption
+  - **Compact**: Single-line format for logging
+- Automatically reads source files to show context around errors
+- Color-coded output (red for errors, cyan for paths, gray for snippets)
+- Contextual help messages for every error type
+
+**Task 3: Error Aggregation** (HIGH - Complete)
+- Implemented `ErrorReport` for collecting multiple errors (`crates/lash-types/src/report.rs`)
+- Flexible grouping strategies via `GroupBy` enum:
+  - By file, error code, severity, or chronological order
+- Summary statistics with error counts and breakdown
+- Filtering capabilities (by severity, file, or error code)
+- Both text and JSON report formats
+
+### Key Design Decisions
+
+1. **Large error type accepted**: The 168-byte `LashError` intentionally contains rich context. This is acceptable for a CLI tool where errors are exceptional, not on hot paths. Added `#![allow(clippy::result_large_err)]` with documentation.
+
+2. **Clean module separation**:
+   - `error.rs`: Core error types and taxonomy (1000+ lines)
+   - `formatter.rs`: Rich formatting logic
+   - `report.rs`: Error aggregation and reporting
+
+3. **Helper constructors**: Every error type has an ergonomic constructor making error creation simple and consistent across the codebase.
+
+4. **Backward compatibility**: Added deprecated aliases for old error codes to ease migration.
+
+### Dependencies Added
+
+- `miette 7.0` with fancy features (for rich diagnostics support)
+- `colored 2.1` (for terminal colors)
+- `insta 1.34` (for snapshot testing)
+
+### Test Coverage
+
+- **123 tests passing** in lash-types
+- Comprehensive unit tests for:
+  - Every error type constructor
+  - Error code stability
+  - Diagnostic conversion
+  - JSON serialization
+  - Formatter output (human, JSON, compact)
+  - Report aggregation, grouping, and filtering
+
+### Files Changed
+
+- Enhanced: `crates/lash-types/src/error.rs` (complete rewrite, 1000+ lines)
+- New: `crates/lash-types/src/formatter.rs` (error formatting module)
+- New: `crates/lash-types/src/report.rs` (error aggregation module)
+- Updated: `tasks/tasks.error-handling.md` (marked Tasks 1-3 complete)
+- Updated: `Cargo.toml` (added miette, colored, insta dependencies)
+
+### Deferred Tasks
+
+Tasks 4-6 from the error handling module depend on CLI framework and are deferred:
+- Task 4: Agent-Friendly Error Messages (needs CLI integration)
+- Task 5: Error Reporting in Commands (needs CLI commands)
+- Task 6: Error Recovery and Validation (future enhancement)
+
+### Next Steps
+
+Error handling foundation is complete. Ready to proceed to:
+1. Phase 2: Core Functionality (Markdown parser, linter, SQLite schema)
+2. Next module: `tasks/tasks.markdown-parser.md`
+
+Git commit: 302089e
+
+---
+
 ## 2025-11-17 - Planning Phase Complete
 
 ### Summary
