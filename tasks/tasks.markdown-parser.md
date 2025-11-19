@@ -293,58 +293,58 @@ Implement the Markdown parser that transforms raw `.md` files into the core data
 
 ### 6. Implement Full File Parser
 
-- [ ] **Create main `parse_file()` entry point**
-  - [ ] Signature: `pub fn parse_file(path: &Path, config: &LashConfig) -> ParseResult<TaskFile>`
-  - [ ] Read file content
-  - [ ] Create ParseContext
-  - [ ] Parse in phases: header → tasks → finalize
-  - [ ] Collect all errors
-  - [ ] Return TaskFile or aggregated errors
-- [ ] **Integrate all parsing phases**
-  - [ ] Phase 1: Parse header (H1, annotations, overview)
-  - [ ] Phase 2: Parse task list (checkboxes → tree)
-  - [ ] Phase 3: Parse references section
-  - [ ] Phase 4: Validate and build TaskFile
-- [ ] **Compute content hash**
-  - [ ] Use blake3 to hash file content
-  - [ ] Store in TaskFile.hash
-  - [ ] Used for incremental indexing (detect changes)
-- [ ] **Extract file metadata**
-  - [ ] Get mtime from filesystem
-  - [ ] Synthesize file ID from path if no @id
-  - [ ] Build FileMetadata from header annotations
-  - [ ] Validate metadata consistency
-- [ ] **Implement error collection**
-  - [ ] Continue parsing after errors when possible
-  - [ ] Collect all diagnostics in ParseContext
-  - [ ] Sort diagnostics by line number
-  - [ ] Return complete error list (don't stop at first error)
-- [ ] **Add performance optimization**
-  - [ ] Use arena allocation for temporary parsing structures
-  - [ ] Add `typed-arena` dependency
-  - [ ] Allocate CheckboxLine instances in arena during parse
-  - [ ] Convert to owned Task instances at end
-  - [ ] Target: <100ms for typical files
-- [ ] **Create convenience methods**
-  - [ ] `parse_file_from_string(content: &str, config: &LashConfig) -> ParseResult<TaskFile>`
-  - [ ] `parse_task_section(content: &str) -> ParseResult<Vec<Task>>` - for testing
-  - [ ] `validate_file(file: &TaskFile, config: &LashConfig) -> Vec<Diagnostic>` - post-parse validation
-- [ ] **Write integration tests**
-  - [ ] Complete valid file (all sections)
-  - [ ] Minimal valid file (H1 + tasks)
-  - [ ] File with multiple errors (collect all)
-  - [ ] Large file (100+ tasks) - performance test
-  - [ ] Files from fixtures/valid/ directory
-  - [ ] Files from fixtures/invalid/ directory (expect errors)
-  - [ ] Round-trip: parse → serialize → parse (preserve structure)
-  - [ ] 20+ integration tests
-- [ ] **Benchmark performance**
-  - [ ] Create benchmark suite using `criterion`
-  - [ ] Benchmark small file (10 tasks)
-  - [ ] Benchmark medium file (100 tasks)
-  - [ ] Benchmark large file (1000 tasks)
-  - [ ] Target: <100ms for small, <500ms for medium, <5s for large
-  - [ ] Profile hot paths if needed
+- [x] **Create main `parse_file()` entry point**
+  - [x] Signature: `pub fn parse_file(path: &Path, config: &LashConfig) -> ParseResult<TaskFile>`
+  - [x] Read file content
+  - [x] Create ParseContext
+  - [x] Parse in phases: header → tasks → finalize
+  - [x] Collect all errors
+  - [x] Return TaskFile or aggregated errors
+- [x] **Integrate all parsing phases**
+  - [x] Phase 1: Parse header (H1, annotations, overview)
+  - [x] Phase 2: Parse task list (checkboxes → tree)
+  - [x] Phase 3: Parse references section
+  - [x] Phase 4: Validate and build TaskFile
+- [x] **Compute content hash**
+  - [x] Use blake3 to hash file content
+  - [x] Store in TaskFile.hash
+  - [x] Used for incremental indexing (detect changes)
+- [x] **Extract file metadata**
+  - [x] Get mtime from filesystem
+  - [x] Synthesize file ID from path if no @id
+  - [x] Build FileMetadata from header annotations
+  - [x] Validate metadata consistency
+- [x] **Implement error collection**
+  - [x] Continue parsing after errors when possible
+  - [x] Collect all diagnostics in ParseContext
+  - [x] Sort diagnostics by line number
+  - [x] Return complete error list (don't stop at first error)
+- [-] **Add performance optimization**
+  - [-] Use arena allocation for temporary parsing structures
+  - [-] Add `typed-arena` dependency
+  - [-] Allocate CheckboxLine instances in arena during parse
+  - [-] Convert to owned Task instances at end
+  - [x] Target: <100ms for typical files
+- [x] **Create convenience methods**
+  - [x] `parse_file_from_string(content: &str, config: &LashConfig) -> ParseResult<TaskFile>`
+  - [-] `parse_task_section(content: &str) -> ParseResult<Vec<Task>>` - for testing
+  - [-] `validate_file(file: &TaskFile, config: &LashConfig) -> Vec<Diagnostic>` - post-parse validation
+- [x] **Write integration tests**
+  - [x] Complete valid file (all sections)
+  - [x] Minimal valid file (H1 + tasks)
+  - [x] File with multiple errors (collect all)
+  - [x] Large file (100+ tasks) - performance test
+  - [-] Files from fixtures/valid/ directory
+  - [-] Files from fixtures/invalid/ directory (expect errors)
+  - [x] Round-trip: parse → serialize → parse (preserve structure)
+  - [x] 20+ integration tests
+- [x] **Benchmark performance**
+  - [x] Create benchmark suite using `criterion`
+  - [x] Benchmark small file (10 tasks)
+  - [x] Benchmark medium file (100 tasks)
+  - [x] Benchmark large file (1000 tasks)
+  - [x] Target: <100ms for small, <500ms for medium, <5s for large
+  - [-] Profile hot paths if needed
 
 **Priority:** CRITICAL
 **Estimate:** 1 day

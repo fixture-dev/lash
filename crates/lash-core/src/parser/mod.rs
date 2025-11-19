@@ -69,7 +69,11 @@ pub mod checkbox;
 pub mod events;
 pub mod header;
 
-use lash_types::{Diagnostic, LashConfig, LashError, Location, Result, TaskFile};
+use lash_types::{
+    file::{compute_hash, synthesize_file_id, FileMetadata},
+    Diagnostic, LashConfig, LashError, Location, Result, TaskFile, TaskTree,
+};
+use std::fs;
 use std::path::Path;
 
 /// Result type for parsing operations that can accumulate multiple errors
@@ -240,19 +244,60 @@ pub struct ParsedHeader {
 /// let config = LashConfig::default();
 /// match parse_file(Path::new("tasks.md"), &config) {
 ///     Ok(file) => println!("Parsed {} tasks", file.tasks.len()),
-///     Err(diagnostics) => {
-///         for diag in diagnostics {
-///             eprintln!("{}", diag);
-///         }
-///     }
+///     Err(err) => eprintln!("Error: {}", err),
 /// }
 /// ```
 #[allow(clippy::result_large_err)] // LashError is intentionally large for rich context
-pub fn parse_file(_path: &Path, _config: &LashConfig) -> Result<TaskFile> {
-    // TODO: Implement in Task #6
-    // This is a placeholder that will be implemented after all component
-    // parsers are in place (checkbox, annotations, builder, etc.)
-    todo!("parse_file will be implemented in Task #6")
+pub fn parse_file(path: &Path, config: &LashConfig) -> Result<TaskFile> {
+    // Read file content
+    let content = fs::read_to_string(path).map_err(|e| LashError::IO {
+        code: "E_IO_READ_FAILED",
+        message: format!("Failed to read file: {}", path.display()),
+        path: Some(path.to_path_buf()),
+        io_error: Some(e.to_string()),
+    })?;
+
+    // Get file metadata from filesystem
+    let metadata = fs::metadata(path).map_err(|e| LashError::IO {
+        code: "E_IO_METADATA_FAILED",
+        message: format!("Failed to get file metadata: {}", path.display()),
+        path: Some(path.to_path_buf()),
+        io_error: Some(e.to_string()),
+    })?;
+    let mtime = metadata
+        .modified()
+        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+
+    // Parse the file using parse_file_from_string
+    match parse_file_from_string(&content, config) {
+        Ok(mut task_file) => {
+            // Set the actual path and mtime
+            task_file.path = path.to_path_buf();
+            task_file.mtime = mtime;
+            Ok(task_file)
+        }
+        Err(diagnostics) => {
+            // Convert diagnostics to a single error
+            // For now, return the first error
+            if let Some(first_diag) = diagnostics.first() {
+                Err(LashError::Parse {
+                    code: first_diag.code,
+                    message: first_diag.message.clone(),
+                    location: first_diag.location.clone(),
+                    snippet: first_diag.snippet.clone(),
+                    help: first_diag.help.clone(),
+                })
+            } else {
+                Err(LashError::Parse {
+                    code: "E_PARSE_UNKNOWN",
+                    message: "Parsing failed with no diagnostics".to_string(),
+                    location: None,
+                    snippet: None,
+                    help: None,
+                })
+            }
+        }
+    }
 }
 
 /// Parse a task file from a string (for testing)
@@ -272,9 +317,229 @@ pub fn parse_file(_path: &Path, _config: &LashConfig) -> Result<TaskFile> {
 /// # Errors
 ///
 /// Returns errors for the same conditions as `parse_file`.
-pub fn parse_file_from_string(_content: &str, _config: &LashConfig) -> ParseResult<TaskFile> {
-    // TODO: Implement in Task #6
-    todo!("parse_file_from_string will be implemented in Task #6")
+pub fn parse_file_from_string(content: &str, config: &LashConfig) -> ParseResult<TaskFile> {
+    // Use a temporary path for string-based parsing
+    let temp_path = Path::new("<string>");
+
+    // Create parse context
+    let mut ctx = ParseContext::new(temp_path, config);
+
+    // Phase 1: Parse header (H1, annotations, overview)
+    let header = header::parse_header(content, &mut ctx);
+
+    // Phase 2: Parse task section
+    let tasks = parse_task_section_internal(content, &mut ctx)?;
+
+    // Phase 3: Parse references section (if present)
+    let tasks_section_line = find_tasks_section_line(content);
+    let _references = header::parse_references_section(content, tasks_section_line);
+
+    // Phase 4: Compute content hash
+    let hash = compute_hash(content);
+
+    // Phase 5: Extract file metadata from annotations
+    let file_metadata = extract_file_metadata(&header.annotations);
+
+    // Phase 6: Synthesize file ID from path if not provided
+    let file_id = header
+        .annotations
+        .get_single("id")
+        .map_or_else(|| synthesize_file_id(temp_path), String::from);
+
+    // Check if any errors occurred
+    if ctx.has_errors() {
+        // Sort diagnostics by line number
+        ctx.diagnostics.sort_by_key(|d| {
+            d.location
+                .as_ref()
+                .and_then(|l| l.line)
+                .unwrap_or(usize::MAX)
+        });
+        return Err(ctx.diagnostics);
+    }
+
+    // Build the TaskFile
+    let task_file = TaskFile {
+        path: temp_path.to_path_buf(),
+        title: header.title,
+        id: file_id,
+        metadata: file_metadata,
+        tasks,
+        hash,
+        mtime: std::time::SystemTime::now(),
+    };
+
+    // Validate the task file
+    if let Err(e) = task_file.validate(config) {
+        ctx.add_error(&e);
+        return Err(ctx.diagnostics);
+    }
+
+    Ok(task_file)
+}
+
+/// Find the line number where the ## Tasks section begins
+fn find_tasks_section_line(content: &str) -> Option<usize> {
+    content
+        .lines()
+        .enumerate()
+        .find(|(_, line)| {
+            let trimmed = line.trim();
+            trimmed.starts_with("## ") && trimmed[3..].trim().eq_ignore_ascii_case("tasks")
+        })
+        .map(|(idx, _)| idx)
+}
+
+/// Parse the task section and build the task tree
+fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseResult<TaskTree> {
+    // Find where the Tasks section starts and ends
+    let tasks_start = find_tasks_section_line(content);
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Determine the range of lines to parse for tasks
+    let (start_line, end_line) = if let Some(tasks_line) = tasks_start {
+        // Start after the "## Tasks" line
+        let start = tasks_line + 1;
+
+        // Find where References section starts (if any)
+        let refs_line = lines
+            .iter()
+            .enumerate()
+            .skip(start)
+            .find(|(_, line)| {
+                let trimmed = line.trim();
+                trimmed.starts_with("## ") && trimmed[3..].trim().eq_ignore_ascii_case("references")
+            })
+            .map(|(idx, _)| idx);
+
+        let end = refs_line.unwrap_or(lines.len());
+        (start, end)
+    } else {
+        // No Tasks section found - parse everything after the header
+        // Find first H2 or parse from beginning
+        let first_h2 = lines.iter().position(|line| {
+            let trimmed = line.trim();
+            trimmed.starts_with("## ")
+        });
+
+        if let Some(h2_pos) = first_h2 {
+            (h2_pos + 1, lines.len())
+        } else {
+            // No structure at all, parse from line 1 (after potential H1)
+            let first_h1 = lines.iter().position(|line| line.trim().starts_with("# "));
+            let start = first_h1.map_or(0, |pos| pos + 1);
+            (start, lines.len())
+        }
+    };
+
+    // Parse checkbox lines in the task section
+    let mut checkbox_lines = Vec::new();
+    for (idx, line) in lines
+        .iter()
+        .enumerate()
+        .skip(start_line)
+        .take(end_line - start_line)
+    {
+        let line_num = idx + 1; // 1-indexed
+
+        // Try to parse as checkbox line
+        if let Some(cb_line) = checkbox::CheckboxLine::parse(line, line_num) {
+            checkbox_lines.push(cb_line);
+        }
+        // Non-checkbox lines are silently ignored (comments, blank lines, etc.)
+    }
+
+    // Build task tree from checkbox lines
+    let mut builder = builder::TaskTreeBuilder::new(ctx.config.max_depth);
+
+    for cb_line in &checkbox_lines {
+        if let Err(e) = builder.add_line(cb_line) {
+            // Add error to context and continue
+            ctx.add_diagnostic(Diagnostic {
+                severity: lash_types::Severity::Error,
+                code: "E_PARSE_TASK_TREE",
+                message: e,
+                location: Some(Location::new(
+                    ctx.file_path.to_path_buf(),
+                    cb_line.line_num,
+                    cb_line.column,
+                )),
+                snippet: None,
+                help: None,
+                labels: None,
+            });
+        }
+    }
+
+    // Return error if we accumulated errors during tree building
+    if ctx.has_errors() {
+        ctx.diagnostics.sort_by_key(|d| {
+            d.location
+                .as_ref()
+                .and_then(|l| l.line)
+                .unwrap_or(usize::MAX)
+        });
+        return Err(ctx.diagnostics.clone());
+    }
+
+    // Build the final tree
+    let tree = builder.build();
+
+    Ok(tree)
+}
+
+/// Extract file metadata from annotation block
+fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMetadata {
+    use lash_types::parse_dependency_ref;
+
+    // Extract labels
+    let labels = annotations
+        .get_labels("labels")
+        .into_iter()
+        .map(|l| l.name)
+        .collect();
+
+    // Extract status
+    let status = annotations.get_single("status").map(String::from);
+
+    // Extract owner
+    let owner = annotations.get_single("owner").map(String::from);
+
+    // Extract created date
+    let created = annotations.get_single("created").map(String::from);
+
+    // Extract dependencies
+    let depends_on = annotations
+        .get_list("depends-on")
+        .iter()
+        .filter_map(|s| parse_dependency_ref(s).ok())
+        .collect();
+
+    // Extract custom annotations (all others)
+    let mut custom = std::collections::HashMap::new();
+    for (key, values) in annotations.iter() {
+        // Skip known annotations
+        if matches!(
+            key.as_str(),
+            "id" | "labels" | "status" | "owner" | "created" | "depends-on"
+        ) {
+            continue;
+        }
+
+        // For custom annotations, join multiple values with commas
+        if !values.is_empty() {
+            custom.insert(key.clone(), values.join(", "));
+        }
+    }
+
+    FileMetadata {
+        labels,
+        status,
+        owner,
+        created,
+        depends_on,
+        custom,
+    }
 }
 
 #[cfg(test)]
