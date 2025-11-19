@@ -215,6 +215,14 @@ impl AnnotationBlock {
         self.annotations.is_empty()
     }
 
+    /// Iterate over all annotation key-value pairs
+    ///
+    /// Returns an iterator over `(key, values)` where `key` is the annotation
+    /// name (without '@' prefix) and `values` is a slice of all values for that key.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<String>)> {
+        self.annotations.iter()
+    }
+
     /// Validate that single-value annotations don't have duplicates
     ///
     /// Some annotations (like @id, @owner, @status) should only appear once.
