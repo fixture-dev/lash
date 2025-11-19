@@ -1,5 +1,55 @@
 # Lash Development Log
 
+## 2025-11-19 - All Doctests Made Executable
+
+### Summary
+Made all doctests across the codebase executable and passing (commit: cfe0859). Eliminated all 15 ignored doctests in lash-core and documented best practices in CLAUDE.md.
+
+### Results
+- **Before**: 15 ignored doctests in lash-core
+- **After**: 0 ignored doctests across entire codebase
+- **Total passing**: 36 doctests (16 in lash-core, 20 in lash-types)
+
+### Changes Made
+
+**Formatter Module** (3 doctests fixed):
+- Module-level example: Created minimal TaskFile demonstration
+- `format_file()`: Added hidden setup code with complete TaskFile construction
+- `format_file_in_place()`: Marked as `no_run` (requires file I/O)
+
+**Linter Module** (6 doctests fixed):
+- `LintContext`: Fixed lifetime issues with HashMap
+- `Fix`: Added assertion to verify construction
+- `Linter`, module-level: Created minimal TaskFile examples
+- `RuleRegistry`: Added assertion to verify linter creation
+- `LintRule`: Complete example with trait implementation
+
+**Parser Module** (6 doctests fixed):
+- `parse_annotation()`, `parse_inline_annotations()`: Made runnable with proper imports
+- `CheckboxLine::parse()`: Fixed to unwrap once
+- `parse_inline_labels()`: Made order-agnostic (HashSet behavior)
+- Module-level and `parse_file()`: Marked as `no_run` (file I/O required)
+
+### Best Practices Documented
+
+Added comprehensive doctest guidelines to CLAUDE.md:
+- **Default to executable**: All doctests should run by default
+- **Minimal examples**: Use crate-level imports, show simplest usage
+- **Hidden lines**: Use `#` prefix for boilerplate setup
+- **Attribute usage**:
+  - No attribute: Fully executable (preferred)
+  - `no_run`: Compiles but doesn't execute (I/O, network)
+  - `compile_fail`: Should fail to compile (error demonstration)
+  - `ignore`: Last resort only
+
+### Impact
+- Doctests now serve as both API documentation AND executable tests
+- Prevents documentation drift from implementation
+- Makes examples trustworthy for users
+- Establishes pattern for all future public APIs
+
+Git commit: `cfe0859` - "Make all doctests executable and document best practices"
+
 ## 2025-11-18 - Error Handling Module Complete (Tasks 1-3)
 
 ### Summary
