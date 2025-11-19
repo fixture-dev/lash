@@ -25,7 +25,7 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// @depends-on: existing-file.md#task:existing-task
 /// ```
 ///
-/// Invalid (E_LINK_NOT_FOUND):
+/// Invalid (`E_LINK_NOT_FOUND`):
 /// ```markdown
 /// @depends-on: missing-file.md
 /// @depends-on: existing-file.md#task:missing-task
@@ -40,12 +40,12 @@ impl DependencyExistsRule {
     }
 
     /// Check if a file exists in the context
-    fn file_exists(&self, ctx: &LintContext, file_path: &Path) -> bool {
+    fn file_exists(ctx: &LintContext, file_path: &Path) -> bool {
         ctx.get_file(file_path).is_some()
     }
 
     /// Check if a task exists in a file
-    fn task_exists_in_file(&self, file: &TaskFile, task_id: &str) -> bool {
+    fn task_exists_in_file(file: &TaskFile, task_id: &str) -> bool {
         file.tasks.tasks().iter().any(|t| t.id == task_id)
     }
 }
@@ -56,6 +56,7 @@ impl Default for DependencyExistsRule {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 impl LintRule for DependencyExistsRule {
     fn code(&self) -> &'static str {
         "E_LINK_NOT_FOUND"
@@ -81,13 +82,12 @@ impl LintRule for DependencyExistsRule {
                         // This is a task reference
                         let target_path = ctx.resolve_path(Path::new(path_part));
 
-                        if !self.file_exists(ctx, &target_path) {
+                        if !Self::file_exists(ctx, &target_path) {
                             diagnostics.push(
                                 LintDiagnostic::error(
                                     self.code(),
                                     format!(
-                                        "File '{}' not found (resolved to: {})",
-                                        path_part,
+                                        "File '{path_part}' not found (resolved to: {})",
                                         target_path.display()
                                     ),
                                     ctx.file_path.clone(),
@@ -100,13 +100,12 @@ impl LintRule for DependencyExistsRule {
                                 )),
                             );
                         } else if let Some(target_file) = ctx.get_file(&target_path) {
-                            if !self.task_exists_in_file(target_file, task_part) {
+                            if !Self::task_exists_in_file(target_file, task_part) {
                                 diagnostics.push(
                                     LintDiagnostic::error(
                                         self.code(),
                                         format!(
-                                            "Task '{}' not found in file '{}'",
-                                            task_part,
+                                            "Task '{task_part}' not found in file '{}'",
                                             target_path.display()
                                         ),
                                         ctx.file_path.clone(),
@@ -132,7 +131,7 @@ impl LintRule for DependencyExistsRule {
                         // This is just a file reference
                         let target_path = ctx.resolve_path(Path::new(&dep_ref.target));
 
-                        if !self.file_exists(ctx, &target_path) {
+                        if !Self::file_exists(ctx, &target_path) {
                             diagnostics.push(LintDiagnostic::error(
                                 self.code(),
                                 format!(
@@ -161,12 +160,11 @@ impl LintRule for DependencyExistsRule {
 
                         if let Some(target_file) = target_file {
                             // File found, check if task exists
-                            if !self.task_exists_in_file(target_file, task_id) {
+                            if !Self::task_exists_in_file(target_file, task_id) {
                                 diagnostics.push(LintDiagnostic::error(
                                     self.code(),
                                     format!(
-                                        "Task '{}' not found in file with ID '{}'",
-                                        task_id, file_id
+                                        "Task '{task_id}' not found in file with ID '{file_id}'"
                                     ),
                                     ctx.file_path.clone(),
                                     0,
@@ -187,12 +185,11 @@ impl LintRule for DependencyExistsRule {
                             // Try as a path reference
                             let as_path = Path::new(file_id);
                             if let Some(target_file) = ctx.get_file(as_path) {
-                                if !self.task_exists_in_file(target_file, task_id) {
+                                if !Self::task_exists_in_file(target_file, task_id) {
                                     diagnostics.push(LintDiagnostic::error(
                                         self.code(),
                                         format!(
-                                            "Task '{}' not found in file '{}'",
-                                            task_id,
+                                            "Task '{task_id}' not found in file '{}'",
                                             as_path.display()
                                         ),
                                         ctx.file_path.clone(),
@@ -215,7 +212,7 @@ impl LintRule for DependencyExistsRule {
                                 diagnostics.push(
                                     LintDiagnostic::error(
                                         self.code(),
-                                        format!("File with ID '{}' not found in project", file_id),
+                                        format!("File with ID '{file_id}' not found in project"),
                                         ctx.file_path.clone(),
                                         0,
                                         0,
@@ -233,7 +230,7 @@ impl LintRule for DependencyExistsRule {
                         if target_file.is_none() {
                             // Try as a path
                             let as_path = Path::new(&dep_ref.target);
-                            if !self.file_exists(ctx, as_path) {
+                            if !Self::file_exists(ctx, as_path) {
                                 diagnostics.push(
                                     LintDiagnostic::error(
                                         self.code(),
@@ -253,13 +250,10 @@ impl LintRule for DependencyExistsRule {
                         }
                     }
                 }
-                DependencyKind::Hierarchy => {
+                DependencyKind::Hierarchy | DependencyKind::Directory => {
                     // Hierarchy dependencies are implicit and always valid
-                    // (validated during parsing)
-                }
-                DependencyKind::Directory => {
                     // Directory dependencies are not currently validated for existence
-                    // (could be added in future if needed)
+                    // (validated during parsing / could be added in future if needed)
                 }
             }
         }
@@ -282,8 +276,10 @@ mod tests {
 
     fn make_task_with_dependency(dep_target: &str) -> Task {
         let dep_ref = parse_dependency_ref(dep_target).unwrap();
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![dep_ref];
+        let metadata = TaskMetadata {
+            depends_on: vec![dep_ref],
+            ..Default::default()
+        };
 
         Task {
             id: "test-task".to_string(),
@@ -297,12 +293,12 @@ mod tests {
         }
     }
 
-    fn make_test_file(path: &str, id: &str, task_ids: Vec<&str>) -> TaskFile {
+    fn make_test_file(path: &str, id: &str, task_ids: &[&str]) -> TaskFile {
         let mut tasks = TaskTree::new();
         for (i, task_id) in task_ids.iter().enumerate() {
-            tasks.add_task(Task {
-                id: task_id.to_string(),
-                title: format!("Task {}", task_id),
+            let _ = tasks.add_task(Task {
+                id: (*task_id).to_string(),
+                title: format!("Task {task_id}"),
                 status: TaskStatus::Open,
                 depth: 0,
                 parent_id: None,
@@ -339,7 +335,7 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("other.md"),
-            make_test_file("other.md", "other", vec![]),
+            make_test_file("other.md", "other", &[]),
         );
 
         let ctx = make_context(&config, PathBuf::from("current.md"), &files);
@@ -372,17 +368,19 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("other.md"),
-            make_test_file("other.md", "other", vec!["setup", "cleanup"]),
+            make_test_file("other.md", "other", &["setup", "cleanup"]),
         );
 
         let ctx = make_context(&config, PathBuf::from("current.md"), &files);
 
         // Create a task with path-style task reference
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![lash_types::dependency::DependencyRef::new(
-            "other.md#task:setup".to_string(),
-            DependencyKind::ExplicitPath,
-        )];
+        let metadata = TaskMetadata {
+            depends_on: vec![lash_types::dependency::DependencyRef::new(
+                "other.md#task:setup".to_string(),
+                DependencyKind::ExplicitPath,
+            )],
+            ..Default::default()
+        };
 
         let task = Task {
             id: "test-task".to_string(),
@@ -407,16 +405,18 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("other.md"),
-            make_test_file("other.md", "other", vec!["setup"]),
+            make_test_file("other.md", "other", &["setup"]),
         );
 
         let ctx = make_context(&config, PathBuf::from("current.md"), &files);
 
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![lash_types::dependency::DependencyRef::new(
-            "other.md#task:missing".to_string(),
-            DependencyKind::ExplicitPath,
-        )];
+        let metadata = TaskMetadata {
+            depends_on: vec![lash_types::dependency::DependencyRef::new(
+                "other.md#task:missing".to_string(),
+                DependencyKind::ExplicitPath,
+            )],
+            ..Default::default()
+        };
 
         let task = Task {
             id: "test-task".to_string(),
@@ -443,16 +443,18 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("other.md"),
-            make_test_file("other.md", "other", vec!["setup"]),
+            make_test_file("other.md", "other", &["setup"]),
         );
 
         let ctx = make_context(&config, PathBuf::from("current.md"), &files);
 
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![lash_types::dependency::DependencyRef::new(
-            "other#setup".to_string(),
-            DependencyKind::ExplicitId,
-        )];
+        let metadata = TaskMetadata {
+            depends_on: vec![lash_types::dependency::DependencyRef::new(
+                "other#setup".to_string(),
+                DependencyKind::ExplicitId,
+            )],
+            ..Default::default()
+        };
 
         let task = Task {
             id: "test-task".to_string(),
@@ -477,16 +479,18 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("other.md"),
-            make_test_file("other.md", "other", vec!["setup"]),
+            make_test_file("other.md", "other", &["setup"]),
         );
 
         let ctx = make_context(&config, PathBuf::from("current.md"), &files);
 
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![lash_types::dependency::DependencyRef::new(
-            "other#missing".to_string(),
-            DependencyKind::ExplicitId,
-        )];
+        let metadata = TaskMetadata {
+            depends_on: vec![lash_types::dependency::DependencyRef::new(
+                "other#missing".to_string(),
+                DependencyKind::ExplicitId,
+            )],
+            ..Default::default()
+        };
 
         let task = Task {
             id: "test-task".to_string(),
@@ -513,11 +517,13 @@ mod tests {
 
         let ctx = make_context(&config, PathBuf::from("current.md"), &files);
 
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![lash_types::dependency::DependencyRef::new(
-            "missing#task".to_string(),
-            DependencyKind::ExplicitId,
-        )];
+        let metadata = TaskMetadata {
+            depends_on: vec![lash_types::dependency::DependencyRef::new(
+                "missing#task".to_string(),
+                DependencyKind::ExplicitId,
+            )],
+            ..Default::default()
+        };
 
         let task = Task {
             id: "test-task".to_string(),
@@ -543,11 +549,13 @@ mod tests {
 
         let ctx = make_context(&config, PathBuf::from("current.md"), &files);
 
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![lash_types::dependency::DependencyRef::new(
-            String::new(),
-            DependencyKind::Hierarchy,
-        )];
+        let metadata = TaskMetadata {
+            depends_on: vec![lash_types::dependency::DependencyRef::new(
+                String::new(),
+                DependencyKind::Hierarchy,
+            )],
+            ..Default::default()
+        };
 
         let task = Task {
             id: "test-task".to_string(),
@@ -572,22 +580,24 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("exists.md"),
-            make_test_file("exists.md", "exists", vec!["task1"]),
+            make_test_file("exists.md", "exists", &["task1"]),
         );
 
         let ctx = make_context(&config, PathBuf::from("current.md"), &files);
 
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![
-            lash_types::dependency::DependencyRef::new(
-                "exists.md".to_string(),
-                DependencyKind::ExplicitPath,
-            ),
-            lash_types::dependency::DependencyRef::new(
-                "missing.md".to_string(),
-                DependencyKind::ExplicitPath,
-            ),
-        ];
+        let metadata = TaskMetadata {
+            depends_on: vec![
+                lash_types::dependency::DependencyRef::new(
+                    "exists.md".to_string(),
+                    DependencyKind::ExplicitPath,
+                ),
+                lash_types::dependency::DependencyRef::new(
+                    "missing.md".to_string(),
+                    DependencyKind::ExplicitPath,
+                ),
+            ],
+            ..Default::default()
+        };
 
         let task = Task {
             id: "test-task".to_string(),
@@ -613,7 +623,7 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("core/api.md"),
-            make_test_file("core/api.md", "core.api", vec![]),
+            make_test_file("core/api.md", "core.api", &[]),
         );
 
         let ctx = make_context(&config, PathBuf::from("tasks/ui/login.md"), &files);
@@ -631,16 +641,18 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("other.md"),
-            make_test_file("other.md", "other-file", vec![]),
+            make_test_file("other.md", "other-file", &[]),
         );
 
         let ctx = make_context(&config, PathBuf::from("current.md"), &files);
 
-        let mut metadata = TaskMetadata::default();
-        metadata.depends_on = vec![lash_types::dependency::DependencyRef::new(
-            "other-file".to_string(),
-            DependencyKind::ExplicitId,
-        )];
+        let metadata = TaskMetadata {
+            depends_on: vec![lash_types::dependency::DependencyRef::new(
+                "other-file".to_string(),
+                DependencyKind::ExplicitId,
+            )],
+            ..Default::default()
+        };
 
         let task = Task {
             id: "test-task".to_string(),
