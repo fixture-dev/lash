@@ -5,8 +5,9 @@
 //!
 //! - **Syntax rules** - Formatting and structure validation
 //! - **Semantic rules** - Logical consistency and correctness
-//! - **Cross-file rules** - Inter-file dependencies and references (TODO: Task #4)
+//! - **Cross-file rules** - Inter-file dependencies and references
 
+pub mod crossfile;
 pub mod semantic;
 pub mod syntax;
 
@@ -20,4 +21,10 @@ pub use syntax::{
 pub use semantic::{
     AutoWaiveRule, DuplicateIdRule, EmptyTitleRule, StatusConsistencyRule, ValidDateRule,
     ValidEstimateRule, ValidLabelRule, ValidOwnerRule,
+};
+
+// Re-export all cross-file rules for convenience
+pub use crossfile::{
+    CircularDepsRule, DependencyExistsRule, IndexFileRefsRule, OrphanedFilesRule,
+    ValidPathResolutionRule,
 };
