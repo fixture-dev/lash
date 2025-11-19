@@ -45,21 +45,23 @@ fn normalize_path(path: &Path) -> PathBuf {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
 /// use lash_core::linter::LintContext;
 /// use lash_types::LashConfig;
 /// use std::collections::HashMap;
 /// use std::path::PathBuf;
 ///
 /// let config = LashConfig::default();
+/// let files = HashMap::new();
 /// let ctx = LintContext::new(
 ///     &config,
 ///     PathBuf::from("tasks/api.md"),
-///     &HashMap::new(),
+///     &files,
 /// );
 ///
 /// // Rules can now access configuration
 /// let max_depth = ctx.config.max_depth;
+/// assert!(max_depth > 0);
 /// ```
 #[derive(Debug)]
 pub struct LintContext<'a> {

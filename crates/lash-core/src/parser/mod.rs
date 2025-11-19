@@ -40,15 +40,15 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
+//! ```no_run
 //! use lash_core::parser::parse_file;
 //! use lash_types::LashConfig;
 //! use std::path::Path;
 //!
 //! let config = LashConfig::default();
-//! let file = parse_file(Path::new("tasks.md"), &config)?;
-//!
-//! println!("Parsed {} tasks from {}", file.tasks.len(), file.metadata.id);
+//! // This requires actual file I/O, so we mark it no_run
+//! let file = parse_file(Path::new("tasks.md"), &config).unwrap();
+//! println!("Parsed {} tasks from {}", file.tasks.len(), file.id);
 //! ```
 //!
 //! # Error Handling
@@ -236,12 +236,13 @@ pub struct ParsedHeader {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```no_run
 /// use lash_core::parser::parse_file;
 /// use lash_types::LashConfig;
 /// use std::path::Path;
 ///
 /// let config = LashConfig::default();
+/// // This requires actual file I/O, so we mark it no_run
 /// match parse_file(Path::new("tasks.md"), &config) {
 ///     Ok(file) => println!("Parsed {} tasks", file.tasks.len()),
 ///     Err(err) => eprintln!("Error: {}", err),
