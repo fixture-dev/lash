@@ -67,6 +67,7 @@ pub mod annotations;
 pub mod builder;
 pub mod checkbox;
 pub mod events;
+pub mod header;
 
 use lash_types::{Diagnostic, LashConfig, LashError, Location, Result, TaskFile};
 use std::path::Path;
