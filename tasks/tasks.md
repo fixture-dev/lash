@@ -4,10 +4,10 @@ This directory contains the comprehensive task breakdown for implementing Lash v
 
 ## Project Status
 
-**Current Phase:** Phase 1 - Foundation (Complete) → Phase 2 - Core Functionality
+**Current Phase:** Phase 2 - Core Functionality (In Progress)
 **Target:** v1.0 Production Release
 **Estimated Duration:** 40-60 days (8-13 weeks)
-**Completed:** Project Setup, Core Data Model
+**Completed:** Project Setup, Core Data Model, Error Handling, Markdown Parser
 
 ## Task Organization
 
@@ -26,7 +26,7 @@ Tasks are organized by major module/component. Each task file contains:
 - [x] [tasks.error-handling.md](tasks.error-handling.md) - Error types, formatting, aggregation (Tasks 1-3 complete) ✅
 
 ### Parsing & Validation
-- [ ] [tasks.markdown-parser.md](tasks.markdown-parser.md) - Markdown parsing implementation
+- [x] [tasks.markdown-parser.md](tasks.markdown-parser.md) - Markdown parsing implementation ✅
 - [ ] [tasks.linter.md](tasks.linter.md) - Linting rules, validation, auto-formatting
 
 ### Database Layer
@@ -60,14 +60,15 @@ Tasks are organized by major module/component. Each task file contains:
 
 **Deliverable:** Compiling project with core types; can create tasks programmatically
 
-### Phase 2: Core Functionality (Weeks 3-5)
+### Phase 2: Core Functionality (Weeks 3-5) - IN PROGRESS
 **Goal:** Parse Markdown files and define database schema
 
-1. tasks.markdown-parser (ALL)
-2. tasks.linter#1-3
-3. tasks.sqlite-schema#1-2
+1. ✅ tasks.markdown-parser (ALL) - Complete
+2. tasks.linter#1-3 - Next
+3. tasks.sqlite-schema#1-2 - Pending
 
 **Deliverable:** Can parse task files into data structures; database initializes
+**Status:** Parser complete (200+ tests passing, 67.7µs benchmark). Ready to proceed with linter.
 
 ### Phase 3: Indexing & Queries (Weeks 6-7)
 **Goal:** Build index from files; implement core commands
