@@ -111,57 +111,57 @@ Implement the Markdown parser that transforms raw `.md` files into the core data
 
 ### 3. Implement Annotation Parser
 
-- [ ] **Parse `@key: value` format**
-  - [ ] Create `parse_annotation(line: &str) -> Result<(String, String)>`
-  - [ ] Detect `@` at start (after trimming)
-  - [ ] Split on first `:` to get key and value
-  - [ ] Trim whitespace from both key and value
-  - [ ] Validate key format (alphanumeric + hyphen + underscore)
-- [ ] **Handle multiline values**
-  - [ ] Detect when value continues on next line (indented)
-  - [ ] Accumulate continuation lines
-  - [ ] Preserve internal newlines/formatting
-  - [ ] Trim trailing whitespace only
-- [ ] **Parse specific annotation types**
-  - [ ] `@id: string` - validate ID format
-  - [ ] `@labels: a, b, c` - split on commas, parse as Label list
-  - [ ] `@status: string` - validate against known statuses
-  - [ ] `@owner: string` - any string
-  - [ ] `@created: YYYY-MM-DD` - validate date format
-  - [ ] `@estimate: duration` - validate format (e.g., "2h", "3d")
-  - [ ] `@depends-on: ref` - parse as DependencyRef
-  - [ ] `@agent-note: text` - any text
-- [ ] **Validate known annotation keys**
-  - [ ] Load custom keys from config
-  - [ ] Check against built-in keys: id, labels, status, owner, created, estimate, depends-on, agent-note
-  - [ ] Check against custom keys from `.lash/config.toml`
-  - [ ] Error on unknown key not in either list
-  - [ ] Suggest adding to config if looks like custom key
-- [ ] **Parse value types**
-  - [ ] String values (default)
-  - [ ] Comma-separated lists (for labels, depends-on)
-  - [ ] Date values (YYYY-MM-DD format)
-  - [ ] Duration values (regex: `\d+[hdwmy]` for hours/days/weeks/months/years)
-  - [ ] Return structured errors for invalid formats
-- [ ] **Handle multiple `@depends-on` annotations**
-  - [ ] Allow multiple `@depends-on` lines
-  - [ ] Accumulate into Vec<DependencyRef>
-  - [ ] Each can be separate file or task reference
-- [ ] **Create annotation collection**
-  - [ ] Define `AnnotationBlock` struct:
-    - [ ] `annotations: HashMap<String, Vec<String>>` - allow multiple values per key
-    - [ ] Helper methods: `get_single()`, `get_list()`, `get_date()`, etc.
-  - [ ] Validate no duplicate single-value annotations
-  - [ ] Allow multiple values for `depends-on`, `labels`
-- [ ] **Write tests**
-  - [ ] Parse all built-in annotation types
-  - [ ] Parse custom annotations (with config)
-  - [ ] Multiline values
-  - [ ] Multiple depends-on
-  - [ ] Invalid key names
-  - [ ] Invalid value formats (dates, durations)
-  - [ ] Unknown annotations (error)
-  - [ ] 30+ test cases
+- [x] **Parse `@key: value` format**
+  - [x] Create `parse_annotation(line: &str) -> Result<(String, String)>`
+  - [x] Detect `@` at start (after trimming)
+  - [x] Split on first `:` to get key and value
+  - [x] Trim whitespace from both key and value
+  - [x] Validate key format (alphanumeric + hyphen + underscore)
+- [x] **Handle multiline values**
+  - [x] Detect when value continues on next line (indented)
+  - [x] Accumulate continuation lines
+  - [x] Preserve internal newlines/formatting
+  - [x] Trim trailing whitespace only
+- [x] **Parse specific annotation types**
+  - [x] `@id: string` - validate ID format
+  - [x] `@labels: a, b, c` - split on commas, parse as Label list
+  - [x] `@status: string` - validate against known statuses
+  - [x] `@owner: string` - any string
+  - [x] `@created: YYYY-MM-DD` - validate date format
+  - [x] `@estimate: duration` - validate format (e.g., "2h", "3d")
+  - [x] `@depends-on: ref` - parse as DependencyRef
+  - [x] `@agent-note: text` - any text
+- [x] **Validate known annotation keys**
+  - [x] Load custom keys from config
+  - [x] Check against built-in keys: id, labels, status, owner, created, estimate, depends-on, agent-note
+  - [x] Check against custom keys from `.lash/config.toml`
+  - [x] Error on unknown key not in either list
+  - [x] Suggest adding to config if looks like custom key
+- [x] **Parse value types**
+  - [x] String values (default)
+  - [x] Comma-separated lists (for labels, depends-on)
+  - [x] Date values (YYYY-MM-DD format)
+  - [x] Duration values (regex: `\d+[hdwmy]` for hours/days/weeks/months/years)
+  - [x] Return structured errors for invalid formats
+- [x] **Handle multiple `@depends-on` annotations**
+  - [x] Allow multiple `@depends-on` lines
+  - [x] Accumulate into Vec<DependencyRef>
+  - [x] Each can be separate file or task reference
+- [x] **Create annotation collection**
+  - [x] Define `AnnotationBlock` struct:
+    - [x] `annotations: HashMap<String, Vec<String>>` - allow multiple values per key
+    - [x] Helper methods: `get_single()`, `get_list()`, `get_date()`, etc.
+  - [x] Validate no duplicate single-value annotations
+  - [x] Allow multiple values for `depends-on`, `labels`
+- [x] **Write tests**
+  - [x] Parse all built-in annotation types
+  - [x] Parse custom annotations (with config)
+  - [x] Multiline values
+  - [x] Multiple depends-on
+  - [x] Invalid key names
+  - [x] Invalid value formats (dates, durations)
+  - [x] Unknown annotations (error)
+  - [x] 30+ test cases (51 tests implemented)
 
 **Priority:** CRITICAL
 **Estimate:** 1.5 days

@@ -15,5 +15,6 @@ thiserror = { workspace = true }
 regex = { workspace = true }
 walkdir = { workspace = true }
 pulldown-cmark = "0.12"
+chrono = { workspace = true }
 
 [dev-dependencies]
