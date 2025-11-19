@@ -144,64 +144,64 @@ Implement the linter that validates Lash Markdown files for both syntax and sema
 
 ### 3. Implement Semantic Rules
 
-- [ ] **Rule: ID Uniqueness Within File**
-  - [ ] Code: `E_SEM_DUPLICATE_ID`
-  - [ ] Check: No two tasks in same file have same ID
-  - [ ] Error on: Duplicate IDs
-  - [ ] Provide line numbers for all occurrences
-  - [ ] Suggestion: "Rename one of these tasks"
-  - [ ] Auto-fix: None (ambiguous which to keep)
-- [ ] **Rule: Parent-Child Status Consistency**
-  - [ ] Code: `W_SEM_STATUS_INCONSISTENT`
-  - [ ] Check: Parent cannot be Done if children are Open
-  - [ ] Warning on: Parent marked [x] but has [ ] children
-  - [ ] Suggestion: "Complete all children first, or waive them"
-  - [ ] Auto-fix: Option 1: Unmark parent; Option 2: Mark children
-  - [ ] Default auto-fix: Unmark parent (safer)
-- [ ] **Rule: Waived Children (auto-fix)**
-  - [ ] Code: `I_SEM_AUTO_WAIVE`
-  - [ ] Check: Parent is Waived
-  - [ ] Action: Auto-waive all children (per design decision)
-  - [ ] Info severity: "Auto-waiving children due to waived parent"
-  - [ ] Auto-fix: Set all descendant status to Waived
-  - [ ] Always apply in formatter
-- [ ] **Rule: Valid Label Format**
-  - [ ] Code: `E_SEM_INVALID_LABEL`
-  - [ ] Check: Labels match pattern: `[a-z0-9][a-z0-9-_]*`
-  - [ ] Error on: Uppercase, spaces, special chars, starts with number
-  - [ ] Suggestion: "Labels must be lowercase alphanumeric with - or _"
-  - [ ] Auto-fix: Normalize label (lowercase, replace spaces with -)
-- [ ] **Rule: Valid Date Format**
-  - [ ] Code: `E_SEM_INVALID_DATE`
-  - [ ] Check: `@created` matches YYYY-MM-DD
-  - [ ] Error on: Other formats, invalid dates (Feb 30, etc.)
-  - [ ] Suggestion: "Use YYYY-MM-DD format"
-  - [ ] Auto-fix: Attempt to parse and reformat if possible
-- [ ] **Rule: Valid Estimate Format**
-  - [ ] Code: `E_SEM_INVALID_ESTIMATE`
-  - [ ] Check: `@estimate` matches pattern: `\d+[hdwmy]`
-  - [ ] h=hours, d=days, w=weeks, m=months, y=years
-  - [ ] Error on: Invalid format
-  - [ ] Suggestion: "Use format like: 2h, 3d, 1w"
-  - [ ] Auto-fix: None (ambiguous conversion)
-- [ ] **Rule: Valid Owner Format**
-  - [ ] Code: `W_SEM_OWNER_FORMAT`
-  - [ ] Check: `@owner` is non-empty, reasonable length
-  - [ ] Warning on: Very long names (>100 chars)
-  - [ ] Suggestion: "Owner name seems unusually long"
-  - [ ] Auto-fix: Trim to reasonable length
-- [ ] **Rule: Empty Task Title**
-  - [ ] Code: `E_SEM_EMPTY_TITLE`
-  - [ ] Check: Task title is not empty or whitespace-only
-  - [ ] Error on: `- [ ]` with no text
-  - [ ] Suggestion: "Tasks must have a title"
-  - [ ] Auto-fix: None (needs content)
-- [ ] **Write tests for each rule**
-  - [ ] Valid cases
-  - [ ] Invalid cases (duplicates, inconsistencies, format errors)
-  - [ ] Auto-fix application
-  - [ ] Complex scenarios (parent-child chains)
-  - [ ] 5-10 tests per rule = 40-80 tests total
+- [x] **Rule: ID Uniqueness Within File**
+  - [x] Code: `E_SEM_DUPLICATE_ID`
+  - [x] Check: No two tasks in same file have same ID
+  - [x] Error on: Duplicate IDs
+  - [x] Provide line numbers for all occurrences
+  - [x] Suggestion: "Rename one of these tasks"
+  - [x] Auto-fix: None (ambiguous which to keep)
+- [x] **Rule: Parent-Child Status Consistency**
+  - [x] Code: `W_SEM_STATUS_INCONSISTENT`
+  - [x] Check: Parent cannot be Done if children are Open
+  - [x] Warning on: Parent marked [x] but has [ ] children
+  - [x] Suggestion: "Complete all children first, or waive them"
+  - [x] Auto-fix: Option 1: Unmark parent; Option 2: Mark children
+  - [x] Default auto-fix: Unmark parent (safer)
+- [x] **Rule: Waived Children (auto-fix)**
+  - [x] Code: `I_SEM_AUTO_WAIVE`
+  - [x] Check: Parent is Waived
+  - [x] Action: Auto-waive all children (per design decision)
+  - [x] Info severity: "Auto-waiving children due to waived parent"
+  - [x] Auto-fix: Set all descendant status to Waived
+  - [x] Always apply in formatter
+- [x] **Rule: Valid Label Format**
+  - [x] Code: `E_SEM_INVALID_LABEL`
+  - [x] Check: Labels match pattern: `[a-z0-9][a-z0-9-_]*`
+  - [x] Error on: Uppercase, spaces, special chars, starts with number
+  - [x] Suggestion: "Labels must be lowercase alphanumeric with - or _"
+  - [x] Auto-fix: Normalize label (lowercase, replace spaces with -)
+- [x] **Rule: Valid Date Format**
+  - [x] Code: `E_SEM_INVALID_DATE`
+  - [x] Check: `@created` matches YYYY-MM-DD
+  - [x] Error on: Other formats, invalid dates (Feb 30, etc.)
+  - [x] Suggestion: "Use YYYY-MM-DD format"
+  - [x] Auto-fix: Attempt to parse and reformat if possible
+- [x] **Rule: Valid Estimate Format**
+  - [x] Code: `E_SEM_INVALID_ESTIMATE`
+  - [x] Check: `@estimate` matches pattern: `\d+[hdwmy]`
+  - [x] h=hours, d=days, w=weeks, m=months, y=years
+  - [x] Error on: Invalid format
+  - [x] Suggestion: "Use format like: 2h, 3d, 1w"
+  - [x] Auto-fix: None (ambiguous conversion)
+- [x] **Rule: Valid Owner Format**
+  - [x] Code: `W_SEM_OWNER_FORMAT`
+  - [x] Check: `@owner` is non-empty, reasonable length
+  - [x] Warning on: Very long names (>100 chars)
+  - [x] Suggestion: "Owner name seems unusually long"
+  - [x] Auto-fix: Trim to reasonable length
+- [x] **Rule: Empty Task Title**
+  - [x] Code: `E_SEM_EMPTY_TITLE`
+  - [x] Check: Task title is not empty or whitespace-only
+  - [x] Error on: `- [ ]` with no text
+  - [x] Suggestion: "Tasks must have a title"
+  - [x] Auto-fix: None (needs content)
+- [x] **Write tests for each rule**
+  - [x] Valid cases
+  - [x] Invalid cases (duplicates, inconsistencies, format errors)
+  - [x] Auto-fix application
+  - [x] Complex scenarios (parent-child chains)
+  - [x] 5-10 tests per rule = 40-80 tests total (69 tests written)
 
 **Priority:** HIGH
 **Estimate:** 2 days

@@ -121,7 +121,7 @@ impl Default for RuleRegistry {
 ///
 /// Creates a registry with all built-in linting rules:
 /// - 7 syntax rules (Task #2 - Complete)
-/// - 8 semantic rules (Task #3 - TODO)
+/// - 8 semantic rules (Task #3 - Complete)
 /// - 5 cross-file rules (Task #4 - TODO)
 ///
 /// # Syntax Rules
@@ -133,6 +133,17 @@ impl Default for RuleRegistry {
 /// 5. Unknown Annotation Keys (`E_SYNTAX_UNKNOWN_KEY`)
 /// 6. Header Structure (`W_SYNTAX_HEADER`)
 /// 7. Annotation Ordering (`I_SYNTAX_ORDER`)
+///
+/// # Semantic Rules
+///
+/// 1. ID Uniqueness Within File (`E_SEM_DUPLICATE_ID`)
+/// 2. Parent-Child Status Consistency (`W_SEM_STATUS_INCONSISTENT`)
+/// 3. Auto-Waive Children (`I_SEM_AUTO_WAIVE`)
+/// 4. Valid Label Format (`E_SEM_INVALID_LABEL`)
+/// 5. Valid Date Format (`E_SEM_INVALID_DATE`)
+/// 6. Valid Estimate Format (`E_SEM_INVALID_ESTIMATE`)
+/// 7. Valid Owner Format (`W_SEM_OWNER_FORMAT`)
+/// 8. Empty Task Title (`E_SEM_EMPTY_TITLE`)
 #[must_use]
 pub fn register_default_rules() -> RuleRegistry {
     use crate::linter::rules;
@@ -166,15 +177,39 @@ pub fn register_default_rules() -> RuleRegistry {
         Arc::new(rules::AnnotationOrderRule::new()),
     );
 
-    // TODO: Register semantic rules (Task #3)
-    // registry.register(RuleCategory::Semantic, Arc::new(DuplicateIdRule::new()));
-    // registry.register(RuleCategory::Semantic, Arc::new(StatusConsistencyRule::new()));
-    // registry.register(RuleCategory::Semantic, Arc::new(AutoWaiveRule::new()));
-    // registry.register(RuleCategory::Semantic, Arc::new(ValidLabelRule::new()));
-    // registry.register(RuleCategory::Semantic, Arc::new(ValidDateRule::new()));
-    // registry.register(RuleCategory::Semantic, Arc::new(ValidEstimateRule::new()));
-    // registry.register(RuleCategory::Semantic, Arc::new(ValidOwnerRule::new()));
-    // registry.register(RuleCategory::Semantic, Arc::new(EmptyTitleRule::new()));
+    // Register semantic rules (Task #3)
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::DuplicateIdRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::StatusConsistencyRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::AutoWaiveRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::ValidLabelRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::ValidDateRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::ValidEstimateRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::ValidOwnerRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::EmptyTitleRule::new()),
+    );
 
     // TODO: Register cross-file rules (Task #4)
     // registry.register(RuleCategory::CrossFile, Arc::new(DependencyExistsRule::new()));
@@ -291,10 +326,10 @@ mod tests {
     #[test]
     fn test_default_registry() {
         let registry = register_default_rules();
-        // Should have 7 syntax rules (Task #2 complete)
-        assert_eq!(registry.rule_count(), 7);
+        // Should have 7 syntax rules (Task #2) + 8 semantic rules (Task #3)
+        assert_eq!(registry.rule_count(), 15);
         assert_eq!(registry.category_count(RuleCategory::Syntax), 7);
-        assert_eq!(registry.category_count(RuleCategory::Semantic), 0);
+        assert_eq!(registry.category_count(RuleCategory::Semantic), 8);
         assert_eq!(registry.category_count(RuleCategory::CrossFile), 0);
     }
 }
