@@ -21,6 +21,10 @@ pub struct LashConfig {
 
     /// Database location (default: .lash/lash.db)
     pub db_path: PathBuf,
+
+    /// Custom annotation keys (in addition to built-in keys)
+    #[serde(default)]
+    pub custom_annotation_keys: Vec<String>,
 }
 
 impl Default for LashConfig {
@@ -31,6 +35,7 @@ impl Default for LashConfig {
             max_depth: 3,
             indent_spaces: 2,
             db_path: PathBuf::from(".lash/lash.db"),
+            custom_annotation_keys: Vec::new(),
         }
     }
 }
@@ -146,6 +151,9 @@ impl LashConfig {
                     root_path.join(&db_path)
                 };
             }
+            if let Some(custom_keys) = file_config.custom_annotation_keys {
+                config.custom_annotation_keys = custom_keys;
+            }
         }
 
         // Validate the configuration
@@ -203,6 +211,7 @@ struct ConfigFile {
     max_depth: Option<u8>,
     indent_spaces: Option<u8>,
     db_path: Option<PathBuf>,
+    custom_annotation_keys: Option<Vec<String>>,
 }
 
 /// Builder for `LashConfig`
@@ -213,6 +222,7 @@ pub struct ConfigBuilder {
     max_depth: Option<u8>,
     indent_spaces: Option<u8>,
     db_path: Option<PathBuf>,
+    custom_annotation_keys: Option<Vec<String>>,
 }
 
 impl ConfigBuilder {
@@ -257,6 +267,13 @@ impl ConfigBuilder {
         self
     }
 
+    /// Set custom annotation keys
+    #[must_use]
+    pub fn custom_annotation_keys(mut self, keys: Vec<String>) -> Self {
+        self.custom_annotation_keys = Some(keys);
+        self
+    }
+
     /// Build the configuration
     ///
     /// # Errors
@@ -275,6 +292,7 @@ impl ConfigBuilder {
             db_path: self
                 .db_path
                 .unwrap_or_else(|| root_path.join(".lash/lash.db")),
+            custom_annotation_keys: self.custom_annotation_keys.unwrap_or_default(),
         };
 
         config.validate()?;
