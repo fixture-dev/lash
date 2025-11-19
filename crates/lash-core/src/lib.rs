@@ -15,6 +15,9 @@ pub mod parser;
 // Linter module - Task #1 (infrastructure) implemented
 pub mod linter;
 
+// Formatter module - Task #5 implemented
+pub mod formatter;
+
 // Module placeholders - will be implemented in subsequent tasks
 // pub mod validator;
 // pub mod dependency;
