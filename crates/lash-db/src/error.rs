@@ -48,6 +48,10 @@ pub enum DbError {
     #[error("Project root not found: {0}")]
     ProjectRootNotFound(String),
 
+    /// I/O error during file operations
+    #[error("I/O error: {0}")]
+    IoError(String),
+
     /// Generic database error
     #[error("Database operation failed: {0}")]
     Other(String),

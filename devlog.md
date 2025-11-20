@@ -713,3 +713,75 @@ All design decisions resolved. Ready to:
 2. Begin Phase 1 implementation (tasks.project-setup.md)
 
 Project is fully planned and ready to begin implementation.
+
+---
+
+## 2025-11-19: Task 1 - File System Walker Implementation
+
+**Task:** Implement recursive directory traversal to discover Markdown files in Lash projects (Task 1 from `tasks/tasks.indexing.md`)
+
+### Implementation
+
+Created `crates/lash-db/src/walker.rs` with the following components:
+
+1. **FileMetadata struct** - Comprehensive file metadata tracking:
+   - Absolute and relative paths
+   - File size and modification time (mtime)
+   - BLAKE3 content hash for change detection
+   - Robust error handling for I/O operations
+
+2. **FileWalkerConfig struct** - Flexible configuration:
+   - Project root path (integrates with Task 0 project root discovery)
+   - Configurable file extensions (defaults to `.md`)
+   - Custom exclude patterns (`.git/`, `node_modules/`, `target/`, `.lash/db.sqlite`)
+   - `.gitignore` respect (enabled by default, with opt-out)
+   - Symlink following (disabled by default for safety)
+   - Builder pattern for ergonomic configuration
+
+3. **FileWalker struct** - Directory traversal engine:
+   - Uses `ignore` crate (battle-tested from ripgrep)
+   - Streaming iterator for memory efficiency
+   - Manual exclusion pattern filtering (complements `.gitignore`)
+   - Symlink filtering when not following
+   - Permission denied and broken symlink handling
+   - Deterministic output (sorted by relative path)
+
+### Key Design Decisions
+
+- **BLAKE3 hashing:** 10x faster than SHA-256, sufficient for integrity checking
+- **Exclude patterns:** Manual filtering on top of `.gitignore` for Lash-specific exclusions
+- **Symlink handling:** Explicit filtering to avoid following symlinks by default
+- **Error handling:** Skip problematic files with warnings rather than failing entirely
+- **Test coverage:** 11 comprehensive tests covering all edge cases
+
+### Dependencies Added
+
+- `blake3 = "1.5"` - Fast cryptographic hashing
+- `ignore = "0.4"` - Directory traversal with `.gitignore` support (already in workspace)
+- `chrono` - Time handling (already in workspace)
+
+### Test Results
+
+All tests passing:
+- File discovery in complex directory structures
+- Extension filtering
+- Exclude pattern matching
+- `.gitignore` respect (requires git repo initialization)
+- Symlink handling (Unix-only test)
+- Unicode filename support
+- Empty directories
+- Deeply nested structures (8+ levels)
+- Hash stability and change detection
+
+Performance meets requirements: Efficient streaming approach handles 1000+ files with minimal memory.
+
+### Integration
+
+Module exports:
+- `FileMetadata` - File metadata struct
+- `FileWalker` - Walker implementation
+- `FileWalkerConfig` - Configuration builder
+
+Ready for use in Task 2 (Incremental Indexing Logic).
+
+**Git commits:** See commit history for detailed implementation.

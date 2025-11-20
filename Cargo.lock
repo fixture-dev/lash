@@ -867,6 +867,9 @@ name = "lash-db"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blake3",
+ "chrono",
+ "ignore",
  "lash-core",
  "lash-types",
  "rusqlite",
