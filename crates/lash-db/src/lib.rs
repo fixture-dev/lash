@@ -9,6 +9,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod connection;
+pub mod diff;
 pub mod error;
 pub mod migrations;
 pub mod project_root;
@@ -16,6 +17,7 @@ pub mod repository;
 pub mod walker;
 
 pub use connection::{get_schema_version, init_database, open_database, set_schema_version};
+pub use diff::{compute_index_diff, compute_index_diff_parallel, IndexDiff};
 pub use error::{DbError, DbResult};
 pub use migrations::{run_migrations, CURRENT_SCHEMA_VERSION};
 pub use project_root::{
