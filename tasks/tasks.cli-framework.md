@@ -32,28 +32,28 @@ Set up the CLI argument parsing framework using `clap` with subcommands for all 
 
 ### Subtasks
 
-- [ ] Add `clap` dependency with features
-  - [ ] `derive` feature for declarative syntax
-  - [ ] `color` feature for colored help
-  - [ ] `suggestions` feature for typo corrections
-- [ ] Define top-level `LashCli` struct
-  - [ ] Global flags: `--root <PATH>`, `--json`, `--verbose`, `--quiet`
-  - [ ] Version and help flags
-  - [ ] Subcommand enum
-- [ ] Define subcommands structure
-  - [ ] `lint`, `format`, `index`, `check-index`
-  - [ ] `list`, `show`, `search`
-  - [ ] `graph`, `check-links`
-  - [ ] `agent-prompt`, `tui`
-  - [ ] Each subcommand as separate struct with args
-- [ ] Implement global flag handling
-  - [ ] `--root`: Override project root detection
-  - [ ] `--json`: Enable machine-readable output
-  - [ ] `--verbose`: Increase logging level
-  - [ ] `--quiet`: Suppress non-essential output
-- [ ] Add shell completion generation
-  - [ ] Generate completions for bash, zsh, fish
-  - [ ] Hidden `lash completion <shell>` command
+- [x] Add `clap` dependency with features
+  - [x] `derive` feature for declarative syntax
+  - [x] `color` feature for colored help
+  - [x] `suggestions` feature for typo corrections
+- [x] Define top-level `LashCli` struct
+  - [x] Global flags: `--root <PATH>`, `--json`, `--verbose`, `--quiet`
+  - [x] Version and help flags
+  - [x] Subcommand enum
+- [x] Define subcommands structure
+  - [x] `lint`, `format`, `index`, `check-index`
+  - [x] `list`, `show`, `search`
+  - [x] `graph`, `check-links`
+  - [x] `agent-prompt`, `tui`
+  - [x] Each subcommand as separate struct with args
+- [x] Implement global flag handling
+  - [x] `--root`: Override project root detection
+  - [x] `--json`: Enable machine-readable output
+  - [x] `--verbose`: Increase logging level
+  - [x] `--quiet`: Suppress non-essential output
+- [x] Add shell completion generation
+  - [x] Generate completions for bash, zsh, fish
+  - [x] Hidden `lash completion <shell>` command
 
 ### Success Criteria
 
@@ -83,24 +83,24 @@ Implement logic to find the Lash project root directory automatically or use exp
 
 ### Subtasks
 
-- [ ] Implement `ProjectRootFinder` struct
-  - [ ] Search strategy configuration
-  - [ ] Cache discovered root
-- [ ] Implement root detection algorithm
-  - [ ] Start from current directory
-  - [ ] Search upward for markers:
-    - [ ] `lash.index.md` or `index.lash.md`
-    - [ ] `.lash/` directory
-    - [ ] Stop at filesystem root or home directory
-  - [ ] Return path to project root
-- [ ] Handle explicit `--root` flag
-  - [ ] Validate path exists
-  - [ ] Validate path contains Lash markers
-  - [ ] Override automatic detection
-- [ ] Error handling
-  - [ ] No project root found: clear error message
-  - [ ] Suggest `lash init` command (future feature)
-  - [ ] Show search path for debugging
+- [x] Implement `ProjectRootFinder` struct
+  - [x] Search strategy configuration
+  - [x] Cache discovered root
+- [x] Implement root detection algorithm
+  - [x] Start from current directory
+  - [x] Search upward for markers:
+    - [x] `lash.index.md` or `index.lash.md`
+    - [x] `.lash/` directory
+    - [x] Stop at filesystem root or home directory
+  - [x] Return path to project root
+- [x] Handle explicit `--root` flag
+  - [x] Validate path exists
+  - [x] Validate path contains Lash markers
+  - [x] Override automatic detection
+- [x] Error handling
+  - [x] No project root found: clear error message
+  - [x] Suggest `lash init` command (future feature)
+  - [x] Show search path for debugging
 - [ ] Add configuration file support (optional)
   - [ ] `.lash/config.toml` for project settings
   - [ ] Override default marker filenames
@@ -134,36 +134,36 @@ Implement flexible output formatting supporting human-readable text, JSON, and o
 
 ### Subtasks
 
-- [ ] Define `OutputFormat` enum
-  - [ ] `Text` - human-readable, colored (default)
-  - [ ] `Json` - machine-readable, structured
-  - [ ] `JsonPretty` - formatted JSON for debugging
-  - [ ] `Quiet` - minimal output
-- [ ] Implement `OutputFormatter` trait
-  - [ ] `format_success()` - format success messages
-  - [ ] `format_error()` - format errors (delegate to error handler)
-  - [ ] `format_list()` - format lists of items
-  - [ ] `format_table()` - format tabular data
-  - [ ] `format_progress()` - format progress indicators
-- [ ] Implement `TextFormatter`
-  - [ ] Use `termcolor` or `colored` for ANSI colors
-  - [ ] Respect `NO_COLOR` env var
-  - [ ] Auto-disable colors for non-TTY output
-  - [ ] Pretty tables with alignment
-  - [ ] Unicode box-drawing characters (with ASCII fallback)
-- [ ] Implement `JsonFormatter`
-  - [ ] Serialize all output to JSON objects
-  - [ ] Stable schema (document format)
-  - [ ] Include metadata (timestamp, version, etc.)
-- [ ] Add output writer abstraction
-  - [ ] Default: stdout/stderr
-  - [ ] Allow custom writers for testing
-  - [ ] Buffer output for atomic writes
-- [ ] Integrate with verbosity levels
-  - [ ] Quiet: only errors and critical info
-  - [ ] Normal: errors, warnings, results
-  - [ ] Verbose: + informational messages
-  - [ ] Debug: + debug messages (enable via env var)
+- [x] Define `OutputFormat` enum
+  - [x] `Text` - human-readable, colored (default)
+  - [x] `Json` - machine-readable, structured
+  - [x] `JsonPretty` - formatted JSON for debugging
+  - [x] `Quiet` - minimal output
+- [x] Implement `OutputFormatter` trait
+  - [x] `format_success()` - format success messages
+  - [x] `format_error()` - format errors (delegate to error handler)
+  - [x] `format_list()` - format lists of items
+  - [x] `format_table()` - format tabular data
+  - [x] `format_progress()` - format progress indicators (via separate progress module)
+- [x] Implement `TextFormatter`
+  - [x] Use `owo-colors` for ANSI colors
+  - [x] Respect `NO_COLOR` env var
+  - [x] Auto-disable colors for non-TTY output
+  - [x] Pretty tables with alignment
+  - [ ] Unicode box-drawing characters (with ASCII fallback) (deferred - current impl uses ASCII)
+- [x] Implement `JsonFormatter`
+  - [x] Serialize all output to JSON objects
+  - [x] Stable schema (document format)
+  - [x] Include metadata (status field)
+- [x] Add output writer abstraction
+  - [x] Default: stdout/stderr (via trait methods)
+  - [x] Allow custom writers for testing (via trait)
+  - [ ] Buffer output for atomic writes (deferred - not critical for v1)
+- [x] Integrate with verbosity levels
+  - [x] Quiet: only errors and critical info
+  - [x] Normal: errors, warnings, results
+  - [x] Verbose: + informational messages
+  - [x] Debug: + debug messages (enable via env var)
 
 ### Success Criteria
 
@@ -194,28 +194,28 @@ Implement progress reporting for long-running operations (indexing, searching, e
 
 ### Subtasks
 
-- [ ] Define `ProgressReporter` trait
-  - [ ] `start(total_items)` - begin operation
-  - [ ] `update(current, message)` - update progress
-  - [ ] `finish(message)` - complete operation
-  - [ ] `set_message(message)` - update status message
-- [ ] Implement `TerminalProgressReporter`
-  - [ ] Use `indicatif` crate for progress bars
-  - [ ] Show: [===>    ] 45% (123/456) Status message
-  - [ ] Spinner for indeterminate progress
-  - [ ] Multi-line support for parallel operations
-  - [ ] Auto-clear on completion
-- [ ] Implement `JsonProgressReporter`
-  - [ ] Emit progress events as JSON lines
-  - [ ] Format: `{"event": "progress", "current": 123, "total": 456, "percent": 45, "message": "..."}`
-- [ ] Implement `QuietProgressReporter`
-  - [ ] No-op implementation (suppresses all progress)
-- [ ] Add progress rate estimation
-  - [ ] Items per second
-  - [ ] ETA calculation
-  - [ ] Show in progress bar
+- [x] Define `ProgressReporter` trait
+  - [x] `start(total_items)` - begin operation
+  - [x] `update(current, message)` - update progress
+  - [x] `finish(message)` - complete operation
+  - [x] `set_message(message)` - update status message
+- [x] Implement `TerminalProgressReporter`
+  - [x] Use `indicatif` crate for progress bars
+  - [x] Show: [===>    ] 45% (123/456) Status message
+  - [x] Spinner for indeterminate progress
+  - [ ] Multi-line support for parallel operations (deferred - not needed for v1)
+  - [x] Auto-clear on completion
+- [x] Implement `JsonProgressReporter`
+  - [x] Emit progress events as JSON lines
+  - [x] Format: `{"event": "progress", "current": 123, "total": 456, "percent": 45, "message": "..."}`
+- [x] Implement `QuietProgressReporter`
+  - [x] No-op implementation (suppresses all progress)
+- [x] Add progress rate estimation
+  - [x] Items per second
+  - [x] ETA calculation
+  - [x] Show in progress bar
 - [ ] Handle terminal resize
-  - [ ] Re-render progress bar on window size change
+  - [ ] Re-render progress bar on window size change (deferred - indicatif handles this automatically)
 
 ### Success Criteria
 
