@@ -36,6 +36,7 @@
 use crate::dependency_updater::DependencyUpdater;
 use crate::diff::{compute_index_diff, IndexDiff};
 use crate::error::{DbError, DbResult};
+use crate::profiler::{IndexProfiler, ProfileReport};
 use crate::repository::{FileRepository, TaskRepository};
 use crate::walker::{FileMetadata, FileWalker, FileWalkerConfig};
 use lash_core::parser::parse_file;
@@ -44,6 +45,7 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 /// Configuration for the indexer
 ///
@@ -65,6 +67,9 @@ pub struct IndexerConfig {
 
     /// Whether to report progress during indexing
     pub report_progress: bool,
+
+    /// Whether to enable performance profiling
+    pub enable_profiling: bool,
 
     /// File walker configuration
     pub walker_config: FileWalkerConfig,
@@ -91,6 +96,7 @@ impl IndexerConfig {
             incremental: true,
             parallelism: None,
             report_progress: true,
+            enable_profiling: false,
             walker_config,
         }
     }
@@ -146,6 +152,24 @@ impl IndexerConfig {
     #[must_use]
     pub fn with_progress(mut self, report: bool) -> Self {
         self.report_progress = report;
+        self
+    }
+
+    /// Set whether to enable performance profiling
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_db::indexer::IndexerConfig;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = IndexerConfig::new(PathBuf::from("/project"))
+    ///     .with_profiling(true);
+    /// assert!(config.enable_profiling);
+    /// ```
+    #[must_use]
+    pub fn with_profiling(mut self, enable: bool) -> Self {
+        self.enable_profiling = enable;
         self
     }
 
@@ -270,6 +294,9 @@ pub struct IndexReport {
 
     /// Whether any changes were made to the database
     pub has_changes: bool,
+
+    /// Performance profile (if profiling was enabled)
+    pub profile: Option<ProfileReport>,
 }
 
 impl IndexReport {
@@ -284,6 +311,7 @@ impl IndexReport {
             files_unchanged: 0,
             errors: Vec::new(),
             has_changes: false,
+            profile: None,
         }
     }
 
@@ -302,6 +330,7 @@ impl IndexReport {
     ///     files_unchanged: 0,
     ///     errors: vec![],
     ///     has_changes: true,
+    ///     profile: None,
     /// };
     ///
     /// assert!(!report.has_errors());
@@ -326,6 +355,7 @@ impl IndexReport {
     ///     files_unchanged: 0,
     ///     errors: vec![],
     ///     has_changes: true,
+    ///     profile: None,
     /// };
     ///
     /// assert_eq!(report.total_affected(), 10);
@@ -456,27 +486,37 @@ impl<'conn> Indexer<'conn> {
     /// ```
     #[allow(clippy::too_many_lines)]
     pub fn index_project(&mut self) -> DbResult<IndexReport> {
+        use crate::repository::DependencyRepository;
+
         let mut report = IndexReport::new();
+        let mut profiler = IndexProfiler::new(self.config.enable_profiling);
 
         // Phase 1: Discover files
-        let walker = FileWalker::new(self.config.walker_config.clone());
-        let files = walker.discover_files()?;
+        let files = {
+            let _guard = profiler.start_phase("discovery");
+            let walker = FileWalker::new(self.config.walker_config.clone());
+            walker.discover_files()?
+        };
 
         if files.is_empty() {
             // No files to index
+            report.profile = Some(profiler.finish());
             return Ok(report);
         }
 
         // Phase 2: Compute diff (if incremental)
-        let diff = if self.config.incremental {
-            compute_index_diff(self.conn, &files)?
-        } else {
-            // For full reindex, treat all files as new
-            IndexDiff {
-                new_files: files.clone(),
-                modified_files: Vec::new(),
-                deleted_files: Vec::new(),
-                unchanged_files: Vec::new(),
+        let diff = {
+            let _guard = profiler.start_phase("diff");
+            if self.config.incremental {
+                compute_index_diff(self.conn, &files)?
+            } else {
+                // For full reindex, treat all files as new
+                IndexDiff {
+                    new_files: files.clone(),
+                    modified_files: Vec::new(),
+                    deleted_files: Vec::new(),
+                    unchanged_files: Vec::new(),
+                }
             }
         };
 
@@ -485,6 +525,7 @@ impl<'conn> Indexer<'conn> {
 
         // If no changes and incremental, we're done
         if self.config.incremental && !diff.has_changes() {
+            report.profile = Some(profiler.finish());
             return Ok(report);
         }
 
@@ -499,7 +540,7 @@ impl<'conn> Indexer<'conn> {
         let total_files = files_to_parse.len();
 
         // Phase 3: Parse files in parallel
-        let parse_results = self.parse_files_parallel(&files_to_parse);
+        let parse_results = self.parse_files_parallel(&files_to_parse, &mut profiler);
 
         // Separate successful parses from errors
         let mut successful_files = Vec::new();
@@ -519,13 +560,19 @@ impl<'conn> Indexer<'conn> {
         // Note: We don't use a transaction here because repository methods handle their own
         // transactions for batch operations. For individual file operations, SQLite's
         // default behavior (each statement is a transaction) is sufficient.
+        {
+            let _db_guard = profiler.start_phase("database");
 
-        // Delete removed files
-        let file_repo = FileRepository::new(self.conn);
-        for deleted_path in &diff.deleted_files {
-            file_repo.delete(deleted_path)?;
-            report.files_deleted += 1;
+            // Delete removed files
+            let file_repo = FileRepository::new(self.conn);
+            for deleted_path in &diff.deleted_files {
+                file_repo.delete(deleted_path)?;
+                report.files_deleted += 1;
+            }
         }
+
+        // Record detailed DB operations outside the phase guard
+        let file_repo = FileRepository::new(self.conn);
 
         // Insert/update files and tasks
         for mut task_file in successful_files {
@@ -542,13 +589,16 @@ impl<'conn> Indexer<'conn> {
             let existing = file_repo.get_by_path(&relative_path)?;
             let is_update = existing.is_some();
 
+            let start = Instant::now();
             if is_update {
                 // Update existing file
                 file_repo.update(&task_file)?;
+                profiler.record_db_operation("update_file", 1, start.elapsed());
                 report.files_updated += 1;
             } else {
                 // Insert new file
                 file_repo.insert(&task_file)?;
+                profiler.record_db_operation("insert_file", 1, start.elapsed());
                 report.files_added += 1;
             }
 
@@ -574,11 +624,15 @@ impl<'conn> Indexer<'conn> {
                 .collect();
 
             if !tasks.is_empty() {
+                let start = Instant::now();
                 task_repo.insert_batch(&tasks)?;
+                profiler.record_db_operation("insert_tasks", tasks.len(), start.elapsed());
 
                 // Insert hierarchy dependencies for parent-child relationships
+                let start = Instant::now();
                 let dep_updater = DependencyUpdater::new(self.conn);
                 dep_updater.insert_hierarchy_dependencies(file_record.id)?;
+                profiler.record_db_operation("insert_dependencies", tasks.len(), start.elapsed());
             }
 
             report.files_processed += 1;
@@ -599,7 +653,7 @@ impl<'conn> Indexer<'conn> {
         // After all files are indexed and hierarchy dependencies inserted,
         // rebuild the transitive closure table for fast dependency queries
         if report.files_processed > 0 {
-            use crate::repository::DependencyRepository;
+            let _guard = profiler.start_phase("closure_rebuild");
             let dep_repo = DependencyRepository::new(self.conn);
             dep_repo.rebuild_closure()?;
         }
@@ -615,6 +669,9 @@ impl<'conn> Indexer<'conn> {
             }
         }
 
+        // Finish profiling and attach report
+        report.profile = Some(profiler.finish());
+
         Ok(report)
     }
 
@@ -622,12 +679,17 @@ impl<'conn> Indexer<'conn> {
     ///
     /// Returns a vector of parse results in the same order as the input files.
     /// Each result is either `Ok(TaskFile)` or `Err(error_message)`.
-    fn parse_files_parallel(&self, files: &[FileMetadata]) -> Vec<Result<TaskFile, String>> {
+    fn parse_files_parallel(
+        &self,
+        files: &[FileMetadata],
+        profiler: &mut IndexProfiler,
+    ) -> Vec<Result<TaskFile, String>> {
         // Clone necessary data to avoid borrowing self
         let parser_config = self.parser_config.clone();
         let report_progress = self.config.report_progress;
         let progress_callback = self.progress_callback.clone();
         let parallelism = self.config.parallelism;
+        let enable_profiling = profiler.is_enabled();
 
         // Configure rayon thread pool if specified
         let pool = if let Some(threads) = parallelism {
@@ -643,10 +705,25 @@ impl<'conn> Indexer<'conn> {
         let processed = Arc::new(Mutex::new(0usize));
         let total = files.len();
 
+        // Collect parse times for profiling
+        let parse_times = Arc::new(Mutex::new(Vec::new()));
+
         // Parse in parallel - note this closure doesn't capture self
         let parse_fn = |file_meta: &FileMetadata| {
+            let start = Instant::now();
             let result =
                 parse_file(&file_meta.absolute_path, &parser_config).map_err(|e| format!("{e}"));
+            let duration = start.elapsed();
+
+            // Record parse time
+            if enable_profiling {
+                if let Ok(mut times) = parse_times.lock() {
+                    times.push((
+                        file_meta.relative_path.to_string_lossy().to_string(),
+                        duration,
+                    ));
+                }
+            }
 
             // Update progress
             if report_progress {
@@ -668,11 +745,22 @@ impl<'conn> Indexer<'conn> {
             result
         };
 
-        if let Some(pool) = pool {
+        let results = if let Some(pool) = pool {
             pool.install(|| files.par_iter().map(parse_fn).collect())
         } else {
             files.par_iter().map(parse_fn).collect()
+        };
+
+        // Add parse times to profiler
+        if enable_profiling {
+            if let Ok(times) = parse_times.lock() {
+                for (path, duration) in times.iter() {
+                    profiler.record_file_parse(path, *duration);
+                }
+            }
         }
+
+        results
     }
 }
 
