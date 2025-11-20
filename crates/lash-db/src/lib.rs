@@ -15,6 +15,7 @@ pub mod indexer;
 pub mod migrations;
 pub mod project_root;
 pub mod repository;
+pub mod verifier;
 pub mod walker;
 
 pub use connection::{get_schema_version, init_database, open_database, set_schema_version};
@@ -27,4 +28,7 @@ pub use project_root::{
     ProjectRootConfig,
 };
 pub use repository::{DependencyRepository, FileRepository, LabelRepository, TaskRepository};
+pub use verifier::{
+    IndexVerifier, IssueKind, VerificationIssue, VerificationReport, VerifierConfig,
+};
 pub use walker::{FileMetadata, FileWalker, FileWalkerConfig};
