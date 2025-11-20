@@ -24,10 +24,14 @@
 //! Blocker identification is provided by [`BlockerAnalyzer`], which identifies which
 //! dependencies are blocking a task's completion and provides actionable reports with
 //! blocker chains and suggestions for resolution.
+//!
+//! Graph export is provided by [`GraphExporter`], which can export the dependency graph
+//! in multiple formats (DOT, JSON, ASCII tree) for visualization and analysis.
 
 pub mod blocker_analyzer;
 pub mod cycle_detector;
 pub mod graph;
+pub mod graph_exporter;
 pub mod resolver;
 pub mod status_computer;
 
@@ -36,6 +40,7 @@ pub use blocker_analyzer::{
 };
 pub use cycle_detector::{Cycle, CycleDetector, CycleReport, CycleSuggestion, SuggestionAction};
 pub use graph::{DependencyGraph, EdgeData, EdgeId, EdgeRef, NodeData};
+pub use graph_exporter::{FilterOptions, GraphExporter};
 pub use resolver::{
     DependencyResolver, ResolutionError, ResolutionErrorKind, ResolvedDependency, ResolverResult,
 };
