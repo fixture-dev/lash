@@ -14,17 +14,48 @@ use lash_cli::cli::{Commands, LashCli};
 use lash_cli::formatter::{
     JsonFormatter, OutputFormatter, QuietFormatter, TextFormatter, Verbosity,
 };
+use lash_cli::logging::{init_logging, install_panic_hook, LogConfig};
 use lash_cli::project_root::ProjectRootFinder;
 use std::process;
 
 fn main() {
+    // Install panic hook for better crash reporting
+    install_panic_hook();
+
     // Parse CLI arguments
     let cli = LashCli::parse();
 
+    // Initialize logging based on CLI flags
+    let log_config = LogConfig::new(
+        if cli.quiet {
+            Verbosity::Quiet
+        } else {
+            Verbosity::from(cli.verbose)
+        },
+        cli.json,
+        cli.no_color,
+    );
+
+    if let Err(e) = init_logging(&log_config) {
+        eprintln!("Warning: Failed to initialize logging: {e}");
+        // Continue execution even if logging fails
+    }
+
+    // Log startup information at debug level
+    tracing::debug!(
+        version = env!("CARGO_PKG_VERSION"),
+        args = ?std::env::args().collect::<Vec<_>>(),
+        "Lash CLI started"
+    );
+
     // Execute the command and get exit code
     let exit_code = match run(cli) {
-        Ok(code) => code,
+        Ok(code) => {
+            tracing::debug!(exit_code = code, "Command completed successfully");
+            code
+        }
         Err(e) => {
+            tracing::error!(error = %e, "Command failed");
             eprintln!("Error: {e:#}");
             1
         }

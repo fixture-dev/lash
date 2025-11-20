@@ -12,6 +12,7 @@ use lash_core::parser::parse_file;
 use lash_types::LashConfig;
 use similar::{ChangeTag, TextDiff};
 use std::path::{Path, PathBuf};
+use tracing::instrument;
 
 use crate::utils::file_discovery::{discover_markdown_files, find_project_root};
 use crate::utils::output::create_progress_bar;
@@ -38,6 +39,7 @@ pub struct FormatArgs {
 /// # Returns
 ///
 /// Exit code: 0 (all files properly formatted), 1 (general error), 2 (files need formatting with --check)
+#[instrument(skip(args), fields(paths = ?args.paths, check = args.check, diff = args.diff))]
 pub fn execute(args: FormatArgs) -> Result<i32> {
     // Determine paths to format
     let paths = if args.paths.is_empty() {
@@ -51,6 +53,7 @@ pub fn execute(args: FormatArgs) -> Result<i32> {
 
     // Discover markdown files
     let files = discover_markdown_files(&paths, true).context("Failed to discover files")?;
+    tracing::info!(file_count = files.len(), "Discovered files to format");
 
     if files.is_empty() {
         eprintln!("No markdown files found to format");
@@ -127,6 +130,7 @@ fn configure_formatter(args: &FormatArgs) -> FormatOptions {
 }
 
 /// Format all files with progress reporting
+#[instrument(skip(files, config, options, args), fields(file_count = files.len()))]
 fn format_files(
     files: &[PathBuf],
     config: &LashConfig,
@@ -175,6 +179,13 @@ fn format_files(
     if let Some(pb) = pb {
         pb.finish_and_clear();
     }
+
+    tracing::info!(
+        formatted = result.formatted,
+        needs_formatting = result.needs_formatting,
+        failed = result.failed,
+        "Formatting complete"
+    );
 
     Ok(result)
 }

@@ -51,6 +51,11 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 ratatui = "0.28"
 crossterm = "0.28"
 
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-appender = "0.2"
+
 # Utilities
 walkdir = "2.5"
 regex = "1.10"

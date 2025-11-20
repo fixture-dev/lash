@@ -292,6 +292,7 @@ Support project-level and user-level configuration files for customizing Lash be
 **Priority:** MEDIUM
 **Effort:** 1 day
 **Depends on:** Task 3
+**Status:** COMPLETE
 
 ### Description
 
@@ -299,42 +300,44 @@ Set up structured logging for debugging and diagnostics.
 
 ### Subtasks
 
-- [ ] Add logging dependencies
-  - [ ] `tracing` for structured logging
-  - [ ] `tracing-subscriber` for log output
-  - [ ] `tracing-appender` for file logging (optional)
-- [ ] Implement log level configuration
-  - [ ] Map verbosity flags to log levels:
-    - [ ] Quiet: ERROR only
-    - [ ] Normal: WARN
-    - [ ] Verbose: INFO
-    - [ ] Debug (env var): DEBUG or TRACE
-  - [ ] Environment variable: `LASH_LOG=debug`
-- [ ] Configure log output format
-  - [ ] Terminal: compact, colored
-  - [ ] File: full, structured
-  - [ ] JSON mode: emit logs as JSON events
-- [ ] Add diagnostic spans
-  - [ ] Wrap major operations in spans (indexing, parsing, etc.)
-  - [ ] Include timing information
-  - [ ] Nest spans for detailed traces
-- [ ] Add crash reporting
-  - [ ] Catch panics and log backtrace
-  - [ ] Suggest filing bug report with logs
-  - [ ] Include version and platform info
+- [x] Add logging dependencies
+  - [x] `tracing` for structured logging
+  - [x] `tracing-subscriber` for log output
+  - [x] `tracing-appender` for file logging (optional)
+- [x] Implement log level configuration
+  - [x] Map verbosity flags to log levels:
+    - [x] Quiet: ERROR only
+    - [x] Normal: WARN
+    - [x] Verbose (-v): INFO
+    - [x] Very Verbose (-vv): DEBUG
+    - [x] Debug (-vvv): TRACE
+  - [x] Environment variable: `LASH_LOG=debug` (overrides flags)
+  - [x] `RUST_LOG` as fallback
+- [x] Configure log output format
+  - [x] Terminal: compact, colored (respects NO_COLOR)
+  - [x] File: full, structured JSON
+  - [x] JSON mode: emit logs as JSON events to stderr
+- [x] Add diagnostic spans
+  - [x] Wrap major operations in spans (lint, format commands)
+  - [x] Include timing information via #[instrument]
+  - [x] Nest spans for detailed traces
+- [x] Add crash reporting
+  - [x] Catch panics and log backtrace
+  - [x] Suggest filing bug report with logs
+  - [x] Include version and platform info
 
 ### Success Criteria
 
-- Logs are helpful for debugging issues
-- Log levels control verbosity appropriately
-- Structured logs are machine-parseable
-- Crash reports include useful diagnostic info
+- [x] Logs are helpful for debugging issues
+- [x] Log levels control verbosity appropriately
+- [x] Structured logs are machine-parseable
+- [x] Crash reports include useful diagnostic info
 
 ### Tests
 
-- Unit: Test log level mapping
-- Integration: Verify logs appear with verbose flag
-- Manual: Inspect log output format
+- [x] Unit: Test log level mapping
+- [x] Integration: Verify logs appear with verbose flag
+- [x] Manual: Inspect log output format
 
 ---
 
