@@ -1,5 +1,117 @@
 # Lash Development Log
 
+## 2025-11-20 - Completion Status Computation Implementation (Dependency Resolution Task 4)
+
+### Summary
+Completed Task 4: Completion Status Computation from `tasks/tasks.dependency-resolution.md`. Implemented a comprehensive status computer that analyzes the dependency graph to compute the effective completion status of each task based on its own status and all its dependencies. All tests passing (14 unit tests + 4 doctests for status_computer, 443 total workspace tests).
+
+### Implementation Overview
+
+**Core Components:**
+- `StatusComputer` - Computes effective completion status for all tasks in a graph
+- `ComputedStatus` - Enum representing computed status: Complete, Incomplete, Blocked, Inconsistent
+- `BlockerReason` - Detailed reasons why a task is blocked
+- `InconsistencyKind` - Types of status inconsistencies detected
+
+**Key Features:**
+- Recursive DFS with memoization for O(V+E) performance
+- Handles all dependency types (hierarchy, explicit, directory)
+- Waived tasks treated as complete for dependency purposes
+- Detects and reports blocked tasks with detailed reasons
+- Identifies status inconsistencies (done tasks with incomplete dependencies)
+- Distinguishes parent-child inconsistencies from explicit dependency issues
+- File-level completion status based on top-level tasks
+- Cycle detection during status computation
+
+### Completion Semantics (from design-doc.md section 5.4)
+
+**Task is Complete when:**
+- Own status is `done`, AND
+- All children (hierarchy dependencies) are `done` or `waived`, AND
+- All explicit dependencies are complete or waived
+
+**Task is Blocked if:**
+- Any dependency is `open` or `blocked` (not waived), OR
+- Task is involved in a circular dependency
+
+**Task is Inconsistent if:**
+- Marked `done` but has incomplete dependencies
+- Parent marked `done` but children are not complete
+
+### Algorithm Design
+
+**Status Computation:**
+1. Uses recursive DFS with memoization cache
+2. Maintains "visiting" set for cycle detection
+3. Processes dependencies before dependents (topological order)
+4. Short-circuits on cache hits for efficiency
+5. Waived tasks always return Complete immediately
+
+**Blocker Detection:**
+- Traverses all dependencies recursively
+- Classifies blockers by type (incomplete, blocked, circular)
+- Propagates blocked status through dependency chains
+- Provides detailed reasons for each blocker
+
+**Inconsistency Detection:**
+- Checks done tasks for incomplete dependencies
+- Separates hierarchy deps (children) from explicit deps
+- Reports different inconsistency types separately
+- Enables targeted lint warnings
+
+### File-Level Status
+
+**Implementation:**
+- File is complete if all top-level tasks (depth 0) are complete
+- Ignores nested task status (those are reflected in parent status)
+- Computes on-demand using the memoization cache
+- Efficient for files with many tasks
+
+### Test Coverage
+
+**Unit Tests (14 tests):**
+- Single task states: done, open, waived
+- Simple dependency chains with various states
+- Waived dependency handling (treated as complete)
+- Blocked status propagation through chains
+- Multiple blockers on single task
+- Parent-child inconsistencies
+- Done tasks with incomplete explicit dependencies
+- File-level status computation
+- Cycle detection during status computation
+
+**Doctests (4 tests):**
+- Module-level example showing basic usage
+- StatusComputer creation and usage
+- compute_all() method demonstration
+- compute_file_status() method demonstration
+
+### Project Impact
+
+**Files Modified:**
+- `crates/lash-core/src/dependency/status_computer.rs` - New module (700+ lines)
+- `crates/lash-core/src/dependency/mod.rs` - Export new types
+- `tasks/tasks.dependency-resolution.md` - Mark Task 4 complete with notes
+
+**Next Steps:**
+- Task 5: Blocker Identification (builds on StatusComputer to provide detailed blocker analysis)
+- Integration tests with full fixture projects
+- Consider adding performance benchmarks for large graphs
+
+**Key Design Decisions:**
+1. **Recursive with memoization vs topological sort**: Chose recursive approach for simplicity and natural call stack ordering. Memoization ensures O(V+E) performance.
+2. **Separate inconsistency types**: Distinguishing parent-child from explicit dependency inconsistencies enables more targeted lint warnings.
+3. **File-level status ignores nested tasks**: Only top-level tasks matter for file completion, as nested task status is reflected in their parent's status.
+4. **Detailed blocker reasons**: Rich BlockerReason enum provides actionable information for users about why tasks are blocked.
+
+### Git Commit
+- Commit: `Implement Task 4: Completion Status Computation`
+- All tests passing (443 tests)
+- Zero warnings or clippy issues
+- Full documentation with examples
+
+---
+
 ## 2025-11-20 - Dependency Resolution Engine Implementation Complete (Dependency Resolution Task 3)
 
 ### Summary

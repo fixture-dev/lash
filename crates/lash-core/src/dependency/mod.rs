@@ -16,13 +16,19 @@
 //! Dependency resolution is handled by [`DependencyResolver`], which parses `@depends-on`
 //! annotations and resolves them to concrete task IDs, handling path resolution and error
 //! collection for broken links.
+//!
+//! Status computation is provided by [`StatusComputer`], which analyzes the dependency graph
+//! to compute the effective completion status of each task based on its own status and all
+//! its dependencies.
 
 pub mod cycle_detector;
 pub mod graph;
 pub mod resolver;
+pub mod status_computer;
 
 pub use cycle_detector::{Cycle, CycleDetector, CycleReport, CycleSuggestion, SuggestionAction};
 pub use graph::{DependencyGraph, EdgeData, EdgeId, EdgeRef, NodeData};
 pub use resolver::{
     DependencyResolver, ResolutionError, ResolutionErrorKind, ResolvedDependency, ResolverResult,
 };
+pub use status_computer::{BlockerReason, ComputedStatus, InconsistencyKind, StatusComputer};

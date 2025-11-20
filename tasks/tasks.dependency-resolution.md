@@ -210,42 +210,80 @@ Compute the effective completion status of each task based on its own status and
 
 ### Subtasks
 
-- [ ] Implement `StatusComputer` struct
-  - [ ] Take graph and task statuses as input
-  - [ ] Compute effective status for each task
-- [ ] Implement completion rules (from design doc section 5.4)
-  - [ ] Task is complete if:
-    - [ ] Own status is `done`, AND
-    - [ ] All children are `done` or `waived`, AND
-    - [ ] All explicit dependencies are complete or waived
-  - [ ] Task is blocked if:
-    - [ ] Any dependency is `open` or `blocked` (not waived), OR
-    - [ ] Depends on broken link
-- [ ] Implement `compute_status()` function
-  - [ ] Topological traversal (or recursive with memoization)
-  - [ ] Cache computed statuses to avoid recomputation
-  - [ ] Handle waived dependencies (ignore in completion check)
-- [ ] Add file-level completion status
-  - [ ] File complete if all top-level tasks complete
-  - [ ] Consider directory-level dependencies
-- [ ] Detect inconsistencies
-  - [ ] Parent marked done but children open (lint warning)
-  - [ ] Task marked done but dependencies open
+- [x] Implement `StatusComputer` struct
+  - [x] Take graph and task statuses as input
+  - [x] Compute effective status for each task
+- [x] Implement completion rules (from design doc section 5.4)
+  - [x] Task is complete if:
+    - [x] Own status is `done`, AND
+    - [x] All children are `done` or `waived`, AND
+    - [x] All explicit dependencies are complete or waived
+  - [x] Task is blocked if:
+    - [x] Any dependency is `open` or `blocked` (not waived), OR
+    - [x] Depends on broken link
+- [x] Implement `compute_status()` function
+  - [x] Topological traversal (or recursive with memoization)
+  - [x] Cache computed statuses to avoid recomputation
+  - [x] Handle waived dependencies (ignore in completion check)
+- [x] Add file-level completion status
+  - [x] File complete if all top-level tasks complete
+  - [-] Consider directory-level dependencies (deferred)
+- [x] Detect inconsistencies
+  - [x] Parent marked done but children open (lint warning)
+  - [x] Task marked done but dependencies open
 
 ### Success Criteria
 
-- Correctly computes status for all tasks in graph
-- Respects waived tasks (treats as complete)
-- Identifies blocked tasks accurately
-- Efficient: O(V+E) traversal, with memoization
+- [x] Correctly computes status for all tasks in graph
+- [x] Respects waived tasks (treats as complete)
+- [x] Identifies blocked tasks accurately
+- [x] Efficient: O(V+E) traversal, with memoization
 
 ### Tests
 
-- Unit: Simple chain (A -> B -> C), various states
-- Unit: Waived dependencies ignored
-- Unit: Blocked propagation (A blocks B, B blocks C)
-- Unit: Parent/child status consistency
-- Integration: Compute status for entire fixture project
+- [x] Unit: Simple chain (A -> B -> C), various states
+- [x] Unit: Waived dependencies ignored
+- [x] Unit: Blocked propagation (A blocks B, B blocks C)
+- [x] Unit: Parent/child status consistency
+- [-] Integration: Compute status for entire fixture project (deferred)
+
+### Implementation Notes
+
+**Completed:**
+- Created `crates/lash-core/src/dependency/status_computer.rs` with complete implementation
+- Implemented `ComputedStatus` enum with Complete, Incomplete, Blocked, and Inconsistent variants
+- Implemented `BlockerReason` enum to provide detailed information about why tasks are blocked
+- Implemented `InconsistencyKind` enum to identify different types of status inconsistencies
+- Used recursive DFS with memoization for efficient O(V+E) status computation
+- Handles cycle detection during status computation
+- Distinguishes between hierarchy and explicit dependencies for inconsistency detection
+- File-level completion status computed based on top-level tasks (depth 0)
+- All unit tests passing (14 tests)
+- All doctests passing (4 tests)
+- Exported from `crates/lash-core/src/dependency/mod.rs`
+
+**Algorithm:**
+- Recursive status computation with memoization cache
+- Uses visiting set for cycle detection
+- Waived tasks always treated as complete
+- Blocked status propagates through dependency chains
+- Inconsistencies detected when done tasks have incomplete dependencies
+- Separates parent/child inconsistencies from explicit dependency inconsistencies
+
+**Test Coverage:**
+- Single task states (done, open, waived)
+- Simple dependency chains
+- Waived dependency handling
+- Blocked dependency propagation
+- Multiple blockers
+- Parent-child inconsistencies
+- Done tasks with incomplete explicit dependencies
+- File-level status computation
+- Cycle detection
+
+**Deferred:**
+- Directory-level dependencies (not yet implemented in graph)
+- Integration tests with full fixture projects (to be added later)
 
 ---
 
