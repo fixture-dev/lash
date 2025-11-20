@@ -1,0 +1,251 @@
+-- Lash SQLite Schema v1
+--
+-- This is the acceleration layer for Lash. Markdown files are the source of truth;
+-- this database is fully reconstructible from them.
+--
+-- Design principles:
+-- - WAL mode for better concurrency
+-- - Foreign keys ON for referential integrity
+-- - Indexes on all query paths
+-- - Transitive closure table for fast dependency queries
+-- - FTS5 for full-text search
+
+-- ============================================================================
+-- Metadata table (schema version and statistics)
+-- ============================================================================
+
+CREATE TABLE metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- Initialize schema version
+INSERT INTO metadata (key, value) VALUES ('schema_version', '1');
+
+-- ============================================================================
+-- Files table (task files from the project)
+-- ============================================================================
+
+CREATE TABLE files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Path relative to project root
+    path TEXT UNIQUE NOT NULL,
+
+    -- File identifier (from @id annotation or synthesized from path)
+    file_id TEXT UNIQUE NOT NULL,
+
+    -- Title from first H1 heading
+    title TEXT NOT NULL,
+
+    -- blake3 content hash for change detection
+    hash TEXT NOT NULL,
+
+    -- Unix timestamp of last modification
+    mtime INTEGER NOT NULL,
+
+    -- Computed overall status (complete, in_progress, blocked, empty)
+    status TEXT CHECK(status IN ('complete', 'in_progress', 'blocked', 'empty')),
+
+    -- FileMetadata as JSON blob (labels, owner, created, etc.)
+    metadata TEXT NOT NULL DEFAULT '{}',
+
+    -- When this file was indexed into the database
+    indexed_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+-- Indexes for files table
+CREATE INDEX idx_files_status ON files(status);
+CREATE INDEX idx_files_hash ON files(hash);
+CREATE INDEX idx_files_mtime ON files(mtime);
+
+-- ============================================================================
+-- Tasks table (individual tasks within files)
+-- ============================================================================
+
+CREATE TABLE tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Reference to parent file
+    file_id INTEGER NOT NULL,
+
+    -- Task ID within the file (from @id or synthesized)
+    local_id TEXT NOT NULL,
+
+    -- Full unique identifier: file_id#local_id
+    full_id TEXT UNIQUE NOT NULL,
+
+    -- Task title/description
+    title TEXT NOT NULL,
+
+    -- Current status (open, done, waived, blocked)
+    status TEXT NOT NULL CHECK(status IN ('open', 'done', 'waived', 'blocked')),
+
+    -- Nesting level (0 = top-level, max typically 2-3)
+    depth INTEGER NOT NULL CHECK(depth >= 0),
+
+    -- Parent task (for hierarchical dependencies)
+    parent_id INTEGER,
+
+    -- Position among siblings (for ordering)
+    order_index INTEGER NOT NULL,
+
+    -- Optional owner
+    owner TEXT,
+
+    -- Optional estimate
+    estimate TEXT,
+
+    -- Extended description/notes
+    body TEXT,
+
+    -- TaskMetadata as JSON blob (labels, dependencies, etc.)
+    metadata TEXT NOT NULL DEFAULT '{}',
+
+    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+-- Indexes for tasks table
+CREATE INDEX idx_tasks_file_id ON tasks(file_id);
+CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE INDEX idx_tasks_parent_id ON tasks(parent_id);
+CREATE INDEX idx_tasks_file_order ON tasks(file_id, order_index);
+CREATE INDEX idx_tasks_owner ON tasks(owner);
+
+-- ============================================================================
+-- Dependencies table (explicit dependency edges)
+-- ============================================================================
+
+CREATE TABLE dependencies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Task that has the dependency (depends ON to_task_id)
+    from_task_id INTEGER NOT NULL,
+
+    -- Task that is depended upon (can be NULL for unresolved refs)
+    to_task_id INTEGER,
+
+    -- Kind of dependency (hierarchy, explicit_id, explicit_path, directory)
+    kind TEXT NOT NULL CHECK(kind IN ('hierarchy', 'explicit_id', 'explicit_path', 'directory')),
+
+    -- Original reference string (for diagnostics and error messages)
+    raw_ref TEXT,
+
+    FOREIGN KEY (from_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+-- Indexes for dependencies table
+CREATE INDEX idx_dependencies_from ON dependencies(from_task_id);
+CREATE INDEX idx_dependencies_to ON dependencies(to_task_id);
+CREATE INDEX idx_dependencies_kind ON dependencies(kind);
+
+-- ============================================================================
+-- Dependency closure table (transitive closure for fast queries)
+-- ============================================================================
+--
+-- This table stores all transitive dependencies for O(1) reachability queries.
+-- It answers: "Is task A an ancestor/dependency of task B?"
+--
+-- Maintained via triggers or explicit rebuild after bulk changes.
+
+CREATE TABLE dependency_closure (
+    -- The ancestor task (task that is depended upon transitively)
+    ancestor_id INTEGER NOT NULL,
+
+    -- The descendant task (task that depends on ancestor transitively)
+    descendant_id INTEGER NOT NULL,
+
+    -- Distance in the graph (1 = direct, 2+ = indirect)
+    depth INTEGER NOT NULL CHECK(depth > 0),
+
+    PRIMARY KEY (ancestor_id, descendant_id),
+
+    FOREIGN KEY (ancestor_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (descendant_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+-- Index for reverse lookups (finding all ancestors of a task)
+CREATE INDEX idx_closure_descendant ON dependency_closure(descendant_id);
+
+-- ============================================================================
+-- Labels table (unique labels across the system)
+-- ============================================================================
+
+CREATE TABLE labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Normalized label name (lowercase, trimmed)
+    name TEXT UNIQUE NOT NULL
+);
+
+-- ============================================================================
+-- Task-label junction table
+-- ============================================================================
+
+CREATE TABLE task_labels (
+    task_id INTEGER NOT NULL,
+    label_id INTEGER NOT NULL,
+
+    PRIMARY KEY (task_id, label_id),
+
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (label_id) REFERENCES labels(id) ON DELETE CASCADE
+);
+
+-- Index for querying all tasks with a given label
+CREATE INDEX idx_task_labels_label ON task_labels(label_id);
+
+-- ============================================================================
+-- File-label junction table
+-- ============================================================================
+
+CREATE TABLE file_labels (
+    file_id INTEGER NOT NULL,
+    label_id INTEGER NOT NULL,
+
+    PRIMARY KEY (file_id, label_id),
+
+    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
+    FOREIGN KEY (label_id) REFERENCES labels(id) ON DELETE CASCADE
+);
+
+-- Index for querying all files with a given label
+CREATE INDEX idx_file_labels_label ON file_labels(label_id);
+
+-- ============================================================================
+-- FTS5 virtual table for full-text search
+-- ============================================================================
+
+CREATE VIRTUAL TABLE tasks_fts USING fts5(
+    full_id UNINDEXED,  -- Join key (not searchable)
+    title,              -- Searchable title
+    body,               -- Searchable body text
+    content='tasks',    -- External content table
+    content_rowid='id'  -- Maps to tasks.id
+);
+
+-- ============================================================================
+-- FTS5 triggers (keep search index in sync with tasks table)
+-- ============================================================================
+
+-- Insert trigger: add new task to search index
+CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
+    INSERT INTO tasks_fts(rowid, full_id, title, body)
+    VALUES (new.id, new.full_id, new.title, COALESCE(new.body, ''));
+END;
+
+-- Update trigger: update search index when task changes
+CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
+    UPDATE tasks_fts SET
+        full_id = new.full_id,
+        title = new.title,
+        body = COALESCE(new.body, '')
+    WHERE rowid = new.id;
+END;
+
+-- Delete trigger: remove from search index
+CREATE TRIGGER tasks_ad AFTER DELETE ON tasks BEGIN
+    DELETE FROM tasks_fts WHERE rowid = old.id;
+END;

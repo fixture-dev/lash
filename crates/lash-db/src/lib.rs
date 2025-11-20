@@ -8,4 +8,12 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
-// Module placeholders - will be implemented in subsequent tasks
+pub mod connection;
+pub mod error;
+pub mod migrations;
+pub mod repository;
+
+pub use connection::{get_schema_version, init_database, open_database, set_schema_version};
+pub use error::{DbError, DbResult};
+pub use migrations::{run_migrations, CURRENT_SCHEMA_VERSION};
+pub use repository::{DependencyRepository, FileRepository, LabelRepository, TaskRepository};

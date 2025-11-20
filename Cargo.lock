@@ -866,10 +866,13 @@ dependencies = [
 name = "lash-db"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "lash-core",
  "lash-types",
  "rusqlite",
  "serde",
+ "serde_json",
+ "tempfile",
  "thiserror",
 ]
 

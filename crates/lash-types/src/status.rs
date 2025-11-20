@@ -122,6 +122,31 @@ impl TaskStatus {
     pub fn requires_dependencies(self) -> bool {
         matches!(self, Self::Open | Self::Blocked)
     }
+
+    /// Convert status to string representation
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Done => "done",
+            Self::Waived => "waived",
+            Self::Blocked => "blocked",
+        }
+    }
+
+    /// Parse status from string (defensive, returns default for unknown values)
+    ///
+    /// Unlike `FromStr`, this returns the status directly without `Result`.
+    /// Returns `Open` for invalid strings (defensive fallback).
+    #[must_use]
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "done" => Self::Done,
+            "waived" => Self::Waived,
+            "blocked" => Self::Blocked,
+            _ => Self::Open, // Default fallback for unknown or "open"
+        }
+    }
 }
 
 impl fmt::Display for TaskStatus {

@@ -152,6 +152,30 @@ pub enum FileStatus {
     Empty,
 }
 
+impl FileStatus {
+    /// Convert status to string representation
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FileStatus::Complete => "complete",
+            FileStatus::InProgress => "in_progress",
+            FileStatus::Blocked => "blocked",
+            FileStatus::Empty => "empty",
+        }
+    }
+
+    /// Parse status from string (defensive, returns default for unknown values)
+    #[must_use]
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s {
+            "complete" => FileStatus::Complete,
+            "blocked" => FileStatus::Blocked,
+            "empty" => FileStatus::Empty,
+            _ => FileStatus::InProgress, // Default fallback for unknown or "in_progress"
+        }
+    }
+}
+
 /// Compute blake3 hash of content
 ///
 /// Returns hex-encoded hash string for the given content.
