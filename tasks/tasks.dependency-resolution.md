@@ -38,37 +38,37 @@ Define the in-memory graph representation for the task dependency network.
 
 ### Subtasks
 
-- [ ] Define `DependencyGraph` struct
-  - [ ] Node storage (task IDs -> Task references)
-  - [ ] Edge storage (adjacency list: task_id -> Vec<task_id>)
-  - [ ] Reverse edge storage (for efficient reverse lookups)
-  - [ ] Edge metadata (dependency type: hierarchy, explicit, directory)
-- [ ] Implement graph construction from DB
-  - [ ] Load all tasks and dependencies from SQLite
-  - [ ] Build adjacency lists
-  - [ ] Index tasks by full_id for fast lookup
-- [ ] Implement graph query methods
-  - [ ] `get_dependencies(task_id)` - direct dependencies
-  - [ ] `get_dependents(task_id)` - reverse dependencies
-  - [ ] `get_descendants(task_id)` - transitive closure (DFS/BFS)
-  - [ ] `get_ancestors(task_id)` - reverse transitive closure
-- [ ] Add edge type tracking
-  - [ ] Distinguish hierarchy vs explicit vs directory edges
-  - [ ] Store source location for explicit edges (for error reporting)
+- [x] Define `DependencyGraph` struct
+  - [x] Node storage (task IDs -> Task references)
+  - [x] Edge storage (adjacency list: task_id -> Vec<task_id>)
+  - [x] Reverse edge storage (for efficient reverse lookups)
+  - [x] Edge metadata (dependency type: hierarchy, explicit, directory)
+- [x] Implement graph construction from DB
+  - [x] Load all tasks and dependencies from SQLite
+  - [x] Build adjacency lists
+  - [x] Index tasks by full_id for fast lookup
+- [x] Implement graph query methods
+  - [x] `get_dependencies(task_id)` - direct dependencies
+  - [x] `get_dependents(task_id)` - reverse dependencies
+  - [x] `get_descendants(task_id)` - transitive closure (DFS/BFS)
+  - [x] `get_ancestors(task_id)` - reverse transitive closure
+- [x] Add edge type tracking
+  - [x] Distinguish hierarchy vs explicit vs directory edges
+  - [x] Store source location for explicit edges (for error reporting)
 
 ### Success Criteria
 
-- Graph correctly represents all dependency relationships
-- Efficient lookups: O(1) for direct dependencies, O(E+V) for transitive
-- Memory-efficient for large graphs (1000+ tasks)
-- Clear API for downstream consumers
+- [x] Graph correctly represents all dependency relationships
+- [x] Efficient lookups: O(1) for direct dependencies, O(E+V) for transitive
+- [x] Memory-efficient for large graphs (1000+ tasks)
+- [x] Clear API for downstream consumers
 
 ### Tests
 
-- Unit: Build graph from fixture data
-- Unit: Test query methods on various graph structures
-- Unit: Test edge type tracking
-- Performance: Measure memory usage for large graphs
+- [x] Unit: Build graph from fixture data
+- [x] Unit: Test query methods on various graph structures
+- [x] Unit: Test edge type tracking
+- [x] Performance: Measure memory usage for large graphs
 
 ---
 
