@@ -4,10 +4,10 @@ This directory contains the comprehensive task breakdown for implementing Lash v
 
 ## Project Status
 
-**Current Phase:** Phase 2 - Core Functionality (Near Complete)
+**Current Phase:** Phase 4 - Dependencies & Queries
 **Target:** v1.0 Production Release
 **Estimated Duration:** 40-60 days (8-13 weeks)
-**Completed:** Project Setup, Core Data Model, Error Handling, Markdown Parser, Linter & Formatter
+**Completed:** Project Setup, Core Data Model, Error Handling, Markdown Parser, Linter & Formatter, SQLite Schema, Indexing, Dependency Resolution
 
 ## Task Organization
 
@@ -32,7 +32,7 @@ Tasks are organized by major module/component. Each task file contains:
 ### Database Layer
 - [x] [tasks.sqlite-schema.md](tasks.sqlite-schema.md) - SQLite schema, repositories, queries ✅
 - [x] [tasks.indexing.md](tasks.indexing.md) - File scanning, indexing engine, verification ✅
-- [ ] [tasks.dependency-resolution.md](tasks.dependency-resolution.md) - Dependency graph, cycle detection, state computation
+- [x] [tasks.dependency-resolution.md](tasks.dependency-resolution.md) - Dependency graph, cycle detection, state computation, incremental updates ✅
 
 ### CLI & Commands
 - [ ] [tasks.cli-framework.md](tasks.cli-framework.md) - CLI infrastructure, output formatting, progress reporting
@@ -75,19 +75,20 @@ Tasks are organized by major module/component. Each task file contains:
 1. ✅ tasks.sqlite-schema#1-2 (define schema, create tables) - Complete
 2. ✅ tasks.sqlite-schema#3-6 (repositories, queries) - Complete
 3. ✅ tasks.indexing#0-6 (project root, file scanning, diff, indexing engine, verification, dependency updates, performance optimization) - Complete
-4. tasks.cli-framework#1-4 (CLI infrastructure) - NEXT
 
 **Deliverable:** `lash index` command works; can query database
 **Status:** Complete. Indexing engine production-ready with 238 tests passing. Performance exceeds all targets by 8-12x (10.5ms for 10 files, 61ms for 100 files, 425ms for 1000 files).
 
-### Phase 4: Dependencies & Queries (Weeks 7-8)
+### Phase 4: Dependencies & Queries (Weeks 7-8) - IN PROGRESS
 **Goal:** Resolve dependencies; implement query commands
 
-1. tasks.dependency-resolution#1-3
-2. tasks.cli-commands#5-6
-3. tasks.linter#4
+1. ✅ tasks.dependency-resolution#1-7 (graph, cycles, resolution, status, blockers, export, incremental updates) - Complete
+2. tasks.cli-framework#1-4 (CLI infrastructure) - NEXT
+3. tasks.cli-commands#5-6 (query commands)
+4. tasks.linter#4 (dependency validation)
 
 **Deliverable:** Can query tasks; dependency resolution works
+**Status:** Dependency resolution module complete with 495 tests passing. All 7 tasks complete: graph data structure, cycle detection, dependency resolution engine, status computation, blocker identification, graph export, and incremental updates.
 
 ### Phase 5: Search & Advanced Commands (Weeks 9-10)
 **Goal:** Fuzzy search; additional features
@@ -140,8 +141,7 @@ Parallelization opportunities exist within each phase (see individual task files
 - ✅ Lint files with clear error messages
 - ✅ SQLite database schema with repositories
 - ✅ Index files into SQLite database
-- ✅ Hierarchy dependencies resolved (explicit cross-file dependencies remain)
-- [ ] Full dependency resolution and cycle detection
+- ✅ Full dependency resolution and cycle detection
 - [ ] `lash list`, `lash show`, `lash search` commands work
 - [ ] `lash graph` exports dependency graph
 - [ ] Agent integration (`lash agent-prompt`)
