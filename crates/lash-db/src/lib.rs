@@ -11,9 +11,14 @@
 pub mod connection;
 pub mod error;
 pub mod migrations;
+pub mod project_root;
 pub mod repository;
 
 pub use connection::{get_schema_version, init_database, open_database, set_schema_version};
 pub use error::{DbError, DbResult};
 pub use migrations::{run_migrations, CURRENT_SCHEMA_VERSION};
+pub use project_root::{
+    find_project_root, find_project_root_from, find_project_root_with_config, is_project_root,
+    ProjectRootConfig,
+};
 pub use repository::{DependencyRepository, FileRepository, LabelRepository, TaskRepository};

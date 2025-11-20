@@ -44,6 +44,10 @@ pub enum DbError {
     #[error("Invalid database state: {0}")]
     InvalidState(String),
 
+    /// Project root not found
+    #[error("Project root not found: {0}")]
+    ProjectRootNotFound(String),
+
     /// Generic database error
     #[error("Database operation failed: {0}")]
     Other(String),
