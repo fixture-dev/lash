@@ -62,7 +62,7 @@ pub fn open_database(path: &Path) -> DbResult<Connection> {
     Ok(conn)
 }
 
-/// Configure SQLite PRAGMAs for optimal performance
+/// Configure `SQLite` `PRAGMA`s for optimal performance
 ///
 /// Sets:
 /// - `foreign_keys = ON` - Enforce foreign key constraints

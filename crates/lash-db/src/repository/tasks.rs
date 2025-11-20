@@ -21,7 +21,7 @@ pub struct TaskRecord {
     /// Task ID within the file
     pub local_id: String,
 
-    /// Full unique identifier (file_id#local_id)
+    /// Full unique identifier (`file_id#local_id`)
     pub full_id: String,
 
     /// Task title
@@ -114,6 +114,11 @@ impl<'conn> TaskRepository<'conn> {
             None
         };
 
+        // SQLite uses i64 for integers. order_index is usize but limited to task hierarchy depth,
+        // so this cast is safe in practice (we'd never have 2^63 tasks at the same level).
+        #[allow(clippy::cast_possible_wrap)]
+        let order_index_i64 = task.order_index as i64;
+
         self.conn.execute(
             "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
@@ -125,7 +130,7 @@ impl<'conn> TaskRepository<'conn> {
                 task.status.as_str(),
                 task.depth,
                 parent_db_id,
-                task.order_index as i64,
+                order_index_i64,
                 &task.metadata.owner,
                 &task.metadata.estimate,
                 &task.body,
@@ -155,6 +160,11 @@ impl<'conn> TaskRepository<'conn> {
             None
         };
 
+        // SQLite uses i64 for integers. order_index is usize but limited to task hierarchy depth,
+        // so this cast is safe in practice (we'd never have 2^63 tasks at the same level).
+        #[allow(clippy::cast_possible_wrap)]
+        let order_index_i64 = task.order_index as i64;
+
         let rows = self.conn.execute(
             "UPDATE tasks
              SET title = ?1, status = ?2, depth = ?3, parent_id = ?4, order_index = ?5, owner = ?6, estimate = ?7, body = ?8, metadata = ?9
@@ -164,7 +174,7 @@ impl<'conn> TaskRepository<'conn> {
                 task.status.as_str(),
                 task.depth,
                 parent_db_id,
-                task.order_index as i64,
+                order_index_i64,
                 &task.metadata.owner,
                 &task.metadata.estimate,
                 &task.body,
@@ -202,7 +212,7 @@ impl<'conn> TaskRepository<'conn> {
                 "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata
                  FROM tasks WHERE full_id = ?1",
                 [full_id],
-                |row| self.row_to_task_record(row),
+                Self::row_to_task_record,
             )
             .optional()
             .map_err(Into::into)
@@ -224,7 +234,7 @@ impl<'conn> TaskRepository<'conn> {
             .map_err(Into::into)
     }
 
-    /// Get all tasks in a file, ordered by order_index
+    /// Get all tasks in a file, ordered by `order_index`
     ///
     /// # Errors
     ///
@@ -236,7 +246,7 @@ impl<'conn> TaskRepository<'conn> {
         )?;
 
         let tasks = stmt
-            .query_map([file_db_id], |row| self.row_to_task_record(row))?
+            .query_map([file_db_id], Self::row_to_task_record)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(tasks)
@@ -254,7 +264,7 @@ impl<'conn> TaskRepository<'conn> {
         )?;
 
         let tasks = stmt
-            .query_map([status.as_str()], |row| self.row_to_task_record(row))?
+            .query_map([status.as_str()], Self::row_to_task_record)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(tasks)
@@ -276,7 +286,7 @@ impl<'conn> TaskRepository<'conn> {
         )?;
 
         let tasks = stmt
-            .query_map([label], |row| self.row_to_task_record(row))?
+            .query_map([label], Self::row_to_task_record)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(tasks)
@@ -294,7 +304,7 @@ impl<'conn> TaskRepository<'conn> {
         )?;
 
         let tasks = stmt
-            .query_map([task_db_id], |row| self.row_to_task_record(row))?
+            .query_map([task_db_id], Self::row_to_task_record)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(tasks)
@@ -321,7 +331,7 @@ impl<'conn> TaskRepository<'conn> {
         )?;
 
         let tasks = stmt
-            .query_map([task_db_id], |row| self.row_to_task_record(row))?
+            .query_map([task_db_id], Self::row_to_task_record)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(tasks)
@@ -349,7 +359,7 @@ impl<'conn> TaskRepository<'conn> {
         )?;
 
         let tasks = stmt
-            .query_map([task_db_id], |row| self.row_to_task_record(row))?
+            .query_map([task_db_id], Self::row_to_task_record)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(tasks)
@@ -440,7 +450,7 @@ impl<'conn> TaskRepository<'conn> {
         }
 
         let tasks = stmt
-            .query_map(params.as_slice(), |row| self.row_to_task_record(row))?
+            .query_map(params.as_slice(), Self::row_to_task_record)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(tasks)
@@ -472,6 +482,11 @@ impl<'conn> TaskRepository<'conn> {
                 None
             };
 
+            // SQLite uses i64 for integers. order_index is usize but limited to task hierarchy depth,
+            // so this cast is safe in practice (we'd never have 2^63 tasks at the same level).
+            #[allow(clippy::cast_possible_wrap)]
+            let order_index_i64 = task.order_index as i64;
+
             tx.execute(
                 "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
@@ -483,7 +498,7 @@ impl<'conn> TaskRepository<'conn> {
                     task.status.as_str(),
                     task.depth,
                     parent_db_id,
-                    task.order_index as i64,
+                    order_index_i64,
                     &task.metadata.owner,
                     &task.metadata.estimate,
                     &task.body,
@@ -496,8 +511,8 @@ impl<'conn> TaskRepository<'conn> {
         Ok(())
     }
 
-    /// Helper to convert a row to TaskRecord
-    fn row_to_task_record(&self, row: &rusqlite::Row) -> rusqlite::Result<TaskRecord> {
+    /// Helper to convert a row to `TaskRecord`
+    fn row_to_task_record(row: &rusqlite::Row) -> rusqlite::Result<TaskRecord> {
         let metadata_json: String = row.get(12)?;
         let metadata: TaskMetadata = serde_json::from_str(&metadata_json).map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(12, rusqlite::types::Type::Text, Box::new(e))
@@ -505,6 +520,13 @@ impl<'conn> TaskRepository<'conn> {
 
         let status_str: String = row.get(5)?;
         let status = TaskStatus::from_str_lossy(&status_str);
+
+        // SQLite stores order_index as i64, convert back to usize.
+        // This is safe because we only store valid usize values (task positions).
+        // On 32-bit platforms, this could theoretically truncate, but task counts
+        // would never approach 2^32 in practice.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let order_index = row.get::<_, i64>(8)? as usize;
 
         Ok(TaskRecord {
             id: row.get(0)?,
@@ -515,7 +537,7 @@ impl<'conn> TaskRepository<'conn> {
             status,
             depth: row.get(6)?,
             parent_id: row.get(7)?,
-            order_index: row.get::<_, i64>(8)? as usize,
+            order_index,
             owner: row.get(9)?,
             estimate: row.get(10)?,
             body: row.get(11)?,

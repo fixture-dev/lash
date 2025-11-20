@@ -8,7 +8,7 @@ pub type DbResult<T> = Result<T, DbError>;
 /// Database operation errors
 #[derive(Error, Debug)]
 pub enum DbError {
-    /// SQLite error
+    /// `SQLite` error
     #[error("Database error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
