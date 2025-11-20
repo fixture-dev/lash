@@ -7,6 +7,7 @@
 //! - O(E+V) transitive closure computation
 //! - Minimal memory overhead (stores only essential task metadata)
 //! - Support for multiple edge types (hierarchy, explicit, directory)
+//! - Efficient incremental updates for common operations
 //!
 //! # Design
 //!
@@ -51,6 +52,330 @@
 
 use lash_types::{DependencyKind, TaskStatus};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt;
+
+/// Errors that can occur during graph operations
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GraphError {
+    /// Attempted to operate on a node that doesn't exist
+    NodeNotFound(String),
+
+    /// Attempted to operate on an edge that doesn't exist
+    EdgeNotFound(String, String),
+
+    /// Attempted to remove a node that still has dependencies
+    NodeHasDependents {
+        node_id: String,
+        dependent_count: usize,
+    },
+}
+
+impl fmt::Display for GraphError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NodeNotFound(id) => write!(f, "Node not found: {id}"),
+            Self::EdgeNotFound(from, to) => write!(f, "Edge not found: {from} -> {to}"),
+            Self::NodeHasDependents {
+                node_id,
+                dependent_count,
+            } => write!(
+                f,
+                "Cannot remove node '{node_id}' that has {dependent_count} dependent(s)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for GraphError {}
+
+/// Result type for graph operations
+pub type GraphResult<T> = Result<T, GraphError>;
+
+/// Tracks changes made to a graph for incremental updates
+///
+/// This struct records which nodes and edges have been modified, allowing
+/// downstream systems (like status computation and cycle detection) to
+/// determine what needs to be recomputed.
+///
+/// # Example
+///
+/// ```
+/// use lash_core::dependency::{DependencyGraph, NodeData, GraphChanges};
+/// use lash_types::TaskStatus;
+///
+/// let mut graph = DependencyGraph::new();
+/// let mut changes = GraphChanges::new();
+///
+/// // Track a node addition
+/// graph.add_node(
+///     "test#task1".to_string(),
+///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+/// );
+/// changes.add_node("test#task1");
+///
+/// // Check what changed
+/// assert_eq!(changes.added_nodes().len(), 1);
+/// assert!(changes.has_structural_changes());
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct GraphChanges {
+    /// Nodes that were added
+    added_nodes: HashSet<String>,
+
+    /// Nodes that were removed
+    removed_nodes: HashSet<String>,
+
+    /// Nodes whose metadata (except status) changed
+    modified_nodes: HashSet<String>,
+
+    /// Nodes whose status changed
+    status_only_changes: HashSet<String>,
+
+    /// Edges that were added (from, to)
+    added_edges: HashSet<(String, String)>,
+
+    /// Edges that were removed (from, to)
+    removed_edges: HashSet<(String, String)>,
+
+    /// Edges whose metadata changed (from, to)
+    modified_edges: HashSet<(String, String)>,
+}
+
+impl GraphChanges {
+    /// Create a new empty change tracker
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record that a node was added
+    pub fn add_node(&mut self, task_id: &str) {
+        self.added_nodes.insert(task_id.to_string());
+    }
+
+    /// Record that a node was removed
+    pub fn remove_node(&mut self, task_id: &str) {
+        self.removed_nodes.insert(task_id.to_string());
+    }
+
+    /// Record that a node's metadata was modified
+    pub fn modify_node(&mut self, task_id: &str) {
+        self.modified_nodes.insert(task_id.to_string());
+    }
+
+    /// Record that a node's status changed
+    pub fn change_status(&mut self, task_id: &str) {
+        self.status_only_changes.insert(task_id.to_string());
+    }
+
+    /// Record that an edge was added
+    pub fn add_edge(&mut self, from_id: &str, to_id: &str) {
+        self.added_edges
+            .insert((from_id.to_string(), to_id.to_string()));
+    }
+
+    /// Record that an edge was removed
+    pub fn remove_edge(&mut self, from_id: &str, to_id: &str) {
+        self.removed_edges
+            .insert((from_id.to_string(), to_id.to_string()));
+    }
+
+    /// Record that an edge's metadata was modified
+    pub fn modify_edge(&mut self, from_id: &str, to_id: &str) {
+        self.modified_edges
+            .insert((from_id.to_string(), to_id.to_string()));
+    }
+
+    /// Get all added nodes
+    #[must_use]
+    pub fn added_nodes(&self) -> &HashSet<String> {
+        &self.added_nodes
+    }
+
+    /// Get all removed nodes
+    #[must_use]
+    pub fn removed_nodes(&self) -> &HashSet<String> {
+        &self.removed_nodes
+    }
+
+    /// Get all modified nodes (metadata changes, not including status)
+    #[must_use]
+    pub fn modified_nodes(&self) -> &HashSet<String> {
+        &self.modified_nodes
+    }
+
+    /// Get all nodes with status-only changes
+    #[must_use]
+    pub fn status_only_changes(&self) -> &HashSet<String> {
+        &self.status_only_changes
+    }
+
+    /// Get all added edges
+    #[must_use]
+    pub fn added_edges(&self) -> &HashSet<(String, String)> {
+        &self.added_edges
+    }
+
+    /// Get all removed edges
+    #[must_use]
+    pub fn removed_edges(&self) -> &HashSet<(String, String)> {
+        &self.removed_edges
+    }
+
+    /// Get all modified edges
+    #[must_use]
+    pub fn modified_edges(&self) -> &HashSet<(String, String)> {
+        &self.modified_edges
+    }
+
+    /// Check if there were any structural changes (nodes/edges added/removed)
+    ///
+    /// Structural changes require cycle detection and full status recomputation.
+    #[must_use]
+    pub fn has_structural_changes(&self) -> bool {
+        !self.added_nodes.is_empty()
+            || !self.removed_nodes.is_empty()
+            || !self.added_edges.is_empty()
+            || !self.removed_edges.is_empty()
+    }
+
+    /// Check if only status changes occurred (no structural changes, no metadata changes)
+    ///
+    /// Status-only changes can be handled with faster incremental updates.
+    #[must_use]
+    pub fn is_status_only(&self) -> bool {
+        !self.has_structural_changes()
+            && self.modified_nodes.is_empty()
+            && self.modified_edges.is_empty()
+    }
+
+    /// Check if the changes are empty
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.added_nodes.is_empty()
+            && self.removed_nodes.is_empty()
+            && self.modified_nodes.is_empty()
+            && self.status_only_changes.is_empty()
+            && self.added_edges.is_empty()
+            && self.removed_edges.is_empty()
+            && self.modified_edges.is_empty()
+    }
+
+    /// Compute which nodes are affected by the changes
+    ///
+    /// Returns a set of node IDs that need to have their status or dependencies
+    /// recomputed based on the changes. This includes:
+    /// - All modified nodes
+    /// - All nodes that depend on modified nodes (transitively)
+    /// - All nodes involved in edge changes
+    ///
+    /// # Errors
+    ///
+    /// Returns error if graph traversal fails (e.g., cycle detection).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData, EdgeData, GraphChanges};
+    /// use lash_types::{TaskStatus, DependencyKind};
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_node(
+    ///     "test#task2".to_string(),
+    ///     NodeData::new("Task 2".to_string(), TaskStatus::Done, "test".to_string(), 0)
+    /// );
+    /// graph.add_edge(
+    ///     "test#task1".to_string(),
+    ///     "test#task2".to_string(),
+    ///     EdgeData::new(DependencyKind::ExplicitId, None)
+    /// );
+    ///
+    /// let mut changes = GraphChanges::new();
+    /// changes.change_status("test#task2");
+    ///
+    /// // task1 depends on task2, so both need recomputation
+    /// let affected = changes.compute_affected_nodes(&graph).unwrap();
+    /// assert!(affected.contains("test#task1"));
+    /// assert!(affected.contains("test#task2"));
+    /// ```
+    pub fn compute_affected_nodes(
+        &self,
+        graph: &DependencyGraph,
+    ) -> Result<HashSet<String>, String> {
+        let mut affected = HashSet::new();
+
+        // All directly modified nodes are affected
+        affected.extend(self.added_nodes.iter().cloned());
+        affected.extend(self.modified_nodes.iter().cloned());
+        affected.extend(self.status_only_changes.iter().cloned());
+
+        // For removed nodes, we need to affect their former dependents
+        // (but we can't query them since they're gone - caller must track)
+        affected.extend(self.removed_nodes.iter().cloned());
+
+        // Nodes involved in edge changes
+        for (from_id, to_id) in &self.added_edges {
+            affected.insert(from_id.clone());
+            affected.insert(to_id.clone());
+        }
+        for (from_id, to_id) in &self.removed_edges {
+            affected.insert(from_id.clone());
+            affected.insert(to_id.clone());
+        }
+        for (from_id, to_id) in &self.modified_edges {
+            affected.insert(from_id.clone());
+            affected.insert(to_id.clone());
+        }
+
+        // For each affected node, also affect all its ancestors (nodes that depend on it)
+        // This ensures status changes propagate upward through the dependency graph
+        let mut to_process: Vec<String> = affected.iter().cloned().collect();
+        while let Some(node_id) = to_process.pop() {
+            if let Ok(ancestors) = graph.get_ancestors(&node_id) {
+                for ancestor in ancestors {
+                    if affected.insert(ancestor.clone()) {
+                        to_process.push(ancestor);
+                    }
+                }
+            }
+        }
+
+        Ok(affected)
+    }
+
+    /// Merge another `GraphChanges` into this one
+    ///
+    /// Useful for accumulating changes across multiple operations.
+    pub fn merge(&mut self, other: &GraphChanges) {
+        self.added_nodes.extend(other.added_nodes.iter().cloned());
+        self.removed_nodes
+            .extend(other.removed_nodes.iter().cloned());
+        self.modified_nodes
+            .extend(other.modified_nodes.iter().cloned());
+        self.status_only_changes
+            .extend(other.status_only_changes.iter().cloned());
+        self.added_edges.extend(other.added_edges.iter().cloned());
+        self.removed_edges
+            .extend(other.removed_edges.iter().cloned());
+        self.modified_edges
+            .extend(other.modified_edges.iter().cloned());
+    }
+
+    /// Clear all recorded changes
+    pub fn clear(&mut self) {
+        self.added_nodes.clear();
+        self.removed_nodes.clear();
+        self.modified_nodes.clear();
+        self.status_only_changes.clear();
+        self.added_edges.clear();
+        self.removed_edges.clear();
+        self.modified_edges.clear();
+    }
+}
 
 /// Node metadata stored in the graph
 ///
@@ -907,6 +1232,460 @@ impl DependencyGraph {
 
         Ok(result)
     }
+
+    // ========================================================================
+    // Mutation Operations (Phase 1)
+    // ========================================================================
+
+    /// Remove a node from the graph
+    ///
+    /// Removes the node and all its associated edges (both incoming and outgoing).
+    /// By default, this operation fails if the node has dependents (other nodes
+    /// depend on it), to prevent breaking the graph. Use `force = true` to remove
+    /// the node anyway and cascade the removal to dependent edges.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `GraphError::NodeNotFound` if the node doesn't exist
+    /// - Returns `GraphError::NodeHasDependents` if the node has dependents and `force = false`
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData, EdgeData};
+    /// use lash_types::{TaskStatus, DependencyKind};
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    ///
+    /// // Remove the node
+    /// graph.remove_node("test#task1", false).unwrap();
+    /// assert_eq!(graph.node_count(), 0);
+    /// ```
+    pub fn remove_node(&mut self, task_id: &str, force: bool) -> GraphResult<()> {
+        // Check if node exists
+        if !self.nodes.contains_key(task_id) {
+            return Err(GraphError::NodeNotFound(task_id.to_string()));
+        }
+
+        // Check if node has dependents (unless force is true)
+        if !force {
+            if let Some(dependents) = self.reverse.get(task_id) {
+                if !dependents.is_empty() {
+                    return Err(GraphError::NodeHasDependents {
+                        node_id: task_id.to_string(),
+                        dependent_count: dependents.len(),
+                    });
+                }
+            }
+        }
+
+        // Remove all edges where this node is the source (outgoing edges)
+        if let Some(dependencies) = self.adjacency.get(task_id) {
+            let dep_ids: Vec<String> = dependencies.iter().map(|e| e.target_id.clone()).collect();
+            for dep_id in dep_ids {
+                self.remove_edge_internal(task_id, &dep_id);
+            }
+        }
+
+        // Remove all edges where this node is the target (incoming edges)
+        if let Some(dependents) = self.reverse.get(task_id) {
+            let dependent_ids: Vec<String> =
+                dependents.iter().map(|e| e.target_id.clone()).collect();
+            for dependent_id in dependent_ids {
+                self.remove_edge_internal(&dependent_id, task_id);
+            }
+        }
+
+        // Remove the node itself
+        self.nodes.remove(task_id);
+        self.adjacency.remove(task_id);
+        self.reverse.remove(task_id);
+
+        Ok(())
+    }
+
+    /// Update node metadata
+    ///
+    /// Replaces the existing node data with new data. The node must exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GraphError::NodeNotFound` if the node doesn't exist.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData};
+    /// use lash_types::TaskStatus;
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    ///
+    /// // Update the node with new data
+    /// let new_data = NodeData::new(
+    ///     "Task 1 (Updated)".to_string(),
+    ///     TaskStatus::Done,
+    ///     "test".to_string(),
+    ///     0
+    /// );
+    /// graph.update_node("test#task1", new_data).unwrap();
+    ///
+    /// let node = graph.get_node("test#task1").unwrap();
+    /// assert_eq!(node.title, "Task 1 (Updated)");
+    /// assert_eq!(node.status, TaskStatus::Done);
+    /// ```
+    pub fn update_node(&mut self, task_id: &str, node_data: NodeData) -> GraphResult<()> {
+        if !self.nodes.contains_key(task_id) {
+            return Err(GraphError::NodeNotFound(task_id.to_string()));
+        }
+
+        self.nodes.insert(task_id.to_string(), node_data);
+        Ok(())
+    }
+
+    /// Update only the status of a node
+    ///
+    /// This is an optimized operation for the common case of status-only updates.
+    /// It's more efficient than `update_node` when only the status changes.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GraphError::NodeNotFound` if the node doesn't exist.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData};
+    /// use lash_types::TaskStatus;
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    ///
+    /// // Update just the status
+    /// graph.update_node_status("test#task1", TaskStatus::Done).unwrap();
+    ///
+    /// let node = graph.get_node("test#task1").unwrap();
+    /// assert_eq!(node.status, TaskStatus::Done);
+    /// assert_eq!(node.title, "Task 1"); // Other fields unchanged
+    /// ```
+    pub fn update_node_status(&mut self, task_id: &str, status: TaskStatus) -> GraphResult<()> {
+        let node = self
+            .nodes
+            .get_mut(task_id)
+            .ok_or_else(|| GraphError::NodeNotFound(task_id.to_string()))?;
+
+        node.status = status;
+        Ok(())
+    }
+
+    /// Remove an edge from the graph
+    ///
+    /// Removes the dependency relationship from `from_id` to `to_id`. This updates
+    /// both the forward adjacency list and the reverse adjacency list to maintain
+    /// graph invariants.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GraphError::EdgeNotFound` if the edge doesn't exist.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData, EdgeData};
+    /// use lash_types::{TaskStatus, DependencyKind};
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_node(
+    ///     "test#task2".to_string(),
+    ///     NodeData::new("Task 2".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_edge(
+    ///     "test#task1".to_string(),
+    ///     "test#task2".to_string(),
+    ///     EdgeData::new(DependencyKind::ExplicitId, None)
+    /// );
+    ///
+    /// assert_eq!(graph.edge_count(), 1);
+    ///
+    /// // Remove the edge
+    /// graph.remove_edge("test#task1", "test#task2").unwrap();
+    /// assert_eq!(graph.edge_count(), 0);
+    /// ```
+    pub fn remove_edge(&mut self, from_id: &str, to_id: &str) -> GraphResult<()> {
+        let edge_id = (from_id.to_string(), to_id.to_string());
+
+        // Check if edge exists
+        if !self.edge_metadata.contains_key(&edge_id) {
+            return Err(GraphError::EdgeNotFound(
+                from_id.to_string(),
+                to_id.to_string(),
+            ));
+        }
+
+        self.remove_edge_internal(from_id, to_id);
+        Ok(())
+    }
+
+    /// Internal helper to remove an edge without error checking
+    ///
+    /// This is used by `remove_node` to efficiently remove multiple edges.
+    /// It assumes the edge exists and maintains graph invariants.
+    fn remove_edge_internal(&mut self, from_id: &str, to_id: &str) {
+        let edge_id = (from_id.to_string(), to_id.to_string());
+
+        // Remove from forward adjacency list
+        if let Some(deps) = self.adjacency.get_mut(from_id) {
+            deps.retain(|e| e.target_id != to_id);
+        }
+
+        // Remove from reverse adjacency list
+        if let Some(dependents) = self.reverse.get_mut(to_id) {
+            dependents.retain(|e| e.target_id != from_id);
+        }
+
+        // Remove edge metadata
+        self.edge_metadata.remove(&edge_id);
+    }
+
+    /// Update edge metadata
+    ///
+    /// Replaces the existing edge data with new data. The edge must exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GraphError::EdgeNotFound` if the edge doesn't exist.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData, EdgeData};
+    /// use lash_types::{TaskStatus, DependencyKind};
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_node(
+    ///     "test#task2".to_string(),
+    ///     NodeData::new("Task 2".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_edge(
+    ///     "test#task1".to_string(),
+    ///     "test#task2".to_string(),
+    ///     EdgeData::new(DependencyKind::ExplicitId, None)
+    /// );
+    ///
+    /// // Update edge metadata
+    /// let new_data = EdgeData::new(
+    ///     DependencyKind::Hierarchy,
+    ///     Some("updated location".to_string())
+    /// );
+    /// graph.update_edge("test#task1", "test#task2", new_data).unwrap();
+    ///
+    /// let edge = graph.get_edge("test#task1", "test#task2").unwrap();
+    /// assert_eq!(edge.kind, DependencyKind::Hierarchy);
+    /// ```
+    pub fn update_edge(
+        &mut self,
+        from_id: &str,
+        to_id: &str,
+        edge_data: EdgeData,
+    ) -> GraphResult<()> {
+        let edge_id = (from_id.to_string(), to_id.to_string());
+
+        // Check if edge exists
+        if !self.edge_metadata.contains_key(&edge_id) {
+            return Err(GraphError::EdgeNotFound(
+                from_id.to_string(),
+                to_id.to_string(),
+            ));
+        }
+
+        self.edge_metadata.insert(edge_id, edge_data);
+        Ok(())
+    }
+
+    // ========================================================================
+    // Batch Operations (Phase 2)
+    // ========================================================================
+
+    /// Add multiple nodes to the graph at once
+    ///
+    /// This is more efficient than calling `add_node` repeatedly, as it pre-allocates
+    /// space for all nodes at once.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData};
+    /// use lash_types::TaskStatus;
+    ///
+    /// let mut graph = DependencyGraph::new();
+    ///
+    /// let nodes = vec![
+    ///     ("test#task1".to_string(), NodeData::new(
+    ///         "Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0
+    ///     )),
+    ///     ("test#task2".to_string(), NodeData::new(
+    ///         "Task 2".to_string(), TaskStatus::Open, "test".to_string(), 0
+    ///     )),
+    /// ];
+    ///
+    /// graph.add_nodes(nodes);
+    /// assert_eq!(graph.node_count(), 2);
+    /// ```
+    pub fn add_nodes(&mut self, nodes: Vec<(String, NodeData)>) {
+        // Pre-allocate space to minimize reallocations
+        self.nodes.reserve(nodes.len());
+        self.adjacency.reserve(nodes.len());
+        self.reverse.reserve(nodes.len());
+
+        for (task_id, node_data) in nodes {
+            self.add_node(task_id, node_data);
+        }
+    }
+
+    /// Remove multiple nodes from the graph at once
+    ///
+    /// Removes all specified nodes and their associated edges. By default, this fails
+    /// if any node has dependents. Use `force = true` to remove nodes regardless of
+    /// dependents.
+    ///
+    /// # Errors
+    ///
+    /// - Returns the first error encountered (either `NodeNotFound` or `NodeHasDependents`)
+    /// - If an error occurs, some nodes may have been removed already
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData};
+    /// use lash_types::TaskStatus;
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_node(
+    ///     "test#task2".to_string(),
+    ///     NodeData::new("Task 2".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    ///
+    /// let ids = vec!["test#task1".to_string(), "test#task2".to_string()];
+    /// graph.remove_nodes(&ids, false).unwrap();
+    /// assert_eq!(graph.node_count(), 0);
+    /// ```
+    pub fn remove_nodes(&mut self, task_ids: &[String], force: bool) -> GraphResult<()> {
+        for task_id in task_ids {
+            self.remove_node(task_id, force)?;
+        }
+        Ok(())
+    }
+
+    /// Add multiple edges to the graph at once
+    ///
+    /// This is more efficient than calling `add_edge` repeatedly, as it pre-allocates
+    /// space for all edges at once.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any source or target node doesn't exist. Use `contains_node` to check first.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData, EdgeData};
+    /// use lash_types::{TaskStatus, DependencyKind};
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_node(
+    ///     "test#task2".to_string(),
+    ///     NodeData::new("Task 2".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_node(
+    ///     "test#task3".to_string(),
+    ///     NodeData::new("Task 3".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    ///
+    /// let edges = vec![
+    ///     ("test#task1".to_string(), "test#task2".to_string(),
+    ///      EdgeData::new(DependencyKind::ExplicitId, None)),
+    ///     ("test#task1".to_string(), "test#task3".to_string(),
+    ///      EdgeData::new(DependencyKind::ExplicitId, None)),
+    /// ];
+    ///
+    /// graph.add_edges(edges);
+    /// assert_eq!(graph.edge_count(), 2);
+    /// ```
+    pub fn add_edges(&mut self, edges: Vec<(String, String, EdgeData)>) {
+        // Pre-allocate space to minimize reallocations
+        self.edge_metadata.reserve(edges.len());
+
+        for (from_id, to_id, edge_data) in edges {
+            self.add_edge(from_id, to_id, edge_data);
+        }
+    }
+
+    /// Remove multiple edges from the graph at once
+    ///
+    /// Removes all specified dependency relationships.
+    ///
+    /// # Errors
+    ///
+    /// - Returns the first `EdgeNotFound` error encountered
+    /// - If an error occurs, some edges may have been removed already
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData, EdgeData};
+    /// use lash_types::{TaskStatus, DependencyKind};
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_node(
+    ///     "test#task2".to_string(),
+    ///     NodeData::new("Task 2".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_edge(
+    ///     "test#task1".to_string(),
+    ///     "test#task2".to_string(),
+    ///     EdgeData::new(DependencyKind::ExplicitId, None)
+    /// );
+    ///
+    /// let edges = vec![("test#task1", "test#task2")];
+    /// graph.remove_edges(&edges).unwrap();
+    /// assert_eq!(graph.edge_count(), 0);
+    /// ```
+    pub fn remove_edges(&mut self, edges: &[(&str, &str)]) -> GraphResult<()> {
+        for (from_id, to_id) in edges {
+            self.remove_edge(from_id, to_id)?;
+        }
+        Ok(())
+    }
 }
 
 impl Default for DependencyGraph {
@@ -1394,5 +2173,578 @@ mod tests {
 
         let ancestors = graph.get_ancestors("test#missing").unwrap();
         assert_eq!(ancestors.len(), 0);
+    }
+
+    // ========================================================================
+    // Phase 1: Mutation Operations Tests
+    // ========================================================================
+
+    #[test]
+    fn test_remove_node_simple() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+
+        assert_eq!(graph.node_count(), 1);
+
+        let result = graph.remove_node("test#task1", false);
+        assert!(result.is_ok());
+        assert_eq!(graph.node_count(), 0);
+        assert!(!graph.contains_node("test#task1"));
+    }
+
+    #[test]
+    fn test_remove_node_not_found() {
+        let mut graph = DependencyGraph::new();
+
+        let result = graph.remove_node("test#missing", false);
+        assert!(matches!(result, Err(GraphError::NodeNotFound(_))));
+    }
+
+    #[test]
+    fn test_remove_node_with_dependents_fails() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+
+        // task1 depends on task2
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        // Try to remove task2 (has dependents)
+        let result = graph.remove_node("test#task2", false);
+        assert!(matches!(result, Err(GraphError::NodeHasDependents { .. })));
+
+        // Task should still exist
+        assert!(graph.contains_node("test#task2"));
+    }
+
+    #[test]
+    fn test_remove_node_with_dependents_force() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+
+        // task1 depends on task2
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        assert_eq!(graph.edge_count(), 1);
+
+        // Remove task2 with force=true
+        let result = graph.remove_node("test#task2", true);
+        assert!(result.is_ok());
+
+        // Task should be gone
+        assert!(!graph.contains_node("test#task2"));
+
+        // Edge should also be removed
+        assert_eq!(graph.edge_count(), 0);
+        assert_eq!(graph.get_dependency_ids("test#task1").len(), 0);
+    }
+
+    #[test]
+    fn test_remove_node_removes_all_edges() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+        graph.add_node("test#task3".to_string(), create_test_node("Task 3"));
+
+        // task1 depends on task2 and task3
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task3".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        assert_eq!(graph.edge_count(), 2);
+
+        // Remove task1
+        let result = graph.remove_node("test#task1", false);
+        assert!(result.is_ok());
+
+        // All edges should be removed
+        assert_eq!(graph.edge_count(), 0);
+
+        // task2 and task3 should have no dependents
+        assert_eq!(graph.get_dependent_ids("test#task2").len(), 0);
+        assert_eq!(graph.get_dependent_ids("test#task3").len(), 0);
+    }
+
+    #[test]
+    fn test_update_node() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Original Title"));
+
+        let new_data = NodeData::new(
+            "Updated Title".to_string(),
+            TaskStatus::Done,
+            "test".to_string(),
+            0,
+        );
+
+        let result = graph.update_node("test#task1", new_data);
+        assert!(result.is_ok());
+
+        let node = graph.get_node("test#task1").unwrap();
+        assert_eq!(node.title, "Updated Title");
+        assert_eq!(node.status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn test_update_node_not_found() {
+        let mut graph = DependencyGraph::new();
+
+        let new_data = create_test_node("Test");
+        let result = graph.update_node("test#missing", new_data);
+        assert!(matches!(result, Err(GraphError::NodeNotFound(_))));
+    }
+
+    #[test]
+    fn test_update_node_status() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+
+        // Initial status is Open
+        assert_eq!(
+            graph.get_node("test#task1").unwrap().status,
+            TaskStatus::Open
+        );
+
+        // Update to Done
+        let result = graph.update_node_status("test#task1", TaskStatus::Done);
+        assert!(result.is_ok());
+
+        let node = graph.get_node("test#task1").unwrap();
+        assert_eq!(node.status, TaskStatus::Done);
+        assert_eq!(node.title, "Task 1"); // Other fields unchanged
+    }
+
+    #[test]
+    fn test_update_node_status_not_found() {
+        let mut graph = DependencyGraph::new();
+
+        let result = graph.update_node_status("test#missing", TaskStatus::Done);
+        assert!(matches!(result, Err(GraphError::NodeNotFound(_))));
+    }
+
+    #[test]
+    fn test_remove_edge() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        assert_eq!(graph.edge_count(), 1);
+
+        let result = graph.remove_edge("test#task1", "test#task2");
+        assert!(result.is_ok());
+
+        assert_eq!(graph.edge_count(), 0);
+        assert_eq!(graph.get_dependency_ids("test#task1").len(), 0);
+        assert_eq!(graph.get_dependent_ids("test#task2").len(), 0);
+    }
+
+    #[test]
+    fn test_remove_edge_not_found() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+
+        let result = graph.remove_edge("test#task1", "test#task2");
+        assert!(matches!(result, Err(GraphError::EdgeNotFound(_, _))));
+    }
+
+    #[test]
+    fn test_remove_edge_maintains_invariants() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+        graph.add_node("test#task3".to_string(), create_test_node("Task 3"));
+
+        // task1 depends on task2 and task3
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task3".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        // Remove one edge
+        graph.remove_edge("test#task1", "test#task2").unwrap();
+
+        // task1 should still depend on task3
+        let deps = graph.get_dependency_ids("test#task1");
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0], "test#task3");
+
+        // task2 should have no dependents
+        assert_eq!(graph.get_dependent_ids("test#task2").len(), 0);
+
+        // task3 should still have task1 as dependent
+        let dependents = graph.get_dependent_ids("test#task3");
+        assert_eq!(dependents.len(), 1);
+        assert_eq!(dependents[0], "test#task1");
+    }
+
+    #[test]
+    fn test_update_edge() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        // Update edge metadata
+        let new_data = EdgeData::new(DependencyKind::Hierarchy, Some("updated".to_string()));
+        let result = graph.update_edge("test#task1", "test#task2", new_data);
+        assert!(result.is_ok());
+
+        let edge = graph.get_edge("test#task1", "test#task2").unwrap();
+        assert_eq!(edge.kind, DependencyKind::Hierarchy);
+        assert_eq!(edge.source_location.as_deref(), Some("updated"));
+    }
+
+    #[test]
+    fn test_update_edge_not_found() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+
+        let new_data = EdgeData::new(DependencyKind::Hierarchy, None);
+        let result = graph.update_edge("test#task1", "test#task2", new_data);
+        assert!(matches!(result, Err(GraphError::EdgeNotFound(_, _))));
+    }
+
+    // ========================================================================
+    // Phase 2: Batch Operations Tests
+    // ========================================================================
+
+    #[test]
+    fn test_add_nodes_batch() {
+        let mut graph = DependencyGraph::new();
+
+        let nodes = vec![
+            ("test#task1".to_string(), create_test_node("Task 1")),
+            ("test#task2".to_string(), create_test_node("Task 2")),
+            ("test#task3".to_string(), create_test_node("Task 3")),
+        ];
+
+        graph.add_nodes(nodes);
+
+        assert_eq!(graph.node_count(), 3);
+        assert!(graph.contains_node("test#task1"));
+        assert!(graph.contains_node("test#task2"));
+        assert!(graph.contains_node("test#task3"));
+    }
+
+    #[test]
+    fn test_remove_nodes_batch() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+        graph.add_node("test#task3".to_string(), create_test_node("Task 3"));
+
+        let ids = vec![
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            "test#task3".to_string(),
+        ];
+
+        let result = graph.remove_nodes(&ids, false);
+        assert!(result.is_ok());
+        assert_eq!(graph.node_count(), 0);
+    }
+
+    #[test]
+    fn test_remove_nodes_batch_with_error() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+
+        // task1 depends on task2
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        // Try to remove both (task2 has dependents)
+        let ids = vec!["test#task1".to_string(), "test#task2".to_string()];
+        let result = graph.remove_nodes(&ids, false);
+
+        // Should succeed for task1, fail for task2
+        // (Note: task1 removed first, so task2 no longer has dependents)
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_remove_nodes_batch_not_found() {
+        let mut graph = DependencyGraph::new();
+
+        let ids = vec!["test#missing".to_string()];
+        let result = graph.remove_nodes(&ids, false);
+        assert!(matches!(result, Err(GraphError::NodeNotFound(_))));
+    }
+
+    #[test]
+    fn test_add_edges_batch() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+        graph.add_node("test#task3".to_string(), create_test_node("Task 3"));
+
+        let edges = vec![
+            (
+                "test#task1".to_string(),
+                "test#task2".to_string(),
+                EdgeData::new(DependencyKind::ExplicitId, None),
+            ),
+            (
+                "test#task1".to_string(),
+                "test#task3".to_string(),
+                EdgeData::new(DependencyKind::ExplicitId, None),
+            ),
+        ];
+
+        graph.add_edges(edges);
+
+        assert_eq!(graph.edge_count(), 2);
+        assert_eq!(graph.get_dependency_ids("test#task1").len(), 2);
+    }
+
+    #[test]
+    fn test_remove_edges_batch() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+        graph.add_node("test#task3".to_string(), create_test_node("Task 3"));
+
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task3".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        assert_eq!(graph.edge_count(), 2);
+
+        let edges = vec![("test#task1", "test#task2"), ("test#task1", "test#task3")];
+        let result = graph.remove_edges(&edges);
+        assert!(result.is_ok());
+
+        assert_eq!(graph.edge_count(), 0);
+        assert_eq!(graph.get_dependency_ids("test#task1").len(), 0);
+    }
+
+    #[test]
+    fn test_remove_edges_batch_not_found() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+
+        let edges = vec![("test#task1", "test#task2")];
+        let result = graph.remove_edges(&edges);
+        assert!(matches!(result, Err(GraphError::EdgeNotFound(_, _))));
+    }
+
+    // ========================================================================
+    // Phase 3: GraphChanges Tests
+    // ========================================================================
+
+    #[test]
+    fn test_graph_changes_new() {
+        let changes = GraphChanges::new();
+        assert!(changes.is_empty());
+        assert!(!changes.has_structural_changes());
+        assert!(changes.is_status_only());
+    }
+
+    #[test]
+    fn test_graph_changes_add_node() {
+        let mut changes = GraphChanges::new();
+        changes.add_node("test#task1");
+
+        assert!(!changes.is_empty());
+        assert!(changes.has_structural_changes());
+        assert!(!changes.is_status_only());
+        assert_eq!(changes.added_nodes().len(), 1);
+    }
+
+    #[test]
+    fn test_graph_changes_remove_node() {
+        let mut changes = GraphChanges::new();
+        changes.remove_node("test#task1");
+
+        assert!(!changes.is_empty());
+        assert!(changes.has_structural_changes());
+        assert_eq!(changes.removed_nodes().len(), 1);
+    }
+
+    #[test]
+    fn test_graph_changes_modify_node() {
+        let mut changes = GraphChanges::new();
+        changes.modify_node("test#task1");
+
+        assert!(!changes.is_empty());
+        assert!(!changes.has_structural_changes());
+        assert!(!changes.is_status_only());
+        assert_eq!(changes.modified_nodes().len(), 1);
+    }
+
+    #[test]
+    fn test_graph_changes_status_only() {
+        let mut changes = GraphChanges::new();
+        changes.change_status("test#task1");
+
+        assert!(!changes.is_empty());
+        assert!(!changes.has_structural_changes());
+        assert!(changes.is_status_only());
+        assert_eq!(changes.status_only_changes().len(), 1);
+    }
+
+    #[test]
+    fn test_graph_changes_add_edge() {
+        let mut changes = GraphChanges::new();
+        changes.add_edge("test#task1", "test#task2");
+
+        assert!(!changes.is_empty());
+        assert!(changes.has_structural_changes());
+        assert_eq!(changes.added_edges().len(), 1);
+    }
+
+    #[test]
+    fn test_graph_changes_remove_edge() {
+        let mut changes = GraphChanges::new();
+        changes.remove_edge("test#task1", "test#task2");
+
+        assert!(!changes.is_empty());
+        assert!(changes.has_structural_changes());
+        assert_eq!(changes.removed_edges().len(), 1);
+    }
+
+    #[test]
+    fn test_graph_changes_modify_edge() {
+        let mut changes = GraphChanges::new();
+        changes.modify_edge("test#task1", "test#task2");
+
+        assert!(!changes.is_empty());
+        assert!(!changes.has_structural_changes());
+        assert!(!changes.is_status_only());
+        assert_eq!(changes.modified_edges().len(), 1);
+    }
+
+    #[test]
+    fn test_graph_changes_compute_affected_nodes_status_change() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        let mut changes = GraphChanges::new();
+        changes.change_status("test#task2");
+
+        let affected = changes.compute_affected_nodes(&graph).unwrap();
+
+        // Both task1 (dependent) and task2 (changed) should be affected
+        assert_eq!(affected.len(), 2);
+        assert!(affected.contains("test#task1"));
+        assert!(affected.contains("test#task2"));
+    }
+
+    #[test]
+    fn test_graph_changes_compute_affected_nodes_transitive() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node("test#task1".to_string(), create_test_node("Task 1"));
+        graph.add_node("test#task2".to_string(), create_test_node("Task 2"));
+        graph.add_node("test#task3".to_string(), create_test_node("Task 3"));
+
+        // Chain: task1 → task2 → task3
+        graph.add_edge(
+            "test#task1".to_string(),
+            "test#task2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "test#task2".to_string(),
+            "test#task3".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        let mut changes = GraphChanges::new();
+        changes.change_status("test#task3");
+
+        let affected = changes.compute_affected_nodes(&graph).unwrap();
+
+        // All three tasks should be affected (transitive propagation)
+        assert_eq!(affected.len(), 3);
+        assert!(affected.contains("test#task1"));
+        assert!(affected.contains("test#task2"));
+        assert!(affected.contains("test#task3"));
+    }
+
+    #[test]
+    fn test_graph_changes_merge() {
+        let mut changes1 = GraphChanges::new();
+        changes1.add_node("test#task1");
+        changes1.change_status("test#task2");
+
+        let mut changes2 = GraphChanges::new();
+        changes2.add_node("test#task3");
+        changes2.remove_edge("test#task1", "test#task2");
+
+        changes1.merge(&changes2);
+
+        assert_eq!(changes1.added_nodes().len(), 2);
+        assert_eq!(changes1.status_only_changes().len(), 1);
+        assert_eq!(changes1.removed_edges().len(), 1);
+    }
+
+    #[test]
+    fn test_graph_changes_clear() {
+        let mut changes = GraphChanges::new();
+        changes.add_node("test#task1");
+        changes.change_status("test#task2");
+        changes.add_edge("test#task1", "test#task2");
+
+        assert!(!changes.is_empty());
+
+        changes.clear();
+
+        assert!(changes.is_empty());
+        assert_eq!(changes.added_nodes().len(), 0);
+        assert_eq!(changes.status_only_changes().len(), 0);
+        assert_eq!(changes.added_edges().len(), 0);
     }
 }
