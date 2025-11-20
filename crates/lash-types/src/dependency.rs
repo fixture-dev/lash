@@ -23,6 +23,30 @@ pub enum DependencyKind {
     Directory,
 }
 
+impl DependencyKind {
+    /// Convert to string representation
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Hierarchy => "hierarchy",
+            Self::ExplicitId => "explicit_id",
+            Self::ExplicitPath => "explicit_path",
+            Self::Directory => "directory",
+        }
+    }
+
+    /// Parse from string representation (defensive, returns default for unknown values)
+    #[must_use]
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s {
+            "explicit_id" => Self::ExplicitId,
+            "explicit_path" => Self::ExplicitPath,
+            "directory" => Self::Directory,
+            _ => Self::Hierarchy, // Default fallback for unknown or "hierarchy"
+        }
+    }
+}
+
 /// Reference to a dependency (unresolved)
 ///
 /// Represents a dependency reference as written in the Markdown file,
