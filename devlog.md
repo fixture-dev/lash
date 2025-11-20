@@ -1,5 +1,108 @@
 # Lash Development Log
 
+## 2025-11-19 - SQLite Schema Module Complete (Phase 3)
+
+### Summary
+Completed comprehensive implementation of the `lash-db` SQLite schema module (commit: 7b86059). This provides the acceleration layer for Lash with full CRUD repositories, advanced query capabilities, and dependency graph management.
+
+### Implementation Overview
+
+**New Modules Created:**
+- `lash-db/schema.sql` (260 lines) - Complete schema DDL
+- `lash-db/src/connection.rs` (304 lines) - Database initialization and management
+- `lash-db/src/error.rs` (58 lines) - Database-specific error types
+- `lash-db/src/migrations.rs` (148 lines) - Schema version management
+- `lash-db/src/repository/` - Repository layer
+  - `files.rs` (720 lines) - File CRUD and queries
+  - `tasks.rs` (729 lines) - Task CRUD, hierarchical queries, filtering
+  - `dependencies.rs` (430 lines) - Dependency graph with cycle detection
+  - `labels.rs` (527 lines) - Label management and associations
+
+**Test Coverage:**
+- 40 new tests in lash-db (100% of new code)
+- 676 total tests across entire project
+- All tests passing
+
+### Database Schema Design
+
+**9 Core Tables:**
+1. `metadata` - Schema version and statistics
+2. `files` - Task files with path, hash, mtime
+3. `tasks` - Individual tasks with hierarchical structure
+4. `dependencies` - Explicit dependency edges
+5. `dependency_closure` - Transitive closure for O(1) queries
+6. `labels` - Unique labels (normalized)
+7. `task_labels` - Task-label junction
+8. `file_labels` - File-label junction
+9. `tasks_fts` - FTS5 virtual table for full-text search
+
+**Optimizations:**
+- WAL mode for better concurrency
+- Strategic indexes on all query paths
+- Foreign key cascades for automatic cleanup
+- Transitive closure table for fast dependency queries
+- FTS5 with BM25 ranking for search
+
+### Repository Features
+
+**FileRepository:**
+- CRUD operations (insert, update, delete, query)
+- Batch insert with transaction support
+- Query by path, file_id, or label
+- Change detection via content hash
+- Full FK cascade support
+
+**TaskRepository:**
+- CRUD operations with full_id support
+- Hierarchical queries (children, descendants, ancestors)
+- Advanced filtering by status, labels, owner, file, blocked
+- Batch operations with parent resolution
+- Recursive CTE for tree traversal
+
+**DependencyRepository:**
+- Insert/delete dependencies
+- Query dependencies (outgoing) and dependents (incoming)
+- Cycle detection using recursive queries
+- Transitive closure rebuild and maintenance
+- Get all transitive dependencies/dependents in O(1)
+
+**LabelRepository:**
+- Get-or-create pattern for label management
+- Associate/dissociate labels with tasks and files
+- Batch label operations (set replaces all)
+- Label statistics (counts per label)
+- Query by label with JOIN optimization
+
+### Key Achievements
+
+1. **Performance:** O(1) dependency reachability via closure table
+2. **Safety:** Cycle detection prevents invalid dependency graphs
+3. **Flexibility:** Rich query API supports complex filtering
+4. **Maintainability:** Clean separation of concerns, comprehensive tests
+5. **Correctness:** All FKs enforced, transactions for atomic updates
+
+### Data Integrity
+
+- Foreign key constraints enforced (PRAGMA foreign_keys = ON)
+- Unique constraints on paths, file_ids, full_ids
+- CASCADE deletes for automatic cleanup
+- JSON validation via serde for metadata
+- Defensive parsing (from_str_lossy) for database values
+
+### Next Steps
+
+**Immediate:**
+- Address remaining clippy warnings (22 minor issues)
+- Add FTS search query methods
+- Implement connection pooling (r2d2)
+
+**Phase 4 - Indexing:**
+- Use repositories to build index from Markdown files
+- Implement incremental re-indexing
+- Build dependency graph from parsed references
+
+---
+
 ## 2025-11-19 - CLI Integration Complete (Task #6)
 
 ### Summary

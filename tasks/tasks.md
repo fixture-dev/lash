@@ -30,7 +30,7 @@ Tasks are organized by major module/component. Each task file contains:
 - [x] [tasks.linter.md](tasks.linter.md) - Linting rules, validation, auto-formatting ✅
 
 ### Database Layer
-- [ ] [tasks.sqlite-schema.md](tasks.sqlite-schema.md) - SQLite schema, repositories, queries
+- [x] [tasks.sqlite-schema.md](tasks.sqlite-schema.md) - SQLite schema, repositories, queries ✅
 - [ ] [tasks.indexing.md](tasks.indexing.md) - File scanning, indexing engine, verification
 - [ ] [tasks.dependency-resolution.md](tasks.dependency-resolution.md) - Dependency graph, cycle detection, state computation
 
@@ -69,15 +69,16 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** Can parse task files into data structures; lint and format files
 **Status:** Parser complete (390+ tests, 67.7µs benchmark). Linter complete with 20 rules, auto-formatter, and CLI integration (607 total tests).
 
-### Phase 3: Database & Indexing (Weeks 6-7) - NEXT
+### Phase 3: Database & Indexing (Weeks 6-7) - IN PROGRESS
 **Goal:** Build database schema and indexing system
 
-1. tasks.sqlite-schema#1-2 (define schema, create tables)
-2. tasks.sqlite-schema#3-6 (repositories, queries)
-3. tasks.indexing#1-3 (file scanning, indexing engine)
+1. ✅ tasks.sqlite-schema#1-2 (define schema, create tables) - Complete
+2. ✅ tasks.sqlite-schema#3-6 (repositories, queries) - Complete
+3. tasks.indexing#1-3 (file scanning, indexing engine) - NEXT
 4. tasks.cli-framework#1-4 (CLI infrastructure)
 
 **Deliverable:** `lash index` command works; can query database
+**Status:** SQLite schema complete (49 tests, all passing). Database layer ready for indexing engine.
 
 ### Phase 4: Dependencies & Queries (Weeks 7-8)
 **Goal:** Resolve dependencies; implement query commands
@@ -137,8 +138,9 @@ Parallelization opportunities exist within each phase (see individual task files
 ### Must Have
 - ✅ Parse valid Lash Markdown files
 - ✅ Lint files with clear error messages
-- ✅ Index files into SQLite database
-- ✅ Resolve dependencies and detect cycles
+- ✅ SQLite database schema with repositories
+- [ ] Index files into SQLite database
+- [ ] Resolve dependencies and detect cycles
 - ✅ `lash list`, `lash show`, `lash search` commands work
 - ✅ `lash graph` exports dependency graph
 - ✅ Agent integration (`lash agent-prompt`)

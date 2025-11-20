@@ -17,9 +17,17 @@ pub trait Migration {
     fn description(&self) -> &str;
 
     /// Apply the migration
+    ///
+    /// # Errors
+    ///
+    /// Returns error if migration fails
     fn up(&self, conn: &Connection) -> DbResult<()>;
 
     /// Rollback the migration (optional, for future use)
+    ///
+    /// # Errors
+    ///
+    /// Returns error if rollback is not implemented or fails
     fn down(&self, _conn: &Connection) -> DbResult<()> {
         Err(DbError::Other(
             "Rollback not implemented for this migration".to_string(),

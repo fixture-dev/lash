@@ -99,10 +99,13 @@ impl<'conn> FileRepository<'conn> {
     pub fn insert(&self, file: &TaskFile) -> DbResult<i64> {
         let metadata_json = serde_json::to_string(&file.metadata)?;
         let status = file.compute_status();
+        // SQLite uses i64 for integers, so we cast u64 seconds to i64.
+        // This is safe until the year 2262 (i64::MAX seconds from epoch).
+        #[allow(clippy::cast_possible_wrap)]
         let mtime = file
             .mtime
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| DbError::Other(format!("Invalid mtime: {}", e)))?
+            .map_err(|e| DbError::Other(format!("Invalid mtime: {e}")))?
             .as_secs() as i64;
 
         self.conn.execute(
@@ -132,10 +135,13 @@ impl<'conn> FileRepository<'conn> {
     pub fn update(&self, file: &TaskFile) -> DbResult<()> {
         let metadata_json = serde_json::to_string(&file.metadata)?;
         let status = file.compute_status();
+        // SQLite uses i64 for integers, so we cast u64 seconds to i64.
+        // This is safe until the year 2262 (i64::MAX seconds from epoch).
+        #[allow(clippy::cast_possible_wrap)]
         let mtime = file
             .mtime
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| DbError::Other(format!("Invalid mtime: {}", e)))?
+            .map_err(|e| DbError::Other(format!("Invalid mtime: {e}")))?
             .as_secs() as i64;
 
         let rows = self.conn.execute(
@@ -316,10 +322,13 @@ impl<'conn> FileRepository<'conn> {
         for file in files {
             let metadata_json = serde_json::to_string(&file.metadata)?;
             let status = file.compute_status();
+            // SQLite uses i64 for integers, so we cast u64 seconds to i64.
+            // This is safe until the year 2262 (i64::MAX seconds from epoch).
+            #[allow(clippy::cast_possible_wrap)]
             let mtime = file
                 .mtime
                 .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|e| DbError::Other(format!("Invalid mtime: {}", e)))?
+                .map_err(|e| DbError::Other(format!("Invalid mtime: {e}")))?
                 .as_secs() as i64;
 
             tx.execute(
@@ -526,17 +535,17 @@ mod tests {
         let repo = FileRepository::new(&conn);
 
         // Insert one file first
-        let file1 = create_test_file("duplicate.md");
-        repo.insert(&file1).unwrap();
+        let existing_file = create_test_file("duplicate.md");
+        repo.insert(&existing_file).unwrap();
 
         // Try to insert batch with duplicate - should fail and rollback
-        let files = vec![
+        let batch_files = vec![
             create_test_file("new1.md"),
             create_test_file("duplicate.md"), // This will cause unique constraint violation
             create_test_file("new2.md"),
         ];
 
-        let result = repo.insert_batch(&files);
+        let result = repo.insert_batch(&batch_files);
         assert!(result.is_err());
 
         // Verify rollback - new1.md and new2.md should not be in database

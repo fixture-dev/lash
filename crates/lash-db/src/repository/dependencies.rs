@@ -13,7 +13,7 @@ pub struct DependencyRecord {
     /// Database ID
     pub id: i64,
 
-    /// Task that has the dependency (depends ON to_task_id)
+    /// Task that has the dependency (depends ON `to_task_id`)
     pub from_task_id: i64,
 
     /// Task that is depended upon (can be None for unresolved refs)
@@ -58,7 +58,7 @@ impl<'conn> DependencyRepository<'conn> {
         &self,
         from_task_id: i64,
         to_task_id: Option<i64>,
-        kind: DependencyKind,
+        kind: &DependencyKind,
         raw_ref: Option<&str>,
     ) -> DbResult<i64> {
         self.conn.execute(
@@ -168,7 +168,7 @@ impl<'conn> DependencyRepository<'conn> {
     ///
     /// This should be called after bulk dependency changes.
     /// For now, this is a placeholder - full implementation would rebuild
-    /// the dependency_closure table for O(1) reachability queries.
+    /// the `dependency_closure` table for O(1) reachability queries.
     ///
     /// # Errors
     ///
@@ -298,7 +298,7 @@ mod tests {
 
         let dep_repo = DependencyRepository::new(&conn);
         let dep_id = dep_repo
-            .insert(task1_id, Some(task2_id), DependencyKind::ExplicitId, None)
+            .insert(task1_id, Some(task2_id), &DependencyKind::ExplicitId, None)
             .unwrap();
 
         assert!(dep_id > 0);
@@ -321,7 +321,7 @@ mod tests {
 
         let dep_repo = DependencyRepository::new(&conn);
         dep_repo
-            .insert(task1_id, Some(task2_id), DependencyKind::ExplicitId, None)
+            .insert(task1_id, Some(task2_id), &DependencyKind::ExplicitId, None)
             .unwrap();
 
         let deps = dep_repo.get_dependencies(task1_id).unwrap();
@@ -346,7 +346,7 @@ mod tests {
 
         let dep_repo = DependencyRepository::new(&conn);
         dep_repo
-            .insert(task1_id, Some(task2_id), DependencyKind::ExplicitId, None)
+            .insert(task1_id, Some(task2_id), &DependencyKind::ExplicitId, None)
             .unwrap();
 
         let deps = dep_repo.get_dependents(task2_id).unwrap();
@@ -375,10 +375,10 @@ mod tests {
 
         // Create chain: task1 → task2 → task3
         dep_repo
-            .insert(task1_id, Some(task2_id), DependencyKind::ExplicitId, None)
+            .insert(task1_id, Some(task2_id), &DependencyKind::ExplicitId, None)
             .unwrap();
         dep_repo
-            .insert(task2_id, Some(task3_id), DependencyKind::ExplicitId, None)
+            .insert(task2_id, Some(task3_id), &DependencyKind::ExplicitId, None)
             .unwrap();
 
         // Adding task3 → task1 would create a cycle
@@ -411,10 +411,10 @@ mod tests {
 
         // Create chain: task1 → task2 → task3
         dep_repo
-            .insert(task1_id, Some(task2_id), DependencyKind::ExplicitId, None)
+            .insert(task1_id, Some(task2_id), &DependencyKind::ExplicitId, None)
             .unwrap();
         dep_repo
-            .insert(task2_id, Some(task3_id), DependencyKind::ExplicitId, None)
+            .insert(task2_id, Some(task3_id), &DependencyKind::ExplicitId, None)
             .unwrap();
 
         // Rebuild closure
