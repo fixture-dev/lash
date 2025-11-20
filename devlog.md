@@ -118,7 +118,7 @@ The blocker analyzer provides a solid foundation for CLI commands like:
 - `lash ready` - List tasks with no blockers (ready to work on)
 
 ### References
-- Commit: (to be added after commit)
+- Commit: d008d91
 - Design doc section 5.4: Completion semantics and blocker identification
 - Task file: `tasks/tasks.dependency-resolution.md#Task-5`
 
