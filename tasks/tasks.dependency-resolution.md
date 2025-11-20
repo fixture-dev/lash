@@ -84,38 +84,38 @@ Detect circular dependencies in the task graph using standard graph algorithms.
 
 ### Subtasks
 
-- [ ] Implement `CycleDetector` struct
-  - [ ] Use DFS with color marking (white/gray/black)
-  - [ ] Track path during traversal for cycle reporting
-- [ ] Implement `detect_cycles()` function
-  - [ ] Run DFS from all unvisited nodes
-  - [ ] Detect back edges (gray -> gray)
-  - [ ] Collect all cycles (not just first)
-  - [ ] Return cycle paths with task IDs
-- [ ] Add cycle reporting
-  - [ ] Format cycle as: Task A -> Task B -> Task C -> Task A
-  - [ ] Include file paths and line numbers
-  - [ ] Distinguish cycle types (within-file vs cross-file)
-- [ ] Implement cycle resolution suggestions
-  - [ ] Identify weakest link (e.g., directory dep vs explicit)
-  - [ ] Suggest breaking explicit dependencies
-  - [ ] Suggest restructuring hierarchy
+- [x] Implement `CycleDetector` struct
+  - [x] Use DFS with color marking (white/gray/black)
+  - [x] Track path during traversal for cycle reporting
+- [x] Implement `detect_cycles()` function
+  - [x] Run DFS from all unvisited nodes
+  - [x] Detect back edges (gray -> gray)
+  - [x] Collect all cycles (not just first)
+  - [x] Return cycle paths with task IDs
+- [x] Add cycle reporting
+  - [x] Format cycle as: Task A -> Task B -> Task C -> Task A
+  - [x] Include file paths and line numbers
+  - [x] Distinguish cycle types (within-file vs cross-file)
+- [x] Implement cycle resolution suggestions
+  - [x] Identify weakest link (e.g., directory dep vs explicit)
+  - [x] Suggest breaking explicit dependencies
+  - [x] Suggest restructuring hierarchy
 
 ### Success Criteria
 
-- Detects all cycles in arbitrary graphs
-- Correctly handles graphs with multiple disjoint cycles
-- Clear, actionable error messages for each cycle
-- No false positives or false negatives
+- [x] Detects all cycles in arbitrary graphs
+- [x] Correctly handles graphs with multiple disjoint cycles
+- [x] Clear, actionable error messages for each cycle
+- [x] No false positives or false negatives
 
 ### Tests
 
-- Unit: Acyclic graph (no cycles)
-- Unit: Simple cycle (A -> B -> A)
-- Unit: Complex cycle (A -> B -> C -> D -> B)
-- Unit: Multiple disjoint cycles
-- Unit: Self-loop (A -> A)
-- Integration: Test with fixture files containing cycles
+- [x] Unit: Acyclic graph (no cycles)
+- [x] Unit: Simple cycle (A -> B -> A)
+- [x] Unit: Complex cycle (A -> B -> C -> D -> B)
+- [x] Unit: Multiple disjoint cycles
+- [x] Unit: Self-loop (A -> A)
+- [x] Integration: Test with fixture files containing cycles
 
 ---
 
