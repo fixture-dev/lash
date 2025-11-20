@@ -1,5 +1,147 @@
 # Lash Development Log
 
+## 2025-11-20 - Incremental Graph Updates (Dependency Resolution Task 7)
+
+### Summary
+Completed Task 7: Incremental Graph Updates from `tasks/tasks.dependency-resolution.md`. Implemented comprehensive mutation operations and change tracking for `DependencyGraph`, enabling efficient incremental updates without full rebuilds. Added core mutations (remove/update nodes and edges), batch operations, and a `GraphChanges` tracking system for smart recomputation. All tests passing (30 new unit tests + 11 new doctests, 66 total graph tests).
+
+**Commit:** `c329ab6`
+
+### Implementation Overview
+
+**Phase 1 - Core Mutations:**
+- Added `GraphError` enum with three variants for precise error handling
+- Implemented five mutation methods with full invariant maintenance:
+  - `remove_node(task_id, force)` - Remove node and all edges (with safety check)
+  - `update_node(task_id, node_data)` - Replace full node metadata
+  - `update_node_status(task_id, status)` - O(1) optimized status update
+  - `remove_edge(from_id, to_id)` - Remove dependency relationship
+  - `update_edge(from_id, to_id, edge_data)` - Replace edge metadata
+- All operations maintain bidirectional edge consistency
+- 13 unit tests + 5 doctests
+
+**Phase 2 - Batch Operations:**
+- Implemented four batch methods with pre-allocation optimization:
+  - `add_nodes(nodes)` - Bulk node insertion
+  - `remove_nodes(task_ids, force)` - Bulk node removal
+  - `add_edges(edges)` - Bulk edge insertion
+  - `remove_edges(edges)` - Bulk edge removal
+- Pre-allocation minimizes HashMap reallocations during bulk operations
+- Fail-fast error handling (returns first error encountered)
+- 6 unit tests + 4 doctests
+
+**Phase 3 - Change Tracking:**
+- Implemented `GraphChanges` struct for comprehensive change tracking
+- Tracks seven change categories:
+  - Added/removed nodes
+  - Modified nodes (metadata changes)
+  - Status-only changes (optimization target)
+  - Added/removed edges
+  - Modified edges (metadata changes)
+- Change classification methods:
+  - `has_structural_changes()` - Detect graph topology changes
+  - `is_status_only()` - Identify optimization opportunities
+  - `is_empty()` - Check if any changes occurred
+- Implemented `compute_affected_nodes(graph)`:
+  - Computes transitive closure of affected nodes
+  - Propagates changes upward to all ancestors (dependents)
+  - Enables incremental status recomputation
+- Utility methods: `merge()`, `clear()`
+- 11 unit tests + 2 doctests
+
+### Key Design Decisions
+
+**Error Handling:**
+- `GraphError` enum provides specific error types:
+  - `NodeNotFound` - Missing node reference
+  - `EdgeNotFound` - Missing edge reference
+  - `NodeHasDependents` - Safety check for node removal
+- Fail-fast with clear error messages
+- Errors include relevant IDs for debugging
+
+**Optimizations:**
+- Status-only updates use O(1) in-place mutation (no cloning)
+- Batch operations pre-allocate capacity to minimize reallocations
+- Change tracking enables smart recomputation strategies:
+  - Structural changes → full cycle detection required
+  - Status-only changes → incremental status update sufficient
+  - `compute_affected_nodes()` minimizes recomputation scope
+
+**Graph Invariants:**
+- All mutation operations maintain bidirectional edge consistency
+- Forward adjacency list and reverse adjacency list always synchronized
+- Edge metadata always matches adjacency list entries
+- Node removal properly cascades to all associated edges
+
+### Test Coverage
+
+**Total Test Count:**
+- 30 new unit tests (66 total for graph module)
+- 11 new doctests (34 total for graph/exporter)
+- All 495 unit tests + 67 doctests passing
+
+**Test Categories:**
+- Phase 1: 13 tests covering all mutation operations and error cases
+- Phase 2: 6 tests covering batch operations and error handling
+- Phase 3: 11 tests covering change tracking and affected node computation
+- All tests verify graph invariants maintained after operations
+
+**Key Test Scenarios:**
+- Node removal with and without dependents (safety checks)
+- Force removal cascading to edges
+- Status-only updates preserving other metadata
+- Batch operations with partial failures
+- Change propagation through transitive dependencies
+- Graph invariant maintenance across all operations
+
+### API Additions
+
+**Exports (in `dependency/mod.rs`):**
+- `GraphError` - Error type for graph operations
+- `GraphResult<T>` - Result type alias
+- `GraphChanges` - Change tracking struct
+
+**Public Methods:**
+- Mutation: `remove_node`, `update_node`, `update_node_status`, `remove_edge`, `update_edge`
+- Batch: `add_nodes`, `remove_nodes`, `add_edges`, `remove_edges`
+- Change tracking: All `GraphChanges` methods
+
+### Performance Characteristics
+
+**Mutation Operations:**
+- `remove_node`: O(D + R) where D=dependencies, R=dependents
+- `update_node`: O(1) with HashMap lookup
+- `update_node_status`: O(1) in-place mutation (optimized)
+- `remove_edge`: O(D) to scan adjacency lists
+- `update_edge`: O(1) HashMap update
+
+**Batch Operations:**
+- Pre-allocation reduces average-case time by avoiding reallocations
+- `add_nodes(n)`: O(n) with pre-allocated capacity
+- `remove_nodes(n)`: O(n * (D + R)) worst case
+- `add_edges(e)`: O(e) with pre-allocated capacity
+- `remove_edges(e)`: O(e * D) for adjacency list scans
+
+**Change Tracking:**
+- All tracking operations: O(1) HashSet insertions
+- `compute_affected_nodes()`: O(V + E) BFS traversal
+- Enables incremental updates vastly faster than full rebuild
+
+### Future Enhancements (Deferred)
+
+- Benchmarks comparing incremental vs full rebuild (deferred to optimization phase)
+- Integration tests with full file modification workflow (deferred)
+- Transaction support for atomic multi-operation updates (if needed)
+- Persistent change log for undo/redo (if needed)
+
+### Files Modified
+
+- `crates/lash-core/src/dependency/graph.rs` - Added mutation ops, batch ops, GraphChanges
+- `crates/lash-core/src/dependency/mod.rs` - Exported new types
+- `tasks/tasks.dependency-resolution.md` - Updated with implementation details
+
+---
+
 ## 2025-11-20 - Graph Export Implementation (Dependency Resolution Task 6)
 
 ### Summary
