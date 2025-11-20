@@ -62,6 +62,59 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+### Performance Benchmarking
+
+Lash includes comprehensive benchmarks for indexing performance. Benchmarks measure performance across different project sizes and scenarios.
+
+```bash
+# Run all benchmarks
+cargo bench --package lash-db --bench indexing
+
+# Run specific benchmark
+cargo bench --package lash-db --bench indexing -- full_indexing
+
+# Quick benchmarks (faster, less accurate)
+cargo bench --package lash-db --bench indexing -- --quick
+
+# View HTML reports
+open target/criterion/report/index.html
+```
+
+**Performance targets:**
+- Small projects (10 files, ~50 tasks): <50ms
+- Medium projects (100 files, ~500 tasks): <500ms
+- Large projects (1000 files, ~5000 tasks): <5s
+
+### Performance Profiling
+
+Enable profiling to measure time spent in each indexing phase:
+
+```rust
+use lash_db::{Indexer, IndexerConfig, init_database};
+use lash_types::LashConfig;
+
+let conn = init_database(&db_path)?;
+let config = IndexerConfig::new(project_root)
+    .with_profiling(true);  // Enable profiling
+let parser_config = LashConfig::default();
+let mut indexer = Indexer::new(&conn, config, &parser_config);
+
+let report = indexer.index_project()?;
+
+// Print performance summary
+if let Some(profile) = report.profile {
+    profile.print_summary();
+    // Or export to JSON for analysis
+    println!("{}", profile.to_json_pretty());
+}
+```
+
+The profiler tracks:
+- **Phase times**: discovery, diff, parsing, database, closure_rebuild
+- **Per-file parse times**: Individual file parsing performance
+- **Database operations**: Query and insert times with row counts
+- **Total duration**: End-to-end indexing time
+
 ## Usage (Planned)
 
 ```bash

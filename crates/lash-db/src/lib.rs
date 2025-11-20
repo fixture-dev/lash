@@ -7,6 +7,8 @@
 
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
+#![allow(clippy::cast_precision_loss)] // Profiler uses f64 for presentation
+#![allow(clippy::cast_possible_truncation)] // Duration fits in u64
 
 pub mod connection;
 pub mod dependency_updater;
@@ -14,6 +16,7 @@ pub mod diff;
 pub mod error;
 pub mod indexer;
 pub mod migrations;
+pub mod profiler;
 pub mod project_root;
 pub mod repository;
 pub mod verifier;
@@ -25,6 +28,7 @@ pub use diff::{compute_index_diff, compute_index_diff_parallel, IndexDiff};
 pub use error::{DbError, DbResult};
 pub use indexer::{IndexProgress, IndexReport, Indexer, IndexerConfig, ParseError};
 pub use migrations::{run_migrations, CURRENT_SCHEMA_VERSION};
+pub use profiler::{DbOperationTiming, FileTiming, IndexProfiler, PhaseGuard, ProfileReport};
 pub use project_root::{
     find_project_root, find_project_root_from, find_project_root_with_config, is_project_root,
     ProjectRootConfig,
