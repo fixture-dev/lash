@@ -438,13 +438,13 @@ Implement the linter that validates Lash Markdown files for both syntax and sema
 **8-10 days** total for linter implementation
 
 ### Completion Criteria
-- [ ] All tasks above completed
-- [ ] 20+ linting rules implemented (syntax + semantic + cross-file)
-- [ ] Auto-formatter works without data loss
-- [ ] CLI commands functional with good UX
-- [ ] 100+ unit tests for rules
-- [ ] Integration tests for CLI
-- [ ] JSON output for machine parsing
+- [x] All tasks above completed ✅
+- [x] 20+ linting rules implemented (syntax + semantic + cross-file) ✅ (20 rules total)
+- [x] Auto-formatter works without data loss ✅ (22 tests, round-trip safe)
+- [x] CLI commands functional with good UX ✅ (`lash lint` and `lash format`)
+- [x] 100+ unit tests for rules ✅ (607 total tests across all modules)
+- [x] Integration tests for CLI ✅ (14 CLI-specific tests)
+- [x] JSON output for machine parsing ✅ (stable schema implemented)
 
 ### Linting Rules Summary
 
