@@ -33,6 +33,7 @@
 //! # Ok::<(), lash_db::DbError>(())
 //! ```
 
+use crate::dependency_updater::DependencyUpdater;
 use crate::diff::{compute_index_diff, IndexDiff};
 use crate::error::{DbError, DbResult};
 use crate::repository::{FileRepository, TaskRepository};
@@ -453,6 +454,7 @@ impl<'conn> Indexer<'conn> {
     ///          report.errors.len());
     /// # Ok::<(), lash_db::DbError>(())
     /// ```
+    #[allow(clippy::too_many_lines)]
     pub fn index_project(&mut self) -> DbResult<IndexReport> {
         let mut report = IndexReport::new();
 
@@ -573,6 +575,10 @@ impl<'conn> Indexer<'conn> {
 
             if !tasks.is_empty() {
                 task_repo.insert_batch(&tasks)?;
+
+                // Insert hierarchy dependencies for parent-child relationships
+                let dep_updater = DependencyUpdater::new(self.conn);
+                dep_updater.insert_hierarchy_dependencies(file_record.id)?;
             }
 
             report.files_processed += 1;
@@ -587,6 +593,15 @@ impl<'conn> Indexer<'conn> {
                     });
                 }
             }
+        }
+
+        // Phase 5: Rebuild dependency closure
+        // After all files are indexed and hierarchy dependencies inserted,
+        // rebuild the transitive closure table for fast dependency queries
+        if report.files_processed > 0 {
+            use crate::repository::DependencyRepository;
+            let dep_repo = DependencyRepository::new(self.conn);
+            dep_repo.rebuild_closure()?;
         }
 
         // Final progress report
@@ -900,5 +915,176 @@ mod tests {
             // Parser might not catch all errors - that's OK for this test
             eprintln!("Warning: Parser did not report expected error");
         }
+    }
+
+    #[test]
+    fn test_hierarchy_dependencies_created() {
+        use crate::dependency_updater::DependencyUpdater;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create a markdown file with hierarchical tasks
+        fs::write(
+            root.join("hierarchical.md"),
+            "# Hierarchical Tasks\n\n@id: hierarchical\n\n## Tasks\n\n- [ ] Parent Task 1\n  @id: parent1\n  - [ ] Child 1.1\n    @id: child1_1\n  - [ ] Child 1.2\n    @id: child1_2\n- [ ] Parent Task 2\n  @id: parent2\n  - [ ] Child 2.1\n    @id: child2_1\n    - [ ] Grandchild 2.1.1\n      @id: grandchild2_1_1\n",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.path().join("test.db");
+        let conn = init_database(&db_path).unwrap();
+
+        let config = IndexerConfig::new(root.to_path_buf());
+        let parser_config = LashConfig::default();
+
+        // Index the project
+        let mut indexer = Indexer::new(&conn, config, &parser_config);
+        let report = indexer.index_project().unwrap();
+
+        assert_eq!(report.files_processed, 1);
+        assert_eq!(report.files_added, 1);
+        assert_eq!(report.errors.len(), 0);
+
+        // Verify hierarchy dependencies were created
+        let updater = DependencyUpdater::new(&conn);
+        let (total, hierarchy, explicit) = updater.get_dependency_stats().unwrap();
+
+        // Should have 4 hierarchy dependencies:
+        // child1_1 -> parent1, child1_2 -> parent1, child2_1 -> parent2, grandchild2_1_1 -> child2_1
+        assert_eq!(total, 4, "Should have 4 total dependencies");
+        assert_eq!(hierarchy, 4, "Should have 4 hierarchy dependencies");
+        assert_eq!(explicit, 0, "Should have 0 explicit dependencies");
+
+        // Verify no missing hierarchy dependencies
+        let missing = updater.verify_hierarchy_dependencies().unwrap();
+        assert_eq!(missing, 0, "Should have no missing hierarchy dependencies");
+    }
+
+    #[test]
+    fn test_hierarchy_dependencies_updated_on_file_change() {
+        use crate::dependency_updater::DependencyUpdater;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create initial file with one parent and one child
+        fs::write(
+            root.join("test.md"),
+            "# Test\n\n@id: test\n\n## Tasks\n\n- [ ] Parent\n  @id: parent\n  - [ ] Child\n    @id: child\n",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.path().join("test.db");
+        let conn = init_database(&db_path).unwrap();
+
+        let config = IndexerConfig::new(root.to_path_buf());
+        let parser_config = LashConfig::default();
+
+        // Initial index
+        let mut indexer = Indexer::new(&conn, config.clone(), &parser_config);
+        indexer.index_project().unwrap();
+
+        // Verify initial state: 1 hierarchy dependency
+        let updater = DependencyUpdater::new(&conn);
+        let (total, _, _) = updater.get_dependency_stats().unwrap();
+        assert_eq!(total, 1);
+
+        // Modify file: add another child
+        fs::write(
+            root.join("test.md"),
+            "# Test\n\n@id: test\n\n## Tasks\n\n- [ ] Parent\n  @id: parent\n  - [ ] Child 1\n    @id: child1\n  - [ ] Child 2\n    @id: child2\n",
+        )
+        .unwrap();
+
+        // Re-index
+        let mut indexer2 = Indexer::new(&conn, config, &parser_config);
+        let report2 = indexer2.index_project().unwrap();
+        assert_eq!(report2.files_processed, 1);
+        assert_eq!(report2.files_updated, 1);
+
+        // Verify updated state: 2 hierarchy dependencies
+        let (total, hierarchy, _) = updater.get_dependency_stats().unwrap();
+        assert_eq!(total, 2, "Should have 2 dependencies after update");
+        assert_eq!(hierarchy, 2, "Should have 2 hierarchy dependencies");
+    }
+
+    #[test]
+    fn test_transitive_closure_built() {
+        use crate::repository::{DependencyRepository, FileRepository, TaskRepository};
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create file with deep hierarchy: gp -> p -> c
+        fs::write(
+            root.join("test.md"),
+            "# Test\n\n@id: test\n\n## Tasks\n\n- [ ] Grandparent\n  @id: gp\n  - [ ] Parent\n    @id: p\n    - [ ] Child\n      @id: c\n",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.path().join("test.db");
+        let conn = init_database(&db_path).unwrap();
+
+        let config = IndexerConfig::new(root.to_path_buf());
+        let parser_config = LashConfig::default();
+
+        // Index
+        let mut indexer = Indexer::new(&conn, config, &parser_config);
+        indexer.index_project().unwrap();
+
+        // Get task IDs
+        let task_repo = TaskRepository::new(&conn);
+
+        // Get file database ID
+        let file_repo = FileRepository::new(&conn);
+        let files = file_repo.list_all().unwrap();
+        assert_eq!(files.len(), 1, "Should have 1 file");
+        let file_db_id = files[0].id;
+
+        // Get all tasks and find by title
+        let all_tasks = task_repo.get_by_file(file_db_id).unwrap();
+        let gp_task = all_tasks
+            .iter()
+            .find(|t| t.title == "Grandparent")
+            .expect("Should find Grandparent task");
+        let p_task = all_tasks
+            .iter()
+            .find(|t| t.title == "Parent")
+            .expect("Should find Parent task");
+        let c_task = all_tasks
+            .iter()
+            .find(|t| t.title == "Child")
+            .expect("Should find Child task");
+
+        // Verify transitive dependencies
+        let dep_repo = DependencyRepository::new(&conn);
+
+        // Child should have transitive dependencies on both parent and grandparent
+        let c_all_deps = dep_repo.get_all_dependencies(c_task.id).unwrap();
+        assert_eq!(
+            c_all_deps.len(),
+            2,
+            "Child should have 2 transitive dependencies"
+        );
+        assert!(
+            c_all_deps.contains(&p_task.id),
+            "Child should depend on parent"
+        );
+        assert!(
+            c_all_deps.contains(&gp_task.id),
+            "Child should depend on grandparent"
+        );
+
+        // Parent should have transitive dependency on grandparent only
+        let p_all_deps = dep_repo.get_all_dependencies(p_task.id).unwrap();
+        assert_eq!(
+            p_all_deps.len(),
+            1,
+            "Parent should have 1 transitive dependency"
+        );
+        assert!(
+            p_all_deps.contains(&gp_task.id),
+            "Parent should depend on grandparent"
+        );
     }
 }
