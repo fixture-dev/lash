@@ -12,12 +12,14 @@
 #![allow(clippy::format_push_string)] // More readable than write!() for simple cases
 
 pub mod cli;
+pub mod config;
 pub mod formatter;
 pub mod progress;
 pub mod project_root;
 
 // Re-export commonly used types
 pub use cli::{Commands, LashCli};
+pub use config::Config;
 pub use formatter::{
     JsonFormatter, OutputFormat, OutputFormatter, QuietFormatter, TextFormatter, Verbosity,
 };

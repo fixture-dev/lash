@@ -245,27 +245,27 @@ Support project-level and user-level configuration files for customizing Lash be
 
 ### Subtasks
 
-- [ ] Define configuration schema
-  - [ ] Use `serde` with `toml` for TOML parsing
-  - [ ] Support for:
-    - [ ] Default output format
-    - [ ] Verbosity level
-    - [ ] Linter settings (depth limits, etc.)
-    - [ ] Search settings (fuzzy threshold, etc.)
-    - [ ] Agent settings (token budgets, etc.)
-- [ ] Implement configuration file locations
-  - [ ] Project: `.lash/config.toml` (in project root)
-  - [ ] User: `~/.config/lash/config.toml`
-  - [ ] Merge strategy: CLI flags > project > user > defaults
-- [ ] Implement `Config` struct
-  - [ ] Load from file(s)
-  - [ ] Merge with CLI flags
-  - [ ] Validate settings
-  - [ ] Provide defaults for all settings
-- [ ] Add configuration validation
-  - [ ] Check for unknown keys (warn)
-  - [ ] Validate value types and ranges
-  - [ ] Return helpful error messages
+- [x] Define configuration schema
+  - [x] Use `serde` with `toml` for TOML parsing
+  - [x] Support for:
+    - [x] Default output format
+    - [x] Verbosity level
+    - [x] Linter settings (depth limits, etc.)
+    - [x] Search settings (fuzzy threshold, etc.)
+    - [x] Agent settings (token budgets, etc.)
+- [x] Implement configuration file locations
+  - [x] Project: `.lash/config.toml` (in project root)
+  - [x] User: `~/.config/lash/config.toml`
+  - [x] Merge strategy: CLI flags > project > user > defaults
+- [x] Implement `Config` struct
+  - [x] Load from file(s)
+  - [x] Merge with CLI flags
+  - [x] Validate settings
+  - [x] Provide defaults for all settings
+- [x] Add configuration validation
+  - [x] Check for unknown keys (warn)
+  - [x] Validate value types and ranges
+  - [x] Return helpful error messages
 - [ ] Add `lash config` command (optional)
   - [ ] `lash config get <key>` - show current value
   - [ ] `lash config set <key> <value>` - update config
