@@ -1,5 +1,95 @@
 # Lash Development Log
 
+## 2025-11-20 - CLI Framework (Tasks 1-4)
+
+### Summary
+Completed Tasks 1-4 from `tasks/tasks.cli-framework.md`. Implemented the foundational CLI infrastructure including comprehensive argument parsing with clap, project root detection, flexible output formatting system, and progress reporting framework. Created a well-tested, trait-based design that supports both human and machine-readable output modes. All 436+ tests passing across the workspace.
+
+**Commit:** `7ed7312`
+
+### Implementation Overview
+
+**Task 1 - CLI Argument Parsing:**
+- Comprehensive clap-based CLI with all planned subcommands (lint, format, index, check-index, list, show, search, graph, check-links, agent-prompt, tui)
+- Global flags: --root, --json, --verbose (up to -vvv), --quiet, --no-color
+- Shell completion generation for bash, zsh, fish, powershell, elvish
+- Command aliases: `check` for `lint`, `fmt` for `format`
+- 20+ unit tests for CLI parsing
+- All subcommands defined with appropriate arguments and help text
+
+**Task 2 - Project Root Detection:**
+- `ProjectRootFinder` with automatic upward directory search
+- Searches for markers: `lash.index.md`, `index.lash.md`, or `.lash/` directory
+- Stops at filesystem root or home directory
+- Explicit `--root` flag with validation
+- Clear error messages showing search paths
+- Caching for discovered root (prepared for future optimizations)
+- 10 comprehensive unit tests covering various scenarios
+
+**Task 3 - Output Formatting System:**
+- `OutputFormat` enum: Text (colored, human-readable), Json (compact), JsonPretty (formatted), Quiet (minimal)
+- `OutputFormatter` trait with methods: format_success, format_error, format_warning, format_info, format_list, format_table
+- `TextFormatter` with owo-colors integration, respects NO_COLOR env var and TTY detection
+- `JsonFormatter` with structured output including metadata (status field)
+- `QuietFormatter` suppresses all non-critical output
+- `Verbosity` levels: Quiet, Normal, Verbose, Debug, Trace
+- 16 unit tests for formatter implementations
+
+**Task 4 - Progress Reporting:**
+- `ProgressReporter` trait for long-running operations (start, update, finish, set_message, start_spinner)
+- `TerminalProgressReporter` using indicatif:
+  - Progress bars with percentages and counters
+  - Spinners for indeterminate operations
+  - ETA calculation based on items per second
+  - Duration formatting (seconds, minutes, hours)
+- `JsonProgressReporter` emits structured JSON events
+- `QuietProgressReporter` no-op implementation
+- 8 unit tests including ETA and rate calculation
+
+**Infrastructure Changes:**
+- Added dependencies: clap (with color, suggestions features), clap_complete, dirs, atty
+- Created `lib.rs` to expose public API from lash-cli
+- Module structure: cli, formatter, progress, project_root
+- Integrated with existing lint and format commands
+- Added lint allow attributes for acceptable clippy warnings (precision loss in progress percentages, unused variables in stubs)
+
+### Testing
+- 50 new unit tests in lash-cli library (CLI parsing, formatters, progress, project root)
+- 14 existing tests in lash binary (lint, format commands)
+- 12 doctests demonstrating public API usage
+- All tests pass: 436+ tests across entire workspace
+- Pre-commit hooks pass: formatting, clippy, tests
+
+### Key Design Decisions
+
+**Trait-Based Design:** Used traits for `OutputFormatter` and `ProgressReporter` to enable pluggable implementations. This allows commands to work with any output format without knowing implementation details.
+
+**NO_COLOR Respect:** Automatically detects TTY and respects NO_COLOR environment variable for accessibility and piping support.
+
+**Verbosity Mapping:** Maps -v flags (0-3) to verbosity levels, allowing fine-grained control over output detail.
+
+**Progress with ETA:** Progress bars calculate items/second and estimate time remaining, providing useful feedback for long operations.
+
+**Error Messages:** Project root detection provides clear, actionable error messages showing exactly which directories were searched.
+
+**Caching Strategy:** ProjectRootFinder includes a cached_root field (currently unused) to enable future optimization where root is cached after first discovery.
+
+### Documentation
+- All public functions have doc comments with examples
+- Doctests serve as both documentation and tests
+- Module-level documentation explains purpose and usage
+- Added notes about deferred features (Unicode box drawing, multi-line progress, etc.)
+
+### Next Steps
+The CLI framework is ready for integration with upcoming commands. Future work includes:
+- Implement remaining commands (index, check-index, list, show, search, etc.)
+- Add configuration file support (Task 5: Configuration Management)
+- Implement structured logging (Task 6: Logging and Diagnostics)
+- Create command execution framework (Task 7)
+- Standardize exit codes (Task 8)
+
+---
+
 ## 2025-11-20 - Incremental Graph Updates (Dependency Resolution Task 7)
 
 ### Summary
