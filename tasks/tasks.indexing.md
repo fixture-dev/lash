@@ -31,22 +31,22 @@ Implement project root discovery logic to locate the Lash project root directory
 
 ### Subtasks
 
-- [ ] Implement `find_project_root()` function
-  - [ ] Search upward from current directory for project markers
-  - [ ] Look for `.lash/` directory (explicit marker, highest precedence)
-  - [ ] Look for `lash.index.md` file (conventional marker)
-  - [ ] Return project root path if found
-  - [ ] Return error if no root found
-- [ ] Define clear precedence rules
-  - [ ] `.lash/` directory takes precedence over `lash.index.md`
-  - [ ] Stop at filesystem root (don't search forever)
-  - [ ] Handle edge cases (permission denied, symlinks)
-- [ ] Add configuration options
-  - [ ] Allow explicit root path override (for testing)
-  - [ ] Configurable search depth limit (default: unlimited)
-- [ ] Document project root conventions
-  - [ ] Where to place `.lash/` directory
-  - [ ] Naming conventions for index file
+- [x] Implement `find_project_root()` function
+  - [x] Search upward from current directory for project markers
+  - [x] Look for `.lash/` directory (explicit marker, highest precedence)
+  - [x] Look for `lash.index.md` file (conventional marker)
+  - [x] Return project root path if found
+  - [x] Return error if no root found
+- [x] Define clear precedence rules
+  - [x] `.lash/` directory takes precedence over `lash.index.md`
+  - [x] Stop at filesystem root (don't search forever)
+  - [x] Handle edge cases (permission denied, symlinks)
+- [x] Add configuration options
+  - [x] Allow explicit root path override (for testing)
+  - [x] Configurable search depth limit (default: unlimited)
+- [x] Document project root conventions
+  - [x] Where to place `.lash/` directory
+  - [x] Naming conventions for index file
 
 ### Success Criteria
 
@@ -57,12 +57,12 @@ Implement project root discovery logic to locate the Lash project root directory
 
 ### Tests
 
-- Unit: Test with `.lash/` directory present
-- Unit: Test with `lash.index.md` file present
-- Unit: Test with both markers (verify precedence)
-- Unit: Test with no markers (verify error)
-- Unit: Test nested directory search
-- Unit: Test at filesystem root (verify termination)
+- [x] Unit: Test with `.lash/` directory present
+- [x] Unit: Test with `lash.index.md` file present
+- [x] Unit: Test with both markers (verify precedence)
+- [x] Unit: Test with no markers (verify error)
+- [x] Unit: Test nested directory search
+- [x] Unit: Test at filesystem root (verify termination)
 
 ---
 
