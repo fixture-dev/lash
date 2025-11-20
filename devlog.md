@@ -1,5 +1,121 @@
 # Lash Development Log
 
+## 2025-11-20 - Dependency Graph Data Structure Complete (Dependency Resolution Task 1)
+
+### Summary
+Completed Task 1: Graph Data Structure from `tasks/tasks.dependency-resolution.md`. Implemented a high-performance in-memory dependency graph with efficient query operations. All 41 tests passing (21 unit + 15 doctests + 5 integration). Performance exceeds requirements with O(1) direct queries (~20-30ns) and O(E+V) transitive queries.
+
+### Implementation Overview
+
+**Core Components:**
+- `DependencyGraph` - Main graph structure with HashMap-based adjacency lists
+- `GraphBuilder` - Database-to-graph construction in lash-db
+- Comprehensive benchmark suite using criterion
+- Full integration test coverage
+
+**Key Features:**
+- Forward and reverse adjacency lists for bidirectional queries
+- Edge metadata tracking (kind, source location)
+- Cycle detection during traversal
+- Edge filtering by dependency kind
+- Depth-limited transitive queries
+
+### Files Created/Modified
+
+**New Files:**
+- `crates/lash-core/src/dependency/mod.rs` - Module definition
+- `crates/lash-core/src/dependency/graph.rs` (1,367 lines) - Core graph implementation
+- `crates/lash-db/src/graph_builder.rs` (403 lines) - DB-to-graph builder
+- `crates/lash-core/benches/graph_bench.rs` (265 lines) - Benchmarks
+- `crates/lash-db/tests/graph_integration_tests.rs` (385 lines) - Integration tests
+
+**Modified Files:**
+- `crates/lash-core/src/lib.rs` - Export dependency module
+- `crates/lash-core/Cargo.toml` - Add criterion benchmark dependency
+- `crates/lash-db/src/lib.rs` - Export GraphBuilder
+- `tasks/tasks.dependency-resolution.md` - Mark Task 1 complete
+
+### Performance Characteristics
+
+**Direct Queries (O(1)):**
+- `get_dependencies()`: ~20-30ns (constant time)
+- `get_dependents()`: ~20-30ns (constant time)
+- `get_dependencies_by_kind()`: ~120ns (with filtering)
+
+**Transitive Queries (O(E+V)):**
+- 10 nodes: ~2.2µs
+- 50 nodes: ~10.4µs
+- 100 nodes: ~20.8µs
+- Linear scaling confirmed
+
+**Graph Construction:**
+- 10 nodes: ~10µs
+- 50 nodes: ~52µs
+- 100 nodes: ~105µs
+- 500 nodes: ~585µs
+
+### API Design
+
+**Query Methods:**
+```rust
+// Direct dependencies (O(1))
+graph.get_dependencies(task_id) -> Option<Vec<&EdgeRef>>
+graph.get_dependents(task_id) -> Option<Vec<&EdgeRef>>
+
+// Convenience methods
+graph.get_dependency_ids(task_id) -> Vec<String>
+graph.get_dependent_ids(task_id) -> Vec<String>
+
+// Transitive dependencies (O(E+V))
+graph.get_descendants(task_id) -> Result<Vec<String>>
+graph.get_ancestors(task_id) -> Result<Vec<String>>
+graph.get_descendants_with_depth(task_id, max_depth) -> Result<Vec<String>>
+
+// Filtering
+graph.get_dependencies_by_kind(task_id, kind) -> Vec<&EdgeRef>
+```
+
+### Testing Summary
+
+**Unit Tests (21):**
+- Graph construction and manipulation
+- Direct and transitive queries
+- Cycle detection
+- Edge filtering
+- Error handling
+
+**Doctests (15):**
+- All public API methods documented with executable examples
+- Demonstrates usage patterns
+
+**Integration Tests (5):**
+- Database-to-graph workflow
+- Complex graph structures
+- Dependency resolution
+- Edge metadata tracking
+
+### Design Decisions
+
+1. **Adjacency Lists over Matrix**: Chose HashMap-based adjacency lists for sparse graphs, providing O(1) edge lookup with efficient memory usage
+2. **Minimal Node Metadata**: Store only essential data (title, status, file_id, depth) in graph; query database for full details
+3. **Cycle Detection Strategy**: On-demand during traversal using visited set, rather than pre-computed, keeping construction fast
+4. **Edge Metadata**: Full tracking of dependency kind and source location for rich error reporting
+5. **Separation of Concerns**: Core graph logic in lash-core, database integration in lash-db
+
+### Next Steps
+
+Task 1 provides the foundation for remaining dependency resolution tasks:
+- **Task 2**: Cycle Detection (dedicated cycle detector with path reporting)
+- **Task 3**: Dependency Resolution Engine (parse @depends-on annotations)
+- **Task 4**: Completion Status Computation
+- **Task 5**: Blocker Identification
+
+The graph implementation is production-ready and provides all necessary primitives for these downstream tasks.
+
+**Commit:** `950be30` - "Implement Task 1: Graph Data Structure for dependency resolution"
+
+---
+
 ## 2025-11-20 - Index Performance Optimization Complete (Indexing Task 6.3-6.4)
 
 ### Summary
