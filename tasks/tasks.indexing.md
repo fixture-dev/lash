@@ -78,28 +78,28 @@ Implement recursive directory traversal to discover all Markdown files in a Lash
 
 ### Subtasks
 
-- [ ] Implement `FileWalker` struct with configuration
-  - [ ] Accept project root path (from Task 0)
-  - [ ] Configurable file extensions (`.md`)
-  - [ ] Exclude patterns (`.git/`, `node_modules/`, `target/`, `.lash/db.sqlite`)
-  - [ ] Respect `.gitignore` by default (add `--no-ignore` override)
-  - [ ] Follow symlinks option (default: false for safety)
-- [ ] Implement `discover_files()` function
-  - [ ] Start from project root (provided by Task 0)
-  - [ ] Recursively walk directories using `ignore` crate
-  - [ ] Filter by extension and patterns
-  - [ ] Return list of file paths with metadata
-- [ ] Add file metadata collection
-  - [ ] Absolute path
-  - [ ] Relative path from project root
-  - [ ] File size
-  - [ ] Modification time (mtime)
-  - [ ] Compute content hash (blake3 or similar)
-- [ ] Handle edge cases
-  - [ ] Permission denied errors (skip and warn)
-  - [ ] Broken symlinks (skip and warn)
-  - [ ] Very large directories (streaming/iterator approach)
-  - [ ] Unicode filenames
+- [x] Implement `FileWalker` struct with configuration
+  - [x] Accept project root path (from Task 0)
+  - [x] Configurable file extensions (`.md`)
+  - [x] Exclude patterns (`.git/`, `node_modules/`, `target/`, `.lash/db.sqlite`)
+  - [x] Respect `.gitignore` by default (add `--no-ignore` override)
+  - [x] Follow symlinks option (default: false for safety)
+- [x] Implement `discover_files()` function
+  - [x] Start from project root (provided by Task 0)
+  - [x] Recursively walk directories using `ignore` crate
+  - [x] Filter by extension and patterns
+  - [x] Return list of file paths with metadata
+- [x] Add file metadata collection
+  - [x] Absolute path
+  - [x] Relative path from project root
+  - [x] File size
+  - [x] Modification time (mtime)
+  - [x] Compute content hash (blake3 or similar)
+- [x] Handle edge cases
+  - [x] Permission denied errors (skip and warn)
+  - [x] Broken symlinks (skip and warn)
+  - [x] Very large directories (streaming/iterator approach)
+  - [x] Unicode filenames
 
 ### Success Criteria
 
@@ -111,10 +111,10 @@ Implement recursive directory traversal to discover all Markdown files in a Lash
 
 ### Tests
 
-- Unit: Test walker on fixture directories with various structures
-- Unit: Test exclusion patterns work correctly
-- Unit: Test symlink handling
-- Integration: Test on real project structure
+- [x] Unit: Test walker on fixture directories with various structures
+- [x] Unit: Test exclusion patterns work correctly
+- [x] Unit: Test symlink handling
+- [x] Integration: Test on real project structure
 
 ---
 
