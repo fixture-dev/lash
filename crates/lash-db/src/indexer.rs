@@ -557,70 +557,76 @@ impl<'conn> Indexer<'conn> {
         }
 
         // Phase 4: Update database
-        // Note: We don't use a transaction here because repository methods handle their own
-        // transactions for batch operations. For individual file operations, SQLite's
-        // default behavior (each statement is a transaction) is sufficient.
-        {
+        let (normalized_files, path_to_id) = {
             let _db_guard = profiler.start_phase("database");
-
-            // Delete removed files
             let file_repo = FileRepository::new(self.conn);
+
+            // Delete removed files first
             for deleted_path in &diff.deleted_files {
                 file_repo.delete(deleted_path)?;
                 report.files_deleted += 1;
             }
-        }
 
-        // Record detailed DB operations outside the phase guard
-        let file_repo = FileRepository::new(self.conn);
+            // Normalize all paths to be relative to project root
+            let normalized_files: Vec<TaskFile> = successful_files
+                .into_iter()
+                .map(|mut task_file| {
+                    let relative_path = task_file
+                        .path
+                        .strip_prefix(&self.config.project_root)
+                        .map_or_else(|_| task_file.path.clone(), std::path::Path::to_path_buf);
+                    task_file.path = relative_path;
+                    task_file
+                })
+                .collect();
 
-        // Insert/update files and tasks
-        for mut task_file in successful_files {
-            // Normalize path to be relative to project root
-            let relative_path = task_file
-                .path
-                .strip_prefix(&self.config.project_root)
-                .map_or_else(|_| task_file.path.clone(), std::path::Path::to_path_buf);
+            // Get list of existing paths BEFORE upsert for accurate reporting
+            let existing_paths: std::collections::HashSet<_> = normalized_files
+                .iter()
+                .filter_map(|file| {
+                    file_repo
+                        .get_by_path(&file.path)
+                        .ok()
+                        .flatten()
+                        .map(|_| file.path.clone())
+                })
+                .collect();
 
-            // Update the task file's path to be relative
-            task_file.path.clone_from(&relative_path);
+            // Batch upsert all files at once
+            // The upsert will handle both inserts and updates efficiently
+            let path_to_id = file_repo.upsert_batch(&normalized_files)?;
 
-            // Check if file already exists in DB
-            let existing = file_repo.get_by_path(&relative_path)?;
-            let is_update = existing.is_some();
-
-            let start = Instant::now();
-            if is_update {
-                // Update existing file
-                file_repo.update(&task_file)?;
-                profiler.record_db_operation("update_file", 1, start.elapsed());
-                report.files_updated += 1;
-            } else {
-                // Insert new file
-                file_repo.insert(&task_file)?;
-                profiler.record_db_operation("insert_file", 1, start.elapsed());
-                report.files_added += 1;
+            // Count updates vs inserts based on which files existed before upsert
+            for file in &normalized_files {
+                if existing_paths.contains(&file.path) {
+                    report.files_updated += 1;
+                } else {
+                    report.files_added += 1;
+                }
             }
 
-            // Get the file's database ID
-            let file_record = file_repo
-                .get_by_path(&relative_path)?
-                .ok_or_else(|| DbError::Other("Failed to retrieve inserted file".to_string()))?;
+            (normalized_files, path_to_id)
+        };
 
-            // Delete existing tasks for this file (for updates only)
-            // This ensures we replace all tasks when re-indexing
-            if is_update {
-                self.conn
-                    .execute("DELETE FROM tasks WHERE file_id = ?1", [file_record.id])?;
-            }
+        // Now process tasks for each file (outside the phase guard to allow profiling)
+        let task_repo = TaskRepository::new(self.conn);
+        let dep_updater = DependencyUpdater::new(self.conn);
 
-            // Insert tasks
-            let task_repo = TaskRepository::new(self.conn);
+        for task_file in normalized_files {
+            let file_db_id = path_to_id
+                .get(&task_file.path)
+                .ok_or_else(|| DbError::Other("File ID not found after upsert".to_string()))?;
+
+            // Delete existing tasks for this file (ensures clean re-index)
+            self.conn
+                .execute("DELETE FROM tasks WHERE file_id = ?1", [file_db_id])?;
+
+            // Insert tasks for this file
             let tasks: Vec<_> = task_file
                 .tasks
                 .tasks()
                 .iter()
-                .map(|task| (task.clone(), file_record.id, task_file.id.clone()))
+                .map(|task| (task.clone(), *file_db_id, task_file.id.clone()))
                 .collect();
 
             if !tasks.is_empty() {
@@ -630,8 +636,7 @@ impl<'conn> Indexer<'conn> {
 
                 // Insert hierarchy dependencies for parent-child relationships
                 let start = Instant::now();
-                let dep_updater = DependencyUpdater::new(self.conn);
-                dep_updater.insert_hierarchy_dependencies(file_record.id)?;
+                dep_updater.insert_hierarchy_dependencies(*file_db_id)?;
                 profiler.record_db_operation("insert_dependencies", tasks.len(), start.elapsed());
             }
 
@@ -643,7 +648,7 @@ impl<'conn> Indexer<'conn> {
                     callback(IndexProgress {
                         files_processed: report.files_processed,
                         total_files,
-                        current_file: Some(relative_path.clone()),
+                        current_file: Some(task_file.path.clone()),
                     });
                 }
             }

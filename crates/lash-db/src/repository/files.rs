@@ -349,6 +349,71 @@ impl<'conn> FileRepository<'conn> {
         tx.commit()?;
         Ok(())
     }
+
+    /// Upsert (insert or update) multiple files in a single batch transaction
+    ///
+    /// Uses `SQLite`'s `INSERT ... ON CONFLICT ... DO UPDATE` for efficient upserts.
+    /// This is significantly faster than checking existence and then doing separate
+    /// insert/update operations.
+    ///
+    /// Returns a map of file paths to their database IDs.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if any operation fails or if metadata serialization fails.
+    pub fn upsert_batch(
+        &self,
+        files: &[TaskFile],
+    ) -> DbResult<std::collections::HashMap<PathBuf, i64>> {
+        use std::collections::HashMap;
+
+        let tx = self.conn.unchecked_transaction()?;
+        let mut path_to_id = HashMap::new();
+
+        for file in files {
+            let metadata_json = serde_json::to_string(&file.metadata)?;
+            let status = file.compute_status();
+            #[allow(clippy::cast_possible_wrap)]
+            let mtime = file
+                .mtime
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| DbError::Other(format!("Invalid mtime: {e}")))?
+                .as_secs() as i64;
+
+            tx.execute(
+                "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(path) DO UPDATE SET
+                   file_id = excluded.file_id,
+                   title = excluded.title,
+                   hash = excluded.hash,
+                   mtime = excluded.mtime,
+                   status = excluded.status,
+                   metadata = excluded.metadata",
+                (
+                    file.path.to_string_lossy().as_ref(),
+                    &file.id,
+                    &file.title,
+                    &file.hash,
+                    mtime,
+                    status.as_str(),
+                    metadata_json,
+                ),
+            )?;
+
+            // Get the file's database ID
+            let file_id: i64 = tx.query_row(
+                "SELECT id FROM files WHERE path = ?1",
+                [file.path.to_string_lossy().as_ref()],
+                |row| row.get(0),
+            )?;
+
+            path_to_id.insert(file.path.clone(), file_id);
+        }
+
+        tx.commit()?;
+        Ok(path_to_id)
+    }
 }
 
 #[cfg(test)]
@@ -526,6 +591,86 @@ mod tests {
 
         let all_files = repo.list_all().unwrap();
         assert_eq!(all_files.len(), 3);
+    }
+
+    #[test]
+    fn test_upsert_batch_insert() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        let files = vec![
+            create_test_file("file1.md"),
+            create_test_file("file2.md"),
+            create_test_file("file3.md"),
+        ];
+
+        let path_to_id = repo.upsert_batch(&files).unwrap();
+
+        assert_eq!(path_to_id.len(), 3);
+        assert!(path_to_id.contains_key(&PathBuf::from("file1.md")));
+        assert!(path_to_id.contains_key(&PathBuf::from("file2.md")));
+        assert!(path_to_id.contains_key(&PathBuf::from("file3.md")));
+
+        let all_files = repo.list_all().unwrap();
+        assert_eq!(all_files.len(), 3);
+    }
+
+    #[test]
+    fn test_upsert_batch_update() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        // First insert
+        let mut file = create_test_file("test.md");
+        file.title = "Original Title".to_string();
+        repo.insert(&file).unwrap();
+
+        // Now upsert with updated title
+        file.title = "Updated Title".to_string();
+        file.hash = "new_hash".to_string();
+        let path_to_id = repo.upsert_batch(&[file]).unwrap();
+
+        assert_eq!(path_to_id.len(), 1);
+
+        // Verify it was updated, not duplicated
+        let all_files = repo.list_all().unwrap();
+        assert_eq!(all_files.len(), 1);
+        assert_eq!(all_files[0].title, "Updated Title");
+        assert_eq!(all_files[0].hash, "new_hash");
+    }
+
+    #[test]
+    #[allow(clippy::similar_names)]
+    fn test_upsert_batch_mixed() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        // Insert one file first
+        let file1 = create_test_file("file1.md");
+        repo.insert(&file1).unwrap();
+
+        // Now upsert batch with one existing and two new
+        let mut file1_updated = create_test_file("file1.md");
+        file1_updated.title = "Updated".to_string();
+        let batch_files = vec![
+            file1_updated,
+            create_test_file("file2.md"),
+            create_test_file("file3.md"),
+        ];
+
+        let path_to_id = repo.upsert_batch(&batch_files).unwrap();
+
+        assert_eq!(path_to_id.len(), 3);
+
+        let all_files = repo.list_all().unwrap();
+        assert_eq!(all_files.len(), 3);
+
+        // Verify file1 was updated
+        let file1_record = repo.get_by_path(Path::new("file1.md")).unwrap().unwrap();
+        assert_eq!(file1_record.title, "Updated");
     }
 
     #[test]
