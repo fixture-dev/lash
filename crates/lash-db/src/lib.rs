@@ -14,6 +14,7 @@ pub mod connection;
 pub mod dependency_updater;
 pub mod diff;
 pub mod error;
+pub mod graph_builder;
 pub mod indexer;
 pub mod migrations;
 pub mod profiler;
@@ -26,6 +27,7 @@ pub use connection::{get_schema_version, init_database, open_database, set_schem
 pub use dependency_updater::DependencyUpdater;
 pub use diff::{compute_index_diff, compute_index_diff_parallel, IndexDiff};
 pub use error::{DbError, DbResult};
+pub use graph_builder::GraphBuilder;
 pub use indexer::{IndexProgress, IndexReport, Indexer, IndexerConfig, ParseError};
 pub use migrations::{run_migrations, CURRENT_SCHEMA_VERSION};
 pub use profiler::{DbOperationTiming, FileTiming, IndexProfiler, PhaseGuard, ProfileReport};
