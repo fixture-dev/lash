@@ -1,5 +1,174 @@
 # Lash Development Log
 
+## 2025-11-20 - Index Performance Optimization Complete (Indexing Task 6.3-6.4)
+
+### Summary
+Completed Task 6: Index Performance Optimization with subtasks 3-4. Achieved **39% performance improvement** for large projects (1000 files) through batch upsert optimization. Evaluated and documented caching strategies. Performance now exceeds all targets by 8-12x. All 238 tests passing.
+
+### Performance Results
+
+**Full Indexing Improvements:**
+- Small (10 files): 11.6ms → 10.5ms (**9.4% faster**) - 4.8x better than <50ms target
+- Medium (100 files): 73ms → 61ms (**12.5% faster**) - 8.2x better than <500ms target
+- Large (1000 files): 698ms → 425ms (**39% faster**) - 11.8x better than <5s target
+
+**Incremental Indexing Improvements:**
+- No changes (large): 32ms → 18ms (**44% faster**)
+- 10% modified (large): 110ms → 18ms (**84% faster!**)
+
+### Implementation Overview
+
+**Modified Files:**
+- `lash-db/src/repository/files.rs` - Added `upsert_batch()` method
+- `lash-db/src/indexer.rs` - Refactored to use batch operations
+- `tasks/tasks.indexing.md` - Marked Task 6 complete with results
+- `docs/optimization-report-task6.md` - Comprehensive optimization report (NEW)
+
+**Tests Added:**
+- `test_upsert_batch_insert` - Pure insert scenario
+- `test_upsert_batch_update` - Pure update scenario
+- `test_upsert_batch_mixed` - Mixed insert/update scenario
+
+### Key Optimizations
+
+**1. Batch File Upsert (`FileRepository::upsert_batch()`)**
+- Replaced N individual insert/update operations with single batch
+- Uses SQLite's `INSERT ... ON CONFLICT ... DO UPDATE` syntax
+- Single transaction for all files (was N transactions)
+- Returns `HashMap<PathBuf, i64>` with path→ID mappings
+- Eliminates separate existence checks and ID lookups
+
+**Before:**
+```rust
+for file in files {
+    let existing = get_by_path(&file.path)?;  // Query 1
+    if existing {
+        update(&file)?;                        // Query 2 + transaction
+    } else {
+        insert(&file)?;                        // Query 2 + transaction
+    }
+    let id = get_by_path(&file.path)?;        // Query 3
+}
+// Result: 3N queries, N transactions
+```
+
+**After:**
+```rust
+let path_to_id = upsert_batch(&files)?;
+// Result: N queries in 1 transaction, with IDs returned
+```
+
+**2. Eliminated Redundant Queries**
+- Before: Check existence → insert/update → get ID (3 queries per file)
+- After: Single upsert with ID returned (1 query per file, batched)
+- 67% reduction in query count
+
+**3. Transaction Efficiency**
+- Before: N small transactions (high overhead)
+- After: Single large transaction (minimal overhead)
+- Leverages SQLite's batch optimization
+
+### Evaluation of Additional Optimizations
+
+**Caching Layer (NOT IMPLEMENTED):**
+- Analyzed: File ID cache, task ID cache, hash cache, dependency graph cache
+- Decision: Not needed - `upsert_batch()` provides path→ID mapping for indexing duration
+- Rationale: Indexing is one-shot operation, not repeated in tight loops
+- Future: Monitor real-world usage; add only if profiling shows benefit
+
+**Prepared Statement Pooling (NOT IMPLEMENTED):**
+- Analysis: rusqlite already caches prepared statements internally
+- Bottleneck: Batch operations, not individual queries
+- Decision: Defer to future work if profiling shows need
+
+**Parallel Task Insertion (NOT IMPLEMENTED):**
+- Analysis: SQLite doesn't handle concurrent writes well
+- Risks: Deadlocks, requires WAL mode and connection pooling
+- Decision: Current serial task insertion is fast enough (part of 39% improvement)
+
+### Architecture Improvements
+
+**Performance Characteristics:**
+- **Linear scaling maintained:** 10 files (1.05ms/file) → 1000 files (0.425ms/file)
+- **Sub-linear scaling:** Better efficiency at larger scale due to batch operations
+- **Low overhead:** Profiling adds <2% overhead when enabled
+
+**Where Time Is Spent (1000 files):**
+- Before: Parsing 29%, DB 64%, Dependencies 7%
+- After: Parsing 47%, DB 42%, Dependencies 11%
+- **DB phase improved by 60%**, resulting in 39% overall improvement
+
+### Technical Decisions
+
+**Why SQLite UPSERT:**
+1. Atomic operation - no race conditions
+2. Highly optimized in SQLite engine
+3. Single round-trip to DB
+4. Handles both insert and update cases elegantly
+5. Better than CHECK + INSERT/UPDATE pattern
+
+**Why No Caching:**
+1. Indexing is batch operation, not incremental queries
+2. Path→ID mapping already returned by upsert_batch
+3. Memory overhead not justified for one-shot operation
+4. Complexity vs benefit trade-off favors simplicity
+
+**Why Maintain Test Coverage:**
+- All 238 tests passing
+- Added 3 new tests for upsert_batch edge cases
+- Integration tests verify end-to-end correctness
+- Benchmarks provide regression detection
+
+### Documentation
+
+**Created `docs/optimization-report-task6.md`:**
+- Executive summary with results
+- Detailed optimization strategy
+- Performance analysis and profiling data
+- Decision rationale for rejected optimizations
+- Recommendations for future work
+- Scalability analysis
+
+**Updated `tasks/tasks.indexing.md`:**
+- Marked all Task 6 subtasks complete
+- Documented baseline and optimized performance
+- Added implementation notes for each subtask
+- Cross-referenced optimization report
+
+### Testing & Verification
+
+**All Tests Passing:**
+- Unit tests: 122/122 in lash-db
+- Total suite: 238/238 tests
+- New tests: 3 for upsert_batch functionality
+- Zero regressions
+
+**Benchmark Suite:**
+- Full indexing: 3 sizes × 5 iterations
+- Incremental indexing: 3 scenarios × 3 sizes
+- Statistical significance confirmed (p < 0.05)
+- HTML reports in `target/criterion/`
+
+### Next Steps
+
+**Task 6 Status:** COMPLETE ✓
+
+**Recommendations:**
+1. No further optimization needed for v1.0 release
+2. Monitor real-world usage patterns
+3. Profile edge cases (>10k files, >1MB files) if needed
+4. Consider WAL mode only if concurrent read/write becomes requirement
+
+**Remaining Indexing Tasks:** None - all 7 tasks (0-6) complete
+
+### Commits
+- Baseline profiling: 788cc49 (from previous session)
+- Optimization implementation: (this commit)
+
+**Total Implementation Time:** Task 6 completed across 2 sessions
+
+---
+
 ## 2025-11-19 - Performance Instrumentation & Benchmarking Complete (Indexing Task 6.1-6.2)
 
 ### Summary

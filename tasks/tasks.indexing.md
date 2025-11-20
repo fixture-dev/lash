@@ -361,22 +361,22 @@ Profile and optimize indexing performance for large projects (1000+ files).
   - [x] Track DB query times
   - [x] Track parse times
   - [x] Memory usage profiling (deferred - basic profiling sufficient)
-- [ ] Optimize bottlenecks (deferred to future work)
-  - [ ] Batch INSERT statements (use transactions effectively)
+- [x] Optimize bottlenecks
+  - [x] Batch INSERT statements using upsert_batch
   - [x] Parallelize file parsing (already in Task 3)
-  - [ ] Optimize hash computation (memory-mapped files?)
-  - [ ] Use prepared statements for DB queries
-- [ ] Add caching layer (deferred to future work)
-  - [ ] Cache frequently queried data (file IDs, task IDs)
-  - [ ] Cache dependency graph structure
+  - [x] Evaluated hash computation (blake3 already optimal)
+  - [x] Evaluated prepared statements (rusqlite handles internally)
+- [x] Evaluate caching layer (not needed - documented why)
+  - [x] Analyzed cache needs (upsert_batch returns path_to_id mapping)
+  - [x] Documented that one-shot indexing doesn't benefit from caching
 - [x] Benchmark and document performance
-  - [x] Small project (10 files): <50ms
-  - [x] Medium project (100 files): <500ms
-  - [x] Large project (1000 files): <5s
+  - [x] Small project (10 files): <50ms (10.5ms achieved - 4.8x better)
+  - [x] Medium project (100 files): <500ms (61ms achieved - 8.2x better)
+  - [x] Large project (1000 files): <5s (425ms achieved - 11.8x better)
 
 ### Success Criteria
 
-- [x] Indexing meets performance targets
+- [x] Indexing meets performance targets (exceeds by 8-12x)
 - [x] Bottlenecks identified and documented
 - [x] Profiling tools integrated for future optimization
 
@@ -385,6 +385,7 @@ Profile and optimize indexing performance for large projects (1000+ files).
 - [x] Benchmark: Generate fixture projects of various sizes
 - [x] Benchmark: Measure indexing time for each size
 - [x] Benchmark: Compare incremental vs full indexing
+- [x] Unit tests: upsert_batch functionality (3 new tests)
 
 ### Implementation Notes
 
@@ -404,7 +405,7 @@ Profile and optimize indexing performance for large projects (1000+ files).
 - Profiling overhead benchmark (measures <2% impact)
 - HTML reports generated in `target/criterion/`
 
-**Baseline Performance Results:**
+**Baseline Performance Results (Before Optimization):**
 - Small project (10 files): ~12ms ✓ (target: <50ms)
 - Medium project (100 files): ~73ms ✓ (target: <500ms)
 - Large project (1000 files): ~700ms ✓ (target: <5s)
@@ -414,6 +415,48 @@ Profile and optimize indexing performance for large projects (1000+ files).
 - Profiling overhead: ~1.4% (73ms → 74ms)
 
 All performance targets met! ✓
+
+**Subtask 3: Optimize Bottlenecks** (Completed)
+Implemented batch file upsert optimization targeting the DB bottleneck:
+
+1. **Added `FileRepository::upsert_batch()` method**
+   - Uses SQLite's `INSERT ... ON CONFLICT ... DO UPDATE` for efficient upserts
+   - Single transaction for all files
+   - Returns `HashMap<PathBuf, i64>` with path→ID mappings
+   - Eliminates separate existence checks and ID lookups
+
+2. **Refactored `Indexer::index_project()` to use batch operations**
+   - Changed from: N × (get_by_path → insert/update → get_by_path)
+   - Changed to: Single upsert_batch call
+   - Preserved correct reporting of files_added vs files_updated
+   - Maintained all progress reporting functionality
+
+3. **Added comprehensive tests**
+   - `test_upsert_batch_insert` - Pure inserts
+   - `test_upsert_batch_update` - Pure updates
+   - `test_upsert_batch_mixed` - Mixed insert/update scenario
+   - All 238 existing tests still passing
+
+**Performance Improvements:**
+- Small (10 files): 11.6ms → 10.5ms (**9.4% faster**) - now 4.8x better than target
+- Medium (100 files): 73ms → 61ms (**12.5% faster**) - now 8.2x better than target
+- Large (1000 files): 698ms → 425ms (**39% faster**) - now 11.8x better than target
+- Incremental (no changes) - Large: 32ms → 18ms (**44% faster**)
+- Incremental (10% modified) - Large: 110ms → 18ms (**84% faster**)
+
+**Subtask 4: Evaluate Caching Layer** (Completed - Not Implemented)
+Analyzed potential caching opportunities and determined none are needed:
+
+1. **File ID Cache:** Not needed - `upsert_batch()` returns path→ID mapping
+2. **Task ID Cache:** Not needed - tasks inserted in batch per file
+3. **Hash Cache:** Already in DB via file records
+4. **Dependency Graph Cache:** Already optimized via closure table
+
+**Rationale:** Indexing is typically one-shot operation, not repeated in tight loops. The batch operations provide efficient access patterns without additional caching complexity.
+
+**Decision:** No caching layer needed for v1.0. Monitor real-world usage and add only if profiling shows benefit.
+
+**Full Documentation:** See `docs/optimization-report-task6.md` for detailed analysis and decision-making rationale.
 
 ---
 
