@@ -39,7 +39,9 @@ pub use blocker_analyzer::{
     BlockerAnalyzer, BlockerChain, BlockerInfo, BlockerReport, BlockerSuggestion,
 };
 pub use cycle_detector::{Cycle, CycleDetector, CycleReport, CycleSuggestion, SuggestionAction};
-pub use graph::{DependencyGraph, EdgeData, EdgeId, EdgeRef, NodeData};
+pub use graph::{
+    DependencyGraph, EdgeData, EdgeId, EdgeRef, GraphChanges, GraphError, GraphResult, NodeData,
+};
 pub use graph_exporter::{FilterOptions, GraphExporter};
 pub use resolver::{
     DependencyResolver, ResolutionError, ResolutionErrorKind, ResolvedDependency, ResolverResult,
