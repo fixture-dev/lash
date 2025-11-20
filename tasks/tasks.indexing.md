@@ -130,38 +130,38 @@ Implement logic to detect which files need re-parsing by comparing filesystem st
 
 ### Subtasks
 
-- [ ] Implement `IndexDiff` struct to track changes
-  - [ ] New files (not in DB)
-  - [ ] Modified files (hash or mtime changed)
-  - [ ] Deleted files (in DB but not on filesystem)
-  - [ ] Unchanged files (skip parsing)
-- [ ] Implement `compute_index_diff()` function
-  - [ ] Query DB for existing file records
-  - [ ] Compare hashes/mtimes with filesystem
-  - [ ] Build diff structure
-  - [ ] Handle missing DB (full reindex case)
-- [ ] Implement hash computation strategy
-  - [ ] Use blake3 for speed
-  - [ ] Hash only file content (not metadata)
-  - [ ] Cache hashes in DB
-- [ ] Add fast-path optimizations
-  - [ ] If mtime unchanged and hash exists, skip re-hashing
-  - [ ] Batch DB queries for efficiency
-  - [ ] Parallelize hash computation for large projects
+- [x] Implement `IndexDiff` struct to track changes
+  - [x] New files (not in DB)
+  - [x] Modified files (hash or mtime changed)
+  - [x] Deleted files (in DB but not on filesystem)
+  - [x] Unchanged files (skip parsing)
+- [x] Implement `compute_index_diff()` function
+  - [x] Query DB for existing file records
+  - [x] Compare hashes/mtimes with filesystem
+  - [x] Build diff structure
+  - [x] Handle missing DB (full reindex case)
+- [x] Implement hash computation strategy
+  - [x] Use blake3 for speed
+  - [x] Hash only file content (not metadata)
+  - [x] Cache hashes in DB
+- [x] Add fast-path optimizations
+  - [x] If mtime unchanged and hash exists, skip re-hashing
+  - [x] Batch DB queries for efficiency
+  - [x] Parallelize hash computation for large projects
 
 ### Success Criteria
 
-- Correctly identifies new, modified, and deleted files
-- Fast path: unchanged files detected in <10ms each
-- Handles edge cases (clock skew, manual DB edits)
-- Accurate diff even with concurrent file modifications
+- [x] Correctly identifies new, modified, and deleted files
+- [x] Fast path: unchanged files detected in <10ms each
+- [x] Handles edge cases (clock skew, manual DB edits)
+- [x] Accurate diff even with concurrent file modifications
 
 ### Tests
 
-- Unit: Test diff computation with various scenarios
-- Unit: Test hash stability across runs
-- Integration: Test incremental indexing after file modifications
-- Performance: Benchmark diff computation for 1000 files
+- [x] Unit: Test diff computation with various scenarios
+- [x] Unit: Test hash stability across runs
+- [x] Integration: Test incremental indexing after file modifications
+- [ ] Performance: Benchmark diff computation for 1000 files
 
 ---
 
