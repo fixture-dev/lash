@@ -2,7 +2,7 @@
 
 **Module:** `lash-db` (indexing layer)
 **Dependencies:** tasks.sqlite-schema.md, tasks.markdown-parser.md, tasks.core-data-model.md
-**Effort:** 8-12 days
+**Effort:** 8.5-12.5 days (includes Task 0: 0.5 days)
 **Priority:** CRITICAL
 
 ## Overview
@@ -19,11 +19,58 @@ From design-doc.md:
 
 ---
 
+## Task 0: Project Root Discovery
+
+**Priority:** CRITICAL
+**Effort:** 0.5 days
+**Depends on:** None
+
+### Description
+
+Implement project root discovery logic to locate the Lash project root directory. This is a foundational task required by all other indexing components.
+
+### Subtasks
+
+- [ ] Implement `find_project_root()` function
+  - [ ] Search upward from current directory for project markers
+  - [ ] Look for `.lash/` directory (explicit marker, highest precedence)
+  - [ ] Look for `lash.index.md` file (conventional marker)
+  - [ ] Return project root path if found
+  - [ ] Return error if no root found
+- [ ] Define clear precedence rules
+  - [ ] `.lash/` directory takes precedence over `lash.index.md`
+  - [ ] Stop at filesystem root (don't search forever)
+  - [ ] Handle edge cases (permission denied, symlinks)
+- [ ] Add configuration options
+  - [ ] Allow explicit root path override (for testing)
+  - [ ] Configurable search depth limit (default: unlimited)
+- [ ] Document project root conventions
+  - [ ] Where to place `.lash/` directory
+  - [ ] Naming conventions for index file
+
+### Success Criteria
+
+- Correctly finds project root in typical project layouts
+- Handles nested projects (stops at nearest root)
+- Clear error message when no root found
+- Performance: <10ms for typical case
+
+### Tests
+
+- Unit: Test with `.lash/` directory present
+- Unit: Test with `lash.index.md` file present
+- Unit: Test with both markers (verify precedence)
+- Unit: Test with no markers (verify error)
+- Unit: Test nested directory search
+- Unit: Test at filesystem root (verify termination)
+
+---
+
 ## Task 1: File System Walker
 
 **Priority:** CRITICAL
 **Effort:** 1-2 days
-**Depends on:** tasks.core-data-model.md#1
+**Depends on:** Task 0
 
 ### Description
 
@@ -32,13 +79,14 @@ Implement recursive directory traversal to discover all Markdown files in a Lash
 ### Subtasks
 
 - [ ] Implement `FileWalker` struct with configuration
-  - [ ] Support for starting from project root
+  - [ ] Accept project root path (from Task 0)
   - [ ] Configurable file extensions (`.md`)
-  - [ ] Exclude patterns (`.git/`, `node_modules/`, etc.)
+  - [ ] Exclude patterns (`.git/`, `node_modules/`, `target/`, `.lash/db.sqlite`)
+  - [ ] Respect `.gitignore` by default (add `--no-ignore` override)
   - [ ] Follow symlinks option (default: false for safety)
 - [ ] Implement `discover_files()` function
-  - [ ] Start from project root (locate `lash.index.md` or `.lash/`)
-  - [ ] Recursively walk directories
+  - [ ] Start from project root (provided by Task 0)
+  - [ ] Recursively walk directories using `ignore` crate
   - [ ] Filter by extension and patterns
   - [ ] Return list of file paths with metadata
 - [ ] Add file metadata collection
@@ -316,12 +364,20 @@ Profile and optimize indexing performance for large projects (1000+ files).
 
 ---
 
+## Design Decisions (Resolved)
+
+- **Hash algorithm:** blake3 ✅ (10x faster than SHA-256, sufficient for integrity checking)
+- **Parallelism level:** Auto-detect CPU cores with `--jobs N` override ✅
+- **Transaction granularity:** Single transaction with savepoints every 100 files ✅
+- **Error handling:** Continue on parse errors and collect all ✅ (better UX, consistent with parser)
+- **Project root markers:** `.lash/` directory (precedence) or `lash.index.md` file ✅
+- **.gitignore respect:** Yes by default, with `--no-ignore` flag ✅
+- **File walking:** Use `ignore` crate (battle-tested, same as ripgrep) ✅
+
 ## Open Questions
 
-- **Hash algorithm:** blake3 vs SHA-256? (blake3 is faster)
-- **Parallelism level:** Auto-detect CPU cores vs configurable?
-- **Transaction granularity:** One transaction for entire index vs per-file?
-- **Error handling:** Continue on parse errors vs fail-fast?
+- **Index metadata tracking:** What additional metadata should be stored in the `metadata` table?
+- **Progress reporting details:** Callback signature and event granularity for TUI integration?
 
 ---
 
