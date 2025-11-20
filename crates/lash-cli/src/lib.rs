@@ -14,6 +14,7 @@
 pub mod cli;
 pub mod config;
 pub mod formatter;
+pub mod logging;
 pub mod progress;
 pub mod project_root;
 
@@ -22,6 +23,10 @@ pub use cli::{Commands, LashCli};
 pub use config::Config;
 pub use formatter::{
     JsonFormatter, OutputFormat, OutputFormatter, QuietFormatter, TextFormatter, Verbosity,
+};
+pub use logging::{
+    get_diagnostic_info, init_logging, init_logging_with_file, install_panic_hook, parse_log_level,
+    verbosity_to_level, DiagnosticInfo, LogConfig,
 };
 pub use progress::{
     JsonProgressReporter, ProgressReporter, QuietProgressReporter, TerminalProgressReporter,

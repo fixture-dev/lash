@@ -1,5 +1,105 @@
 # Lash Development Log
 
+## 2025-11-20 - Logging and Diagnostics (Task 6)
+
+### Summary
+Completed Task 6 from `tasks/tasks.cli-framework.md`. Implemented structured logging and diagnostics using the `tracing` ecosystem. Created comprehensive logging configuration with support for multiple output formats (terminal, JSON, file), configurable log levels via CLI flags and environment variables, diagnostic spans for major operations, and panic hooks for crash reporting. All 95 tests passing including 7 new integration tests for logging functionality.
+
+**Commit:** (pending)
+
+### Implementation Overview
+
+**Logging Infrastructure:**
+- Created `logging.rs` module with `LogConfig` struct for logging configuration
+- Used `tracing` for structured logging with automatic span support
+- `tracing-subscriber` for flexible output formatting
+- `tracing-appender` for optional file logging with non-blocking writes
+
+**Log Level Mapping:**
+- Quiet mode (`--quiet`): ERROR only
+- Normal mode (default): WARN
+- Verbose mode (`-v`): INFO
+- Very verbose mode (`-vv`): DEBUG
+- Debug mode (`-vvv`): TRACE
+- Environment variable support: `LASH_LOG=debug` overrides CLI flags
+- `RUST_LOG` as fallback for standard Rust logging
+
+**Output Formats:**
+- Terminal: Compact, human-readable format with ANSI colors
+- JSON mode (`--json`): Structured JSON events to stderr
+- File logging: Full structured JSON format (when enabled)
+- Respects `NO_COLOR` environment variable
+- All logs go to stderr (results to stdout)
+
+**Diagnostic Spans:**
+- Added `#[instrument]` attributes to major command handlers
+- Spans track: file discovery, parsing, linting, formatting operations
+- Automatic timing information via tracing infrastructure
+- Nested spans for detailed execution traces
+- Log key metrics: file counts, diagnostic counts, error/warning counts
+
+**Crash Reporting:**
+- Custom panic hook installed in `main.rs`
+- Captures panic location, message, and full backtrace
+- Logs panic information via tracing infrastructure
+- User-friendly error message with bug report instructions
+- Includes version and platform information
+
+**Code Quality:**
+- 7 unit tests for log level mapping and configuration
+- 7 integration tests verifying logging behavior:
+  - Quiet mode suppresses logs
+  - Verbose/debug modes enable appropriate log levels
+  - Environment variable overrides work correctly
+  - JSON mode compatible with logging
+  - No panics on invalid input
+- All 95 tests passing (69 lib tests, 14 main tests, 7 logging tests, 5 helper tests)
+- Clippy clean with no warnings
+- Full documentation with executable doctests
+
+**Module Integration:**
+- Exported from `lash-cli` crate via `lib.rs`
+- Initialized in `main.rs` before command execution
+- Spans added to `lint` and `format` commands
+- Ready for use in all future command implementations
+
+### Technical Details
+
+**Log Level Priority:**
+1. `LASH_LOG` environment variable (highest priority)
+2. `RUST_LOG` environment variable
+3. CLI verbosity flags (`--quiet`, `-v`, `-vv`, `-vvv`)
+4. Default (WARN level)
+
+**Tracing Setup:**
+- Uses `EnvFilter` for flexible log filtering
+- Filters set per-crate: `lash`, `lash_cli`, `lash_core`, `lash_db`
+- Compact format in terminal (no targets, minimal noise)
+- JSON format includes: span context, current span, span list, targets
+- File appender uses `tracing_appender::rolling::never` for single file
+
+**Panic Hook:**
+- Captures default Rust panic behavior
+- Adds structured logging of panic information
+- Provides repository URL for bug reports
+- Suggests including: command, OS/version, error messages
+
+### Files Modified
+- `/Users/fohara/src/lash/Cargo.toml` - Added tracing dependencies
+- `/Users/fohara/src/lash/crates/lash-cli/Cargo.toml` - Added tracing dependencies
+- `/Users/fohara/src/lash/crates/lash-cli/src/logging.rs` - New logging module (465 lines)
+- `/Users/fohara/src/lash/crates/lash-cli/src/lib.rs` - Export logging module
+- `/Users/fohara/src/lash/crates/lash-cli/src/main.rs` - Initialize logging and panic hook
+- `/Users/fohara/src/lash/crates/lash-cli/src/commands/lint.rs` - Add diagnostic spans
+- `/Users/fohara/src/lash/crates/lash-cli/src/commands/format.rs` - Add diagnostic spans
+- `/Users/fohara/src/lash/crates/lash-cli/tests/logging_test.rs` - New integration tests (129 lines)
+- `/Users/fohara/src/lash/tasks/tasks.cli-framework.md` - Mark Task 6 complete
+
+### Next Steps
+- Task 7: Command Execution Framework (standardize command dispatch)
+- Task 8: Exit Code Standardization (define standard exit codes)
+- Consider adding file logging by default to `~/.local/share/lash/logs/` (currently optional)
+
 ## 2025-11-20 - Configuration Management (Task 5)
 
 ### Summary

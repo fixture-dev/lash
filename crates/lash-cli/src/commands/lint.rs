@@ -13,6 +13,7 @@ use lash_core::parser::parse_file;
 use lash_types::{LashConfig, Severity, TaskFile};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use tracing::instrument;
 
 use crate::utils::file_discovery::{discover_markdown_files, find_project_root};
 use crate::utils::output::{
@@ -45,6 +46,7 @@ pub struct LintArgs {
 /// # Returns
 ///
 /// Exit code: 0 (no errors), 1 (general error), 2 (lint errors found)
+#[instrument(skip(args), fields(paths = ?args.paths, fix = args.fix, rules = ?args.rules))]
 pub fn execute(args: LintArgs) -> Result<i32> {
     // Determine paths to lint
     let paths = if args.paths.is_empty() {
@@ -58,6 +60,7 @@ pub fn execute(args: LintArgs) -> Result<i32> {
 
     // Discover markdown files
     let files = discover_markdown_files(&paths, true).context("Failed to discover files")?;
+    tracing::info!(file_count = files.len(), "Discovered files to lint");
 
     if files.is_empty() {
         eprintln!("No markdown files found to lint");
@@ -146,6 +149,7 @@ fn configure_linter(args: &LintArgs) -> LintConfig {
 }
 
 /// Parse all files with progress reporting
+#[instrument(skip(files, config, args), fields(file_count = files.len()))]
 fn parse_files(
     files: &[PathBuf],
     config: &LashConfig,
@@ -187,10 +191,12 @@ fn parse_files(
         pb.finish_and_clear();
     }
 
+    tracing::info!(parsed_count = parsed_files.len(), "File parsing complete");
     Ok(parsed_files)
 }
 
 /// Lint all files with progress reporting
+#[instrument(skip(parsed_files, project_config, lint_config, args), fields(file_count = parsed_files.len()))]
 fn lint_files(
     parsed_files: &HashMap<PathBuf, TaskFile>,
     project_config: &LashConfig,
@@ -232,6 +238,19 @@ fn lint_files(
             .then(a.location.column.cmp(&b.location.column))
     });
 
+    tracing::info!(
+        diagnostic_count = all_diagnostics.len(),
+        error_count = all_diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .count(),
+        warning_count = all_diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .count(),
+        "Linting complete"
+    );
+
     Ok(all_diagnostics)
 }
 
@@ -261,6 +280,7 @@ fn meets_severity_threshold(severity: &Severity, min: &Severity) -> bool {
 }
 
 /// Apply auto-fixes to files
+#[instrument(skip(diagnostics, parsed_files), fields(diagnostic_count = diagnostics.len()))]
 fn apply_fixes(
     diagnostics: &[LintDiagnostic],
     parsed_files: &HashMap<PathBuf, TaskFile>,
