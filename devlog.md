@@ -1,5 +1,140 @@
 # Lash Development Log
 
+## 2025-11-20 - Graph Export Implementation (Dependency Resolution Task 6)
+
+### Summary
+Completed Task 6: Graph Export from `tasks/tasks.dependency-resolution.md`. Implemented comprehensive graph export functionality with support for three output formats: DOT (Graphviz), JSON, and ASCII tree. Includes flexible filtering options (by file, completion status, depth) for exporting subgraphs. All tests passing (12 unit tests + 7 doctests for graph_exporter, 85 total dependency module tests).
+
+### Implementation Overview
+
+**Core Components:**
+- `GraphExporter` - Main exporter struct with format-specific methods
+- `FilterOptions` - Configurable filtering for subgraph export (by file, completion status, max depth)
+- DOT export - Graphviz-compatible format with color coding and clustering
+- JSON export - Structured data with separate nodes/edges arrays
+- ASCII tree export - Terminal-friendly visualization with status indicators
+
+**Key Features:**
+- Three export formats optimized for different use cases
+- File-based clustering in DOT format (subgraphs per file)
+- Color-coded nodes by status (green=done, yellow=open, coral=blocked, gray=waived)
+- Flexible filtering: by file, hide completed, max depth
+- Cycle detection in ASCII tree to prevent infinite recursion
+- Proper escaping of special characters in DOT format
+- Performance: O(V+E) for full graph export, O(D) with depth limit
+
+### Export Formats
+
+**DOT Format (Graphviz):**
+- Valid Graphviz syntax with `digraph` structure
+- Color-coded nodes with fill colors based on task status
+- File-based clustering using `subgraph cluster_*`
+- Edge labels showing dependency kind
+- Box-shaped nodes with filled style
+- Top-to-bottom layout (rankdir=TB)
+
+**JSON Format:**
+- Separate `nodes` and `edges` arrays
+- Node metadata: id, title, status, file_id, depth
+- Edge metadata: from, to, kind, source_location
+- Serde serialization for clean JSON output
+- Easily parsable for programmatic consumption
+
+**ASCII Tree Format:**
+- Recursive tree rendering starting from a root node
+- Status indicators: `[ ]` open, `[✓]` done, `[-]` waived, `[!]` blocked
+- Box-drawing characters: `└─`, `├─`, `│` for visual structure
+- Proper indentation showing dependency depth
+- Cycle detection to handle circular dependencies
+- Shows task ID and title for each node
+
+### Filter Options
+
+**Implemented:**
+- `files: Option<Vec<String>>` - Only include tasks from specific files
+- `hide_completed: bool` - Exclude done/waived tasks
+- `max_depth: Option<usize>` - Limit transitive dependency depth
+- `labels: Option<Vec<String>>` - Placeholder for label filtering (not yet in NodeData)
+
+**Filtering Algorithm:**
+- First pass: filter nodes by file, completion status
+- Second pass: apply depth limit using graph traversal
+- Edge filtering: only include edges where both nodes are in filtered set
+
+### Files Created/Modified
+
+**Created:**
+- `crates/lash-core/src/dependency/graph_exporter.rs` (new module, ~900 lines)
+
+**Modified:**
+- `crates/lash-core/src/dependency/mod.rs` (added graph_exporter module and exports)
+
+### Test Coverage
+
+**Unit Tests (12 tests):**
+- Empty graph export (DOT and JSON)
+- Simple graph export (DOT and JSON with edges)
+- ASCII tree rendering (simple and nested)
+- Filter by file
+- Filter by completion status
+- Filter by max depth
+- Multiple file clustering
+- Cycle detection in ASCII tree
+- Special character escaping
+
+**Doctests (7 tests):**
+- Module-level example
+- FilterOptions example
+- GraphExporter creation
+- to_dot example
+- to_json example
+- to_ascii_tree example
+
+**Results:** All tests passing (85 total dependency module tests, 40 doctests)
+
+### Implementation Notes
+
+**Design Decisions:**
+1. **Borrowed graph reference** - `GraphExporter` borrows graph to avoid copying
+2. **Separate filter application** - First filter nodes, then edges (cleaner logic)
+3. **File-based clustering** - Groups tasks by file for better DOT visualization
+4. **Depth-first ASCII tree** - Natural recursive rendering with cycle detection
+5. **Serde for JSON** - Clean serialization with proper structure
+
+**Edge Cases Handled:**
+- Empty graphs (valid output for all formats)
+- Cycles (detected and shown as "(cycle: id)" in ASCII tree)
+- Missing nodes (shown as "(missing: id)")
+- Special characters (escaped in DOT labels and IDs)
+- Multiple paths to same node (handled by visited set)
+
+**Future Enhancements:**
+- Label filtering (once labels added to NodeData)
+- GraphML export format
+- Mermaid diagram format
+- Custom color schemes
+- Edge styling by dependency kind
+
+### Git Commit
+```bash
+git add crates/lash-core/src/dependency/graph_exporter.rs
+git add crates/lash-core/src/dependency/mod.rs
+git add tasks/tasks.dependency-resolution.md
+git add devlog.md
+git commit -m "Implement Task 6: Graph Export
+
+Add comprehensive graph export functionality with three formats:
+- DOT format for Graphviz visualization with color coding
+- JSON format for programmatic consumption
+- ASCII tree for terminal display
+
+Includes flexible filtering by file, status, and depth.
+
+All tests passing (12 unit + 7 doctests)."
+```
+
+---
+
 ## 2025-11-20 - Blocker Identification Implementation (Dependency Resolution Task 5)
 
 ### Summary
