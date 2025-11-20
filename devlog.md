@@ -5,7 +5,7 @@
 ### Summary
 Completed Task 6 from `tasks/tasks.cli-framework.md`. Implemented structured logging and diagnostics using the `tracing` ecosystem. Created comprehensive logging configuration with support for multiple output formats (terminal, JSON, file), configurable log levels via CLI flags and environment variables, diagnostic spans for major operations, and panic hooks for crash reporting. All 95 tests passing including 7 new integration tests for logging functionality.
 
-**Commit:** (pending)
+**Commit:** `bda22ae`
 
 ### Implementation Overview
 
