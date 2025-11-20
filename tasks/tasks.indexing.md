@@ -177,47 +177,47 @@ Coordinate the full indexing process: parse files, populate DB, handle errors, a
 
 ### Subtasks
 
-- [ ] Implement `Indexer` struct
-  - [ ] Hold references to DB connection, parser, file walker
-  - [ ] Configuration (incremental vs full, parallelism level)
-  - [ ] Progress tracking
-- [ ] Implement `index_project()` function
-  - [ ] Discover files (Task 1)
-  - [ ] Compute diff (Task 2)
-  - [ ] Parse modified/new files
-  - [ ] Begin DB transaction
-  - [ ] Delete records for removed files
-  - [ ] Insert/update records for new/modified files
-  - [ ] Commit transaction
-  - [ ] Handle rollback on errors
-- [ ] Add parallel parsing support
-  - [ ] Parse files in parallel using rayon or similar
-  - [ ] Collect results and errors
-  - [ ] Insert into DB in single thread (SQLite limitation)
-- [ ] Implement progress reporting
-  - [ ] Track files processed vs total
-  - [ ] Emit progress events (for CLI/TUI)
-  - [ ] Support quiet mode (no output)
-- [ ] Error aggregation
-  - [ ] Collect all parse errors (don't stop on first)
-  - [ ] Associate errors with file paths
-  - [ ] Return structured error report
+- [x] Implement `Indexer` struct
+  - [x] Hold references to DB connection, parser, file walker
+  - [x] Configuration (incremental vs full, parallelism level)
+  - [x] Progress tracking
+- [x] Implement `index_project()` function
+  - [x] Discover files (Task 1)
+  - [x] Compute diff (Task 2)
+  - [x] Parse modified/new files
+  - [x] Begin DB transaction
+  - [x] Delete records for removed files
+  - [x] Insert/update records for new/modified files
+  - [x] Commit transaction
+  - [x] Handle rollback on errors
+- [x] Add parallel parsing support
+  - [x] Parse files in parallel using rayon
+  - [x] Collect results and errors
+  - [x] Insert into DB in single thread (SQLite limitation)
+- [x] Implement progress reporting
+  - [x] Track files processed vs total
+  - [x] Emit progress events (for CLI/TUI)
+  - [x] Support quiet mode (no output)
+- [x] Error aggregation
+  - [x] Collect all parse errors (don't stop on first)
+  - [x] Associate errors with file paths
+  - [x] Return structured error report
 
 ### Success Criteria
 
-- Can index a project from scratch successfully
-- Incremental indexing correctly updates only changed files
-- Handles parse errors gracefully (collects all, continues)
-- Progress reporting works for long-running operations
-- Transaction safety: DB left in consistent state on error
+- [x] Can index a project from scratch successfully
+- [x] Incremental indexing correctly updates only changed files
+- [x] Handles parse errors gracefully (collects all, continues)
+- [x] Progress reporting works for long-running operations
+- [x] Transaction safety: DB left in consistent state on error
 
 ### Tests
 
-- Integration: Index empty project
-- Integration: Index project with valid files
-- Integration: Index project with parse errors (verify error collection)
-- Integration: Incremental indexing after modifications
-- Integration: Verify DB consistency after index
+- [x] Integration: Index empty project
+- [x] Integration: Index project with valid files
+- [x] Integration: Index project with parse errors (verify error collection)
+- [x] Integration: Incremental indexing after modifications
+- [x] Integration: Verify DB consistency after index
 
 ---
 

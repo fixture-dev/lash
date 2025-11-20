@@ -872,6 +872,7 @@ dependencies = [
  "ignore",
  "lash-core",
  "lash-types",
+ "rayon",
  "rusqlite",
  "serde",
  "serde_json",
