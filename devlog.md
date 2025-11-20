@@ -5,7 +5,7 @@
 ### Summary
 Completed Task 5 from `tasks/tasks.cli-framework.md`. Implemented comprehensive configuration management system with support for project-level and user-level TOML configuration files. Created a fully validated, mergeable configuration system with all core settings categories (output, linter, search, agent). All tests passing with 12 new unit tests for config functionality.
 
-**Commit:** (pending)
+**Commit:** `a28fa12`
 
 ### Implementation Overview
 
