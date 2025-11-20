@@ -20,12 +20,20 @@
 //! Status computation is provided by [`StatusComputer`], which analyzes the dependency graph
 //! to compute the effective completion status of each task based on its own status and all
 //! its dependencies.
+//!
+//! Blocker identification is provided by [`BlockerAnalyzer`], which identifies which
+//! dependencies are blocking a task's completion and provides actionable reports with
+//! blocker chains and suggestions for resolution.
 
+pub mod blocker_analyzer;
 pub mod cycle_detector;
 pub mod graph;
 pub mod resolver;
 pub mod status_computer;
 
+pub use blocker_analyzer::{
+    BlockerAnalyzer, BlockerChain, BlockerInfo, BlockerReport, BlockerSuggestion,
+};
 pub use cycle_detector::{Cycle, CycleDetector, CycleReport, CycleSuggestion, SuggestionAction};
 pub use graph::{DependencyGraph, EdgeData, EdgeId, EdgeRef, NodeData};
 pub use resolver::{
