@@ -1,5 +1,61 @@
 # Lash Development Log
 
+## 2025-11-20 - Configuration Management (Task 5)
+
+### Summary
+Completed Task 5 from `tasks/tasks.cli-framework.md`. Implemented comprehensive configuration management system with support for project-level and user-level TOML configuration files. Created a fully validated, mergeable configuration system with all core settings categories (output, linter, search, agent). All tests passing with 12 new unit tests for config functionality.
+
+**Commit:** (pending)
+
+### Implementation Overview
+
+**Configuration Schema:**
+- Created `Config` struct with four main sections: `OutputConfig`, `LinterConfig`, `SearchConfig`, `AgentConfig`
+- Used `serde` with `toml` for declarative TOML parsing
+- All fields have sensible defaults via dedicated default functions
+- `deny_unknown_fields` attribute catches typos and invalid configuration keys
+
+**Configuration File Locations:**
+- Project config: `.lash/config.toml` in project root
+- User config: `~/.config/lash/config.toml` (via `dirs` crate)
+- Merge strategy implemented: CLI flags > project config > user config > defaults
+- `Config::load_merged()` implements the complete merge hierarchy
+
+**Configuration Settings:**
+- Output: default format (text/json/json-pretty), verbosity (quiet/normal/verbose/debug), color enable/disable
+- Linter: max nesting depth (1-10), auto-fix flag, rule enable/disable list
+- Search: fuzzy threshold (0.0-1.0), result limit (1-1000)
+- Agent: token budget (100-100000), default format (plain/json/claude-skill/agents-md)
+
+**Validation:**
+- Comprehensive validation for all configuration values
+- Range checks for numeric values (depth, threshold, limits, budget)
+- Enum validation for string values (format, verbosity, etc.)
+- Clear error messages indicating valid ranges/options
+
+**Code Quality:**
+- 12 comprehensive unit tests covering:
+  - Default configuration
+  - Loading from TOML files (valid, partial, invalid)
+  - Merge strategy with multiple config sources
+  - Validation for all setting types
+  - Unknown field rejection
+  - User config path detection
+- All tests passing
+- Clippy clean with no warnings
+- Full documentation with examples
+
+**Module Integration:**
+- Exported from `lash-cli` crate via `lib.rs`
+- Ready for integration with CLI argument parsing (future work)
+- Foundation for `lash config` command (optional, deferred)
+
+### Next Steps
+- Task 5 optional `lash config` command is deferred for now
+- Ready to proceed with Task 6 (Logging and Diagnostics) or Task 7 (Command Execution Framework)
+
+---
+
 ## 2025-11-20 - CLI Framework (Tasks 1-4)
 
 ### Summary
