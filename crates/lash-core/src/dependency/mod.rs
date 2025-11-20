@@ -12,9 +12,17 @@
 //!
 //! Cycle detection is provided by [`CycleDetector`], which uses a three-color DFS algorithm
 //! to find all cycles in the graph and provide actionable suggestions for resolving them.
+//!
+//! Dependency resolution is handled by [`DependencyResolver`], which parses `@depends-on`
+//! annotations and resolves them to concrete task IDs, handling path resolution and error
+//! collection for broken links.
 
 pub mod cycle_detector;
 pub mod graph;
+pub mod resolver;
 
 pub use cycle_detector::{Cycle, CycleDetector, CycleReport, CycleSuggestion, SuggestionAction};
 pub use graph::{DependencyGraph, EdgeData, EdgeId, EdgeRef, NodeData};
+pub use resolver::{
+    DependencyResolver, ResolutionError, ResolutionErrorKind, ResolvedDependency, ResolverResult,
+};
