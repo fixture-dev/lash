@@ -9,6 +9,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod connection;
+pub mod dependency_updater;
 pub mod diff;
 pub mod error;
 pub mod indexer;
@@ -19,6 +20,7 @@ pub mod verifier;
 pub mod walker;
 
 pub use connection::{get_schema_version, init_database, open_database, set_schema_version};
+pub use dependency_updater::DependencyUpdater;
 pub use diff::{compute_index_diff, compute_index_diff_parallel, IndexDiff};
 pub use error::{DbError, DbResult};
 pub use indexer::{IndexProgress, IndexReport, Indexer, IndexerConfig, ParseError};
