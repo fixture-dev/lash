@@ -4,10 +4,10 @@ This directory contains the comprehensive task breakdown for implementing Lash v
 
 ## Project Status
 
-**Current Phase:** Phase 2 - Core Functionality (In Progress)
+**Current Phase:** Phase 2 - Core Functionality (Near Complete)
 **Target:** v1.0 Production Release
 **Estimated Duration:** 40-60 days (8-13 weeks)
-**Completed:** Project Setup, Core Data Model, Error Handling, Markdown Parser
+**Completed:** Project Setup, Core Data Model, Error Handling, Markdown Parser, Linter & Formatter
 
 ## Task Organization
 
@@ -27,7 +27,7 @@ Tasks are organized by major module/component. Each task file contains:
 
 ### Parsing & Validation
 - [x] [tasks.markdown-parser.md](tasks.markdown-parser.md) - Markdown parsing implementation ✅
-- [ ] [tasks.linter.md](tasks.linter.md) - Linting rules, validation, auto-formatting
+- [x] [tasks.linter.md](tasks.linter.md) - Linting rules, validation, auto-formatting ✅
 
 ### Database Layer
 - [ ] [tasks.sqlite-schema.md](tasks.sqlite-schema.md) - SQLite schema, repositories, queries
@@ -60,25 +60,24 @@ Tasks are organized by major module/component. Each task file contains:
 
 **Deliverable:** Compiling project with core types; can create tasks programmatically
 
-### Phase 2: Core Functionality (Weeks 3-5) - IN PROGRESS
-**Goal:** Parse Markdown files and define database schema
+### Phase 2: Core Functionality (Weeks 3-5) - COMPLETE ✅
+**Goal:** Parse Markdown files and implement linting/validation
 
 1. ✅ tasks.markdown-parser (ALL) - Complete
-2. tasks.linter#1-3 - Next
-3. tasks.sqlite-schema#1-2 - Pending
+2. ✅ tasks.linter (ALL) - Complete
 
-**Deliverable:** Can parse task files into data structures; database initializes
-**Status:** Parser complete (200+ tests passing, 67.7µs benchmark). Ready to proceed with linter.
+**Deliverable:** Can parse task files into data structures; lint and format files
+**Status:** Parser complete (390+ tests, 67.7µs benchmark). Linter complete with 20 rules, auto-formatter, and CLI integration (607 total tests).
 
-### Phase 3: Indexing & Queries (Weeks 6-7)
-**Goal:** Build index from files; implement core commands
+### Phase 3: Database & Indexing (Weeks 6-7) - NEXT
+**Goal:** Build database schema and indexing system
 
-1. tasks.sqlite-schema#3-6
-2. tasks.indexing#1-3
-3. tasks.cli-framework#1-4
-4. tasks.linter#5-6
+1. tasks.sqlite-schema#1-2 (define schema, create tables)
+2. tasks.sqlite-schema#3-6 (repositories, queries)
+3. tasks.indexing#1-3 (file scanning, indexing engine)
+4. tasks.cli-framework#1-4 (CLI infrastructure)
 
-**Deliverable:** `lash index` and `lash lint` commands work
+**Deliverable:** `lash index` command works; can query database
 
 ### Phase 4: Dependencies & Queries (Weeks 7-8)
 **Goal:** Resolve dependencies; implement query commands
