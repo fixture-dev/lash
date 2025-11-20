@@ -86,7 +86,10 @@ impl DependencyRef {
         // Validate based on kind
         match self.kind {
             DependencyKind::ExplicitPath => {
-                if !std::path::Path::new(&self.target)
+                // For path references, check the path part (before #)
+                let path_part = self.target.split('#').next().unwrap_or(&self.target);
+
+                if !std::path::Path::new(path_part)
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
                 {
@@ -210,19 +213,25 @@ pub fn parse_dependency_ref(s: &str) -> Result<DependencyRef> {
     }
 
     // Detect kind based on format
+    // For references with #, check the part before # to determine if it's a path or ID
     let kind = if trimmed.ends_with('/') {
         DependencyKind::Directory
-    } else if std::path::Path::new(trimmed)
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-    {
-        DependencyKind::ExplicitPath
-    } else if trimmed.contains('#') {
-        DependencyKind::ExplicitId
     } else {
-        // Default to ExplicitId if no clear indicator
-        // This allows bare file IDs like "core.api"
-        DependencyKind::ExplicitId
+        // Split on # to check the path part
+        let path_part = trimmed.split('#').next().unwrap_or(trimmed);
+
+        if std::path::Path::new(path_part)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        {
+            DependencyKind::ExplicitPath
+        } else if trimmed.contains('#') {
+            DependencyKind::ExplicitId
+        } else {
+            // Default to ExplicitId if no clear indicator
+            // This allows bare file IDs like "core.api"
+            DependencyKind::ExplicitId
+        }
     };
 
     let dep_ref = DependencyRef::new(trimmed.to_string(), kind);

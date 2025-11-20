@@ -357,6 +357,12 @@ impl TaskTree {
         self.id_to_index.get(id).map(|&idx| &self.tasks[idx])
     }
 
+    /// Get a mutable task by ID
+    #[must_use]
+    pub fn get_task_mut(&mut self, id: &str) -> Option<&mut Task> {
+        self.id_to_index.get(id).map(|&idx| &mut self.tasks[idx])
+    }
+
     /// Get all children of a parent task
     #[must_use]
     pub fn get_children(&self, parent_id: &str) -> Vec<&Task> {

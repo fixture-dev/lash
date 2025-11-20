@@ -1,5 +1,146 @@
 # Lash Development Log
 
+## 2025-11-20 - Dependency Resolution Engine Implementation Complete (Dependency Resolution Task 3)
+
+### Summary
+Completed Task 3: Dependency Resolution Engine from `tasks/tasks.dependency-resolution.md`. Implemented a comprehensive dependency resolver that transforms unresolved dependency references from `@depends-on` annotations into concrete edges in the dependency graph. All tests passing (8 unit tests + 3 doctests for resolver, 429 total workspace tests).
+
+### Implementation Overview
+
+**Core Components:**
+- `DependencyResolver` - Resolves dependency references to task IDs
+- `ResolvedDependency` - Successfully resolved dependency with full IDs
+- `ResolutionError` - Detailed error for broken links
+- `ResolverResult` - Collection of resolved dependencies and errors
+
+**Key Features:**
+- Resolves path-based references (relative and absolute)
+- Resolves ID-based references (within-file and cross-file)
+- Handles all reference formats: `../path/file.md#task:id`, `file-id#task-id`, `#task-id`
+- Normalizes paths with `.` and `..` components
+- Collects ALL errors without failing fast
+- Provides detailed error messages with source locations
+- Maps file IDs to paths for efficient lookups
+
+### Reference Format Support
+
+**Supported Formats:**
+1. **Relative path**: `../core/cli.md#task:parse-args` - resolved relative to source file
+2. **Absolute path**: `core/cli.md#task:parse-args` - resolved relative to project root
+3. **Within-file ID**: `#task:parse-args` - task in same file
+4. **Cross-file ID**: `file-id#task-id` - explicit file and task IDs
+
+**Deferred:**
+- File-level dependencies: `../core/cli.md` (no task fragment)
+- Directory dependencies: `core/` (directory references)
+
+### Path Resolution
+
+**normalize_path() Algorithm:**
+- Processes path components sequentially
+- `..` pops parent from component stack
+- `.` is skipped (current directory)
+- Handles paths that don't exist on disk (no canonicalize needed)
+- Works on both Unix and Windows paths
+
+**Path Resolution Strategy:**
+- Relative paths (`..`, `./`) → resolve relative to source file's directory
+- Absolute paths → resolve relative to project root
+- Split on `#` before checking file extension (fixes parsing bug)
+
+### Error Handling
+
+**Error Collection:**
+- Continues processing after encountering errors
+- Returns complete list of all broken links
+- Each error includes source file, task ID, and reference string
+- Error kinds: FileNotFound, TaskNotFound, InvalidReference
+
+**Error Messages:**
+- Format: "In {file}#{task}: {error details}"
+- Example: "In dir2/file2.md#task-b: dependency reference '../missing.md#task-a' points to non-existent file 'missing.md'"
+
+### Files Created/Modified
+
+**Created:**
+- `crates/lash-core/src/dependency/resolver.rs` (686 lines)
+  - DependencyResolver implementation
+  - Path normalization helpers
+  - 8 comprehensive unit tests
+  - 3 doctests
+
+**Modified:**
+- `crates/lash-core/src/dependency/mod.rs`
+  - Exported resolver types
+  - Added module documentation
+- `crates/lash-types/src/dependency.rs`
+  - Fixed parse_dependency_ref() to check path part before `#` for extension
+  - Fixed DependencyRef::validate() to validate only path part
+- `crates/lash-types/src/task.rs`
+  - Added TaskTree::get_task_mut() for mutable access
+- `tasks/tasks.dependency-resolution.md`
+  - Marked Task 3 as complete
+  - Added implementation notes
+
+### Test Coverage
+
+**Unit Tests (8):**
+- test_normalize_path - Path normalization with `.` and `..`
+- test_resolve_within_file_reference - Same-file task lookup
+- test_resolve_missing_task - Error handling for broken references
+- test_resolve_cross_file_id_reference - File ID lookup and resolution
+- test_resolve_path_reference_relative - Relative path resolution
+- test_resolve_path_reference_missing_file - File not found errors
+- test_resolver_result_helpers - Result structure utilities
+- test_resolution_error_message - Error message formatting
+
+**Doctests (3):**
+- Module example
+- DependencyResolver::new example
+- DependencyResolver::resolve_dependencies example
+
+**All Tests:** 429 passing (workspace-wide)
+
+### Design Decisions
+
+**Why not use std::fs::canonicalize():**
+- canonicalize() requires files to exist on disk
+- Resolver operates on in-memory TaskFile structures
+- Need to resolve references to non-existent files (for error reporting)
+- Custom normalize_path() handles `.` and `..` without filesystem access
+
+**Why collect errors instead of fail-fast:**
+- Better user experience - show all broken links at once
+- Users can fix multiple issues in one iteration
+- Follows linter pattern of comprehensive error reporting
+
+**Why separate from indexing:**
+- Resolver works on in-memory TaskFile collection
+- Indexing layer handles database persistence
+- Hierarchy dependencies are implicit (handled during indexing)
+- Clean separation of concerns
+
+### Integration Points
+
+**Used by:**
+- Future: Graph builder (will use ResolvedDependency to create edges)
+- Future: Linter rules (will use ResolutionError for broken link warnings)
+- Future: Indexing layer (will call resolver during index update)
+
+**Depends on:**
+- lash-types: TaskFile, Task, DependencyRef, parse_dependency_ref()
+- lash-types: make_full_id(), parse_full_id()
+- TaskTree: tasks(), get_task()
+
+### Next Steps
+
+- Task 4: Completion Status Computation
+- Task 5: Blocker Identification
+- Integration tests with fixture projects
+- Wire resolver into indexing pipeline
+
+---
+
 ## 2025-11-20 - Cycle Detection Implementation Complete (Dependency Resolution Task 2)
 
 ### Summary
