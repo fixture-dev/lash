@@ -1,5 +1,129 @@
 # Lash Development Log
 
+## 2025-11-20 - Blocker Identification Implementation (Dependency Resolution Task 5)
+
+### Summary
+Completed Task 5: Blocker Identification from `tasks/tasks.dependency-resolution.md`. Implemented a comprehensive blocker analyzer that identifies which dependencies are blocking a task's completion and provides actionable reports with blocker chains and resolution suggestions. All tests passing (7 unit tests + 7 doctests for blocker_analyzer, 450 total workspace tests, no clippy warnings).
+
+### Implementation Overview
+
+**Core Components:**
+- `BlockerAnalyzer` - Identifies and analyzes blocking dependencies
+- `BlockerInfo` - Information about a single blocking task (task_id, title, file_id, depth, dependency_kind, blocker_status)
+- `BlockerChain` - Recursive blocker relationships showing dependency paths
+- `BlockerReport` - Formatted output with blockers, chains, roots, and actionable suggestions
+- `BlockerSuggestion` - Actionable recommendations for resolving blockers
+
+**Key Features:**
+- BFS traversal to find all blockers with depth tracking (0=direct, 1+=transitive)
+- Root blocker identification (fundamental blockers with no incomplete dependencies)
+- Blocker chain construction showing transitive relationships (A → B → C)
+- Deduplication to avoid repeated blockers via multiple paths
+- Human-readable report formatting with actionable suggestions
+- Performance: O(D) for direct blockers, O(V+E) worst case for full transitive analysis
+
+### Algorithm Design
+
+**Finding Blockers:**
+1. Check if task is blocked using its computed status
+2. Start BFS from direct dependencies that are incomplete/blocked
+3. Track depth for each blocker (0=direct, 1+=transitive)
+4. Only follow paths through tasks that are blocking
+5. Deduplicate using visited set
+6. Sort results by depth (direct blockers first)
+
+**Building Blocker Chains:**
+1. Start with each direct blocker
+2. Recursively follow blocker relationships
+3. Build chain from direct blocker to root blocker
+4. Detect and skip cycles
+5. Root blocker is one with no incomplete dependencies
+
+**Report Generation:**
+1. Find all blockers (direct + transitive)
+2. Identify root blockers (most important to address)
+3. Build blocker chains showing dependency paths
+4. Generate actionable suggestions prioritizing root blockers
+5. Format as human-readable report with sections
+
+### Report Structure
+
+**Blocker Report Sections:**
+- Summary: Total blockers, direct vs transitive counts
+- Root Blockers: Fundamental blockers to address first
+- Blocker Chains: Visual representation of dependency paths (A → B → C)
+- All Blockers: Detailed list with depth and status
+- Suggested Actions: Prioritized recommendations
+
+**Suggestion Types:**
+- Complete root blockers first (unblocks multiple tasks)
+- Waive tasks if not applicable
+- Remove dependency relationships
+- Waive dependent task as last resort
+
+### Integration with Existing Systems
+
+**Built on top of:**
+- `DependencyGraph` - For graph traversal and node/edge access
+- `StatusComputer` - Uses computed statuses to identify blockers
+- `ComputedStatus` - Analyzes blocked, incomplete, and complete statuses
+- Leverages existing `BlockerReason` enum from status_computer
+
+**Provides deeper analysis than `StatusComputer`:**
+- Status computer: Single-task level blocking status
+- Blocker analyzer: Full blocker chains, root causes, actionable reports
+
+### Test Coverage
+
+**Unit Tests (7 tests):**
+- Task with direct blocker
+- Task with transitive blocker chain (A → B → C)
+- Task with multiple independent blockers
+- Task with no blockers (ready to start)
+- Completed dependencies not treated as blockers
+- Blocker chain construction and validation
+- Report generation and formatting
+
+**Doctests (7 tests):**
+- Module-level usage example
+- BlockerAnalyzer creation
+- find_blockers usage
+- find_blocker_chains usage
+- find_root_blockers usage
+- generate_report usage
+- All examples compile and run correctly
+
+### Files Modified
+
+**New Files:**
+- `crates/lash-core/src/dependency/blocker_analyzer.rs` - Complete implementation with 850+ lines
+  - Comprehensive documentation with examples
+  - All public APIs have doctests
+  - Helper methods for chain building and root identification
+  - Report formatting with actionable suggestions
+
+**Modified Files:**
+- `crates/lash-core/src/dependency/mod.rs` - Added blocker_analyzer module and exports
+- `tasks/tasks.dependency-resolution.md` - Marked all Task 5 subtasks as complete, added implementation notes
+
+### Next Steps
+
+Task 5 is complete. The next tasks in the dependency resolution module are:
+- Task 6: Graph Export (Graphviz DOT, JSON, text-based visualization)
+- Task 7: Incremental Graph Updates (efficient updates without full rebuild)
+
+The blocker analyzer provides a solid foundation for CLI commands like:
+- `lash show <task-id>` - Show task details with blocker analysis
+- `lash blockers <task-id>` - Generate blocker report
+- `lash ready` - List tasks with no blockers (ready to work on)
+
+### References
+- Commit: (to be added after commit)
+- Design doc section 5.4: Completion semantics and blocker identification
+- Task file: `tasks/tasks.dependency-resolution.md#Task-5`
+
+---
+
 ## 2025-11-20 - Completion Status Computation Implementation (Dependency Resolution Task 4)
 
 ### Summary

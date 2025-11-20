@@ -299,37 +299,88 @@ Given a task, identify which dependencies are blocking its completion.
 
 ### Subtasks
 
-- [ ] Implement `BlockerAnalyzer` struct
-  - [ ] Query graph and status for dependencies
-  - [ ] Identify incomplete dependencies
-- [ ] Implement `find_blockers(task_id)` function
-  - [ ] Get all dependencies (direct + transitive)
-  - [ ] Filter to incomplete/blocked tasks
-  - [ ] Sort by "distance" (direct blockers first)
-  - [ ] Return list of blocker tasks with reasons
-- [ ] Add blocker chain analysis
-  - [ ] For each blocker, recursively find its blockers
-  - [ ] Build blocker tree/graph
-  - [ ] Identify "root blockers" (no further dependencies)
-- [ ] Implement blocker reporting
-  - [ ] Format: "Task X is blocked by: Task Y (in file Z)"
-  - [ ] Show full blocker chain for deep dependencies
-  - [ ] Suggest actions (complete blockers, waive, remove dependency)
+- [x] Implement `BlockerAnalyzer` struct
+  - [x] Query graph and status for dependencies
+  - [x] Identify incomplete dependencies
+- [x] Implement `find_blockers(task_id)` function
+  - [x] Get all dependencies (direct + transitive)
+  - [x] Filter to incomplete/blocked tasks
+  - [x] Sort by "distance" (direct blockers first)
+  - [x] Return list of blocker tasks with reasons
+- [x] Add blocker chain analysis
+  - [x] For each blocker, recursively find its blockers
+  - [x] Build blocker tree/graph
+  - [x] Identify "root blockers" (no further dependencies)
+- [x] Implement blocker reporting
+  - [x] Format: "Task X is blocked by: Task Y (in file Z)"
+  - [x] Show full blocker chain for deep dependencies
+  - [x] Suggest actions (complete blockers, waive, remove dependency)
 
 ### Success Criteria
 
-- Accurately identifies all blockers for a given task
-- Handles transitive blockers (A blocked by B blocked by C)
-- Clear, actionable blocker reports
-- Efficient: O(E) for direct blockers, O(V+E) for transitive
+- [x] Accurately identifies all blockers for a given task
+- [x] Handles transitive blockers (A blocked by B blocked by C)
+- [x] Clear, actionable blocker reports
+- [x] Efficient: O(E) for direct blockers, O(V+E) for transitive
 
 ### Tests
 
-- Unit: Task with direct blocker
-- Unit: Task with transitive blocker chain
-- Unit: Task with multiple independent blockers
-- Unit: Task with no blockers (ready to start)
-- Integration: Generate blocker report for fixture tasks
+- [x] Unit: Task with direct blocker
+- [x] Unit: Task with transitive blocker chain
+- [x] Unit: Task with multiple independent blockers
+- [x] Unit: Task with no blockers (ready to start)
+- [x] Integration: Generate blocker report for fixture tasks
+
+### Implementation Notes
+
+**Completed:**
+- Created `crates/lash-core/src/dependency/blocker_analyzer.rs` with complete implementation
+- Implemented `BlockerAnalyzer` with comprehensive blocker identification
+- Implemented `BlockerInfo` struct with depth tracking and blocker metadata
+- Implemented `BlockerChain` for showing transitive blocker relationships
+- Implemented `BlockerReport` with human-readable formatting
+- Implemented `BlockerSuggestion` enum for actionable resolution suggestions
+- Uses BFS to find all blockers with depth tracking (0=direct, 1+=transitive)
+- Root blocker identification (tasks with no incomplete dependencies)
+- Deduplication to avoid repeated blockers via multiple paths
+- All unit tests passing (7 tests)
+- All doctests passing (7 tests)
+- Exported from `crates/lash-core/src/dependency/mod.rs`
+
+**Algorithm:**
+- BFS traversal starting from direct dependencies
+- Depth tracking to distinguish direct vs transitive blockers
+- Only follows paths through blocked or incomplete tasks
+- Sorts results by depth (direct blockers first)
+- Root blockers identified as incomplete tasks with no blockers themselves
+
+**Data Structures:**
+- `BlockerInfo`: Contains task_id, title, file_id, depth, dependency_kind, and blocker_status
+- `BlockerChain`: Shows recursive blocker relationships from direct to root
+- `BlockerReport`: Formatted output with blockers, chains, roots, and suggestions
+- `BlockerSuggestion`: Actionable recommendations (complete, waive, remove dependency)
+
+**Report Format:**
+- Summary: Total blockers, direct vs transitive counts
+- Root blockers section (most important - address first)
+- Blocker chains showing dependency paths (A → B → C)
+- All blockers listed with depth and status
+- Suggested actions prioritizing root blockers
+
+**Test Coverage:**
+- Direct blocker identification
+- Transitive blocker chains
+- Multiple independent blockers
+- No blockers (ready to start)
+- Completed dependencies not treated as blockers
+- Blocker chain construction
+- Report generation and formatting
+
+**Integration:**
+- Uses `DependencyGraph` for traversal
+- Uses `StatusComputer::compute_all()` for task statuses
+- Builds on existing `ComputedStatus` from status_computer
+- Provides detailed analysis beyond basic status computation
 
 ---
 
