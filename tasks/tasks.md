@@ -31,7 +31,7 @@ Tasks are organized by major module/component. Each task file contains:
 
 ### Database Layer
 - [x] [tasks.sqlite-schema.md](tasks.sqlite-schema.md) - SQLite schema, repositories, queries ✅
-- [ ] [tasks.indexing.md](tasks.indexing.md) - File scanning, indexing engine, verification
+- [x] [tasks.indexing.md](tasks.indexing.md) - File scanning, indexing engine, verification ✅
 - [ ] [tasks.dependency-resolution.md](tasks.dependency-resolution.md) - Dependency graph, cycle detection, state computation
 
 ### CLI & Commands
@@ -69,16 +69,16 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** Can parse task files into data structures; lint and format files
 **Status:** Parser complete (390+ tests, 67.7µs benchmark). Linter complete with 20 rules, auto-formatter, and CLI integration (607 total tests).
 
-### Phase 3: Database & Indexing (Weeks 6-7) - IN PROGRESS
+### Phase 3: Database & Indexing (Weeks 6-7) - COMPLETE ✅
 **Goal:** Build database schema and indexing system
 
 1. ✅ tasks.sqlite-schema#1-2 (define schema, create tables) - Complete
 2. ✅ tasks.sqlite-schema#3-6 (repositories, queries) - Complete
-3. tasks.indexing#1-3 (file scanning, indexing engine) - NEXT
-4. tasks.cli-framework#1-4 (CLI infrastructure)
+3. ✅ tasks.indexing#0-6 (project root, file scanning, diff, indexing engine, verification, dependency updates, performance optimization) - Complete
+4. tasks.cli-framework#1-4 (CLI infrastructure) - NEXT
 
 **Deliverable:** `lash index` command works; can query database
-**Status:** SQLite schema complete (49 tests, all passing). Database layer ready for indexing engine.
+**Status:** Complete. Indexing engine production-ready with 238 tests passing. Performance exceeds all targets by 8-12x (10.5ms for 10 files, 61ms for 100 files, 425ms for 1000 files).
 
 ### Phase 4: Dependencies & Queries (Weeks 7-8)
 **Goal:** Resolve dependencies; implement query commands
@@ -139,13 +139,14 @@ Parallelization opportunities exist within each phase (see individual task files
 - ✅ Parse valid Lash Markdown files
 - ✅ Lint files with clear error messages
 - ✅ SQLite database schema with repositories
-- [ ] Index files into SQLite database
-- [ ] Resolve dependencies and detect cycles
-- ✅ `lash list`, `lash show`, `lash search` commands work
-- ✅ `lash graph` exports dependency graph
-- ✅ Agent integration (`lash agent-prompt`)
+- ✅ Index files into SQLite database
+- ✅ Hierarchy dependencies resolved (explicit cross-file dependencies remain)
+- [ ] Full dependency resolution and cycle detection
+- [ ] `lash list`, `lash show`, `lash search` commands work
+- [ ] `lash graph` exports dependency graph
+- [ ] Agent integration (`lash agent-prompt`)
 - ✅ Comprehensive test coverage (>80%)
-- ✅ User documentation
+- [ ] User documentation
 
 ### Should Have
 - ✅ TUI for interactive use
