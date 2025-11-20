@@ -8,158 +8,206 @@
 mod commands;
 mod utils;
 
-use clap::{Parser, Subcommand};
-use lash_types::Severity;
-use std::path::PathBuf;
+use anyhow::{Context, Result};
+use clap::Parser;
+use lash_cli::cli::{Commands, LashCli};
+use lash_cli::formatter::{
+    JsonFormatter, OutputFormatter, QuietFormatter, TextFormatter, Verbosity,
+};
+use lash_cli::project_root::ProjectRootFinder;
 use std::process;
 
-/// Parse a severity level from a string
-fn parse_severity(s: &str) -> Result<Severity, String> {
-    match s.to_lowercase().as_str() {
-        "error" => Ok(Severity::Error),
-        "warning" => Ok(Severity::Warning),
-        "info" => Ok(Severity::Info),
-        "hint" => Ok(Severity::Hint),
-        _ => Err(format!(
-            "Invalid severity level: '{s}'. Must be one of: error, warning, info, hint"
-        )),
-    }
-}
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "lash",
-    version,
-    about = "Minimalist Markdown-native task tracker",
-    long_about = None
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
-
-#[derive(Subcommand, Debug)]
-enum Commands {
-    /// Display version information
-    Version,
-
-    /// Lint Lash task files for errors
-    #[command(name = "lint")]
-    Lint {
-        /// Files or directories to lint (defaults to current project)
-        #[arg(value_name = "PATH")]
-        paths: Vec<PathBuf>,
-
-        /// Output diagnostics in JSON format
-        #[arg(long)]
-        json: bool,
-
-        /// Apply auto-fixes where possible
-        #[arg(long)]
-        fix: bool,
-
-        /// Run only specific rule(s) by code (can be specified multiple times)
-        #[arg(long = "rule", value_name = "CODE")]
-        rules: Vec<String>,
-
-        /// Only show errors of this severity or higher (error, warning, info, hint)
-        #[arg(long = "severity", value_name = "LEVEL")]
-        min_severity: Option<String>,
-
-        /// Disable colored output
-        #[arg(long = "no-color")]
-        no_color: bool,
-    },
-
-    /// Format Lash task files
-    #[command(name = "format")]
-    Format {
-        /// Files or directories to format (defaults to current project)
-        #[arg(value_name = "PATH")]
-        paths: Vec<PathBuf>,
-
-        /// Check formatting without modifying files
-        #[arg(long)]
-        check: bool,
-
-        /// Show diff of formatting changes
-        #[arg(long)]
-        diff: bool,
-
-        /// Only normalize formatting, don't apply lint fixes
-        #[arg(long = "no-fix")]
-        no_fix: bool,
-    },
-}
-
 fn main() {
-    let cli = Cli::parse();
+    // Parse CLI arguments
+    let cli = LashCli::parse();
 
-    let exit_code = match cli.command {
-        Some(Commands::Version) | None => {
-            println!("lash {}", env!("CARGO_PKG_VERSION"));
-            0
+    // Execute the command and get exit code
+    let exit_code = match run(cli) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            1
         }
-        Some(Commands::Lint {
+    };
+
+    process::exit(exit_code);
+}
+
+/// Run the CLI application
+#[allow(clippy::too_many_lines)] // Will be refactored when commands are implemented
+#[allow(unused_variables)] // Variables will be used when commands are implemented
+fn run(cli: LashCli) -> Result<i32> {
+    // Determine output format based on flags
+    let use_color = !cli.no_color && !cli.json;
+    let verbosity = if cli.quiet {
+        Verbosity::Quiet
+    } else {
+        Verbosity::from(cli.verbose)
+    };
+
+    // Create formatter based on output mode
+    let formatter: Box<dyn OutputFormatter> = if cli.json {
+        Box::new(JsonFormatter::new(false))
+    } else if cli.quiet {
+        Box::new(QuietFormatter::new())
+    } else {
+        Box::new(TextFormatter::new(use_color, verbosity))
+    };
+
+    // Find project root if needed
+    let project_root = if let Some(root) = cli.root {
+        // Explicit root provided
+        let finder = ProjectRootFinder::new();
+        finder
+            .validate_root(&root)
+            .context("Invalid project root")?;
+        Some(root)
+    } else {
+        // Try to auto-detect, but don't fail if not found
+        // (some commands might not need it)
+        let finder = ProjectRootFinder::new();
+        finder.find_from_cwd().ok()
+    };
+
+    // Dispatch to appropriate command handler
+    match cli.command {
+        Commands::Lint {
             paths,
-            json,
             fix,
             rules,
             min_severity,
-            no_color,
-        }) => {
-            // Parse severity string if provided
-            let severity = if let Some(s) = min_severity {
-                match parse_severity(&s) {
-                    Ok(sev) => Some(sev),
-                    Err(e) => {
-                        eprintln!("Error: {e}");
-                        process::exit(1);
-                    }
-                }
-            } else {
-                None
-            };
+        } => {
+            // Convert min_severity to lash_types::Severity
+            let severity = min_severity.map(|s| match s {
+                lash_cli::cli::SeverityLevel::Error => lash_types::Severity::Error,
+                lash_cli::cli::SeverityLevel::Warning => lash_types::Severity::Warning,
+                lash_cli::cli::SeverityLevel::Info => lash_types::Severity::Info,
+                lash_cli::cli::SeverityLevel::Hint => lash_types::Severity::Hint,
+            });
 
             let args = commands::lint::LintArgs {
                 paths,
-                json,
+                json: cli.json,
                 fix,
                 rules,
                 min_severity: severity,
-                no_color,
+                no_color: cli.no_color,
             };
-
-            match commands::lint::execute(args) {
-                Ok(code) => code,
-                Err(e) => {
-                    eprintln!("Error: {e:#}");
-                    1
-                }
-            }
+            commands::lint::execute(args)
         }
-        Some(Commands::Format {
+
+        Commands::Format {
             paths,
             check,
             diff,
             no_fix,
-        }) => {
+        } => {
             let args = commands::format::FormatArgs {
                 paths,
                 check,
                 diff,
                 no_fix,
             };
-
-            match commands::format::execute(args) {
-                Ok(code) => code,
-                Err(e) => {
-                    eprintln!("Error: {e:#}");
-                    1
-                }
-            }
+            commands::format::execute(args)
         }
-    };
 
-    process::exit(exit_code);
+        Commands::Index {
+            force: _,
+            show_files: _,
+        } => {
+            // TODO: Implement index command
+            eprintln!("The 'index' command is not yet implemented");
+            Ok(1)
+        }
+
+        Commands::CheckIndex { diff } => {
+            // TODO: Implement check-index command
+            eprintln!("The 'check-index' command is not yet implemented");
+            Ok(1)
+        }
+
+        Commands::List {
+            label,
+            status,
+            path,
+            blocked,
+            owner,
+            format,
+        } => {
+            // TODO: Implement list command
+            eprintln!("The 'list' command is not yet implemented");
+            Ok(1)
+        }
+
+        Commands::Search {
+            query,
+            limit,
+            threshold,
+        } => {
+            // TODO: Implement search command
+            eprintln!("The 'search' command is not yet implemented");
+            Ok(1)
+        }
+
+        Commands::Show {
+            target,
+            deps,
+            rdeps,
+        } => {
+            // TODO: Implement show command
+            eprintln!("The 'show' command is not yet implemented");
+            Ok(1)
+        }
+
+        Commands::Graph {
+            format,
+            scope,
+            output,
+        } => {
+            // TODO: Implement graph command
+            eprintln!("The 'graph' command is not yet implemented");
+            Ok(1)
+        }
+
+        Commands::CheckLinks { fix } => {
+            // TODO: Implement check-links command
+            eprintln!("The 'check-links' command is not yet implemented");
+            Ok(1)
+        }
+
+        Commands::AgentPrompt {
+            format: _,
+            label: _,
+            path: _,
+            max_tokens: _,
+        } => {
+            // TODO: Implement agent-prompt command
+            eprintln!("The 'agent-prompt' command is not yet implemented");
+            Ok(1)
+        }
+
+        Commands::Tui => {
+            // TODO: Implement TUI command
+            eprintln!("The 'tui' command is not yet implemented");
+            Ok(1)
+        }
+
+        Commands::Completion { shell } => {
+            use clap::CommandFactory;
+            use lash_cli::cli::Shell;
+
+            let shell_type = match shell {
+                Shell::Bash => clap_complete::Shell::Bash,
+                Shell::Zsh => clap_complete::Shell::Zsh,
+                Shell::Fish => clap_complete::Shell::Fish,
+                Shell::Powershell => clap_complete::Shell::PowerShell,
+                Shell::Elvish => clap_complete::Shell::Elvish,
+            };
+
+            let mut cmd = LashCli::command();
+            let bin_name = cmd.get_name().to_string();
+            clap_complete::generate(shell_type, &mut cmd, bin_name, &mut std::io::stdout());
+            Ok(0)
+        }
+    }
 }

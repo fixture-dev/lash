@@ -19,6 +19,7 @@ lash-db = { workspace = true }
 lash-agent = { workspace = true }
 lash-tui = { workspace = true }
 clap = { workspace = true }
+clap_complete = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -28,6 +29,8 @@ indicatif = { workspace = true }
 ignore = { workspace = true }
 similar = { workspace = true }
 walkdir = { workspace = true }
+dirs = { workspace = true }
+atty = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
