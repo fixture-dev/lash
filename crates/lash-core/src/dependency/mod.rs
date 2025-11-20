@@ -9,7 +9,12 @@
 //!
 //! The core data structure is [`DependencyGraph`], which provides efficient O(1) lookups
 //! for direct dependencies and O(E+V) traversal for transitive dependencies.
+//!
+//! Cycle detection is provided by [`CycleDetector`], which uses a three-color DFS algorithm
+//! to find all cycles in the graph and provide actionable suggestions for resolving them.
 
+pub mod cycle_detector;
 pub mod graph;
 
+pub use cycle_detector::{Cycle, CycleDetector, CycleReport, CycleSuggestion, SuggestionAction};
 pub use graph::{DependencyGraph, EdgeData, EdgeId, EdgeRef, NodeData};

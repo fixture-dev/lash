@@ -1,5 +1,142 @@
 # Lash Development Log
 
+## 2025-11-20 - Cycle Detection Implementation Complete (Dependency Resolution Task 2)
+
+### Summary
+Completed Task 2: Cycle Detection from `tasks/tasks.dependency-resolution.md`. Implemented a comprehensive cycle detection system using a three-color DFS algorithm that finds all cycles in the dependency graph and provides actionable suggestions for resolving them. All tests passing (10 unit tests + 2 doctests for cycle detector, 421 total workspace tests).
+
+### Implementation Overview
+
+**Core Components:**
+- `CycleDetector` - Three-color DFS algorithm for cycle detection
+- `Cycle` - Represents a detected cycle with path and metadata
+- `CycleReport` - Collection of cycles with resolution suggestions
+- `CycleSuggestion` - Actionable recommendations for breaking cycles
+
+**Key Features:**
+- Detects ALL cycles (not just first encountered)
+- Three-color marking (white/gray/black) for correct cycle identification
+- Back edge detection for cycle paths
+- Distinguishes within-file vs cross-file cycles
+- Identifies weakest edge in each cycle (directory < explicit < hierarchy)
+- Generates specific suggestions for breaking cycles
+- Comprehensive error reporting with file paths and line numbers
+- Prevents duplicate cycle reporting
+
+### Algorithm Details
+
+**Three-Color DFS:**
+- White: Unvisited node
+- Gray: Currently exploring (in DFS path stack)
+- Black: Fully explored
+- Back edge (gray → gray) indicates cycle
+
+**Cycle Detection Flow:**
+1. Initialize all nodes as white
+2. For each unvisited node, start DFS
+3. Mark node gray when entering
+4. Explore all dependencies
+5. On back edge (to gray node), extract cycle from path stack
+6. Mark node black when done
+7. Deduplicate cycles (same nodes, different starting points)
+
+**Weakest Edge Identification:**
+Priority (weakest to strongest):
+1. Directory dependencies (easiest to remove)
+2. Explicit dependencies (remove @depends-on)
+3. Hierarchy dependencies (restructure task tree)
+
+### Files Created/Modified
+
+**New Files:**
+- `crates/lash-core/src/dependency/cycle_detector.rs` (607 lines) - Cycle detection implementation
+  - CycleDetector struct with DFS traversal
+  - Cycle representation with path and metadata
+  - CycleReport with formatted output
+  - Resolution suggestions with actionable descriptions
+  - 10 comprehensive unit tests covering all scenarios
+
+**Modified Files:**
+- `crates/lash-core/src/dependency/mod.rs` - Export cycle detector API
+- `crates/lash-core/src/dependency/graph.rs` - Added `all_node_ids()` method and PartialEq/Eq to EdgeData
+- `tasks/tasks.dependency-resolution.md` - Marked all Task 2 subtasks complete
+
+### Test Coverage
+
+**Unit Tests (all passing):**
+- Empty graph (no cycles)
+- Acyclic graph (linear chain)
+- Simple cycle (A → B → A)
+- Complex cycle (A → B → C → D → B, 4 nodes)
+- Multiple disjoint cycles
+- Self-loop (A → A)
+- Cross-file cycle detection
+- Weakest edge identification
+- Suggestion generation
+- Report formatting
+
+**Success Criteria Met:**
+- ✓ Detects all cycles in arbitrary graphs
+- ✓ Correctly handles graphs with multiple disjoint cycles
+- ✓ Clear, actionable error messages for each cycle
+- ✓ No false positives or false negatives
+- ✓ All 421 workspace tests pass (no regressions)
+
+### API Examples
+
+**Basic Usage:**
+```rust
+let detector = CycleDetector::new(&graph);
+let report = detector.detect_cycles();
+
+if report.has_cycles() {
+    println!("{}", report.format_report(&graph));
+}
+```
+
+**Cycle Information:**
+```rust
+for cycle in &report.cycles {
+    println!("Cycle length: {}", cycle.len());
+    println!("Within file: {}", cycle.is_within_file);
+    println!("Path: {}", cycle.format_path(&graph));
+
+    if let Some((from, to, edge)) = cycle.find_weakest_edge() {
+        println!("Break edge: {} → {}", from, to);
+    }
+}
+```
+
+**Resolution Suggestions:**
+```rust
+for suggestion in &report.suggestions {
+    println!("{}", suggestion.description);
+    match suggestion.action {
+        SuggestionAction::RemoveExplicitDependency => { /* remove @depends-on */ }
+        SuggestionAction::RestructureHierarchy => { /* move task */ }
+        SuggestionAction::ReorganizeDirectories => { /* reorganize */ }
+    }
+}
+```
+
+### Design Decisions
+
+1. **Find All Cycles vs Fail-Fast**: Chose to find all cycles to give users complete visibility into dependency issues
+2. **Cycle Deduplication**: Same cycle starting from different nodes is reported once
+3. **Weakest Link Priority**: Helps users choose the least disruptive fix
+4. **Separate Suggestion Types**: Allows tools to provide different UI/UX for different fix types
+5. **Within-File Detection**: Helps prioritize fixes (within-file cycles often easier to fix)
+
+### Next Steps
+
+Ready to proceed to Task 3: Dependency Resolution Engine, which will:
+- Parse @depends-on annotations
+- Resolve references (relative/absolute paths, IDs)
+- Build complete dependency graph from parsed files
+- Handle broken links gracefully
+
+---
+
 ## 2025-11-20 - Dependency Graph Data Structure Complete (Dependency Resolution Task 1)
 
 ### Summary

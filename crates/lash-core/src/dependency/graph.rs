@@ -115,7 +115,7 @@ pub type EdgeId = (String, String);
 ///
 /// Stores the type of dependency relationship and optional source location
 /// information for error reporting.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeData {
     /// Type of dependency
     pub kind: DependencyKind,
@@ -314,6 +314,37 @@ impl DependencyGraph {
     #[must_use]
     pub fn edge_count(&self) -> usize {
         self.edge_metadata.len()
+    }
+
+    /// Get all node IDs in the graph
+    ///
+    /// Returns a vector containing all task IDs in the graph. The order is
+    /// unspecified.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::dependency::{DependencyGraph, NodeData};
+    /// use lash_types::TaskStatus;
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    /// graph.add_node(
+    ///     "test#task2".to_string(),
+    ///     NodeData::new("Task 2".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    ///
+    /// let ids = graph.all_node_ids();
+    /// assert_eq!(ids.len(), 2);
+    /// assert!(ids.contains(&"test#task1".to_string()));
+    /// assert!(ids.contains(&"test#task2".to_string()));
+    /// ```
+    #[must_use]
+    pub fn all_node_ids(&self) -> Vec<String> {
+        self.nodes.keys().cloned().collect()
     }
 
     /// Add a node to the graph
