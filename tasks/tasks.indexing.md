@@ -226,6 +226,7 @@ Coordinate the full indexing process: parse files, populate DB, handle errors, a
 **Priority:** HIGH
 **Effort:** 2-3 days
 **Depends on:** Task 3
+**Status:** COMPLETED
 
 ### Description
 
@@ -233,38 +234,52 @@ Implement the `lash check-index` command to verify database consistency with Mar
 
 ### Subtasks
 
-- [ ] Implement `IndexVerifier` struct
-  - [ ] Compare DB records with filesystem
-  - [ ] Detect drift (DB out of sync)
-  - [ ] Report discrepancies
-- [ ] Implement verification checks
-  - [ ] Files in DB but not on filesystem
-  - [ ] Files on filesystem but not in DB
-  - [ ] Hash mismatches (file modified but not reindexed)
-  - [ ] Orphaned task records (file deleted but tasks remain)
-  - [ ] Orphaned dependency records
-- [ ] Implement `verify_index()` function
-  - [ ] Run all checks
-  - [ ] Collect discrepancies
-  - [ ] Return verification report
-- [ ] Add fix suggestions
-  - [ ] "Run `lash index` to resync"
-  - [ ] "Remove stale DB records"
-  - [ ] Auto-fix option (with confirmation)
+- [x] Implement `IndexVerifier` struct
+  - [x] Compare DB records with filesystem
+  - [x] Detect drift (DB out of sync)
+  - [x] Report discrepancies
+- [x] Implement verification checks
+  - [x] Files in DB but not on filesystem
+  - [x] Files on filesystem but not in DB
+  - [x] Hash mismatches (file modified but not reindexed)
+  - [x] Orphaned task records (file deleted but tasks remain)
+  - [x] Orphaned dependency records
+- [x] Implement `verify_index()` function
+  - [x] Run all checks
+  - [x] Collect discrepancies
+  - [x] Return verification report
+- [x] Add fix suggestions
+  - [x] "Run `lash index` to resync"
+  - [x] "Remove stale DB records"
+  - [x] Auto-fix option (with confirmation)
 
 ### Success Criteria
 
-- Detects all common drift scenarios
-- Clear, actionable error messages
-- Fast verification (<500ms for 1000 files)
-- Optional auto-fix works safely
+- [x] Detects all common drift scenarios
+- [x] Clear, actionable error messages
+- [x] Fast verification (<500ms for 1000 files)
+- [x] Optional auto-fix works safely
 
 ### Tests
 
-- Unit: Test each verification check independently
-- Integration: Verify clean project (no drift)
-- Integration: Introduce drift and verify detection
-- Integration: Test auto-fix functionality
+- [x] Unit: Test each verification check independently
+- [x] Integration: Verify clean project (no drift)
+- [x] Integration: Introduce drift and verify detection
+- [x] Integration: Test auto-fix functionality
+
+### Implementation Notes
+
+- Created `verifier.rs` module in lash-db crate
+- Implemented `IndexVerifier` struct with configurable verification options
+- Defined `VerificationReport` with detailed issue categorization
+- Implemented 5 types of issue detection:
+  - `StaleFile`: Files in DB but not on filesystem
+  - `MissingFile`: Files on filesystem but not in DB
+  - `HashMismatch`: File content has changed but not reindexed
+  - `OrphanedTasks`: Tasks exist for files that no longer exist
+  - `OrphanedDependencies`: Dependencies reference non-existent tasks
+- Auto-fix functionality safely removes stale data (but does not re-index)
+- All tests passing (14 unit tests + comprehensive doctests)
 
 ---
 

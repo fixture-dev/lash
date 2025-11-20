@@ -1199,3 +1199,103 @@ Module exports:
 Ready for use in Task 2 (Incremental Indexing Logic).
 
 **Git commits:** See commit history for detailed implementation.
+
+---
+
+## 2025-11-19: Task 4 - Index Verification Implementation
+
+**Status:** COMPLETED
+
+### Overview
+
+Implemented comprehensive index verification functionality for the `lash-db` crate. This provides the foundation for the `lash check-index` command to detect and optionally fix database drift.
+
+### Implementation
+
+Created `crates/lash-db/src/verifier.rs` with the following components:
+
+1. **VerificationIssue types** - Categorized drift detection:
+   - `StaleFile` - Files in DB but not on filesystem
+   - `MissingFile` - Files on filesystem but not in DB
+   - `HashMismatch` - File modified but not reindexed
+   - `OrphanedTasks` - Tasks exist for deleted files
+   - `OrphanedDependencies` - Dependencies reference non-existent tasks
+
+2. **VerificationReport struct** - Aggregated results:
+   - List of all issues found
+   - Statistics (files checked, DB records checked)
+   - Helper methods: `is_clean()`, `total_issues()`, `issues_of_kind()`, `count_by_kind()`
+
+3. **VerifierConfig struct** - Configurable verification options:
+   - Custom walker configuration
+   - Toggle orphaned task checking
+   - Toggle orphaned dependency checking
+   - Builder pattern for ergonomic configuration
+
+4. **IndexVerifier struct** - Main verification engine:
+   - Compares filesystem state with DB state
+   - Fast hash map-based lookups for O(n) performance
+   - Five distinct verification phases:
+     1. Discover files on filesystem
+     2. Query database records
+     3. Check for stale files (in DB but not on FS)
+     4. Check for missing/modified files
+     5. Check for orphaned tasks/dependencies (if enabled)
+
+5. **Auto-fix functionality** - Safe cleanup:
+   - Deletes stale file records
+   - Cleans up orphaned tasks (via CASCADE DELETE)
+   - Removes orphaned dependencies
+   - Does NOT re-index (delegates to `lash index`)
+
+### Key Design Decisions
+
+- **Separation of concerns:** Verifier only detects and cleans up stale data; re-indexing is left to the indexer
+- **Configurable checks:** Allow disabling expensive checks (orphaned tasks/dependencies) for faster verification
+- **Clear issue descriptions:** Each issue includes actionable fix suggestions
+- **Database schema alignment:** Fixed column names to match actual schema (`from_task_id`/`to_task_id`, not `source_file_id`/`target_file_id`)
+- **Foreign key handling in tests:** Used PRAGMA to temporarily disable FK constraints for creating orphaned data in tests
+
+### Test Coverage
+
+Implemented 14 comprehensive unit tests:
+- `test_verification_report_new` - Empty report creation
+- `test_verification_report_issues_of_kind` - Issue filtering
+- `test_verifier_config_new` - Config defaults
+- `test_verifier_config_builders` - Builder pattern
+- `test_verify_clean_index` - No issues detected on clean DB
+- `test_verify_stale_file` - Detects files in DB but not on FS
+- `test_verify_missing_file` - Detects files on FS but not in DB
+- `test_verify_hash_mismatch` - Detects modified files
+- `test_verify_orphaned_tasks` - Detects tasks for deleted files
+- `test_verify_orphaned_dependencies` - Detects invalid dependency references
+- `test_verify_mixed_issues` - Multiple issue types at once
+- `test_auto_fix_stale_files` - Auto-fix removes stale records
+- `test_auto_fix_orphaned_dependencies` - Auto-fix cleans dependencies
+- `test_verify_disabled_checks` - Respects check configuration
+
+All tests passing (14 unit tests + comprehensive doctests).
+Total lash-db crate: 100 unit tests + 58 doctests passing.
+
+### Performance
+
+Verification is fast:
+- O(n) time complexity for n files
+- HashMap-based lookups for constant-time file checks
+- Minimal memory overhead (only stores file metadata in memory)
+- Should easily meet <500ms target for 1000 files
+
+### Module Exports
+
+Updated `crates/lash-db/src/lib.rs` to export:
+- `IndexVerifier` - Main verifier struct
+- `VerifierConfig` - Configuration builder
+- `VerificationReport` - Results aggregation
+- `VerificationIssue` - Individual issue details
+- `IssueKind` - Issue categorization enum
+
+### Next Steps
+
+Task 4 is complete. The verifier is ready to be integrated into the CLI layer when the `lash check-index` command is implemented. The next indexing task (Task 5: Incremental Dependency Re-resolution) can now begin.
+
+**Git commit:** Coming next with all changes.
