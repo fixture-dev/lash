@@ -13,9 +13,18 @@ use std::path::PathBuf;
     version,
     about = "Minimalist Markdown-native task tracker",
     long_about = "Lash is an ultra-fast, Markdown-native task tracker designed for developers and AI agents.\n\
-                  It uses Markdown as the single source of truth and SQLite as an acceleration layer.",
+                  It uses Markdown as the single source of truth and SQLite as an acceleration layer.\n\n\
+                  EXIT CODES:\n  \
+                  0 - Success\n  \
+                  1 - General error\n  \
+                  2 - Lint/validation error\n  \
+                  3 - Index/database error\n  \
+                  4 - Configuration error\n  \
+                  5 - Resource not found\n  \
+                  6 - Circular dependency detected",
     propagate_version = true,
-    arg_required_else_help = true
+    arg_required_else_help = true,
+    after_long_help = "For more information and documentation, visit: https://github.com/your-org/lash"
 )]
 pub struct LashCli {
     /// Override project root detection (defaults to searching for lash.index.md or .lash/)

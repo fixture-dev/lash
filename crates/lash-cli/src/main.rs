@@ -16,6 +16,7 @@ use lash_cli::formatter::{
 };
 use lash_cli::logging::{init_logging, install_panic_hook, LogConfig};
 use lash_cli::project_root::ProjectRootFinder;
+use lash_types::error::ExitCode;
 use std::process;
 
 fn main() {
@@ -50,24 +51,38 @@ fn main() {
 
     // Execute the command and get exit code
     let exit_code = match run(cli) {
-        Ok(code) => {
-            tracing::debug!(exit_code = code, "Command completed successfully");
-            code
+        Ok(()) => {
+            tracing::debug!("Command completed successfully");
+            ExitCode::Success
         }
         Err(e) => {
             tracing::error!(error = %e, "Command failed");
             eprintln!("Error: {e:#}");
-            1
+
+            // Convert LashError to appropriate exit code
+            // Note: anyhow::Error might wrap a LashError, so we need to downcast
+            if let Some(lash_err) = e.downcast_ref::<lash_types::error::LashError>() {
+                ExitCode::from(lash_err)
+            } else {
+                // Non-LashError (e.g., anyhow errors from other sources)
+                ExitCode::GeneralError
+            }
         }
     };
 
-    process::exit(exit_code);
+    process::exit(exit_code.as_i32());
 }
 
 /// Run the CLI application
+///
+/// # Errors
+///
+/// Returns an error if command execution fails. The error type may be:
+/// - `LashError` for Lash-specific errors (will map to specific exit codes)
+/// - `anyhow::Error` for other errors (will use `GeneralError` exit code)
 #[allow(clippy::too_many_lines)] // Will be refactored when commands are implemented
 #[allow(unused_variables)] // Variables will be used when commands are implemented
-fn run(cli: LashCli) -> Result<i32> {
+fn run(cli: LashCli) -> Result<()> {
     // Determine output format based on flags
     let use_color = !cli.no_color && !cli.json;
     let verbosity = if cli.quiet {
@@ -124,7 +139,8 @@ fn run(cli: LashCli) -> Result<i32> {
                 min_severity: severity,
                 no_color: cli.no_color,
             };
-            commands::lint::execute(args)
+            commands::lint::execute(args)?;
+            Ok(())
         }
 
         Commands::Format {
@@ -139,7 +155,8 @@ fn run(cli: LashCli) -> Result<i32> {
                 diff,
                 no_fix,
             };
-            commands::format::execute(args)
+            commands::format::execute(args)?;
+            Ok(())
         }
 
         Commands::Index {
@@ -147,14 +164,12 @@ fn run(cli: LashCli) -> Result<i32> {
             show_files: _,
         } => {
             // TODO: Implement index command
-            eprintln!("The 'index' command is not yet implemented");
-            Ok(1)
+            anyhow::bail!("The 'index' command is not yet implemented")
         }
 
         Commands::CheckIndex { diff } => {
             // TODO: Implement check-index command
-            eprintln!("The 'check-index' command is not yet implemented");
-            Ok(1)
+            anyhow::bail!("The 'check-index' command is not yet implemented")
         }
 
         Commands::List {
@@ -166,8 +181,7 @@ fn run(cli: LashCli) -> Result<i32> {
             format,
         } => {
             // TODO: Implement list command
-            eprintln!("The 'list' command is not yet implemented");
-            Ok(1)
+            anyhow::bail!("The 'list' command is not yet implemented")
         }
 
         Commands::Search {
@@ -176,8 +190,7 @@ fn run(cli: LashCli) -> Result<i32> {
             threshold,
         } => {
             // TODO: Implement search command
-            eprintln!("The 'search' command is not yet implemented");
-            Ok(1)
+            anyhow::bail!("The 'search' command is not yet implemented")
         }
 
         Commands::Show {
@@ -186,8 +199,7 @@ fn run(cli: LashCli) -> Result<i32> {
             rdeps,
         } => {
             // TODO: Implement show command
-            eprintln!("The 'show' command is not yet implemented");
-            Ok(1)
+            anyhow::bail!("The 'show' command is not yet implemented")
         }
 
         Commands::Graph {
@@ -196,14 +208,12 @@ fn run(cli: LashCli) -> Result<i32> {
             output,
         } => {
             // TODO: Implement graph command
-            eprintln!("The 'graph' command is not yet implemented");
-            Ok(1)
+            anyhow::bail!("The 'graph' command is not yet implemented")
         }
 
         Commands::CheckLinks { fix } => {
             // TODO: Implement check-links command
-            eprintln!("The 'check-links' command is not yet implemented");
-            Ok(1)
+            anyhow::bail!("The 'check-links' command is not yet implemented")
         }
 
         Commands::AgentPrompt {
@@ -213,14 +223,12 @@ fn run(cli: LashCli) -> Result<i32> {
             max_tokens: _,
         } => {
             // TODO: Implement agent-prompt command
-            eprintln!("The 'agent-prompt' command is not yet implemented");
-            Ok(1)
+            anyhow::bail!("The 'agent-prompt' command is not yet implemented")
         }
 
         Commands::Tui => {
             // TODO: Implement TUI command
-            eprintln!("The 'tui' command is not yet implemented");
-            Ok(1)
+            anyhow::bail!("The 'tui' command is not yet implemented")
         }
 
         Commands::Completion { shell } => {
@@ -238,7 +246,7 @@ fn run(cli: LashCli) -> Result<i32> {
             let mut cmd = LashCli::command();
             let bin_name = cmd.get_name().to_string();
             clap_complete::generate(shell_type, &mut cmd, bin_name, &mut std::io::stdout());
-            Ok(0)
+            Ok(())
         }
     }
 }
