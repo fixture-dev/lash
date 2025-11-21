@@ -65,6 +65,49 @@ The `--fix` and `--deps`/`--rdeps` features are legitimate future enhancements, 
 
 ---
 
+## 2025-11-21 - CLI Command: `lash agent-prompt` (Task 10)
+
+### Summary
+Implemented the `lash agent-prompt` command to generate optimized prompts for AI agents to use Lash effectively.
+
+**Commit:** `590edf2`
+
+### New Crate: `lash-agent`
+Created new crate with three core modules:
+- **`schema.rs`**: Schema generation for Lash task file format (both text and JSON)
+- **`tokens.rs`**: Token counting/minimization utilities using `words * 1.3` heuristic
+- **`prompt.rs`**: Prompt template system with configurable sections and budget enforcement
+
+### Command Features
+- Supports 4 output formats: plain (default), JSON, claude-skill, agents-md
+- Filters tasks by labels (`--label`) and path (`--path`)
+- Enforces token budgets (`--max-tokens`) with approximate counting
+- Schema-first approach with minimal examples for token efficiency
+- Includes safety guidelines for agents
+
+### Output Structure
+- **Schema**: Complete format specification with annotations and constraints
+- **Examples**: Minimal and dependency-based examples
+- **Operations**: Allowed modifications (add tasks, update status, etc.)
+- **Safety Guidelines**: Best practices for agents using Lash
+- **Task Summaries**: Filtered list based on flags (when DB available)
+
+### Testing
+- 31 unit tests in lash-agent (all passing)
+- 12 doctests (all passing)
+- 3 unit tests in agent_prompt command
+- All workspace tests pass (495+ total)
+
+### Implementation Notes
+- Token minimization follows design-doc.md section 11 strategies
+- Prioritizes schema and safety guidelines over task summaries when budget-constrained
+- Uses schema-first approach for optimal agent understanding
+- Gracefully handles missing database (skips task summaries)
+
+This completes Task 10 from tasks/tasks.cli-commands.md. The agent-prompt command is production-ready and provides comprehensive guidance for AI agents to safely and effectively use Lash.
+
+---
+
 ## 2025-11-21 - CLI Check-Links Command Complete (Task 9)
 
 ### Summary
