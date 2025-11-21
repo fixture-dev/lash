@@ -283,13 +283,22 @@ fn run(cli: LashCli) -> Result<()> {
         }
 
         Commands::AgentPrompt {
-            format: _,
-            label: _,
-            path: _,
-            max_tokens: _,
+            format,
+            label,
+            path,
+            max_tokens,
         } => {
-            // TODO: Implement agent-prompt command
-            anyhow::bail!("The 'agent-prompt' command is not yet implemented")
+            let args = commands::agent_prompt::AgentPromptArgs {
+                format,
+                labels: label,
+                path,
+                max_tokens,
+                project_root: None,
+                json: cli.json,
+                no_color: cli.no_color,
+            };
+            let exit_code = commands::agent_prompt::execute(&args)?;
+            process::exit(exit_code);
         }
 
         Commands::Tui => {

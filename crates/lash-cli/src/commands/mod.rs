@@ -1,5 +1,6 @@
 //! Command implementations for the CLI
 
+pub mod agent_prompt;
 pub mod check_index;
 pub mod check_links;
 pub mod format;
