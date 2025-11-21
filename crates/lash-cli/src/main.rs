@@ -278,8 +278,14 @@ fn run(cli: LashCli) -> Result<()> {
         }
 
         Commands::CheckLinks { fix } => {
-            // TODO: Implement check-links command
-            anyhow::bail!("The 'check-links' command is not yet implemented")
+            let args = commands::check_links::CheckLinksArgs {
+                json: cli.json,
+                fix,
+                no_color: cli.no_color,
+                project_root,
+            };
+            let exit_code = commands::check_links::execute(&args)?;
+            process::exit(exit_code);
         }
 
         Commands::AgentPrompt {

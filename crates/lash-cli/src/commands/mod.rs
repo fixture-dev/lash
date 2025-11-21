@@ -1,6 +1,7 @@
 //! Command implementations for the CLI
 
 pub mod check_index;
+pub mod check_links;
 pub mod format;
 pub mod graph;
 pub mod index;
