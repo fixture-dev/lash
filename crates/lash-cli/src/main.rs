@@ -256,10 +256,25 @@ fn run(cli: LashCli) -> Result<()> {
         Commands::Graph {
             format,
             scope,
+            hide_completed,
             output,
         } => {
-            // TODO: Implement graph command
-            anyhow::bail!("The 'graph' command is not yet implemented")
+            // Convert format to GraphFormat
+            let graph_format = match format {
+                lash_cli::cli::GraphFormat::Dot => commands::graph::GraphFormat::Dot,
+                lash_cli::cli::GraphFormat::Mermaid => commands::graph::GraphFormat::Mermaid,
+                lash_cli::cli::GraphFormat::Json => commands::graph::GraphFormat::Json,
+            };
+
+            let args = commands::graph::GraphArgs {
+                format: graph_format,
+                scope,
+                hide_completed,
+                output,
+                project_root,
+            };
+            commands::graph::execute(&args)?;
+            Ok(())
         }
 
         Commands::CheckLinks { fix } => {

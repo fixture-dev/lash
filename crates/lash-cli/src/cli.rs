@@ -189,6 +189,10 @@ pub enum Commands {
         #[arg(long)]
         scope: Option<String>,
 
+        /// Hide completed tasks from the graph
+        #[arg(long)]
+        hide_completed: bool,
+
         /// Output file (defaults to stdout)
         #[arg(long, short = 'o')]
         output: Option<PathBuf>,
