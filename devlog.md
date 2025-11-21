@@ -5,7 +5,7 @@
 ### Summary
 Implemented the `lash graph` command to export dependency graphs in multiple formats (DOT, Mermaid, JSON). The command integrates with the existing GraphExporter infrastructure in lash-core and adds custom Mermaid format support.
 
-**Commit:** (pending)
+**Commit:** `8e55d9b`
 
 ### Implementation Overview
 
