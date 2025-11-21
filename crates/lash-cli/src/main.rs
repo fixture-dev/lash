@@ -219,15 +219,10 @@ fn run(cli: LashCli) -> Result<()> {
             Ok(())
         }
 
-        Commands::Search {
-            query,
-            limit,
-            threshold,
-        } => {
+        Commands::Search { query, limit } => {
             let args = commands::search::SearchArgs {
                 query,
                 limit,
-                threshold,
                 json: cli.json,
                 no_color: cli.no_color,
                 project_root,
@@ -277,10 +272,9 @@ fn run(cli: LashCli) -> Result<()> {
             Ok(())
         }
 
-        Commands::CheckLinks { fix } => {
+        Commands::CheckLinks => {
             let args = commands::check_links::CheckLinksArgs {
                 json: cli.json,
-                fix,
                 no_color: cli.no_color,
                 project_root,
             };

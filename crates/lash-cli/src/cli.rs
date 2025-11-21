@@ -159,10 +159,6 @@ pub enum Commands {
         /// Maximum number of results to show
         #[arg(long, short = 'n', default_value = "20")]
         limit: usize,
-
-        /// Fuzzy matching threshold (0.0 = exact, 1.0 = very fuzzy)
-        #[arg(long, default_value = "0.3")]
-        threshold: f32,
     },
 
     /// Show detailed information about a specific task or file
@@ -199,11 +195,7 @@ pub enum Commands {
     },
 
     /// Check for broken links and references
-    CheckLinks {
-        /// Fix broken links automatically if possible
-        #[arg(long)]
-        fix: bool,
-    },
+    CheckLinks,
 
     /// Generate optimized prompts for AI agents
     AgentPrompt {

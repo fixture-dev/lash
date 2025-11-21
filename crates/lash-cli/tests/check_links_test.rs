@@ -2,7 +2,7 @@
 
 mod common;
 
-use clap::{CommandFactory, Parser};
+use clap::CommandFactory;
 use common::temp_test_dir;
 use lash_cli::cli::LashCli;
 use lash_db::{init_database, Indexer, IndexerConfig};
@@ -88,16 +88,6 @@ fn test_check_links_command_exists() {
     assert!(
         check_links_cmd.is_some(),
         "check-links command should be registered"
-    );
-}
-
-/// Test that check-links command accepts fix flag
-#[test]
-fn test_check_links_accepts_fix_flag() {
-    let result = LashCli::try_parse_from(["lash", "check-links", "--fix"]);
-    assert!(
-        result.is_ok(),
-        "Should parse check-links command with --fix"
     );
 }
 

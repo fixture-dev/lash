@@ -601,11 +601,160 @@ Implement the `lash tui` command to launch the terminal UI.
 
 ---
 
+## Task 12: Implement `lash check-links --fix` Mode
+
+**Priority:** LOW
+**Effort:** 2-3 days
+**Depends on:** Task 9 (check-links command)
+**Status:** Not Started
+
+### Description
+
+Implement the `--fix` flag for `lash check-links` to automatically repair broken dependency references using fuzzy matching and interactive confirmation.
+
+### Subtasks
+
+- [ ] Remove `#[allow(dead_code)]` from `fix` field in `CheckLinksArgs`
+- [ ] Implement fuzzy matching algorithm
+  - [ ] Use Levenshtein distance or similar metric
+  - [ ] Search for tasks with similar IDs across all files
+  - [ ] Rank candidates by similarity score
+- [ ] Implement interactive confirmation UI
+  - [ ] Show broken reference and suggested fix
+  - [ ] Allow user to accept, reject, or manually specify fix
+  - [ ] Support `--yes` flag for non-interactive mode
+- [ ] Implement Markdown file updating
+  - [ ] Parse file to locate `@depends-on` annotation
+  - [ ] Replace broken reference with corrected one
+  - [ ] Preserve formatting and whitespace
+  - [ ] Write updated file back to disk
+- [ ] Re-index after fixing
+  - [ ] Run indexer on modified files
+  - [ ] Verify fixes resolved the broken links
+- [ ] Add comprehensive tests
+  - [ ] Integration: Fix single broken link
+  - [ ] Integration: Fix multiple broken links in one file
+  - [ ] Integration: Interactive mode (mock user input)
+  - [ ] Integration: Non-interactive mode with `--yes`
+  - [ ] Integration: Reject suggested fix
+
+### Success Criteria
+
+- Accurately suggests fixes for common typos and mistakes
+- Interactive mode provides clear choices
+- File updates preserve formatting
+- Re-indexing verifies fixes worked
+- Safe: creates backups before modifying files
+
+### Tests
+
+- Integration: Fix broken reference with fuzzy match
+- Integration: Multiple fixes in one session
+- Integration: Test `--yes` flag
+- Integration: Test rejection and manual fix
+- Integration: Verify file backups created
+
+---
+
+## Task 13: Clean Up Unimplemented Search Command Features
+
+**Priority:** HIGH
+**Effort:** 0.5 days
+**Depends on:** Task 7 (search command)
+**Status:** Not Started
+
+### Description
+
+Remove or properly implement unimplemented features in the search command to maintain code quality and avoid confusion.
+
+### Subtasks
+
+- [ ] Remove `--threshold` flag
+  - [ ] Remove from `SearchArgs` struct
+  - [ ] Remove documentation references
+  - [ ] Verify tests still pass
+  - [ ] Note: FTS5 doesn't support fuzzy threshold; this flag doesn't apply
+- [ ] Remove or implement `highlight_matches()` function
+  - [ ] Option A: Remove function entirely (no match positions from API)
+  - [ ] Option B: Implement using search result metadata if available
+  - [ ] Remove `#[allow(dead_code)]` attribute
+- [ ] Address `--scope` flag TODO
+  - [ ] Option A: Add `--scope` to CLI args now
+  - [ ] Option B: Remove TODO comment and defer to future task
+  - [ ] Document decision
+
+### Success Criteria
+
+- No `#[allow(dead_code)]` attributes in search command
+- All defined flags are implemented and functional
+- Code is clean with no misleading TODOs
+
+### Tests
+
+- Verify all existing search tests pass
+- Add tests for any newly implemented features
+
+---
+
+## Task 14: Implement `lash show --deps` and `--rdeps` Flags
+
+**Priority:** MEDIUM
+**Effort:** 1-2 days
+**Depends on:** Task 6 (show command), tasks.dependency-resolution.md
+**Status:** Not Started
+
+### Description
+
+Fully implement the `--deps` and `--rdeps` flags for the `lash show` command to display task dependencies and reverse dependencies.
+
+### Subtasks
+
+- [ ] Add repository method to query tasks by database ID
+  - [ ] `get_task_by_db_id(id: i64) -> Result<Task>`
+  - [ ] Implement in `lash-db` repository
+  - [ ] Add tests for new method
+- [ ] Implement `--deps` flag
+  - [ ] Query dependencies table for task's outgoing edges
+  - [ ] Resolve target task IDs to full task records
+  - [ ] Format and display dependency list
+  - [ ] Show dependency kind (depends-on, blocks, etc.)
+- [ ] Implement `--rdeps` flag
+  - [ ] Query dependencies table for incoming edges
+  - [ ] Resolve source task IDs to full task records
+  - [ ] Format and display reverse dependency list
+- [ ] Update output formatting
+  - [ ] Show task ID, title, status for each dependency
+  - [ ] Group by dependency type
+  - [ ] Use colors for status
+- [ ] Remove placeholder empty Vec returns
+  - [ ] Remove comments about missing implementation
+  - [ ] Ensure full functionality
+- [ ] Add comprehensive tests
+  - [ ] Integration: Show task with dependencies
+  - [ ] Integration: Show task with reverse dependencies
+  - [ ] Integration: Show task with both
+  - [ ] Integration: Show task with no dependencies
+
+### Success Criteria
+
+- `--deps` shows all task dependencies accurately
+- `--rdeps` shows all tasks that depend on this one
+- Output is clear and well-formatted
+- Fast queries (<100ms)
+
+### Tests
+
+- Integration: Task with multiple dependencies
+- Integration: Task with multiple dependents
+- Integration: Task in dependency chain
+- Integration: Isolated task (no deps)
+
+---
+
 ## Non-Goals (for v1)
 
 - `lash init` command (manually create project structure)
 - `lash archive` command (future)
-- `lash fix-links` command (future)
 - Interactive prompts in commands (prefer flags)
 
 ---

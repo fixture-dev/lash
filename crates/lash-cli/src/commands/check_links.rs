@@ -14,9 +14,6 @@ use crate::utils::file_discovery::find_project_root;
 pub struct CheckLinksArgs {
     /// Output JSON diagnostics
     pub json: bool,
-    /// Attempt to automatically fix broken links (not yet implemented)
-    #[allow(dead_code)] // Reserved for future --fix implementation
-    pub fix: bool,
     /// Disable colored output
     pub no_color: bool,
     /// Project root (detected automatically if None)
