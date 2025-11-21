@@ -39,10 +39,6 @@ pub struct SearchArgs {
     pub query: String,
     /// Maximum number of results to return
     pub limit: usize,
-    /// Fuzzy matching threshold (0.0 = exact, 1.0 = very fuzzy)
-    /// Note: Currently not used by the FTS5 search backend
-    #[allow(dead_code)]
-    pub threshold: f32,
     /// Output in JSON format
     pub json: bool,
     /// Disable colored output
@@ -108,7 +104,7 @@ pub fn execute(args: &SearchArgs) -> Result<i32> {
     // Build search query
     let query = SearchQuery {
         query: args.query.clone(),
-        scope: None, // TODO: Add --scope flag to CLI args in future
+        scope: None,
         limit: args.limit,
         offset: 0,
         labels: vec![],
@@ -286,32 +282,6 @@ fn format_labels(labels: &[String], use_color: bool) -> String {
     }
 }
 
-/// Highlight matching terms in text (basic implementation)
-///
-/// This function will be enhanced once we have actual match positions from the search API.
-#[allow(dead_code)]
-fn highlight_matches(text: &str, query: &str, use_color: bool) -> String {
-    if !use_color {
-        return text.to_string();
-    }
-
-    // Simple case-insensitive highlighting
-    // TODO: Use actual match positions from search API
-    let query_lower = query.to_lowercase();
-    let mut result = String::new();
-    let mut remaining = text;
-
-    while let Some(pos) = remaining.to_lowercase().find(&query_lower) {
-        result.push_str(&remaining[..pos]);
-        let matched = &remaining[pos..pos + query.len()];
-        result.push_str(&matched.yellow().bold().to_string());
-        remaining = &remaining[pos + query.len()..];
-    }
-    result.push_str(remaining);
-
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,17 +297,6 @@ mod tests {
             format_matched_fields(&["title".to_string(), "body".to_string()], false),
             "[title, body]"
         );
-    }
-
-    #[test]
-    fn test_highlight_matches() {
-        assert_eq!(
-            highlight_matches("Hello world", "world", false),
-            "Hello world"
-        );
-
-        // With color, we'd get ANSI codes, so just verify it runs without panic
-        let _ = highlight_matches("Hello world", "world", true);
     }
 
     #[test]

@@ -21,7 +21,6 @@ use std::path::PathBuf;
 struct SearchArgs {
     query: String,
     limit: usize,
-    threshold: f32,
     json: bool,
     no_color: bool,
     project_root: Option<PathBuf>,
@@ -59,25 +58,12 @@ fn test_search_accepts_limit() {
     assert!(result.is_ok(), "Should parse search command with --limit");
 }
 
-/// Test that search command accepts threshold flag
-#[test]
-fn test_search_accepts_threshold() {
-    use lash_cli::cli::LashCli;
-
-    let result = LashCli::try_parse_from(["lash", "search", "test", "--threshold", "0.5"]);
-    assert!(
-        result.is_ok(),
-        "Should parse search command with --threshold"
-    );
-}
-
 /// Test SearchArgs structure
 #[test]
 fn test_search_args_construction() {
     let args = SearchArgs {
         query: "test".to_string(),
         limit: 50,
-        threshold: 0.7,
         json: true,
         no_color: false,
         project_root: Some(PathBuf::from("/tmp/test")),
@@ -85,7 +71,6 @@ fn test_search_args_construction() {
 
     assert_eq!(args.query, "test");
     assert_eq!(args.limit, 50);
-    assert_eq!(args.threshold, 0.7);
     assert!(args.json);
     assert!(!args.no_color);
     assert_eq!(args.project_root, Some(PathBuf::from("/tmp/test")));
