@@ -3,6 +3,8 @@
 //! This module is not a test itself, but provides shared functionality
 //! that can be used by integration tests.
 
+#![allow(dead_code)] // Test helpers may not be used by all test files
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

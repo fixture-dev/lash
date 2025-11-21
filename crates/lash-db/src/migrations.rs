@@ -5,8 +5,11 @@ use rusqlite::Connection;
 use crate::connection::{get_schema_version, set_schema_version};
 use crate::error::{DbError, DbResult};
 
+mod v2_enhanced_fts;
+use v2_enhanced_fts::MigrationV2EnhancedFts;
+
 /// Current schema version
-pub const CURRENT_SCHEMA_VERSION: i32 = 1;
+pub const CURRENT_SCHEMA_VERSION: i32 = 2;
 
 /// A database migration
 pub trait Migration {
@@ -112,13 +115,7 @@ fn apply_migration(conn: &Connection, migration: &dyn Migration) -> DbResult<()>
 
 /// Get all available migrations in order
 fn get_migrations() -> Vec<Box<dyn Migration>> {
-    // For v1, there are no migrations yet
-    // Future migrations will be added here
-    vec![
-        // Example:
-        // Box::new(Migration_001_InitialSchema),
-        // Box::new(Migration_002_AddIndexes),
-    ]
+    vec![Box::new(MigrationV2EnhancedFts)]
 }
 
 #[cfg(test)]
