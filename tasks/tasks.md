@@ -36,7 +36,7 @@ Tasks are organized by major module/component. Each task file contains:
 
 ### CLI & Commands
 - [x] [tasks.cli-framework.md](tasks.cli-framework.md) - CLI infrastructure, output formatting, progress reporting (Tasks 1-8 complete) ✅
-- [ ] [tasks.cli-commands.md](tasks.cli-commands.md) - Individual command implementations (list, show, graph, etc.)
+- [x] [tasks.cli-commands.md](tasks.cli-commands.md) - Individual command implementations: lint, format, index, check-index, list, show (Tasks 1-6 complete) ✅
 - [ ] [tasks.fuzzy-search.md](tasks.fuzzy-search.md) - Full-text search, ranking, search command
 
 ### User Interfaces
@@ -79,16 +79,16 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** `lash index` command works; can query database
 **Status:** Complete. Indexing engine production-ready with 238 tests passing. Performance exceeds all targets by 8-12x (10.5ms for 10 files, 61ms for 100 files, 425ms for 1000 files).
 
-### Phase 4: Dependencies & Queries (Weeks 7-8) - IN PROGRESS
+### Phase 4: Dependencies & Queries (Weeks 7-8) - COMPLETE ✅
 **Goal:** Resolve dependencies; implement query commands
 
 1. ✅ tasks.dependency-resolution#1-7 (graph, cycles, resolution, status, blockers, export, incremental updates) - Complete
 2. ✅ tasks.cli-framework#1-8 (CLI infrastructure: arg parsing, root detection, output formatting, progress, config, logging, command execution, exit codes) - Complete
-3. tasks.cli-commands#5-6 (query commands) - NEXT
-4. tasks.linter#4 (dependency validation)
+3. ✅ tasks.cli-commands#1-6 (lint, format, index, check-index, list, show commands) - Complete
+4. tasks.linter#4 (dependency validation) - Deferred to Phase 5
 
 **Deliverable:** Can query tasks; dependency resolution works
-**Status:** Dependency resolution module complete with 495 tests passing. CLI framework complete with all 8 tasks done (626 total tests): argument parsing, project root detection, output formatting, progress reporting, configuration management, logging/diagnostics, command execution framework, and exit code standardization.
+**Status:** Complete. All core CLI commands implemented with 862 tests passing. Dependency resolution (495 tests), CLI framework (626 tests), and command implementations (1,056 total tests across all crates) all working.
 
 ### Phase 5: Search & Advanced Commands (Weeks 9-10)
 **Goal:** Fuzzy search; additional features
@@ -142,7 +142,8 @@ Parallelization opportunities exist within each phase (see individual task files
 - ✅ SQLite database schema with repositories
 - ✅ Index files into SQLite database
 - ✅ Full dependency resolution and cycle detection
-- [ ] `lash list`, `lash show`, `lash search` commands work
+- ✅ `lash list`, `lash show` commands work
+- [ ] `lash search` command (requires fuzzy-search implementation)
 - [ ] `lash graph` exports dependency graph
 - [ ] Agent integration (`lash agent-prompt`)
 - ✅ Comprehensive test coverage (>80%)

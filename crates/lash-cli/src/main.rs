@@ -159,17 +159,27 @@ fn run(cli: LashCli) -> Result<()> {
             Ok(())
         }
 
-        Commands::Index {
-            force: _,
-            show_files: _,
-        } => {
-            // TODO: Implement index command
-            anyhow::bail!("The 'index' command is not yet implemented")
+        Commands::Index { force, show_files } => {
+            let args = commands::index::IndexArgs {
+                force,
+                show_files,
+                json: cli.json,
+                no_color: cli.no_color,
+                project_root,
+            };
+            commands::index::execute(args)?;
+            Ok(())
         }
 
         Commands::CheckIndex { diff } => {
-            // TODO: Implement check-index command
-            anyhow::bail!("The 'check-index' command is not yet implemented")
+            let args = commands::check_index::CheckIndexArgs {
+                diff,
+                json: cli.json,
+                no_color: cli.no_color,
+                project_root,
+            };
+            commands::check_index::execute(args)?;
+            Ok(())
         }
 
         Commands::List {
@@ -180,8 +190,33 @@ fn run(cli: LashCli) -> Result<()> {
             owner,
             format,
         } => {
-            // TODO: Implement list command
-            anyhow::bail!("The 'list' command is not yet implemented")
+            // Convert status to lash_types::TaskStatus
+            let task_status = status.map(|s| match s {
+                lash_cli::cli::TaskStatus::Open => lash_types::TaskStatus::Open,
+                lash_cli::cli::TaskStatus::Done => lash_types::TaskStatus::Done,
+                lash_cli::cli::TaskStatus::Waived => lash_types::TaskStatus::Waived,
+                lash_cli::cli::TaskStatus::Blocked => lash_types::TaskStatus::Blocked,
+            });
+
+            // Convert format to OutputFormat
+            let output_format = match format {
+                lash_cli::cli::OutputFormat::Text => commands::list::OutputFormat::Text,
+                lash_cli::cli::OutputFormat::Json => commands::list::OutputFormat::Json,
+                lash_cli::cli::OutputFormat::JsonPretty => commands::list::OutputFormat::JsonPretty,
+            };
+
+            let args = commands::list::ListArgs {
+                labels: label,
+                status: task_status,
+                path,
+                blocked,
+                owner,
+                format: output_format,
+                no_color: cli.no_color,
+                project_root,
+            };
+            commands::list::execute(args)?;
+            Ok(())
         }
 
         Commands::Search {
@@ -198,8 +233,16 @@ fn run(cli: LashCli) -> Result<()> {
             deps,
             rdeps,
         } => {
-            // TODO: Implement show command
-            anyhow::bail!("The 'show' command is not yet implemented")
+            let args = commands::show::ShowArgs {
+                target,
+                deps,
+                rdeps,
+                json: cli.json,
+                no_color: cli.no_color,
+                project_root,
+            };
+            commands::show::execute(&args)?;
+            Ok(())
         }
 
         Commands::Graph {
