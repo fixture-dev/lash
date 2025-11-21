@@ -195,7 +195,19 @@ pub enum Commands {
     },
 
     /// Check for broken links and references
-    CheckLinks,
+    CheckLinks {
+        /// Attempt to fix broken links using fuzzy matching
+        #[arg(long)]
+        fix: bool,
+
+        /// Auto-accept high-confidence fixes (requires --fix)
+        #[arg(long, requires = "fix")]
+        yes: bool,
+
+        /// Show what would be fixed without applying changes (requires --fix)
+        #[arg(long, requires = "fix")]
+        dry_run: bool,
+    },
 
     /// Generate optimized prompts for AI agents
     AgentPrompt {

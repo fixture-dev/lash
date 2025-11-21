@@ -272,11 +272,14 @@ fn run(cli: LashCli) -> Result<()> {
             Ok(())
         }
 
-        Commands::CheckLinks => {
+        Commands::CheckLinks { fix, yes, dry_run } => {
             let args = commands::check_links::CheckLinksArgs {
                 json: cli.json,
                 no_color: cli.no_color,
                 project_root,
+                fix,
+                yes,
+                dry_run,
             };
             let exit_code = commands::check_links::execute(&args)?;
             process::exit(exit_code);
