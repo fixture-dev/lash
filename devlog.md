@@ -1,5 +1,89 @@
 # Lash Development Log
 
+## 2025-11-21 - CLI Graph Command Complete (Task 8)
+
+### Summary
+Implemented the `lash graph` command to export dependency graphs in multiple formats (DOT, Mermaid, JSON). The command integrates with the existing GraphExporter infrastructure in lash-core and adds custom Mermaid format support.
+
+**Commit:** (pending)
+
+### Implementation Overview
+
+**Command Structure** (`crates/lash-cli/src/commands/graph.rs`):
+- `GraphArgs` struct with format, scope, hide_completed, output parameters
+- `execute()` function integrating with lash-db GraphBuilder and lash-core GraphExporter
+- Support for three output formats: DOT, Mermaid, JSON
+- Filter options: scope (file path or label), hide-completed
+- Output routing: stdout or file
+- Proper error handling for missing database
+
+**Graph Building**:
+- Uses `GraphBuilder::new(&conn).build()` from lash-db to construct in-memory graph
+- Applies FilterOptions to control which nodes/edges are included
+- Filters by file path, label, completion status
+
+**Format Implementations**:
+1. **DOT format**: Delegates to `GraphExporter::to_dot()` from lash-core
+   - Graphviz-compatible syntax
+   - Color-coded nodes by status (green=done, yellow=open, red=blocked, gray=waived)
+   - Clustered by file
+   - Labeled edges by dependency type
+
+2. **Mermaid format**: Custom implementation in graph command
+   - Parses JSON intermediate format from GraphExporter
+   - Generates Mermaid graph syntax (graph TD)
+   - Escaped IDs and labels for special characters
+   - Style directives for color-coding nodes
+
+3. **JSON format**: Delegates to `GraphExporter::to_json()` from lash-core
+   - Nodes array with full metadata (id, title, status, file_id, depth)
+   - Edges array with dependency information (from, to, kind, source_location)
+
+**CLI Integration**:
+- Added `hide_completed` flag to CLI args definition
+- Mapped GraphFormat enum variants correctly
+- Integrated into main.rs command dispatch
+
+**Testing**:
+- Unit tests for Mermaid ID/label escaping
+- Unit tests for filter options building (file scope, label scope, hide-completed)
+- All 5 graph module tests pass
+- All 43 lash-cli tests pass
+- Zero clippy warnings
+
+### Design Decisions
+
+**Mermaid Implementation Strategy**: Rather than extending GraphExporter in lash-core, implemented Mermaid export in the CLI command by parsing the JSON intermediate format. This keeps the CLI-specific format out of the core library while avoiding code duplication.
+
+**Scope Parameter Heuristic**: The `--scope` flag interprets its value as:
+- File path if it contains `/` or has `.md` extension
+- Label otherwise
+This simple heuristic handles most common cases without requiring a separate flag.
+
+**Filter Options**: Used existing `FilterOptions` struct from lash-core to maintain consistency with GraphExporter API.
+
+**Error Handling**: Following established pattern - exit code 3 for database errors, suggesting `lash index` when DB is missing.
+
+### Success Criteria Met
+
+- ✅ Command parses CLI arguments correctly
+- ✅ Loads graph from database using GraphBuilder
+- ✅ Exports in all three formats (DOT, Mermaid, JSON)
+- ✅ Filtering options work (scope, hide-completed)
+- ✅ Output routing works (stdout vs file)
+- ✅ Clear error messages for missing database
+- ✅ Follows existing command patterns in codebase
+- ✅ Zero clippy warnings
+- ✅ All tests pass
+
+### Next Steps
+
+- Consider adding more filter options (owner, status, depth limit)
+- Add integration tests with real database
+- Document usage examples in help text or README
+
+---
+
 ## 2025-11-21 - CLI Search Command Complete (Task 7)
 
 ### Summary

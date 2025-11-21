@@ -2,6 +2,7 @@
 
 pub mod check_index;
 pub mod format;
+pub mod graph;
 pub mod index;
 pub mod lint;
 pub mod list;
