@@ -1,5 +1,54 @@
 # Lash Development Log
 
+## 2025-11-21 - CLI Search Command Complete (Task 7)
+
+### Summary
+Implemented the `lash search` command to provide full-text search across tasks using FTS5. The command integrates with the lash-db search infrastructure that was implemented in parallel.
+
+**Commit:** `f166227`
+
+### Implementation Overview
+
+**Command Structure** (`crates/lash-cli/src/commands/search.rs`):
+- `SearchArgs` struct with query, limit, threshold parameters
+- `execute()` function integrating with lash-db FTS5 search API
+- Text output with colored formatting, relevance scores, labels
+- JSON output with full result metadata
+- Proper error handling for missing DB and no results
+- Exit codes: 0 (success), 3 (no DB), 5 (no results)
+
+**Search Infrastructure Integration**:
+- Command uses FTS5-based full-text search from lash-db
+- SearchResult re-exported from lash-db for consistency
+- Includes migration v2 for enhanced FTS5 index with labels and file paths
+
+**Testing**:
+- Integration tests for CLI argument parsing
+- SearchResult serialization/deserialization tests
+- Command structure validation tests
+- All 124 tests pass across lash-cli
+
+**Bug Fixes**:
+- Fixed compilation errors in lash-db/src/search.rs (missing FromStr import)
+- Applied clippy auto-fixes for format strings
+- Added allow attributes for acceptable lints
+
+### Design Decisions
+
+**Threshold Parameter**: The `--threshold` flag is defined in the CLI but not yet used by the FTS5 backend. FTS5 provides its own relevance ranking (BM25). The parameter is kept for potential future enhancements.
+
+**Result Display**: Shows full_id, title, file path, relevance score, and labels. Snippets included when different from title.
+
+**Exit Codes**: Following established pattern - 0 (success), 3 (DB error), 5 (no results).
+
+### Next Steps
+
+- Functional tests with real indexed data
+- Consider adding `--scope` flag for path filtering
+- Potentially use threshold for post-FTS5 fuzzy matching
+
+---
+
 ## 2025-11-20 - Exit Code Standardization (Task 8)
 
 ### Summary
