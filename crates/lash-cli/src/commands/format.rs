@@ -7,9 +7,11 @@
 #![allow(clippy::similar_names)]
 
 use anyhow::{Context, Result};
+use lash_cli::command::Command;
+use lash_cli::context::Context as CliContext;
 use lash_core::formatter::{FormatOptions, Formatter};
 use lash_core::parser::parse_file;
-use lash_types::LashConfig;
+use lash_types::{error::Result as LashResult, LashConfig};
 use similar::{ChangeTag, TextDiff};
 use std::path::{Path, PathBuf};
 use tracing::instrument;
@@ -30,7 +32,42 @@ pub struct FormatArgs {
     pub no_fix: bool,
 }
 
-/// Execute the format command
+impl Command for FormatArgs {
+    /// Execute the format command
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Shared command context
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or a `LashError` on failure
+    #[instrument(skip(self, ctx), fields(paths = ?self.paths, check = self.check, diff = self.diff))]
+    fn execute(&self, ctx: &CliContext) -> LashResult<()> {
+        // For now, use the project config from context
+        // In the future, we'll load config more intelligently
+        let _ = ctx; // Suppress unused variable warning for now
+
+        // Call the public execute function and convert result
+        match execute(self.clone()) {
+            Ok(0) => Ok(()),
+            Ok(2) => Err(lash_types::error::LashError::internal(
+                "Files need formatting",
+                Some("Run lash format without --check to format".to_string()),
+            )),
+            Ok(code) => Err(lash_types::error::LashError::internal(
+                format!("Unexpected exit code: {code}"),
+                None,
+            )),
+            Err(e) => Err(lash_types::error::LashError::internal(
+                format!("Format command failed: {e}"),
+                None,
+            )),
+        }
+    }
+}
+
+/// Execute the format command (public interface for main.rs)
 ///
 /// # Arguments
 ///
@@ -96,7 +133,7 @@ struct FormatResult {
 }
 
 /// Load project configuration
-fn load_project_config(files: &[PathBuf]) -> Result<LashConfig> {
+fn load_project_config(files: &[PathBuf]) -> anyhow::Result<LashConfig> {
     // Try to find .lash/config.toml in project root
     if let Some(first_file) = files.first() {
         if let Some(parent) = first_file.parent() {
@@ -136,7 +173,7 @@ fn format_files(
     config: &LashConfig,
     options: &FormatOptions,
     args: &FormatArgs,
-) -> Result<FormatResult> {
+) -> anyhow::Result<FormatResult> {
     let mut result = FormatResult::default();
 
     let show_progress = files.len() > 1 && !args.check && !args.diff;
@@ -198,7 +235,7 @@ fn format_single_file(
     config: &LashConfig,
     options: &FormatOptions,
     args: &FormatArgs,
-) -> Result<bool> {
+) -> anyhow::Result<bool> {
     // Parse the file
     let task_file = parse_file(file_path, config)
         .with_context(|| format!("Failed to parse {}", file_path.display()))?;

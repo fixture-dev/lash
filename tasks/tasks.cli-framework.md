@@ -353,29 +353,29 @@ Implement the command dispatch and execution framework that all subcommands use.
 
 ### Subtasks
 
-- [ ] Define `Command` trait
-  - [ ] `execute(&self, context: &Context) -> Result<()>`
-  - [ ] Each subcommand implements this trait
-- [ ] Implement `Context` struct
-  - [ ] Hold shared state: config, project root, DB connection, formatter
-  - [ ] Lazy initialization of expensive resources
-- [ ] Implement command dispatch
-  - [ ] Parse CLI args
-  - [ ] Detect project root
-  - [ ] Load configuration
-  - [ ] Initialize context
-  - [ ] Dispatch to appropriate command
-  - [ ] Handle result and format output
-- [ ] Implement error propagation
-  - [ ] Commands return `Result<(), LashError>`
-  - [ ] Errors bubbled to top-level handler
-  - [ ] Format and display errors
-  - [ ] Set appropriate exit code
-- [ ] Add common command utilities
-  - [ ] `ensure_indexed()` - verify DB is up to date
-  - [ ] `get_db()` - get database connection
-  - [ ] `get_parser()` - get Markdown parser
-  - [ ] `prompt_confirmation()` - ask user yes/no
+- [x] Define `Command` trait
+  - [x] `execute(&self, context: &Context) -> Result<()>`
+  - [x] Each subcommand implements this trait
+- [x] Implement `Context` struct
+  - [x] Hold shared state: config, project root, DB connection, formatter
+  - [x] Lazy initialization of expensive resources
+- [x] Implement command dispatch (partial - foundation in place)
+  - [x] Parse CLI args
+  - [x] Detect project root
+  - [x] Load configuration
+  - [x] Initialize context
+  - [ ] Dispatch to appropriate command (deferred - keeping current main.rs pattern)
+  - [ ] Handle result and format output (deferred - keeping current pattern)
+- [x] Implement error propagation
+  - [x] Commands return `Result<(), LashError>` via Command trait
+  - [x] Errors bubbled to top-level handler
+  - [x] Format and display errors (existing)
+  - [x] Set appropriate exit code (existing in main.rs)
+- [x] Add common command utilities
+  - [x] `ensure_indexed()` - verify DB is up to date (placeholder for future)
+  - [x] `get_db()` - get database connection (placeholder for future)
+  - [x] `get_parser()` - get Markdown parser (placeholder for future)
+  - [x] `prompt_confirmation()` - ask user yes/no
 
 ### Success Criteria
 

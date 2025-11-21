@@ -7,10 +7,12 @@
 #![allow(clippy::similar_names)]
 #![allow(clippy::trivially_copy_pass_by_ref)]
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+use lash_cli::command::Command;
+use lash_cli::context::Context as CliContext;
 use lash_core::linter::{register_default_rules, LintConfig, LintDiagnostic};
 use lash_core::parser::parse_file;
-use lash_types::{LashConfig, Severity, TaskFile};
+use lash_types::{error::Result as LashResult, LashConfig, Severity, TaskFile};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::instrument;
@@ -37,7 +39,42 @@ pub struct LintArgs {
     pub no_color: bool,
 }
 
-/// Execute the lint command
+impl Command for LintArgs {
+    /// Execute the lint command
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Shared command context
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success (no lint errors found), or a `LashError` on failure or if lint errors are found
+    #[instrument(skip(self, ctx), fields(paths = ?self.paths, fix = self.fix, rules = ?self.rules))]
+    fn execute(&self, ctx: &CliContext) -> LashResult<()> {
+        // For now, use the project config from context
+        // In the future, we'll load config more intelligently
+        let _ = ctx; // Suppress unused variable warning for now
+
+        // Call the public execute function and convert result
+        match execute(self.clone()) {
+            Ok(0) => Ok(()),
+            Ok(2) => Err(lash_types::error::LashError::internal(
+                "Lint errors found",
+                Some("Run lash lint to see details".to_string()),
+            )),
+            Ok(code) => Err(lash_types::error::LashError::internal(
+                format!("Unexpected exit code: {code}"),
+                None,
+            )),
+            Err(e) => Err(lash_types::error::LashError::internal(
+                format!("Lint command failed: {e}"),
+                None,
+            )),
+        }
+    }
+}
+
+/// Execute the lint command (public interface for main.rs)
 ///
 /// # Arguments
 ///
@@ -47,11 +84,12 @@ pub struct LintArgs {
 ///
 /// Exit code: 0 (no errors), 1 (general error), 2 (lint errors found)
 #[instrument(skip(args), fields(paths = ?args.paths, fix = args.fix, rules = ?args.rules))]
-pub fn execute(args: LintArgs) -> Result<i32> {
+pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     // Determine paths to lint
     let paths = if args.paths.is_empty() {
         // No paths specified - lint entire project
-        let cwd = std::env::current_dir().context("Failed to get current directory")?;
+        let cwd = std::env::current_dir()
+            .map_err(|e| anyhow::anyhow!("Failed to get current directory: {e}"))?;
         let project_root = find_project_root(&cwd);
         vec![project_root]
     } else {
@@ -110,7 +148,7 @@ pub fn execute(args: LintArgs) -> Result<i32> {
 }
 
 /// Load project configuration
-fn load_project_config(files: &[PathBuf]) -> Result<LashConfig> {
+fn load_project_config(files: &[PathBuf]) -> anyhow::Result<LashConfig> {
     // Try to find .lash/config.toml in project root
     if let Some(first_file) = files.first() {
         if let Some(parent) = first_file.parent() {
@@ -154,7 +192,7 @@ fn parse_files(
     files: &[PathBuf],
     config: &LashConfig,
     args: &LintArgs,
-) -> Result<HashMap<PathBuf, TaskFile>> {
+) -> anyhow::Result<HashMap<PathBuf, TaskFile>> {
     let mut parsed_files = HashMap::new();
 
     let show_progress = !args.json && files.len() > 1;
@@ -202,7 +240,7 @@ fn lint_files(
     project_config: &LashConfig,
     lint_config: &LintConfig,
     args: &LintArgs,
-) -> Result<Vec<LintDiagnostic>> {
+) -> anyhow::Result<Vec<LintDiagnostic>> {
     // Create linter with all rules
     let registry = register_default_rules();
     let linter = registry.create_linter(lint_config.clone());
@@ -284,7 +322,7 @@ fn meets_severity_threshold(severity: &Severity, min: &Severity) -> bool {
 fn apply_fixes(
     diagnostics: &[LintDiagnostic],
     parsed_files: &HashMap<PathBuf, TaskFile>,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     // Group diagnostics by file
     let mut fixes_by_file: HashMap<&PathBuf, Vec<&LintDiagnostic>> = HashMap::new();
 
