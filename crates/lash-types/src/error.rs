@@ -43,6 +43,116 @@ use std::fmt;
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// Standardized exit codes for the Lash CLI
+///
+/// These exit codes provide a consistent interface for scripts and agents
+/// to detect different types of failures programmatically.
+///
+/// # Examples
+///
+/// ```
+/// use lash_types::error::{ExitCode, LashError};
+/// use std::path::PathBuf;
+///
+/// let err = LashError::lint_duplicate_id(
+///     PathBuf::from("tasks.md"),
+///     10,
+///     5,
+///     "task-id",
+///     5
+/// );
+///
+/// let exit_code = ExitCode::from(&err);
+/// assert_eq!(exit_code as i32, 2); // LintError
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ExitCode {
+    /// Command completed successfully
+    Success = 0,
+    /// General/unspecified error
+    GeneralError = 1,
+    /// Linting or validation error
+    LintError = 2,
+    /// Database indexing error
+    IndexError = 3,
+    /// Configuration error (including missing root)
+    ConfigError = 4,
+    /// Resource not found (file, task, etc.)
+    NotFound = 5,
+    /// Circular dependency detected
+    CycleDetected = 6,
+}
+
+impl ExitCode {
+    /// Convert exit code to i32 for process exit
+    #[must_use]
+    pub const fn as_i32(self) -> i32 {
+        self as i32
+    }
+}
+
+impl From<&LashError> for ExitCode {
+    fn from(error: &LashError) -> Self {
+        match error {
+            // Lint and Parse errors -> LintError
+            LashError::Lint { .. } | LashError::Parse { .. } => Self::LintError,
+
+            // Index errors -> IndexError
+            LashError::Index { .. } => Self::IndexError,
+
+            // Dependency errors -> check for cycle vs not found
+            LashError::Dependency { code, .. } => {
+                if *code == codes::E_DEP_CYCLE {
+                    Self::CycleDetected
+                } else if *code == codes::E_DEP_NOT_FOUND {
+                    Self::NotFound
+                } else {
+                    Self::GeneralError
+                }
+            }
+
+            // Config errors -> ConfigError
+            LashError::Config { .. } => Self::ConfigError,
+
+            // Query errors -> NotFound if no results, otherwise GeneralError
+            LashError::Query { code, .. } => {
+                if *code == codes::E_QUERY_NO_RESULTS {
+                    Self::NotFound
+                } else {
+                    Self::GeneralError
+                }
+            }
+
+            // IO errors -> NotFound if file not found, otherwise GeneralError
+            LashError::IO { code, .. } => {
+                if *code == codes::E_IO_FILE_NOT_FOUND {
+                    Self::NotFound
+                } else {
+                    Self::GeneralError
+                }
+            }
+
+            // Internal errors -> GeneralError
+            LashError::Internal { .. } => Self::GeneralError,
+        }
+    }
+}
+
+impl fmt::Display for ExitCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Success => write!(f, "0 (success)"),
+            Self::GeneralError => write!(f, "1 (general error)"),
+            Self::LintError => write!(f, "2 (lint error)"),
+            Self::IndexError => write!(f, "3 (index error)"),
+            Self::ConfigError => write!(f, "4 (config error)"),
+            Self::NotFound => write!(f, "5 (not found)"),
+            Self::CycleDetected => write!(f, "6 (cycle detected)"),
+        }
+    }
+}
+
 /// Result type alias for Lash operations
 ///
 /// Note: `LashError` is intentionally large (168 bytes) to provide rich context
@@ -1207,5 +1317,126 @@ mod tests {
         assert_eq!(codes::E_CONFIG_ROOT_NOT_FOUND, "E_CONFIG_ROOT_NOT_FOUND");
         assert_eq!(codes::E_IO_FILE_NOT_FOUND, "E_IO_FILE_NOT_FOUND");
         assert_eq!(codes::E_QUERY_INVALID_SYNTAX, "E_QUERY_INVALID_SYNTAX");
+    }
+
+    // ===== Exit Code Tests =====
+
+    #[test]
+    fn test_exit_code_values() {
+        // Exit codes must remain stable - they're part of the CLI contract
+        assert_eq!(ExitCode::Success as i32, 0);
+        assert_eq!(ExitCode::GeneralError as i32, 1);
+        assert_eq!(ExitCode::LintError as i32, 2);
+        assert_eq!(ExitCode::IndexError as i32, 3);
+        assert_eq!(ExitCode::ConfigError as i32, 4);
+        assert_eq!(ExitCode::NotFound as i32, 5);
+        assert_eq!(ExitCode::CycleDetected as i32, 6);
+    }
+
+    #[test]
+    fn test_exit_code_as_i32() {
+        assert_eq!(ExitCode::Success.as_i32(), 0);
+        assert_eq!(ExitCode::LintError.as_i32(), 2);
+        assert_eq!(ExitCode::CycleDetected.as_i32(), 6);
+    }
+
+    #[test]
+    fn test_exit_code_display() {
+        assert_eq!(format!("{}", ExitCode::Success), "0 (success)");
+        assert_eq!(format!("{}", ExitCode::LintError), "2 (lint error)");
+        assert_eq!(format!("{}", ExitCode::NotFound), "5 (not found)");
+    }
+
+    #[test]
+    fn test_exit_code_from_parse_error() {
+        let err = LashError::parse_invalid_checkbox(PathBuf::from("test.md"), 5, 3, "[*] invalid");
+        assert_eq!(ExitCode::from(&err), ExitCode::LintError);
+    }
+
+    #[test]
+    fn test_exit_code_from_lint_error() {
+        let err = LashError::lint_duplicate_id(PathBuf::from("test.md"), 10, 5, "task-id", 5);
+        assert_eq!(ExitCode::from(&err), ExitCode::LintError);
+    }
+
+    #[test]
+    fn test_exit_code_from_index_error() {
+        let err = LashError::index_corrupted("corruption details");
+        assert_eq!(ExitCode::from(&err), ExitCode::IndexError);
+
+        let err = LashError::index_version_mismatch(1, 2);
+        assert_eq!(ExitCode::from(&err), ExitCode::IndexError);
+
+        let err = LashError::index_out_of_sync(5);
+        assert_eq!(ExitCode::from(&err), ExitCode::IndexError);
+    }
+
+    #[test]
+    fn test_exit_code_from_config_error() {
+        let err = LashError::config_root_not_found(PathBuf::from("/tmp"));
+        assert_eq!(ExitCode::from(&err), ExitCode::ConfigError);
+
+        let err = LashError::config_invalid_value("key", "value");
+        assert_eq!(ExitCode::from(&err), ExitCode::ConfigError);
+
+        let err = LashError::config_missing_index();
+        assert_eq!(ExitCode::from(&err), ExitCode::ConfigError);
+    }
+
+    #[test]
+    fn test_exit_code_from_dependency_cycle() {
+        let chain = vec![
+            "task1".to_string(),
+            "task2".to_string(),
+            "task1".to_string(),
+        ];
+        let err = LashError::dep_cycle(&chain);
+        assert_eq!(ExitCode::from(&err), ExitCode::CycleDetected);
+    }
+
+    #[test]
+    fn test_exit_code_from_dependency_not_found() {
+        let err =
+            LashError::dep_not_found(PathBuf::from("test.md"), 5, 3, "path/to/task.md#task:id");
+        assert_eq!(ExitCode::from(&err), ExitCode::NotFound);
+    }
+
+    #[test]
+    fn test_exit_code_from_dependency_invalid_ref() {
+        let err = LashError::dep_invalid_ref(PathBuf::from("test.md"), 5, 3, "invalid-ref");
+        assert_eq!(ExitCode::from(&err), ExitCode::GeneralError);
+    }
+
+    #[test]
+    fn test_exit_code_from_io_file_not_found() {
+        let err = LashError::io_file_not_found(PathBuf::from("missing.md"));
+        assert_eq!(ExitCode::from(&err), ExitCode::NotFound);
+    }
+
+    #[test]
+    fn test_exit_code_from_io_other_errors() {
+        let err = LashError::io_read_error(PathBuf::from("test.md"), "disk error");
+        assert_eq!(ExitCode::from(&err), ExitCode::GeneralError);
+
+        let err = LashError::io_permission_denied(PathBuf::from("locked.md"));
+        assert_eq!(ExitCode::from(&err), ExitCode::GeneralError);
+    }
+
+    #[test]
+    fn test_exit_code_from_query_no_results() {
+        let err = LashError::query_no_results("search term");
+        assert_eq!(ExitCode::from(&err), ExitCode::NotFound);
+    }
+
+    #[test]
+    fn test_exit_code_from_query_invalid_syntax() {
+        let err = LashError::query_invalid_syntax("@invalid");
+        assert_eq!(ExitCode::from(&err), ExitCode::GeneralError);
+    }
+
+    #[test]
+    fn test_exit_code_from_internal_error() {
+        let err = LashError::internal("unexpected state", Some("context".to_string()));
+        assert_eq!(ExitCode::from(&err), ExitCode::GeneralError);
     }
 }

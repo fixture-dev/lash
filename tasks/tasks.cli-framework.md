@@ -397,6 +397,7 @@ Implement the command dispatch and execution framework that all subcommands use.
 **Priority:** LOW
 **Effort:** 0.5 days
 **Depends on:** Task 7
+**Status:** COMPLETE
 
 ### Description
 
@@ -404,32 +405,33 @@ Define and implement standardized exit codes as specified in design doc section 
 
 ### Subtasks
 
-- [ ] Define `ExitCode` enum
-  - [ ] `Success = 0`
-  - [ ] `GeneralError = 1`
-  - [ ] `LintError = 2`
-  - [ ] `IndexError = 3`
-  - [ ] `ConfigError = 4`
-  - [ ] `NotFound = 5` (task/file not found)
-  - [ ] `CycleDetected = 6`
-- [ ] Implement exit code mapping
-  - [ ] Map `LashError` variants to exit codes
-  - [ ] Document exit codes in help text and man page
-- [ ] Add `--exit-zero` flag (optional)
+- [x] Define `ExitCode` enum
+  - [x] `Success = 0`
+  - [x] `GeneralError = 1`
+  - [x] `LintError = 2`
+  - [x] `IndexError = 3`
+  - [x] `ConfigError = 4`
+  - [x] `NotFound = 5` (task/file not found)
+  - [x] `CycleDetected = 6`
+- [x] Implement exit code mapping
+  - [x] Map `LashError` variants to exit codes
+  - [x] Document exit codes in help text and man page
+- [ ] Add `--exit-zero` flag (optional, deferred)
   - [ ] Force exit code 0 even on errors
   - [ ] Useful for scripts that handle errors via output parsing
-- [ ] Test exit codes
-  - [ ] Verify each error type produces correct code
+- [x] Test exit codes
+  - [x] Verify each error type produces correct code
 
 ### Success Criteria
 
-- Exit codes are consistent and documented
-- Agents and scripts can rely on exit codes for error detection
+- [x] Exit codes are consistent and documented
+- [x] Agents and scripts can rely on exit codes for error detection
 
 ### Tests
 
-- Integration: Test exit code for each command scenario
-- Integration: Test `--exit-zero` flag
+- [x] Unit: Test exit code mapping for all error variants (15 tests)
+- [ ] Integration: Test exit code for each command scenario (deferred)
+- [ ] Integration: Test `--exit-zero` flag (deferred - feature not implemented)
 
 ---
 
