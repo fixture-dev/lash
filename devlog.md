@@ -1,5 +1,94 @@
 # Lash Development Log
 
+## 2025-11-20 - Command Execution Framework (Task 7)
+
+### Summary
+Completed Task 7 from `tasks/tasks.cli-framework.md`. Implemented the command execution framework that provides a consistent pattern for all CLI commands. Created `Command` trait, `Context` struct with lazy resource initialization, command utility functions, and refactored existing commands to use the new framework. Foundation in place for future full migration to trait-based dispatch. All 626 tests passing.
+
+**Commit:** `e2707c5`
+
+### Implementation Overview
+
+**Command Trait (`command.rs`):**
+- Defines `execute(&self, ctx: &Context) -> Result<()>` interface
+- All commands implement this trait for uniform execution pattern
+- Comprehensive doctests demonstrating usage
+- Linted with `#[allow(clippy::result_large_err)]` as `LashError` is rich by design
+
+**Context Struct (`context.rs`):**
+- Holds shared state: CLI config, project config, project root, formatter
+- Builder pattern for flexible construction: `Context::builder().build()`
+- Lazy initialization of expensive resources (DB, parser) using `OnceLock`
+- Loads configuration from multiple sources (user config, project config)
+- `new_for_testing()` helper for unit tests
+- 11 comprehensive unit tests covering all functionality
+
+**Command Utilities (`command_utils.rs`):**
+- `ensure_indexed()` - placeholder for DB sync verification (future implementation)
+- `get_db()` - placeholder for DB connection access (future implementation)
+- `get_parser()` - placeholder for parser access (future implementation)
+- `prompt_confirmation()` - interactive yes/no prompts for user input
+- All placeholders designed with proper interfaces for future implementation
+
+**Command Implementations:**
+- Refactored `lint` and `format` commands to implement `Command` trait
+- Maintained backward compatibility with existing `execute()` functions
+- Commands delegate to existing implementations while supporting new trait
+- Current main.rs dispatch pattern kept intact for simplicity
+
+### Design Decisions
+
+**Incremental Migration Strategy:**
+- Created trait-based infrastructure without disrupting existing code
+- Commands implement trait but execution still uses legacy pattern
+- This provides foundation for future full migration
+- Avoids big-bang refactor in favor of gradual transition
+
+**Context Design:**
+- Separate `CliConfig` (CLI tool configuration) from `LashConfig` (project/task configuration)
+- `CliConfig` loaded via builder from user/project config files
+- `LashConfig` constructed from project root using `from_root()`
+- Lazy initialization for DB/parser keeps startup fast
+- Builder pattern provides clarity and flexibility
+
+**Error Handling:**
+- Commands return `lash_types::error::Result<()>` for consistency
+- `LashError` intentionally large (176 bytes) for rich diagnostics
+- Added `#[allow(clippy::result_large_err)]` where needed
+- Error size trade-off acceptable for CLI application
+
+**Placeholder Functions:**
+- Utility functions designed with correct signatures now
+- Return `E_INTERNAL` errors with descriptive messages
+- Easy to replace with real implementations later
+- Demonstrates intended interface for future work
+
+### Files Created
+- `crates/lash-cli/src/command.rs` - Command trait definition (115 lines)
+- `crates/lash-cli/src/context.rs` - Context struct with builder (430 lines)
+- `crates/lash-cli/src/command_utils.rs` - Common utilities (185 lines)
+
+### Files Modified
+- `crates/lash-cli/src/lib.rs` - Export new modules
+- `crates/lash-cli/src/commands/lint.rs` - Implement Command trait
+- `crates/lash-cli/src/commands/format.rs` - Implement Command trait
+- `tasks/tasks.cli-framework.md` - Mark subtasks complete
+
+### Testing
+- 11 new unit tests for Context functionality
+- 3 new unit tests for Command trait
+- 3 new unit tests for command utilities
+- All existing tests still passing (626 total)
+- Doctests for all public APIs
+
+### Next Steps
+- Task 8 likely involves exit code handling and error display refinement
+- Future: Migrate main.rs to use Command trait dispatch
+- Future: Implement actual DB connection in `get_db()`
+- Future: Implement index verification in `ensure_indexed()`
+
+---
+
 ## 2025-11-20 - Logging and Diagnostics (Task 6)
 
 ### Summary
