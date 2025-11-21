@@ -1,0 +1,555 @@
+//! Prompt generation and template system for AI agents
+//!
+//! This module provides the core prompt building functionality that combines
+//! schema, examples, and task context into agent-friendly prompts.
+
+use crate::schema::{generate_dependency_example, generate_minimal_example, generate_schema_text};
+use crate::tokens::{distribute_budget, estimate_tokens, truncate_to_budget};
+
+/// Output format for agent prompts
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptFormat {
+    /// Plain text Markdown format
+    Plain,
+    /// JSON structured format
+    Json,
+    /// Claude Code skill specification
+    ClaudeSkill,
+    /// Ready-to-paste Markdown fragment for agents.md files
+    AgentsMd,
+}
+
+/// Configuration for prompt generation
+#[derive(Debug, Clone)]
+pub struct PromptConfig {
+    /// Output format
+    pub format: PromptFormat,
+    /// Include examples in the prompt
+    pub include_examples: bool,
+    /// Include current project tasks
+    pub include_tasks: bool,
+    /// Token budget (None = unlimited)
+    pub token_budget: Option<usize>,
+    /// Labels to filter tasks by
+    pub label_filter: Vec<String>,
+    /// Path to filter tasks by
+    pub path_filter: Option<String>,
+}
+
+impl Default for PromptConfig {
+    fn default() -> Self {
+        Self {
+            format: PromptFormat::Plain,
+            include_examples: true,
+            include_tasks: true,
+            token_budget: None,
+            label_filter: Vec::new(),
+            path_filter: None,
+        }
+    }
+}
+
+/// A generated prompt for an AI agent
+#[derive(Debug, Clone)]
+pub struct AgentPrompt {
+    /// The prompt content
+    pub content: String,
+    /// Estimated token count
+    pub token_count: usize,
+    /// Whether content was truncated to fit budget
+    pub truncated: bool,
+}
+
+/// Builder for constructing agent prompts
+pub struct PromptBuilder {
+    config: PromptConfig,
+    task_summaries: Vec<String>,
+}
+
+impl PromptBuilder {
+    /// Create a new prompt builder with the given configuration
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_agent::prompt::{PromptBuilder, PromptConfig};
+    ///
+    /// let config = PromptConfig::default();
+    /// let builder = PromptBuilder::new(config);
+    /// ```
+    pub fn new(config: PromptConfig) -> Self {
+        Self {
+            config,
+            task_summaries: Vec::new(),
+        }
+    }
+
+    /// Add a task summary to include in the prompt
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_agent::prompt::{PromptBuilder, PromptConfig};
+    ///
+    /// let config = PromptConfig::default();
+    /// let mut builder = PromptBuilder::new(config);
+    /// builder.add_task_summary("features/auth.md: 10 tasks, 70% complete".to_string());
+    /// ```
+    pub fn add_task_summary(&mut self, summary: String) {
+        self.task_summaries.push(summary);
+    }
+
+    /// Build the final prompt
+    ///
+    /// Generates the complete prompt according to the configuration,
+    /// applying token budgets if specified.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_agent::prompt::{PromptBuilder, PromptConfig, PromptFormat};
+    ///
+    /// let mut config = PromptConfig::default();
+    /// config.format = PromptFormat::Plain;
+    /// let builder = PromptBuilder::new(config);
+    /// let prompt = builder.build();
+    /// assert!(prompt.token_count > 0);
+    /// ```
+    pub fn build(self) -> AgentPrompt {
+        match self.config.format {
+            PromptFormat::Plain => self.build_plain(),
+            PromptFormat::Json => self.build_json(),
+            PromptFormat::ClaudeSkill => self.build_claude_skill(),
+            PromptFormat::AgentsMd => self.build_agents_md(),
+        }
+    }
+
+    fn build_plain(self) -> AgentPrompt {
+        let mut sections = Vec::new();
+
+        // Header
+        sections.push((
+            "header",
+            "# Lash Agent Usage Guide\n\n".to_string(),
+            10, // priority
+        ));
+
+        // Overview
+        let overview = r"## Overview
+
+Lash is a minimalist, Markdown-native task tracker where:
+- Markdown files are the single source of truth
+- Tasks are hierarchical checkbox lists with annotations
+- SQLite provides fast indexing and search (fully reconstructible from Markdown)
+- Format is strictly enforced by linting for predictability
+
+"
+        .to_string();
+        sections.push(("overview", overview, 10));
+
+        // Schema
+        let schema_text = generate_schema_text();
+        sections.push(("schema", format!("## File Format\n\n{schema_text}\n"), 10));
+
+        // Examples
+        if self.config.include_examples {
+            let mut examples_text = String::from("## Examples\n\n");
+            examples_text.push_str("### Minimal Valid File\n\n");
+            examples_text.push_str("```markdown\n");
+            examples_text.push_str(&generate_minimal_example());
+            examples_text.push_str("```\n\n");
+            examples_text.push_str("### File with Dependencies\n\n");
+            examples_text.push_str("```markdown\n");
+            examples_text.push_str(&generate_dependency_example());
+            examples_text.push_str("```\n\n");
+            sections.push(("examples", examples_text, 8));
+        }
+
+        // Task summaries
+        if self.config.include_tasks && !self.task_summaries.is_empty() {
+            let mut tasks_text = String::from("## Current Project Tasks\n\n");
+            if !self.config.label_filter.is_empty() {
+                tasks_text.push_str(&format!(
+                    "Filtered by labels: {}\n\n",
+                    self.config.label_filter.join(", ")
+                ));
+            }
+            if let Some(ref path) = self.config.path_filter {
+                tasks_text.push_str(&format!("Filtered by path: {path}\n\n"));
+            }
+            for summary in &self.task_summaries {
+                tasks_text.push_str(&format!("- {summary}\n"));
+            }
+            tasks_text.push('\n');
+            sections.push(("tasks", tasks_text, 5));
+        }
+
+        // Safety guidelines
+        let safety = r"## Safety Guidelines
+
+When working with Lash files:
+
+1. **Always run `lash lint` after modifications** to validate your changes
+2. **Respect depth limits** (3-4 levels maximum for task hierarchies)
+3. **Don't break dependency references** - ensure `@depends-on` targets exist
+4. **Maintain status consistency** - parent tasks complete only when children are done/waived
+5. **Use unique IDs** within each file
+6. **Run `lash index`** after making changes to update the search index
+
+"
+        .to_string();
+        sections.push(("safety", safety, 9));
+
+        // Apply token budget if specified
+        let (final_content, truncated) = if let Some(budget) = self.config.token_budget {
+            Self::apply_budget(&sections, budget)
+        } else {
+            let content: String = sections.iter().map(|(_, text, _)| text.as_str()).collect();
+            (content, false)
+        };
+
+        let token_count = estimate_tokens(&final_content);
+
+        AgentPrompt {
+            content: final_content,
+            token_count,
+            truncated,
+        }
+    }
+
+    fn build_json(self) -> AgentPrompt {
+        use crate::schema::generate_schema;
+
+        let schema = generate_schema();
+
+        let mut examples = Vec::new();
+        if self.config.include_examples {
+            examples.push(serde_json::json!({
+                "name": "minimal",
+                "content": generate_minimal_example(),
+            }));
+            examples.push(serde_json::json!({
+                "name": "with_dependencies",
+                "content": generate_dependency_example(),
+            }));
+        }
+
+        let json_output = serde_json::json!({
+            "format": "lash-agent-prompt",
+            "version": "1.0",
+            "schema": schema,
+            "examples": examples,
+            "tasks": if self.config.include_tasks {
+                self.task_summaries
+            } else {
+                Vec::<String>::new()
+            },
+            "filters": {
+                "labels": self.config.label_filter,
+                "path": self.config.path_filter,
+            },
+            "safety_guidelines": [
+                "Always run `lash lint` after modifications",
+                "Respect depth limits (3-4 levels)",
+                "Don't break dependency references",
+                "Maintain status consistency",
+                "Use unique IDs within each file",
+                "Run `lash index` after changes",
+            ],
+        });
+
+        let content =
+            serde_json::to_string_pretty(&json_output).unwrap_or_else(|_| "{}".to_string());
+        let token_count = estimate_tokens(&content);
+
+        AgentPrompt {
+            content,
+            token_count,
+            truncated: false,
+        }
+    }
+
+    fn build_claude_skill(mut self) -> AgentPrompt {
+        // Suppress clippy warning - we consume self for consistency with other methods
+        self.task_summaries.clear();
+        // Placeholder for Claude Code skill format
+        // This would be a JSON/YAML spec defining skill commands
+        let skill_spec = serde_json::json!({
+            "name": "lash",
+            "version": "1.0",
+            "description": "Lash task tracker integration",
+            "commands": [
+                {
+                    "name": "lint",
+                    "description": "Validate task files",
+                    "usage": "lash lint [paths...]"
+                },
+                {
+                    "name": "index",
+                    "description": "Update search index",
+                    "usage": "lash index"
+                },
+                {
+                    "name": "list",
+                    "description": "List tasks with filters",
+                    "usage": "lash list [--label <label>] [--status <status>]"
+                },
+                {
+                    "name": "search",
+                    "description": "Search tasks and files",
+                    "usage": "lash search <query>"
+                }
+            ],
+            "file_format": {
+                "description": "Markdown with hierarchical checkboxes and annotations",
+                "example": generate_minimal_example(),
+            }
+        });
+
+        let content =
+            serde_json::to_string_pretty(&skill_spec).unwrap_or_else(|_| "{}".to_string());
+        let token_count = estimate_tokens(&content);
+
+        AgentPrompt {
+            content,
+            token_count,
+            truncated: false,
+        }
+    }
+
+    fn build_agents_md(mut self) -> AgentPrompt {
+        // Suppress clippy warning - we consume self for consistency with other methods
+        self.task_summaries.clear();
+        // Ready-to-paste Markdown fragment for agents.md files
+        let mut content = String::from("## Using Lash\n\n");
+        content.push_str(
+            "Lash is a Markdown-native task tracker. All tasks live in `.md` files as checkbox lists.\n\n",
+        );
+
+        content.push_str("### Quick Start\n\n");
+        content.push_str("```bash\n");
+        content.push_str("# Validate files\n");
+        content.push_str("lash lint\n\n");
+        content.push_str("# List all tasks\n");
+        content.push_str("lash list\n\n");
+        content.push_str("# Search for tasks\n");
+        content.push_str("lash search <query>\n\n");
+        content.push_str("# Update search index\n");
+        content.push_str("lash index\n");
+        content.push_str("```\n\n");
+
+        content.push_str("### File Format\n\n");
+        content.push_str("```markdown\n");
+        content.push_str(&generate_minimal_example());
+        content.push_str("```\n\n");
+
+        content.push_str("### Key Rules\n\n");
+        content.push_str("- Task IDs must be unique within each file\n");
+        content.push_str("- Maximum nesting depth: 3-4 levels\n");
+        content.push_str("- Always run `lash lint` after editing\n");
+        content.push_str("- Use `@depends-on` for cross-file dependencies\n");
+
+        let token_count = estimate_tokens(&content);
+
+        AgentPrompt {
+            content,
+            token_count,
+            truncated: false,
+        }
+    }
+
+    fn apply_budget(sections: &[(&str, String, u8)], budget: usize) -> (String, bool) {
+        // Estimate tokens for each section
+        let section_estimates: Vec<(&str, usize, u8)> = sections
+            .iter()
+            .map(|(name, text, priority)| (*name, estimate_tokens(text), *priority))
+            .collect();
+
+        // Distribute budget across sections
+        let allocations = distribute_budget(budget, &section_estimates);
+
+        let mut final_content = String::new();
+        let mut truncated = false;
+
+        for ((_name, text, _priority), (_alloc_name, allocation)) in
+            sections.iter().zip(allocations.iter())
+        {
+            if *allocation == 0 {
+                truncated = true;
+                continue;
+            }
+
+            let estimated = estimate_tokens(text);
+            if estimated > *allocation {
+                let truncated_text = truncate_to_budget(text, *allocation);
+                final_content.push_str(&truncated_text);
+                truncated = true;
+            } else {
+                final_content.push_str(text);
+            }
+        }
+
+        (final_content, truncated)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_prompt_config_default() {
+        let config = PromptConfig::default();
+        assert_eq!(config.format, PromptFormat::Plain);
+        assert!(config.include_examples);
+        assert!(config.include_tasks);
+        assert!(config.token_budget.is_none());
+    }
+
+    #[test]
+    fn test_prompt_builder_plain() {
+        let config = PromptConfig::default();
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        assert!(prompt.token_count > 0);
+        assert!(!prompt.truncated);
+        assert!(prompt.content.contains("# Lash Agent Usage Guide"));
+        assert!(prompt.content.contains("## File Format"));
+        assert!(prompt.content.contains("## Examples"));
+        assert!(prompt.content.contains("## Safety Guidelines"));
+    }
+
+    #[test]
+    fn test_prompt_builder_with_tasks() {
+        let config = PromptConfig::default();
+        let mut builder = PromptBuilder::new(config);
+        builder.add_task_summary("features/auth.md: 10 tasks, 70% complete".to_string());
+        builder.add_task_summary("core/api.md: 5 tasks, 100% complete".to_string());
+
+        let prompt = builder.build();
+        assert!(prompt.content.contains("features/auth.md"));
+        assert!(prompt.content.contains("core/api.md"));
+    }
+
+    #[test]
+    fn test_prompt_builder_json() {
+        let config = PromptConfig {
+            format: PromptFormat::Json,
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        assert!(prompt.token_count > 0);
+        assert!(prompt.content.contains("\"format\": \"lash-agent-prompt\""));
+        assert!(prompt.content.contains("\"schema\""));
+
+        // Verify it's valid JSON
+        let _parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
+    }
+
+    #[test]
+    fn test_prompt_builder_claude_skill() {
+        let config = PromptConfig {
+            format: PromptFormat::ClaudeSkill,
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        assert!(prompt.content.contains("\"name\": \"lash\""));
+        assert!(prompt.content.contains("\"commands\""));
+
+        // Verify it's valid JSON
+        let _parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
+    }
+
+    #[test]
+    fn test_prompt_builder_agents_md() {
+        let config = PromptConfig {
+            format: PromptFormat::AgentsMd,
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        assert!(prompt.content.contains("## Using Lash"));
+        assert!(prompt.content.contains("### Quick Start"));
+        assert!(prompt.content.contains("### Key Rules"));
+    }
+
+    #[test]
+    fn test_prompt_builder_no_examples() {
+        let config = PromptConfig {
+            include_examples: false,
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        // Should not contain example code blocks
+        assert!(!prompt.content.contains("### Minimal Valid File"));
+    }
+
+    #[test]
+    fn test_prompt_builder_no_tasks() {
+        let config = PromptConfig {
+            include_tasks: false,
+            ..Default::default()
+        };
+        let mut builder = PromptBuilder::new(config);
+        builder.add_task_summary("test.md: 5 tasks".to_string());
+
+        let prompt = builder.build();
+        // Task summaries should not be included
+        assert!(!prompt.content.contains("test.md"));
+    }
+
+    #[test]
+    fn test_prompt_builder_with_budget() {
+        let config = PromptConfig {
+            token_budget: Some(500), // Small budget to force truncation
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        assert!(prompt.token_count <= 500 + 50); // Allow small margin
+                                                 // With such a small budget, content should be truncated
+        assert!(prompt.truncated);
+    }
+
+    #[test]
+    fn test_prompt_builder_with_filters() {
+        let config = PromptConfig {
+            label_filter: vec!["backend".to_string(), "api".to_string()],
+            path_filter: Some("features/".to_string()),
+            include_tasks: true,
+            ..Default::default()
+        };
+
+        let mut builder = PromptBuilder::new(config);
+        // Add a task summary so the filter messages are displayed
+        builder.add_task_summary("test.md: 5 tasks".to_string());
+
+        let prompt = builder.build();
+
+        assert!(prompt.content.contains("Filtered by labels: backend, api"));
+        assert!(prompt.content.contains("Filtered by path: features/"));
+    }
+
+    #[test]
+    fn test_add_task_summary() {
+        let config = PromptConfig::default();
+        let mut builder = PromptBuilder::new(config);
+
+        assert_eq!(builder.task_summaries.len(), 0);
+
+        builder.add_task_summary("test1.md: 5 tasks".to_string());
+        assert_eq!(builder.task_summaries.len(), 1);
+
+        builder.add_task_summary("test2.md: 3 tasks".to_string());
+        assert_eq!(builder.task_summaries.len(), 2);
+    }
+}
