@@ -1,5 +1,70 @@
 # Lash Development Log
 
+## 2025-11-21 - Remove Unimplemented CLI Flags and Create Follow-Up Tasks
+
+### Summary
+Cleaned up unimplemented flags from CLI commands to prevent user confusion and created proper tasks for future implementation. This ensures all CLI flags that are accepted actually work, and provides a clear roadmap for missing functionality.
+
+**Commit:** `d433714`
+
+### Changes Made
+
+**Removed Unimplemented Flags:**
+1. **check-links `--fix` flag**: Removed from CLI args and CheckLinksArgs struct
+   - Was marked with `#[allow(dead_code)]` and never used
+   - Created Task 12 to implement this properly with fuzzy matching and interactive fixes
+
+2. **search `--threshold` flag**: Removed from CLI args and SearchArgs struct
+   - FTS5 search backend doesn't support fuzzy thresholds
+   - Flag was accepted but ignored, creating false expectations
+   - Config file still has `fuzzy_threshold` setting for potential future use
+
+3. **search `highlight_matches()` function**: Removed unused dead code
+   - Function was never called and had `#[allow(dead_code)]` marker
+   - Awaited match position data from search API that isn't available
+   - Removed associated test
+
+4. **search scope TODO**: Removed misleading TODO comment
+   - Internal SearchQuery supports scope, but CLI doesn't expose it yet
+   - Can be added later if needed
+
+**New Tasks Created** (in tasks/tasks.cli-commands.md):
+- **Task 12**: Implement `lash check-links --fix` Mode
+  - Priority: LOW, Effort: 2-3 days
+  - Fuzzy matching for broken references
+  - Interactive confirmation UI
+  - Markdown file updating with backups
+  - Re-indexing after fixes
+
+- **Task 13**: Clean Up Unimplemented Search Command Features
+  - Priority: HIGH, Effort: 0.5 days
+  - Status: Completed in this commit
+  - Documented removal decisions
+
+- **Task 14**: Implement `lash show --deps` and `--rdeps` Flags
+  - Priority: MEDIUM, Effort: 1-2 days
+  - Currently returns empty vectors with TODO comments
+  - Needs repository method to query tasks by database ID
+  - Full dependency display functionality
+
+**Test Updates:**
+- Removed `test_check_links_accepts_fix_flag` test
+- Removed `test_search_accepts_threshold` test
+- Updated `SearchArgs` test struct mirror to match real implementation
+- All tests pass, zero clippy warnings
+
+### Rationale
+
+Following the principle of "don't accept flags you don't implement," this cleanup:
+1. Prevents users from trying flags that don't work
+2. Provides clear documentation of what needs to be implemented
+3. Maintains code quality by removing dead code and `#[allow(dead_code)]` markers
+4. Sets up proper tasks for future implementation
+
+The `--fix` and `--deps`/`--rdeps` features are legitimate future enhancements, but accepting the flags now creates false expectations. Better to add them when they're actually implemented.
+
+---
+
 ## 2025-11-21 - CLI Check-Links Command Complete (Task 9)
 
 ### Summary
