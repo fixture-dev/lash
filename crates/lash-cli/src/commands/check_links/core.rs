@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
 
-/// Arguments for the check-links command
+/// Arguments for the check-links command (legacy, kept for potential future use)
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct CheckLinksArgs {
     /// Output JSON diagnostics
@@ -62,6 +63,7 @@ pub struct FileLinks {
 /// # Returns
 ///
 /// Exit code: 0 (no broken links), 1 (broken links found), 3 (DB error)
+#[allow(dead_code)]
 pub fn execute(args: &CheckLinksArgs) -> Result<i32> {
     // Determine project root
     let project_root = if let Some(ref root) = args.project_root {
@@ -111,7 +113,7 @@ pub fn execute(args: &CheckLinksArgs) -> Result<i32> {
 }
 
 /// Get the database path for a project
-fn get_database_path(project_root: &Path) -> PathBuf {
+pub fn get_database_path(project_root: &Path) -> PathBuf {
     project_root.join(".lash/db.sqlite")
 }
 
@@ -119,7 +121,7 @@ fn get_database_path(project_root: &Path) -> PathBuf {
 ///
 /// A broken link is a dependency where `to_task_id` is NULL, meaning the
 /// target task could not be resolved during indexing.
-fn find_broken_links(conn: impl AsRef<std::path::Path>) -> Result<BrokenLinksReport> {
+pub fn find_broken_links(conn: impl AsRef<std::path::Path>) -> Result<BrokenLinksReport> {
     // Re-open connection for querying
     let conn = open_database(conn.as_ref()).context("Failed to open database")?;
 
@@ -177,7 +179,7 @@ fn find_broken_links(conn: impl AsRef<std::path::Path>) -> Result<BrokenLinksRep
 }
 
 /// Output JSON when database doesn't exist
-fn output_json_no_db() -> Result<()> {
+pub fn output_json_no_db() -> Result<()> {
     use serde_json::json;
 
     let output = json!({
@@ -190,13 +192,13 @@ fn output_json_no_db() -> Result<()> {
 }
 
 /// Output broken links report as JSON
-fn output_json_report(report: &BrokenLinksReport) -> Result<()> {
+pub fn output_json_report(report: &BrokenLinksReport) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
 }
 
 /// Output broken links report as human-readable text
-fn output_text_report(report: &BrokenLinksReport, no_color: bool) {
+pub fn output_text_report(report: &BrokenLinksReport, no_color: bool) {
     use owo_colors::OwoColorize;
 
     let use_color = !no_color;
