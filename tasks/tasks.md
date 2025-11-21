@@ -35,7 +35,7 @@ Tasks are organized by major module/component. Each task file contains:
 - [x] [tasks.dependency-resolution.md](tasks.dependency-resolution.md) - Dependency graph, cycle detection, state computation, incremental updates ✅
 
 ### CLI & Commands
-- [ ] [tasks.cli-framework.md](tasks.cli-framework.md) - CLI infrastructure, output formatting, progress reporting
+- [x] [tasks.cli-framework.md](tasks.cli-framework.md) - CLI infrastructure, output formatting, progress reporting (Tasks 1-8 complete) ✅
 - [ ] [tasks.cli-commands.md](tasks.cli-commands.md) - Individual command implementations (list, show, graph, etc.)
 - [ ] [tasks.fuzzy-search.md](tasks.fuzzy-search.md) - Full-text search, ranking, search command
 
@@ -83,12 +83,12 @@ Tasks are organized by major module/component. Each task file contains:
 **Goal:** Resolve dependencies; implement query commands
 
 1. ✅ tasks.dependency-resolution#1-7 (graph, cycles, resolution, status, blockers, export, incremental updates) - Complete
-2. tasks.cli-framework#1-4 (CLI infrastructure) - NEXT
-3. tasks.cli-commands#5-6 (query commands)
+2. ✅ tasks.cli-framework#1-8 (CLI infrastructure: arg parsing, root detection, output formatting, progress, config, logging, command execution, exit codes) - Complete
+3. tasks.cli-commands#5-6 (query commands) - NEXT
 4. tasks.linter#4 (dependency validation)
 
 **Deliverable:** Can query tasks; dependency resolution works
-**Status:** Dependency resolution module complete with 495 tests passing. All 7 tasks complete: graph data structure, cycle detection, dependency resolution engine, status computation, blocker identification, graph export, and incremental updates.
+**Status:** Dependency resolution module complete with 495 tests passing. CLI framework complete with all 8 tasks done (626 total tests): argument parsing, project root detection, output formatting, progress reporting, configuration management, logging/diagnostics, command execution framework, and exit code standardization.
 
 ### Phase 5: Search & Advanced Commands (Weeks 9-10)
 **Goal:** Fuzzy search; additional features
