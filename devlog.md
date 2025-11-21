@@ -5,7 +5,7 @@
 ### Summary
 Implemented the `lash check-links` command to detect broken dependency references in task files. The command queries the database for unresolved `@depends-on` annotations and reports them with clear location information and helpful suggestions.
 
-**Commit:** TBD
+**Commit:** `47c432b`
 
 ### Implementation Overview
 
