@@ -20,6 +20,7 @@ pub mod migrations;
 pub mod profiler;
 pub mod project_root;
 pub mod repository;
+pub mod search;
 pub mod verifier;
 pub mod walker;
 
@@ -36,6 +37,7 @@ pub use project_root::{
     ProjectRootConfig,
 };
 pub use repository::{DependencyRepository, FileRepository, LabelRepository, TaskRepository};
+pub use search::{parse_query, search, SearchQuery, SearchResult, SearchResults, SearchScorer};
 pub use verifier::{
     IndexVerifier, IssueKind, VerificationIssue, VerificationReport, VerifierConfig,
 };

@@ -224,8 +224,16 @@ fn run(cli: LashCli) -> Result<()> {
             limit,
             threshold,
         } => {
-            // TODO: Implement search command
-            anyhow::bail!("The 'search' command is not yet implemented")
+            let args = commands::search::SearchArgs {
+                query,
+                limit,
+                threshold,
+                json: cli.json,
+                no_color: cli.no_color,
+                project_root,
+            };
+            let exit_code = commands::search::execute(&args)?;
+            process::exit(exit_code);
         }
 
         Commands::Show {

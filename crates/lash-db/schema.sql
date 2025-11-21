@@ -20,7 +20,7 @@ CREATE TABLE metadata (
 );
 
 -- Initialize schema version
-INSERT INTO metadata (key, value) VALUES ('schema_version', '1');
+INSERT INTO metadata (key, value) VALUES ('schema_version', '2');
 
 -- ============================================================================
 -- Files table (task files from the project)
@@ -217,35 +217,111 @@ CREATE INDEX idx_file_labels_label ON file_labels(label_id);
 -- ============================================================================
 -- FTS5 virtual table for full-text search
 -- ============================================================================
+--
+-- Column weights for relevance ranking (configured via bm25()):
+-- - title: highest weight (most important)
+-- - labels: medium-high weight
+-- - body: standard weight
+-- - file_path: lower weight
 
 CREATE VIRTUAL TABLE tasks_fts USING fts5(
     full_id UNINDEXED,  -- Join key (not searchable)
-    title,              -- Searchable title
+    title,              -- Searchable title (highest weight)
     body,               -- Searchable body text
-    content='tasks',    -- External content table
-    content_rowid='id'  -- Maps to tasks.id
+    labels,             -- Space-separated labels
+    file_path,          -- File path for filename matching
+    tokenize='unicode61 remove_diacritics 2'
 );
 
 -- ============================================================================
 -- FTS5 triggers (keep search index in sync with tasks table)
 -- ============================================================================
+--
+-- Note: FTS5 triggers need to be manually maintained since we're joining
+-- data from multiple tables (files and labels). Updates to labels or files
+-- need to trigger re-indexing of related tasks.
 
 -- Insert trigger: add new task to search index
 CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
-    INSERT INTO tasks_fts(rowid, full_id, title, body)
-    VALUES (new.id, new.full_id, new.title, COALESCE(new.body, ''));
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path)
+    SELECT
+        new.id,
+        new.full_id,
+        new.title,
+        COALESCE(new.body, ''),
+        COALESCE((
+            SELECT GROUP_CONCAT(l.name, ' ')
+            FROM task_labels tl
+            JOIN labels l ON l.id = tl.label_id
+            WHERE tl.task_id = new.id
+        ), ''),
+        f.path
+    FROM files f
+    WHERE f.id = new.file_id;
 END;
 
 -- Update trigger: update search index when task changes
 CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
-    UPDATE tasks_fts SET
-        full_id = new.full_id,
-        title = new.title,
-        body = COALESCE(new.body, '')
-    WHERE rowid = new.id;
+    DELETE FROM tasks_fts WHERE rowid = old.id;
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path)
+    SELECT
+        new.id,
+        new.full_id,
+        new.title,
+        COALESCE(new.body, ''),
+        COALESCE((
+            SELECT GROUP_CONCAT(l.name, ' ')
+            FROM task_labels tl
+            JOIN labels l ON l.id = tl.label_id
+            WHERE tl.task_id = new.id
+        ), ''),
+        f.path
+    FROM files f
+    WHERE f.id = new.file_id;
 END;
 
 -- Delete trigger: remove from search index
 CREATE TRIGGER tasks_ad AFTER DELETE ON tasks BEGIN
     DELETE FROM tasks_fts WHERE rowid = old.id;
+END;
+
+-- Trigger to update FTS when labels change
+CREATE TRIGGER task_labels_ai AFTER INSERT ON task_labels BEGIN
+    DELETE FROM tasks_fts WHERE rowid = new.task_id;
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path)
+    SELECT
+        t.id,
+        t.full_id,
+        t.title,
+        COALESCE(t.body, ''),
+        COALESCE((
+            SELECT GROUP_CONCAT(l.name, ' ')
+            FROM task_labels tl
+            JOIN labels l ON l.id = tl.label_id
+            WHERE tl.task_id = t.id
+        ), ''),
+        f.path
+    FROM tasks t
+    JOIN files f ON f.id = t.file_id
+    WHERE t.id = new.task_id;
+END;
+
+CREATE TRIGGER task_labels_ad AFTER DELETE ON task_labels BEGIN
+    DELETE FROM tasks_fts WHERE rowid = old.task_id;
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path)
+    SELECT
+        t.id,
+        t.full_id,
+        t.title,
+        COALESCE(t.body, ''),
+        COALESCE((
+            SELECT GROUP_CONCAT(l.name, ' ')
+            FROM task_labels tl
+            JOIN labels l ON l.id = tl.label_id
+            WHERE tl.task_id = t.id
+        ), ''),
+        f.path
+    FROM tasks t
+    JOIN files f ON f.id = t.file_id
+    WHERE t.id = old.task_id;
 END;

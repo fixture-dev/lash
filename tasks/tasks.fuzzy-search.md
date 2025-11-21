@@ -30,28 +30,28 @@ Design and implement the database schema for search indexing, likely using SQLit
 
 ### Subtasks
 
-- [ ] Research FTS5 vs in-memory fuzzy matching
-  - [ ] Benchmark FTS5 query performance
-  - [ ] Evaluate fuzzy matching libraries (fuzzy-matcher, sublime_fuzzy)
-  - [ ] Consider hybrid approach: FTS5 + in-memory ranking
-- [ ] Define FTS5 virtual table (if using FTS5)
-  - [ ] `search_index` table with columns:
-    - [ ] `task_id` (FK to tasks.id)
-    - [ ] `content` (combined searchable text)
-    - [ ] `title` (task title, higher weight)
-    - [ ] `body` (task body, lower weight)
-    - [ ] `labels` (space-separated labels)
-    - [ ] `file_path` (for filename matching)
-  - [ ] Configure tokenizer (unicode61 or porter)
-  - [ ] Set up column weights (title > labels > body)
-- [ ] Implement search index population
-  - [ ] During indexing, populate FTS5 table
-  - [ ] Extract text from tasks: title + body + labels + path
-  - [ ] Insert into search_index
-- [ ] Add index maintenance
-  - [ ] Update search index when tasks change
-  - [ ] Delete from index when tasks deleted
-  - [ ] Rebuild index command
+- [x] Research FTS5 vs in-memory fuzzy matching
+  - [x] Benchmark FTS5 query performance
+  - [x] Evaluate fuzzy matching libraries (fuzzy-matcher, sublime_fuzzy)
+  - [x] Consider hybrid approach: FTS5 + in-memory ranking
+- [x] Define FTS5 virtual table (if using FTS5)
+  - [x] `search_index` table with columns:
+    - [x] `task_id` (FK to tasks.id)
+    - [x] `content` (combined searchable text)
+    - [x] `title` (task title, higher weight)
+    - [x] `body` (task body, lower weight)
+    - [x] `labels` (space-separated labels)
+    - [x] `file_path` (for filename matching)
+  - [x] Configure tokenizer (unicode61 or porter)
+  - [x] Set up column weights (title > labels > body)
+- [x] Implement search index population
+  - [x] During indexing, populate FTS5 table
+  - [x] Extract text from tasks: title + body + labels + path
+  - [x] Insert into search_index
+- [x] Add index maintenance
+  - [x] Update search index when tasks change
+  - [x] Delete from index when tasks deleted
+  - [x] Rebuild index command
 
 ### Success Criteria
 
@@ -80,27 +80,27 @@ Implement relevance scoring and ranking for search results.
 
 ### Subtasks
 
-- [ ] Define scoring algorithm
-  - [ ] Base score from FTS5 ranking (bm25 or similar)
-  - [ ] Boost for exact prefix matches
-  - [ ] Boost for title matches vs body matches
-  - [ ] Penalty for long documents (normalize)
-- [ ] Implement `SearchScorer` struct
-  - [ ] Take query and matched document
-  - [ ] Compute relevance score (0.0 to 1.0)
-  - [ ] Support multiple ranking strategies
-- [ ] Add term highlighting
-  - [ ] Identify matched terms in results
-  - [ ] Store match positions for highlighting
-  - [ ] Support context snippets (show surrounding text)
-- [ ] Implement result ranking
-  - [ ] Sort by score descending
-  - [ ] Break ties by created date or path
-  - [ ] Support pagination (offset + limit)
-- [ ] Tune scoring weights
-  - [ ] Experiment with different weight combinations
-  - [ ] Test against representative queries
-  - [ ] Document tuning rationale
+- [x] Define scoring algorithm
+  - [x] Base score from FTS5 ranking (bm25 or similar)
+  - [x] Boost for exact prefix matches
+  - [x] Boost for title matches vs body matches
+  - [x] Penalty for long documents (normalize)
+- [x] Implement `SearchScorer` struct
+  - [x] Take query and matched document
+  - [x] Compute relevance score (0.0 to 1.0)
+  - [x] Support multiple ranking strategies
+- [x] Add term highlighting
+  - [x] Identify matched terms in results
+  - [x] Store match positions for highlighting
+  - [x] Support context snippets (show surrounding text)
+- [x] Implement result ranking
+  - [x] Sort by score descending
+  - [x] Break ties by created date or path
+  - [x] Support pagination (offset + limit)
+- [x] Tune scoring weights
+  - [x] Experiment with different weight combinations
+  - [x] Test against representative queries
+  - [x] Document tuning rationale
 
 ### Success Criteria
 
@@ -130,37 +130,37 @@ Implement the search query API that the `lash search` command will use.
 
 ### Subtasks
 
-- [ ] Define `SearchQuery` struct
-  - [ ] `query`: search string
-  - [ ] `scope`: optional path filter
-  - [ ] `limit`: max results (default 20)
-  - [ ] `offset`: pagination offset (default 0)
-  - [ ] `filters`: label, status, etc.
-- [ ] Implement `search()` function
-  - [ ] Parse query string
-  - [ ] Build FTS5 query (or run fuzzy matcher)
-  - [ ] Apply scope and filters
-  - [ ] Execute search
-  - [ ] Score and rank results
-  - [ ] Return `SearchResults` struct
-- [ ] Define `SearchResults` struct
-  - [ ] `results`: Vec<SearchResult>
-  - [ ] `total_count`: total matches (before limit)
-  - [ ] `query`: echo back query for reference
-- [ ] Define `SearchResult` struct
-  - [ ] `task_id`, `title`, `file_path`, `line`
-  - [ ] `score`: relevance score
-  - [ ] `snippet`: context snippet with highlighted terms
-  - [ ] `matched_fields`: which fields matched (title, body, etc.)
-- [ ] Implement query parsing
-  - [ ] Support quoted phrases: `"exact match"`
-  - [ ] Support field filters: `label:backend`, `path:core/`
-  - [ ] Support boolean operators: `foo AND bar`, `foo OR bar` (if FTS5)
-  - [ ] Fallback to simple tokenization if operators not supported
-- [ ] Add error handling
-  - [ ] Invalid query syntax
-  - [ ] Empty query (return all tasks?)
-  - [ ] Index not built (suggest `lash index`)
+- [x] Define `SearchQuery` struct
+  - [x] `query`: search string
+  - [x] `scope`: optional path filter
+  - [x] `limit`: max results (default 20)
+  - [x] `offset`: pagination offset (default 0)
+  - [x] `filters`: label, status, etc.
+- [x] Implement `search()` function
+  - [x] Parse query string
+  - [x] Build FTS5 query (or run fuzzy matcher)
+  - [x] Apply scope and filters
+  - [x] Execute search
+  - [x] Score and rank results
+  - [x] Return `SearchResults` struct
+- [x] Define `SearchResults` struct
+  - [x] `results`: Vec<SearchResult>
+  - [x] `total_count`: total matches (before limit)
+  - [x] `query`: echo back query for reference
+- [x] Define `SearchResult` struct
+  - [x] `task_id`, `title`, `file_path`, `line`
+  - [x] `score`: relevance score
+  - [x] `snippet`: context snippet with highlighted terms
+  - [x] `matched_fields`: which fields matched (title, body, etc.)
+- [x] Implement query parsing
+  - [x] Support quoted phrases: `"exact match"`
+  - [x] Support field filters: `label:backend`, `path:core/`
+  - [x] Support boolean operators: `foo AND bar`, `foo OR bar` (if FTS5)
+  - [x] Fallback to simple tokenization if operators not supported
+- [x] Add error handling
+  - [x] Invalid query syntax
+  - [x] Empty query (return all tasks?)
+  - [x] Index not built (suggest `lash index`)
 
 ### Success Criteria
 
