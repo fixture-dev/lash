@@ -1,5 +1,118 @@
 # Lash Development Log
 
+## 2025-11-21 - Implement Task 12: `lash check-links --fix` Mode
+
+### Summary
+Implemented comprehensive fuzzy matching and interactive fix support for broken dependency references. The `--fix` flag enables users to automatically repair broken `@depends-on` annotations using Levenshtein distance-based fuzzy matching with interactive confirmation.
+
+**Commit:** `50e90d3`
+
+### Implementation Details
+
+**Architecture:**
+Created a modular implementation within `/commands/check_links/`:
+- `fuzzy_matcher.rs` (289 lines) - Levenshtein-based similarity scoring
+- `interactive.rs` (265 lines) - Terminal UI for user confirmation
+- `annotation_editor.rs` (386 lines) - Safe Markdown file editing with backups
+- `mod.rs` (393 lines) - Fix orchestration and CLI integration
+- `core.rs` - Preserved original implementation for potential future use
+
+**Key Features:**
+1. **Fuzzy Matching**
+   - Uses `strsim` crate for Levenshtein distance calculations
+   - Similarity threshold: 0.6 (configurable)
+   - Returns up to 5 best candidates, sorted by score
+   - Auto-fix threshold: 0.85 for `--yes` mode
+
+2. **Interactive Mode** (default)
+   - Displays file path, task ID, and broken reference
+   - Shows up to 5 candidate fixes with confidence percentages
+   - Color-coded confidence: green (>85%), yellow (>70%), dimmed (<70%)
+   - User options: accept, skip, manual fix, or quit
+   - Supports numbered selection of candidates
+
+3. **Auto-Accept Mode** (`--yes` flag)
+   - Non-interactive mode for CI/CD pipelines
+   - Only applies fixes with confidence >= 85%
+   - Shows clear indication of auto-fixed and skipped items
+
+4. **Dry-Run Mode** (`--dry-run` flag)
+   - Preview changes without applying them
+   - Shows what would be fixed
+   - Useful for validation before committing changes
+
+5. **Safety Features**
+   - Creates timestamped backups in `.lash/backups/TIMESTAMP/`
+   - Preserves original directory structure in backups
+   - Regex-based targeted updates to preserve formatting
+   - Atomic file operations with rollback on errors
+   - Automatic re-indexing after applying fixes
+
+6. **Error Handling**
+   - Continues on individual failures
+   - Shows clear error messages
+   - Displays summary at end
+   - Gracefully handles re-indexing failures
+
+**Testing:**
+- 22 unit tests across all modules
+- 14 tests for fuzzy matcher (similarity scoring, thresholds, sorting)
+- 6 tests for annotation editor (file updates, backups, formatting)
+- 2 tests for interactive prompter (creation, decision types)
+- 3 existing integration tests for check-links
+- All tests passing, clippy clean
+
+**Usage Examples:**
+```bash
+# Interactive mode (default)
+lash check-links --fix
+
+# Auto-accept high-confidence fixes
+lash check-links --fix --yes
+
+# Preview changes without applying
+lash check-links --fix --dry-run
+
+# Combine with existing flags
+lash check-links --fix --no-color  # Disable colored output
+lash check-links --fix --json      # JSON output (N/A for --fix mode)
+```
+
+**Design Decisions:**
+- Kept original `core.rs` implementation with `#[allow(dead_code)]` for potential future use
+- Used method-based architecture (not trait-based) for simplicity
+- Avoided external TUI dependencies; used basic stdin/stdout for portability
+- Cast f64 to u8 for confidence percentages (intentionally truncated, marked with clippy allow)
+- Allowed >100 lines for complex interactive/orchestration functions (marked appropriately)
+
+**Challenges Solved:**
+- Clippy warnings for similar variable names (`matcher` vs `matches`) - added `#[allow]` attributes
+- Float comparison in tests - switched to epsilon-based comparisons
+- Type incompatibility with owo_colors - used `.to_string()` to normalize types
+- Borrowing issues with pattern matching - used reference matching `&decision`
+
+### Files Modified
+- `Cargo.toml` - Added `strsim = "0.11"` to workspace dependencies
+- `crates/lash-cli/Cargo.toml` - Added strsim, regex, and chrono dependencies
+- `crates/lash-cli/src/cli.rs` - Added --fix, --yes, --dry-run flags to CheckLinks command
+- `crates/lash-cli/src/main.rs` - Updated CheckLinks command handler
+- `tasks/tasks.cli-commands.md` - Marked Task 12 as complete with implementation notes
+
+### Files Created
+- `crates/lash-cli/src/commands/check_links/fuzzy_matcher.rs` - New
+- `crates/lash-cli/src/commands/check_links/interactive.rs` - New
+- `crates/lash-cli/src/commands/check_links/annotation_editor.rs` - New
+- `crates/lash-cli/src/commands/check_links/mod.rs` - New (replaces check_links.rs)
+- `crates/lash-cli/src/commands/check_links/core.rs` - Renamed from check_links.rs
+
+### Next Steps
+- Consider adding integration tests for end-to-end fix workflows
+- Potential enhancement: Support for batch operations on multiple files
+- Consider adding `--threshold` and `--max-candidates` flags for customization
+- Could add statistics/metrics output for large-scale fix operations
+
+---
+
 ## 2025-11-21 - Remove Unimplemented CLI Flags and Create Follow-Up Tasks
 
 ### Summary
