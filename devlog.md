@@ -1,5 +1,120 @@
 # Lash Development Log
 
+## 2025-11-20 - Exit Code Standardization (Task 8)
+
+### Summary
+Completed Task 8 from `tasks/tasks.cli-framework.md`. Implemented standardized exit codes for the Lash CLI to provide a consistent, agent-friendly interface for detecting different types of errors. Added `ExitCode` enum with 7 standard codes (0-6), intelligent mapping from `LashError` variants, and comprehensive documentation in CLI help text. All 626 tests passing including 15 new unit tests for exit code mapping.
+
+**Commit:** `28ab7d6`
+
+### Implementation Overview
+
+**ExitCode Enum (`lash-types/src/error.rs`):**
+- Defines 7 standard exit codes (0-6) with stable numeric values
+- Exit codes provide semantic error categorization for scripts and agents:
+  - 0: Success
+  - 1: General error (fallback for uncategorized errors)
+  - 2: Lint/validation error
+  - 3: Index/database error
+  - 4: Configuration error (including missing project root)
+  - 5: Resource not found (files, tasks, query results)
+  - 6: Circular dependency detected
+- `#[repr(i32)]` ensures stable numeric representation
+- Implements `Display` trait for human-readable output
+
+**Error Mapping (`From<&LashError>` implementation):**
+- Intelligent mapping from `LashError` variants to appropriate exit codes
+- Parse and Lint errors → LintError (2)
+- Index errors → IndexError (3)
+- Config errors → ConfigError (4)
+- Dependency cycles → CycleDetected (6)
+- File not found / task not found / no results → NotFound (5)
+- Other errors → GeneralError (1)
+- Uses error codes (`E_DEP_CYCLE`, `E_QUERY_NO_RESULTS`, etc.) for fine-grained mapping
+
+**Main.rs Integration:**
+- Updated `main()` to convert errors to `ExitCode` via downcasting
+- Changed `run()` signature from `Result<i32>` to `Result<()>`
+- All commands now propagate errors naturally
+- Exit code determined by error type, not hardcoded
+- Supports both `LashError` and generic `anyhow::Error`
+
+**CLI Documentation:**
+- Added exit code table to `--help` output
+- Displayed in `long_about` section of main CLI struct
+- Clear, scannable format for quick reference
+- Users and scripts can rely on stable exit codes
+
+### Design Decisions
+
+**Stable Exit Codes:**
+- Exit codes are part of the public API contract
+- Values must remain stable across versions
+- Tests enforce exit code stability to prevent accidental changes
+- Documented for both human and agent consumers
+
+**Intelligent Mapping:**
+- Not all errors map 1:1 to exit codes
+- Multiple error codes can map to same exit code (e.g., multiple Config error codes → 4)
+- Specific errors get specific codes (cycles → 6, not found → 5)
+- Generic fallback (1) for unexpected errors
+
+**anyhow Integration:**
+- Main uses `anyhow::Result` for ergonomic error handling
+- Downcast to `LashError` for specific exit codes
+- Falls back to GeneralError for non-LashError types
+- Maintains compatibility with existing error handling
+
+**Deferred Features:**
+- `--exit-zero` flag not implemented (marked as optional in task)
+- Integration tests for exit codes deferred
+- Both features can be added later without breaking changes
+
+### Testing
+
+**Unit Tests (15 new tests):**
+- `test_exit_code_values` - verifies numeric stability
+- `test_exit_code_as_i32` - tests conversion method
+- `test_exit_code_display` - validates Display output
+- Per-error-type mapping tests (12 tests):
+  - Parse errors → LintError
+  - Lint errors → LintError
+  - Index errors → IndexError
+  - Config errors → ConfigError
+  - Dependency cycles → CycleDetected
+  - Dependency not found → NotFound
+  - Invalid dependency refs → GeneralError
+  - File not found → NotFound
+  - Other I/O errors → GeneralError
+  - Query no results → NotFound
+  - Query invalid syntax → GeneralError
+  - Internal errors → GeneralError
+
+All 626 existing tests continue to pass.
+
+### Files Modified
+- `crates/lash-types/src/error.rs` - Add ExitCode enum, mapping, tests
+- `crates/lash-cli/src/main.rs` - Use ExitCode, update run() signature
+- `crates/lash-cli/src/cli.rs` - Document exit codes in help text
+- `tasks/tasks.cli-framework.md` - Mark Task 8 complete
+
+### Impact on Agents and Scripts
+
+**Before:** Exit code was always 1 for errors (or inconsistent integer returns)
+**After:** Semantic exit codes allow scripts to:
+- Detect lint failures specifically (exit code 2)
+- Distinguish "not found" from other errors (exit code 5)
+- Identify cycles automatically (exit code 6)
+- Handle config issues separately (exit code 4)
+- Trust that 0 = success, >0 = failure (standard convention)
+
+### Next Steps
+- Consider implementing `--exit-zero` flag if use cases emerge
+- Add integration tests for exit codes in real command scenarios
+- Document exit codes in user-facing documentation/README
+
+---
+
 ## 2025-11-20 - Command Execution Framework (Task 7)
 
 ### Summary
