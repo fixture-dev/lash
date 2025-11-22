@@ -74,6 +74,70 @@ impl CheckboxLine {
         }
     }
 
+    /// Detect if a line looks like a malformed checkbox
+    ///
+    /// Returns an error message if the line appears to be attempting to be a
+    /// checkbox but has invalid syntax. Returns `None` if the line is not
+    /// checkbox-like at all.
+    ///
+    /// This function is conservative and only reports errors for checkboxes that
+    /// are very close to being valid but have an invalid status character.
+    /// Other malformed patterns (missing brackets, wrong spacing, etc.) are
+    /// silently ignored as they could be regular markdown content.
+    ///
+    /// # Arguments
+    ///
+    /// * `line` - The line to check
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some(error_message)` if the line is malformed, `None` if it's
+    /// not checkbox-like.
+    #[must_use]
+    pub fn detect_malformed(line: &str) -> Option<String> {
+        // Skip empty lines and pure whitespace
+        if line.trim().is_empty() {
+            return None;
+        }
+
+        // Count leading spaces (ignore lines with tabs)
+        let indent = count_leading_spaces(line)?;
+        let rest = &line[indent..];
+
+        // Check if it starts like a checkbox
+        if !rest.starts_with("- [") {
+            return None;
+        }
+
+        // Find the closing bracket
+        let Some(close_bracket_pos) = rest.find(']') else {
+            return None; // Missing closing bracket - could be markdown, ignore
+        };
+
+        // Only report errors for well-formed checkbox patterns with invalid status
+        // Checkboxes should have exactly 1 character between [ and ]
+        if close_bracket_pos != 4 {
+            return None; // Wrong spacing - could be markdown, ignore
+        }
+
+        // Extract status character
+        let status_char = rest.chars().nth(3)?;
+
+        // Only report error if it looks like a checkbox but has invalid status
+        if lash_types::TaskStatus::from_checkbox_char(status_char).is_err() {
+            // Check if there's text after it (looks like a real checkbox attempt)
+            let after_bracket = 5; // Length of "- [X]"
+            if rest.len() > after_bracket && !rest[after_bracket..].trim().is_empty() {
+                return Some(format!(
+                    "Invalid checkbox status '{status_char}': expected one of ' ' (space), 'x', 'X', '-', or '!'"
+                ));
+            }
+        }
+
+        // All other patterns are ignored
+        None
+    }
+
     /// Parse a checkbox line from a string
     ///
     /// This is the main parsing function that extracts all information from
@@ -581,6 +645,52 @@ mod tests {
     fn test_parse_invalid_status_char() {
         let line = "- [?] Invalid status";
         assert!(CheckboxLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_detect_malformed_invalid_status() {
+        let line = "- [?] Invalid status";
+        let error = CheckboxLine::detect_malformed(line);
+        assert!(error.is_some());
+        assert!(error.unwrap().contains("Invalid checkbox status '?'"));
+    }
+
+    #[test]
+    fn test_detect_malformed_missing_closing_bracket() {
+        let line = "- [ Missing bracket";
+        let error = CheckboxLine::detect_malformed(line);
+        // Conservative: missing bracket could be markdown, so we ignore it
+        assert!(error.is_none());
+    }
+
+    #[test]
+    fn test_detect_malformed_too_many_chars() {
+        let line = "- [xx] Too many chars";
+        let error = CheckboxLine::detect_malformed(line);
+        // Conservative: wrong spacing could be markdown, so we ignore it
+        assert!(error.is_none());
+    }
+
+    #[test]
+    fn test_detect_malformed_missing_title() {
+        let line = "- [ ]";
+        let error = CheckboxLine::detect_malformed(line);
+        // Conservative: missing title could be incomplete, so we ignore it
+        assert!(error.is_none());
+    }
+
+    #[test]
+    fn test_detect_malformed_valid_checkbox() {
+        let line = "- [ ] Valid task";
+        let error = CheckboxLine::detect_malformed(line);
+        assert!(error.is_none());
+    }
+
+    #[test]
+    fn test_detect_malformed_not_checkbox() {
+        let line = "Just regular text";
+        let error = CheckboxLine::detect_malformed(line);
+        assert!(error.is_none());
     }
 
     #[test]

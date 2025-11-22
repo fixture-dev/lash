@@ -137,7 +137,7 @@ fn get_database_path(project_root: &Path) -> Result<PathBuf> {
         std::fs::create_dir_all(&lash_dir).context("Failed to create .lash directory")?;
     }
 
-    Ok(lash_dir.join("db.sqlite"))
+    Ok(lash_dir.join("lash.db"))
 }
 
 /// Output indexing report as JSON
@@ -145,6 +145,7 @@ fn output_json_report(report: &lash_db::IndexReport) -> Result<()> {
     use serde_json::json;
 
     let output = json!({
+        "files_indexed": report.files_processed,
         "files_processed": report.files_processed,
         "files_added": report.files_added,
         "files_updated": report.files_updated,
@@ -250,7 +251,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let db_path = get_database_path(temp.path()).unwrap();
 
-        assert_eq!(db_path, temp.path().join(".lash/db.sqlite"));
+        assert_eq!(db_path, temp.path().join(".lash/lash.db"));
         assert!(temp.path().join(".lash").exists());
     }
 

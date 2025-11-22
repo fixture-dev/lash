@@ -197,7 +197,7 @@ fn load_task_summaries(
 
 /// Get the database path for a project root
 fn get_database_path(project_root: &Path) -> PathBuf {
-    project_root.join(".lash/db.sqlite")
+    project_root.join(".lash/lash.db")
 }
 
 #[cfg(test)]
@@ -245,6 +245,6 @@ mod tests {
     fn test_get_database_path() {
         let root = PathBuf::from("/tmp/test-project");
         let db_path = get_database_path(&root);
-        assert_eq!(db_path, PathBuf::from("/tmp/test-project/.lash/db.sqlite"));
+        assert_eq!(db_path, PathBuf::from("/tmp/test-project/.lash/lash.db"));
     }
 }

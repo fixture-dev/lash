@@ -446,8 +446,19 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
         // Try to parse as checkbox line
         if let Some(cb_line) = checkbox::CheckboxLine::parse(line, line_num) {
             checkbox_lines.push(cb_line);
+        } else if let Some(error_msg) = checkbox::CheckboxLine::detect_malformed(line) {
+            // Line looks like a checkbox but has invalid syntax
+            ctx.add_diagnostic(Diagnostic {
+                severity: lash_types::Severity::Error,
+                code: "E_INVALID_CHECKBOX",
+                message: error_msg,
+                location: Some(Location::new(ctx.file_path.to_path_buf(), line_num, 1)),
+                snippet: Some((*line).to_string()),
+                help: Some("Valid checkbox formats: - [ ], - [x], - [X], - [-], - [!]".to_string()),
+                labels: None,
+            });
         }
-        // Non-checkbox lines are silently ignored (comments, blank lines, etc.)
+        // Other non-checkbox lines are silently ignored (comments, blank lines, etc.)
     }
 
     // Build task tree from checkbox lines

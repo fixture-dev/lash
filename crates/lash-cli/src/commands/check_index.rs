@@ -90,7 +90,7 @@ pub fn execute(args: CheckIndexArgs) -> Result<i32> {
 
 /// Get the database path for a project
 fn get_database_path(project_root: &Path) -> PathBuf {
-    project_root.join(".lash/db.sqlite")
+    project_root.join(".lash/lash.db")
 }
 
 /// Output JSON when database doesn't exist
@@ -143,9 +143,9 @@ fn output_text_report(report: &lash_db::VerificationReport, show_diff: bool, no_
     // Header
     if report.is_clean() {
         if use_color {
-            println!("{}", "Index is clean!".green().bold());
+            println!("{}", "✓ Index is in sync".green().bold());
         } else {
-            println!("Index is clean!");
+            println!("✓ Index is in sync");
         }
         println!();
         println!(
@@ -259,6 +259,6 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let db_path = get_database_path(temp.path());
 
-        assert_eq!(db_path, temp.path().join(".lash/db.sqlite"));
+        assert_eq!(db_path, temp.path().join(".lash/lash.db"));
     }
 }

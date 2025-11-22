@@ -409,6 +409,23 @@ fn try_parse_filter(term: &str) -> Option<(String, String)> {
     None
 }
 
+/// Escape an FTS5 query string to prevent syntax errors
+///
+/// This function wraps individual terms in double quotes to treat them as literal strings,
+/// avoiding FTS5 operators and special characters being misinterpreted.
+fn escape_fts5_query(query: &str) -> String {
+    // If the query is already quoted or contains FTS5 operators (AND, OR, NOT),
+    // return it as-is
+    if query.starts_with('"') && query.ends_with('"') {
+        return query.to_string();
+    }
+
+    // For simple queries, just quote the entire thing
+    // This treats it as a phrase search which is more user-friendly
+    // and avoids issues with hyphens and other special characters
+    format!("\"{}\"", query.replace('"', "\"\""))
+}
+
 /// Execute a search query against the database
 ///
 /// # Example
@@ -495,7 +512,7 @@ pub fn search_with_profiling(
             t.status,
             t.owner,
             f.path,
-            bm25(fts.tasks_fts, 3.0, 1.0, 2.0, 0.5) as bm25_score,
+            bm25(tasks_fts, 3.0, 1.0, 2.0, 0.5) as bm25_score,
             fts.labels,
             fts.file_path
         FROM tasks_fts fts
@@ -506,7 +523,8 @@ pub fn search_with_profiling(
 
     // Add FTS5 WHERE clause if we have a query
     if !fts_query.is_empty() {
-        sql.push_str(&format!("WHERE tasks_fts MATCH '{fts_query}' "));
+        let escaped_query = escape_fts5_query(&fts_query);
+        sql.push_str(&format!("WHERE tasks_fts MATCH '{escaped_query}' "));
     }
 
     // Add filters
@@ -766,7 +784,7 @@ fn count_matches(conn: &Connection, fts_query: &str, query: &SearchQuery) -> DbR
         "SELECT COUNT(*) FROM tasks_fts fts
          JOIN tasks t ON t.id = fts.rowid
          JOIN files f ON f.id = t.file_id
-         WHERE fts.tasks_fts MATCH ?1",
+         WHERE tasks_fts MATCH ?1",
     );
 
     // Add the same filters as the main query
@@ -802,7 +820,8 @@ fn count_matches(conn: &Connection, fts_query: &str, query: &SearchQuery) -> DbR
         sql.push_str(&filter_clauses.join(" AND "));
     }
 
-    let count: usize = conn.query_row(&sql, [fts_query], |row| row.get(0))?;
+    let escaped_query = escape_fts5_query(fts_query);
+    let count: usize = conn.query_row(&sql, [&escaped_query], |row| row.get(0))?;
     Ok(count)
 }
 

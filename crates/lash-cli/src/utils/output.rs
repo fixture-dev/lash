@@ -180,6 +180,25 @@ pub fn print_summary(diagnostics: &[LintDiagnostic], files_checked: usize, use_c
         .filter(|d| d.severity == Severity::Hint)
         .count();
 
+    // If no errors, print success message
+    if error_count == 0 {
+        if warning_count == 0 && info_count == 0 && hint_count == 0 {
+            // Perfect - no issues at all
+            if use_color {
+                println!("{}", "✓ All files passed linting".green());
+            } else {
+                println!("✓ All files passed linting");
+            }
+            return;
+        }
+        // No errors, but some warnings/info/hints
+        if use_color {
+            println!("{}", "✓ Linting passed (with warnings)".green());
+        } else {
+            println!("✓ Linting passed (with warnings)");
+        }
+    }
+
     let mut summary = format!("\nChecked {files_checked} files: ");
 
     if use_color {

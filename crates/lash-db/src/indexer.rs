@@ -611,6 +611,7 @@ impl<'conn> Indexer<'conn> {
         // Now process tasks for each file (outside the phase guard to allow profiling)
         let task_repo = TaskRepository::new(self.conn);
         let dep_updater = DependencyUpdater::new(self.conn);
+        let label_repo = crate::repository::LabelRepository::new(self.conn);
 
         for task_file in normalized_files {
             let file_db_id = path_to_id
@@ -633,6 +634,24 @@ impl<'conn> Indexer<'conn> {
                 let start = Instant::now();
                 task_repo.insert_batch(&tasks)?;
                 profiler.record_db_operation("insert_tasks", tasks.len(), start.elapsed());
+
+                // Index labels for each task
+                let start = Instant::now();
+                for (task, _file_db_id, file_id) in &tasks {
+                    // Get the database ID for this task
+                    let task_db_id = task_repo
+                        .get_db_id_by_full_id(&lash_types::make_full_id(file_id, &task.id))?
+                        .ok_or_else(|| {
+                            DbError::Other("Task ID not found after insert".to_string())
+                        })?;
+
+                    // Index labels for this task
+                    for label in &task.metadata.labels {
+                        let label_id = label_repo.get_or_create(label)?;
+                        label_repo.add_task_label(task_db_id, label_id)?;
+                    }
+                }
+                profiler.record_db_operation("index_labels", tasks.len(), start.elapsed());
 
                 // Insert hierarchy dependencies for parent-child relationships
                 let start = Instant::now();

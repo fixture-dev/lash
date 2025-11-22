@@ -138,9 +138,10 @@ fn run(cli: LashCli) -> Result<()> {
                 rules,
                 min_severity: severity,
                 no_color: cli.no_color,
+                project_root,
             };
-            commands::lint::execute(args)?;
-            Ok(())
+            let exit_code = commands::lint::execute(args)?;
+            process::exit(exit_code);
         }
 
         Commands::Format {
@@ -154,9 +155,10 @@ fn run(cli: LashCli) -> Result<()> {
                 check,
                 diff,
                 no_fix,
+                project_root,
             };
-            commands::format::execute(args)?;
-            Ok(())
+            let exit_code = commands::format::execute(args)?;
+            process::exit(exit_code);
         }
 
         Commands::Index { force, show_files } => {
@@ -167,8 +169,8 @@ fn run(cli: LashCli) -> Result<()> {
                 no_color: cli.no_color,
                 project_root,
             };
-            commands::index::execute(args)?;
-            Ok(())
+            let exit_code = commands::index::execute(args)?;
+            process::exit(exit_code);
         }
 
         Commands::CheckIndex { diff } => {
@@ -178,8 +180,8 @@ fn run(cli: LashCli) -> Result<()> {
                 no_color: cli.no_color,
                 project_root,
             };
-            commands::check_index::execute(args)?;
-            Ok(())
+            let exit_code = commands::check_index::execute(args)?;
+            process::exit(exit_code);
         }
 
         Commands::List {
@@ -199,10 +201,17 @@ fn run(cli: LashCli) -> Result<()> {
             });
 
             // Convert format to OutputFormat
-            let output_format = match format {
-                lash_cli::cli::OutputFormat::Text => commands::list::OutputFormat::Text,
-                lash_cli::cli::OutputFormat::Json => commands::list::OutputFormat::Json,
-                lash_cli::cli::OutputFormat::JsonPretty => commands::list::OutputFormat::JsonPretty,
+            // Global --json flag overrides command-specific format
+            let output_format = if cli.json {
+                commands::list::OutputFormat::JsonPretty
+            } else {
+                match format {
+                    lash_cli::cli::OutputFormat::Text => commands::list::OutputFormat::Text,
+                    lash_cli::cli::OutputFormat::Json => commands::list::OutputFormat::Json,
+                    lash_cli::cli::OutputFormat::JsonPretty => {
+                        commands::list::OutputFormat::JsonPretty
+                    }
+                }
             };
 
             let args = commands::list::ListArgs {
@@ -215,8 +224,8 @@ fn run(cli: LashCli) -> Result<()> {
                 no_color: cli.no_color,
                 project_root,
             };
-            commands::list::execute(args)?;
-            Ok(())
+            let exit_code = commands::list::execute(args)?;
+            process::exit(exit_code);
         }
 
         Commands::Search {
@@ -263,8 +272,8 @@ fn run(cli: LashCli) -> Result<()> {
                 no_color: cli.no_color,
                 project_root,
             };
-            commands::show::execute(&args)?;
-            Ok(())
+            let exit_code = commands::show::execute(&args)?;
+            process::exit(exit_code);
         }
 
         Commands::Graph {
@@ -274,10 +283,15 @@ fn run(cli: LashCli) -> Result<()> {
             output,
         } => {
             // Convert format to GraphFormat
-            let graph_format = match format {
-                lash_cli::cli::GraphFormat::Dot => commands::graph::GraphFormat::Dot,
-                lash_cli::cli::GraphFormat::Mermaid => commands::graph::GraphFormat::Mermaid,
-                lash_cli::cli::GraphFormat::Json => commands::graph::GraphFormat::Json,
+            // Global --json flag overrides command-specific format
+            let graph_format = if cli.json {
+                commands::graph::GraphFormat::Json
+            } else {
+                match format {
+                    lash_cli::cli::GraphFormat::Dot => commands::graph::GraphFormat::Dot,
+                    lash_cli::cli::GraphFormat::Mermaid => commands::graph::GraphFormat::Mermaid,
+                    lash_cli::cli::GraphFormat::Json => commands::graph::GraphFormat::Json,
+                }
             };
 
             let args = commands::graph::GraphArgs {
@@ -287,8 +301,8 @@ fn run(cli: LashCli) -> Result<()> {
                 output,
                 project_root,
             };
-            commands::graph::execute(&args)?;
-            Ok(())
+            let exit_code = commands::graph::execute(&args)?;
+            process::exit(exit_code);
         }
 
         Commands::CheckLinks { fix, yes, dry_run } => {
@@ -310,8 +324,15 @@ fn run(cli: LashCli) -> Result<()> {
             path,
             max_tokens,
         } => {
+            // Global --json flag overrides command-specific format
+            let agent_format = if cli.json {
+                lash_cli::cli::AgentFormat::Json
+            } else {
+                format
+            };
+
             let args = commands::agent_prompt::AgentPromptArgs {
-                format,
+                format: agent_format,
                 labels: label,
                 path,
                 max_tokens,

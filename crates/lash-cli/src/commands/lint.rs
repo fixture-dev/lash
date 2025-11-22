@@ -37,6 +37,8 @@ pub struct LintArgs {
     pub min_severity: Option<Severity>,
     /// Disable colored output
     pub no_color: bool,
+    /// Project root (detected automatically if None)
+    pub project_root: Option<PathBuf>,
 }
 
 impl Command for LintArgs {
@@ -88,9 +90,13 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     // Determine paths to lint
     let paths = if args.paths.is_empty() {
         // No paths specified - lint entire project
-        let cwd = std::env::current_dir()
-            .map_err(|e| anyhow::anyhow!("Failed to get current directory: {e}"))?;
-        let project_root = find_project_root(&cwd);
+        let project_root = if let Some(ref root) = args.project_root {
+            root.clone()
+        } else {
+            let cwd = std::env::current_dir()
+                .map_err(|e| anyhow::anyhow!("Failed to get current directory: {e}"))?;
+            find_project_root(&cwd)
+        };
         vec![project_root]
     } else {
         args.paths.clone()
@@ -112,10 +118,13 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     let lint_config = configure_linter(&args);
 
     // Parse all files first
-    let parsed_files = parse_files(&files, &project_config, &args)?;
+    let (parsed_files, parse_errors) = parse_files(&files, &project_config, &args)?;
 
     // Lint all files
-    let diagnostics = lint_files(&parsed_files, &project_config, &lint_config, &args)?;
+    let mut diagnostics = lint_files(&parsed_files, &project_config, &lint_config, &args)?;
+
+    // Add parse errors to diagnostics
+    diagnostics.extend(parse_errors);
 
     // Filter diagnostics by severity if requested
     let filtered_diagnostics = filter_by_severity(diagnostics, args.min_severity);
@@ -187,13 +196,16 @@ fn configure_linter(args: &LintArgs) -> LintConfig {
 }
 
 /// Parse all files with progress reporting
+///
+/// Returns a tuple of (successfully parsed files, parse error diagnostics)
 #[instrument(skip(files, config, args), fields(file_count = files.len()))]
 fn parse_files(
     files: &[PathBuf],
     config: &LashConfig,
     args: &LintArgs,
-) -> anyhow::Result<HashMap<PathBuf, TaskFile>> {
+) -> anyhow::Result<(HashMap<PathBuf, TaskFile>, Vec<LintDiagnostic>)> {
     let mut parsed_files = HashMap::new();
+    let mut parse_errors = Vec::new();
 
     let show_progress = !args.json && files.len() > 1;
     let pb = if show_progress {
@@ -216,6 +228,16 @@ fn parse_files(
                     pb.finish_and_clear();
                 }
                 eprintln!("Error parsing {}: {}", file_path.display(), e);
+
+                // Create a lint diagnostic for the parse error
+                parse_errors.push(LintDiagnostic::error(
+                    "E_PARSE",
+                    format!("Failed to parse file: {e}"),
+                    file_path.clone(),
+                    1,
+                    1,
+                ));
+
                 // Continue parsing other files even if one fails
             }
         }
@@ -229,8 +251,12 @@ fn parse_files(
         pb.finish_and_clear();
     }
 
-    tracing::info!(parsed_count = parsed_files.len(), "File parsing complete");
-    Ok(parsed_files)
+    tracing::info!(
+        parsed_count = parsed_files.len(),
+        parse_errors = parse_errors.len(),
+        "File parsing complete"
+    );
+    Ok((parsed_files, parse_errors))
 }
 
 /// Lint all files with progress reporting
