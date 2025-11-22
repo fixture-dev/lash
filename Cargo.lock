@@ -961,6 +961,7 @@ dependencies = [
  "ignore",
  "lash-core",
  "lash-types",
+ "lru",
  "rayon",
  "rusqlite",
  "serde",

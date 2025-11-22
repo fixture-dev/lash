@@ -21,6 +21,7 @@ ignore = { workspace = true }
 chrono = { workspace = true }
 rayon = { workspace = true }
 tracing = "0.1"
+lru = "0.12"
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -29,4 +30,8 @@ walkdir = { workspace = true }
 
 [[bench]]
 name = "indexing"
+harness = false
+
+[[bench]]
+name = "search_bench"
 harness = false
