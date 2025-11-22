@@ -5,7 +5,7 @@
 ### Summary
 Implemented full support for the `--deps` and `--rdeps` flags in the `lash show` command. These flags enable users to view task dependencies and reverse dependencies, completing a critical piece of the dependency management functionality.
 
-**Commit:** (pending)
+**Commit:** `76a4de3`
 
 ### Changes Made
 
