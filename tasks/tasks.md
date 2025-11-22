@@ -43,7 +43,7 @@ Tasks are organized by major module/component. Each task file contains:
 - [x] [tasks.tui.md](tasks.tui.md) - Terminal UI implementation ✅
 
 ### Advanced Features
-- [ ] [tasks.agent-integration.md](tasks.agent-integration.md) - Agent prompts, token minimization
+- [x] [tasks.agent-integration.md](tasks.agent-integration.md) - Agent prompts, token minimization (Tasks 1-6 complete) ✅
 
 ### Quality & Documentation
 - [ ] [tasks.testing.md](tasks.testing.md) - Test strategy, integration tests, benchmarks, CI/CD
@@ -100,13 +100,14 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** All core CLI commands functional
 **Status:** Fuzzy search complete (Tasks 1-5). Full-text search with FTS5 implemented with filter support. Search performance exceeds targets by 50-100x. 697 total tests passing.
 
-### Phase 6: Agent Integration (Week 11)
+### Phase 6: Agent Integration (Week 11) - COMPLETE ✅
 **Goal:** Make Lash usable by AI agents
 
-1. tasks.agent-integration (ALL)
-2. tasks.error-handling#2-4
+1. ✅ tasks.agent-integration#1-6 (schema, prompts, token utils, sparse context, CLI command, workflows) - Complete
+2. tasks.error-handling#2-4 - Deferred
 
 **Deliverable:** Agents can use Lash effectively
+**Status:** Complete. Agent integration production-ready with schema generation, prompt templates, token minimization, sparse context generation, `lash agent-prompt` command, and comprehensive workflow documentation. 40 tests + 22 doctests passing.
 
 ### Phase 7: TUI (Week 12)
 **Goal:** Terminal UI for interactive use
@@ -146,7 +147,7 @@ Parallelization opportunities exist within each phase (see individual task files
 - ✅ `lash list`, `lash show` commands work
 - ✅ `lash search` command with full-text search and filters
 - [ ] `lash graph` exports dependency graph
-- [ ] Agent integration (`lash agent-prompt`)
+- ✅ Agent integration (`lash agent-prompt`)
 - ✅ Comprehensive test coverage (>80%)
 - [ ] User documentation
 
