@@ -37,7 +37,7 @@ Tasks are organized by major module/component. Each task file contains:
 ### CLI & Commands
 - [x] [tasks.cli-framework.md](tasks.cli-framework.md) - CLI infrastructure, output formatting, progress reporting (Tasks 1-8 complete) ✅
 - [x] [tasks.cli-commands.md](tasks.cli-commands.md) - Individual command implementations: lint, format, index, check-index, list, show (Tasks 1-6 complete) ✅
-- [ ] [tasks.fuzzy-search.md](tasks.fuzzy-search.md) - Full-text search, ranking, search command
+- [x] [tasks.fuzzy-search.md](tasks.fuzzy-search.md) - Full-text search, ranking, search command (Tasks 1-5 complete) ✅
 
 ### User Interfaces
 - [ ] [tasks.tui.md](tasks.tui.md) - Terminal UI implementation
@@ -90,14 +90,15 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** Can query tasks; dependency resolution works
 **Status:** Complete. All core CLI commands implemented with 862 tests passing. Dependency resolution (495 tests), CLI framework (626 tests), and command implementations (1,056 total tests across all crates) all working.
 
-### Phase 5: Search & Advanced Commands (Weeks 9-10)
+### Phase 5: Search & Advanced Commands (Weeks 9-10) - IN PROGRESS ⚙️
 **Goal:** Fuzzy search; additional features
 
-1. tasks.fuzzy-search (ALL)
+1. ✅ tasks.fuzzy-search (ALL) - Complete
 2. tasks.cli-commands#7-9
 3. tasks.dependency-resolution#4-5
 
 **Deliverable:** All core CLI commands functional
+**Status:** Fuzzy search complete (Tasks 1-5). Full-text search with FTS5 implemented with filter support. Search performance exceeds targets by 50-100x. 697 total tests passing.
 
 ### Phase 6: Agent Integration (Week 11)
 **Goal:** Make Lash usable by AI agents
@@ -143,7 +144,7 @@ Parallelization opportunities exist within each phase (see individual task files
 - ✅ Index files into SQLite database
 - ✅ Full dependency resolution and cycle detection
 - ✅ `lash list`, `lash show` commands work
-- [ ] `lash search` command (requires fuzzy-search implementation)
+- ✅ `lash search` command with full-text search and filters
 - [ ] `lash graph` exports dependency graph
 - [ ] Agent integration (`lash agent-prompt`)
 - ✅ Comprehensive test coverage (>80%)
