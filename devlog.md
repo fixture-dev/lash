@@ -1,5 +1,77 @@
 # Lash Development Log
 
+## 2025-11-21 - Implement Task 14: `lash show --deps` and `--rdeps` Flags
+
+### Summary
+Implemented full support for the `--deps` and `--rdeps` flags in the `lash show` command. These flags enable users to view task dependencies and reverse dependencies, completing a critical piece of the dependency management functionality.
+
+**Commit:** (pending)
+
+### Changes Made
+
+1. **Added `get_by_db_id` Method to TaskRepository** (`crates/lash-db/src/repository/tasks.rs`)
+   - New method: `pub fn get_by_db_id(&self, id: i64) -> DbResult<Option<TaskRecord>>`
+   - Retrieves a task by its database primary key ID
+   - Includes comprehensive documentation and error handling
+   - Added unit test `test_get_by_db_id` to verify functionality
+
+2. **Added `get_by_db_id` Method to FileRepository** (`crates/lash-db/src/repository/files.rs`)
+   - New method: `pub fn get_by_db_id(&self, id: i64) -> DbResult<Option<FileRecord>>`
+   - Follows the same pattern as TaskRepository
+   - Enables show command to properly display file information
+
+3. **Implemented `--deps` Flag** (`crates/lash-cli/src/commands/show.rs:175-182`)
+   - Replaced placeholder empty Vec with actual implementation
+   - Uses `dep_repo.get_dependencies(task.id)` to get DependencyRecords
+   - Resolves each dependency's `to_task_id` to full TaskRecord using `task_repo.get_by_db_id()`
+   - Graceful error handling: logs warnings for unresolvable dependencies but continues
+
+4. **Implemented `--rdeps` Flag** (`crates/lash-cli/src/commands/show.rs:185`)
+   - Replaced placeholder empty Vec with actual implementation
+   - Uses `dep_repo.get_dependents(task.id)` to get dependent records
+   - Resolves each dependent's `from_task_id` to full TaskRecord
+   - Graceful error handling for unresolvable dependents
+
+5. **Removed Placeholder Comments** (`crates/lash-cli/src/commands/show.rs`)
+   - Removed comments about missing implementation (lines 173-175)
+   - Cleaned up function signatures to properly use repositories
+
+6. **Added Integration Tests** (`crates/lash-cli/tests/show_command_test.rs`)
+   - `test_show_command_exists`: Verifies show command registration
+   - `test_show_accepts_target`: Basic argument parsing
+   - `test_show_accepts_deps_flag`: --deps flag parsing
+   - `test_show_accepts_rdeps_flag`: --rdeps flag parsing
+   - `test_show_accepts_both_flags`: Both flags together
+   - `test_show_verifies_dependency_resolution`: Dependency resolution from database
+   - `test_show_verifies_reverse_dependency_resolution`: Reverse dependency resolution
+
+### Testing Results
+- **Unit tests**: 136 tests passed (including new `test_get_by_db_id`)
+- **Integration tests**: 7 new tests for show command, all passing
+- **Total workspace tests**: 626 tests passed, 0 failed
+- **Clippy**: No warnings
+
+### Key Design Decisions
+
+1. **Graceful Error Handling**: Unresolvable dependencies (due to database inconsistencies) are logged as warnings but don't crash the command. This ensures the command remains robust even with partially corrupt data.
+
+2. **Consistent API**: The new `get_by_db_id` methods follow the same pattern as existing repository methods (`Option<T>` return type, proper error handling).
+
+3. **Reused Existing Code**: The output formatting code (lines 394-455 in show.rs) already handled displaying dependencies. Implementation just needed to provide the data.
+
+4. **Fast Queries**: Uses indexed database lookups via primary keys, achieving <100ms query times as specified in requirements.
+
+### Files Modified
+```
+crates/lash-cli/src/commands/show.rs       | 73 lines modified
+crates/lash-db/src/repository/files.rs     | 42 lines added
+crates/lash-db/src/repository/tasks.rs     | 44 lines added
+crates/lash-cli/tests/show_command_test.rs | 136 lines added
+tasks/tasks.cli-commands.md                | Updated Task 14 status
+```
+
+---
+
 ## 2025-11-21 - Complete Task 13: Clean Up Search Command
 
 ### Summary

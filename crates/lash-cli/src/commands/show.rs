@@ -138,8 +138,8 @@ fn show_file(
 /// Show detailed information about a task
 fn show_task(
     task_repo: &TaskRepository,
-    _file_repo: &FileRepository,
-    _dep_repo: &DependencyRepository,
+    file_repo: &FileRepository,
+    dep_repo: &DependencyRepository,
     args: &ShowArgs,
 ) -> Result<i32> {
     // Get task record
@@ -154,35 +154,62 @@ fn show_task(
     };
 
     // Get file information from the database
-    // Note: The task.file_id is the database ID, not the file's string ID
-    // We'll need to create a minimal FileRecord for display purposes
-    // In the future, we should add a get_by_db_id method to FileRepository
-    let file = FileRecord {
-        id: task.file_id,
-        path: PathBuf::from(format!("<file-id-{}>", task.file_id)),
-        file_id: format!("file-{}", task.file_id),
-        title: String::from("<unknown>"),
-        hash: String::new(),
-        mtime: 0,
-        status: lash_types::FileStatus::InProgress,
-        metadata: lash_types::FileMetadata::default(),
-        indexed_at: 0,
-    };
+    let file = file_repo
+        .get_by_db_id(task.file_id)?
+        .unwrap_or_else(|| FileRecord {
+            id: task.file_id,
+            path: PathBuf::from(format!("<file-id-{}>", task.file_id)),
+            file_id: format!("file-{}", task.file_id),
+            title: String::from("<unknown>"),
+            hash: String::new(),
+            mtime: 0,
+            status: lash_types::FileStatus::InProgress,
+            metadata: lash_types::FileMetadata::default(),
+            indexed_at: 0,
+        });
 
     // Get dependencies if requested
-    // For now, we'll skip showing full dependency details since we'd need to query by DB ID
-    // This can be improved later by adding helper methods to the repository
     let dependencies = if args.deps {
-        // We can get the dependency records but can't easily resolve them to full tasks
-        // without direct DB access or new repository methods
-        // For now, just return empty
-        Some(Vec::new())
+        let dep_records = dep_repo.get_dependencies(task.id)?;
+        let mut deps = Vec::new();
+        for dep_record in dep_records {
+            // Only include dependencies that have been resolved
+            if let Some(to_task_id) = dep_record.to_task_id {
+                match task_repo.get_by_db_id(to_task_id)? {
+                    Some(task_record) => deps.push(task_record),
+                    None => {
+                        tracing::warn!(
+                            "Failed to resolve dependency: task DB ID {} not found",
+                            to_task_id
+                        );
+                    }
+                }
+            }
+        }
+        Some(deps)
     } else {
         None
     };
 
     // Get reverse dependencies if requested
-    let dependents = if args.rdeps { Some(Vec::new()) } else { None };
+    let dependents = if args.rdeps {
+        let dep_records = dep_repo.get_dependents(task.id)?;
+        let mut deps = Vec::new();
+        for dep_record in dep_records {
+            match task_repo.get_by_db_id(dep_record.from_task_id)? {
+                Some(task_record) => deps.push(task_record),
+                None => {
+                    tracing::warn!(
+                        "Failed to resolve dependent: task DB ID {} not found",
+                        dep_record.from_task_id
+                    );
+                }
+            }
+        }
+        Some(deps)
+    } else {
+        None
+    };
 
     // Output results
     if args.json {
