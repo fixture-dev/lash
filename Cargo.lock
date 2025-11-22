@@ -981,7 +981,9 @@ dependencies = [
  "lash-db",
  "lash-types",
  "ratatui",
+ "rusqlite",
  "serde",
+ "tempfile",
  "thiserror",
 ]
 

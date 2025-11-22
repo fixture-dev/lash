@@ -40,7 +40,7 @@ Tasks are organized by major module/component. Each task file contains:
 - [x] [tasks.fuzzy-search.md](tasks.fuzzy-search.md) - Full-text search, ranking, search command (Tasks 1-5 complete) ✅
 
 ### User Interfaces
-- [ ] [tasks.tui.md](tasks.tui.md) - Terminal UI implementation
+- [x] [tasks.tui.md](tasks.tui.md) - Terminal UI implementation ✅
 
 ### Advanced Features
 - [ ] [tasks.agent-integration.md](tasks.agent-integration.md) - Agent prompts, token minimization
@@ -151,7 +151,7 @@ Parallelization opportunities exist within each phase (see individual task files
 - [ ] User documentation
 
 ### Should Have
-- ✅ TUI for interactive use
+- ✅ TUI for interactive use (Tasks 1-4, 6-7 complete; Task 5 deferred)
 - ✅ Incremental indexing
 - ✅ Auto-formatting
 - ✅ Performance benchmarks
