@@ -500,6 +500,159 @@ Integrate all tests and checks into CI/CD pipeline (GitHub Actions or similar).
 
 ---
 
+## Task 9: Playground Mode for Demos and Exploration
+
+**Priority:** MEDIUM
+**Effort:** 2-3 days
+**Depends on:** Task 1 (Testing Infrastructure), Task 6 (Fixtures), CLI and TUI implementations
+
+### Description
+
+Create an interactive playground mode that seeds a realistic, complex demo project for manual testing, demos, and exploratory usage. The playground uses a fictional 2D platformer game development project that showcases all of Lash's features in a relatable, engaging context.
+
+### Subtasks
+
+- [ ] **Playground CLI command**
+  - [ ] Add `lash playground init [--path PATH]` command
+  - [ ] Create playground directory with fresh demo content
+  - [ ] Support `--reset` flag to regenerate from scratch
+  - [ ] Print welcome message with usage instructions
+  - [ ] Auto-index after generation
+- [ ] **Demo project theme: "PixelQuest" 2D Platformer**
+  - [ ] Game concept: Retro-style platformer with procedural levels
+  - [ ] Project structure mirrors real game development
+  - [ ] Realistic complexity (50-80 task files)
+  - [ ] Mix of code, art, design, and management tasks
+- [ ] **Core task file structure**
+  - [ ] `index.lash.md` - Master project index
+  - [ ] `features/` - Game features and mechanics
+    - [ ] `features/player-movement.md` - Physics, controls, animations
+    - [ ] `features/enemy-ai.md` - Behavior trees, pathfinding
+    - [ ] `features/level-generation.md` - Procedural algorithms
+    - [ ] `features/power-ups.md` - Item system, effects
+    - [ ] `features/boss-fights.md` - Special encounters
+  - [ ] `systems/` - Core engine systems
+    - [ ] `systems/rendering.md` - Graphics pipeline
+    - [ ] `systems/audio.md` - Sound engine, music
+    - [ ] `systems/physics.md` - Collision, forces
+    - [ ] `systems/input.md` - Controller mapping
+  - [ ] `content/` - Art and design tasks
+    - [ ] `content/sprites.md` - Character and tile art
+    - [ ] `content/animations.md` - Frame sequences
+    - [ ] `content/music.md` - Soundtrack composition
+    - [ ] `content/sfx.md` - Sound effects
+    - [ ] `content/levels.md` - Level design
+  - [ ] `infrastructure/` - Dev ops and tools
+    - [ ] `infrastructure/build-pipeline.md` - CI/CD, releases
+    - [ ] `infrastructure/asset-pipeline.md` - Import, optimization
+    - [ ] `infrastructure/testing.md` - Test framework
+  - [ ] `design/` - Game design documents
+    - [ ] `design/core-loop.md` - Gameplay flow
+    - [ ] `design/progression.md` - Difficulty curve
+    - [ ] `design/story.md` - Narrative elements
+  - [ ] `milestones/` - Release planning
+    - [ ] `milestones/alpha.md` - Initial playable
+    - [ ] `milestones/beta.md` - Feature complete
+    - [ ] `milestones/release.md` - Polish and ship
+- [ ] **Dependency examples**
+  - [ ] Parent/child relationships (features broken into subtasks)
+  - [ ] Cross-file dependencies (rendering depends on physics)
+  - [ ] Directory-level dependencies (alpha milestone depends on core features)
+  - [ ] Circular dependency example (intentional, for testing)
+  - [ ] Broken link example (intentional, for testing)
+- [ ] **Label examples**
+  - [ ] `#backend` - Engine and systems code
+  - [ ] `#frontend` - UI and player-facing features
+  - [ ] `#art` - Graphics and visual content
+  - [ ] `#audio` - Sound and music
+  - [ ] `#design` - Game design work
+  - [ ] `#tooling` - Dev tools and pipeline
+  - [ ] `#p0`, `#p1`, `#p2` - Priority levels
+  - [ ] `#blocked` - Waiting on something
+  - [ ] `#bug` - Known issues
+  - [ ] `#polish` - Quality improvements
+- [ ] **Status variety**
+  - [ ] Mix of open, done, waived, blocked tasks
+  - [ ] Completed early milestones (demo alpha phase)
+  - [ ] In-progress current work (beta phase)
+  - [ ] Future work (release phase mostly open)
+- [ ] **Annotation examples**
+  - [ ] `@owner` - Various team members (Alice, Bob, Carol, etc.)
+  - [ ] `@estimate` - Time estimates (1d, 3d, 1w)
+  - [ ] `@created` - Dates spanning several months
+  - [ ] `@depends-on` - Cross-file dependencies
+  - [ ] `@agent-note` - Hints for AI assistants
+  - [ ] `@blocked-by` - Explicit blockers
+- [ ] **Playground utilities**
+  - [ ] Reuse `TestProject` builder from test infrastructure
+  - [ ] Reuse fixture generation logic from Task 6
+  - [ ] Add playground-specific utilities:
+    - [ ] `reset_playground()` - Clear and regenerate
+    - [ ] `add_random_task()` - Insert tasks for experimentation
+    - [ ] `simulate_work()` - Toggle random tasks to simulate progress
+  - [ ] Store templates in `playground/templates/`
+- [ ] **Interactive walkthrough**
+  - [ ] Generate `PLAYGROUND_GUIDE.md` with the project
+  - [ ] Suggest CLI commands to try (list, search, show, graph)
+  - [ ] Suggest TUI workflows (navigate, toggle, filter)
+  - [ ] Point out interesting features to explore:
+    - [ ] Dependency chains
+    - [ ] Search for specific labels
+    - [ ] Graph visualization of subsystems
+    - [ ] Broken links and cycles (for error testing)
+- [ ] **Integration with test fixtures**
+  - [ ] Playground shares code with Task 6 fixture library
+  - [ ] Playground templates can be used as regression fixtures
+  - [ ] Maintain DRY principle - single source for demo content
+- [ ] **Documentation**
+  - [ ] Add playground section to README
+  - [ ] Document how to reset and regenerate
+  - [ ] Explain demo project structure
+  - [ ] Provide example command workflows
+
+### Success Criteria
+
+- Playground initializes in <5 seconds
+- Demo project feels realistic and engaging
+- All Lash features are represented (dependencies, labels, statuses, etc.)
+- Both CLI and TUI work seamlessly with playground data
+- Easy to reset and experiment without fear
+- Useful for demos, tutorials, and manual exploration
+
+### Tests
+
+- Unit: Playground generation functions
+- Integration: `lash playground init` creates valid project
+- E2E: Full workflow (init → index → TUI → CLI commands)
+- Verify all generated files pass `lash lint`
+- Verify `lash index` succeeds on playground
+- Verify `lash graph` produces valid DOT output
+
+### Example Usage
+
+```bash
+# Initialize playground in current directory
+lash playground init
+
+# Or specify a path
+lash playground init --path ~/lash-demo
+
+# Explore with CLI
+cd ~/lash-demo
+lash list --label art
+lash search "boss fight"
+lash show features/boss-fights.md#final-boss
+lash graph --output game-systems.dot
+
+# Explore with TUI
+lash tui
+
+# Reset to fresh state
+lash playground init --reset
+```
+
+---
+
 ## Non-Goals (for v1)
 
 - Property-based testing (fuzzing) - defer to v2
