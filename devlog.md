@@ -1,5 +1,50 @@
 # Lash Development Log
 
+## 2025-11-21 - Complete Task 13: Clean Up Search Command
+
+### Summary
+Cleaned up misleading documentation and suggestions in the search command implementation. The search command is fully functional with FTS5-based full-text search, but had outdated documentation suggesting unimplemented features.
+
+**Commit:** `4de31bd`
+
+### Changes Made
+
+1. **Updated Module Documentation** (`search.rs:1-13`)
+   - Removed outdated "partially implemented" status note
+   - Replaced with accurate description of FTS5 implementation
+   - Clarified that the search command is fully operational
+
+2. **Fixed No-Results Message** (`search.rs:179-181`)
+   - Removed misleading suggestion: "Use a higher --threshold for fuzzier matching"
+   - The `--threshold` flag was never implemented (FTS5 doesn't support fuzzy thresholds)
+   - Kept relevant suggestions (try different query, check indexing)
+
+3. **Updated Task File** (`tasks.cli-commands.md`)
+   - Marked Task 13 as complete with ✅
+   - Documented findings: no dead code, no unimplemented flags in CLI
+   - Noted that `--scope` parameter exists in SearchQuery but not exposed in CLI (deferred to future enhancement)
+
+### Analysis
+
+**What was found:**
+- The `--threshold` flag was **never defined** in CLI args or SearchArgs struct
+- Only appeared as a suggestion in the no-results output (misleading)
+- No `#[allow(dead_code)]` attributes or dead code in search command
+- The search command uses FTS5 (Full-Text Search) which doesn't support fuzzy thresholds
+- `--scope` filtering exists in the backend but isn't exposed via CLI (intentional deferral)
+
+**What was fixed:**
+- Documentation now accurately reflects FTS5 implementation
+- Removed misleading suggestion from output
+- All tests pass, clippy clean
+
+### Testing
+- All 157 workspace tests pass
+- Clippy passes with no warnings
+- Pre-commit hook validates formatting, linting, and tests
+
+---
+
 ## 2025-11-21 - Implement Task 12: `lash check-links --fix` Mode
 
 ### Summary
