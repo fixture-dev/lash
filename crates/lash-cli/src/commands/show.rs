@@ -80,15 +80,16 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
 
-    if is_file_path {
+    // Show file or task information and return appropriate exit code
+    let exit_code = if is_file_path {
         // Show file information
-        show_file(&file_repo, &task_repo, args, &project_root)?;
+        show_file(&file_repo, &task_repo, args, &project_root)?
     } else {
         // Show task information
-        show_task(&task_repo, &file_repo, &dep_repo, args)?;
-    }
+        show_task(&task_repo, &file_repo, &dep_repo, args)?
+    };
 
-    Ok(0)
+    Ok(exit_code)
 }
 
 /// Show detailed information about a file
@@ -229,7 +230,7 @@ fn show_task(
 
 /// Get the database path for a project
 fn get_database_path(project_root: &Path) -> PathBuf {
-    project_root.join(".lash/db.sqlite")
+    project_root.join(".lash/lash.db")
 }
 
 /// Output JSON when database doesn't exist

@@ -30,6 +30,8 @@ pub struct FormatArgs {
     pub diff: bool,
     /// Only normalize formatting, don't apply lint fixes
     pub no_fix: bool,
+    /// Project root (detected automatically if None)
+    pub project_root: Option<PathBuf>,
 }
 
 impl Command for FormatArgs {
@@ -81,8 +83,12 @@ pub fn execute(args: FormatArgs) -> Result<i32> {
     // Determine paths to format
     let paths = if args.paths.is_empty() {
         // No paths specified - format entire project
-        let cwd = std::env::current_dir().context("Failed to get current directory")?;
-        let project_root = find_project_root(&cwd);
+        let project_root = if let Some(ref root) = args.project_root {
+            root.clone()
+        } else {
+            let cwd = std::env::current_dir().context("Failed to get current directory")?;
+            find_project_root(&cwd)
+        };
         vec![project_root]
     } else {
         args.paths.clone()
@@ -302,6 +308,7 @@ mod tests {
             check: false,
             diff: false,
             no_fix: false,
+            project_root: None,
         };
 
         let options = configure_formatter(&args);
@@ -315,6 +322,7 @@ mod tests {
             check: false,
             diff: false,
             no_fix: true,
+            project_root: None,
         };
 
         let options = configure_formatter(&args);

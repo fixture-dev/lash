@@ -240,7 +240,7 @@ impl<'conn> TaskRepository<'conn> {
     /// # Errors
     ///
     /// Returns error if query fails
-    fn get_db_id_by_full_id(&self, full_id: &str) -> DbResult<Option<i64>> {
+    pub fn get_db_id_by_full_id(&self, full_id: &str) -> DbResult<Option<i64>> {
         self.conn
             .query_row(
                 "SELECT id FROM tasks WHERE full_id = ?1",

@@ -110,7 +110,7 @@ pub fn execute(args: ListArgs) -> Result<i32> {
 
 /// Get the database path for a project
 fn get_database_path(project_root: &Path) -> PathBuf {
-    project_root.join(".lash/db.sqlite")
+    project_root.join(".lash/lash.db")
 }
 
 /// Output JSON when database doesn't exist

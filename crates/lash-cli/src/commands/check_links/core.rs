@@ -114,7 +114,7 @@ pub fn execute(args: &CheckLinksArgs) -> Result<i32> {
 
 /// Get the database path for a project
 pub fn get_database_path(project_root: &Path) -> PathBuf {
-    project_root.join(".lash/db.sqlite")
+    project_root.join(".lash/lash.db")
 }
 
 /// Find all broken dependency links in the database
@@ -289,7 +289,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let db_path = get_database_path(temp.path());
 
-        assert_eq!(db_path, temp.path().join(".lash/db.sqlite"));
+        assert_eq!(db_path, temp.path().join(".lash/lash.db"));
     }
 
     #[test]

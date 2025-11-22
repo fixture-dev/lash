@@ -56,7 +56,7 @@ pub struct SearchArgs {
 ///
 /// # Returns
 ///
-/// Exit code: 0 (success), 1 (general error), 3 (DB error), 5 (no results)
+/// Exit code: 0 (success), 1 (general error), 3 (DB error)
 ///
 /// # Errors
 ///
@@ -141,17 +141,13 @@ pub fn execute(args: &SearchArgs) -> Result<i32> {
         output_text(&results.results, &args.query, args.no_color);
     }
 
-    // Return appropriate exit code
-    if results.results.is_empty() {
-        Ok(5) // Exit code 5 for "not found"
-    } else {
-        Ok(0)
-    }
+    // Return success - "no results" is a successful search, not an error
+    Ok(0)
 }
 
 /// Get the database path for a project
 fn get_database_path(project_root: &Path) -> PathBuf {
-    project_root.join(".lash/db.sqlite")
+    project_root.join(".lash/lash.db")
 }
 
 /// Output error message as JSON
