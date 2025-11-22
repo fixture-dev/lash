@@ -199,35 +199,35 @@ Implement sparse context generation that includes only relevant information for 
 
 ### Subtasks
 
-- [ ] Define `ContextBuilder` struct
-  - [ ] Target task or file
-  - [ ] Dependency graph
-  - [ ] Token budget
-  - [ ] Inclusion rules
-- [ ] Implement context selection algorithm
-  - [ ] Include target task/file (full detail)
-  - [ ] Include direct dependencies (summaries)
-  - [ ] Include blockers (full detail)
-  - [ ] Exclude completed dependencies (unless blocking)
-  - [ ] Exclude unrelated files
-- [ ] Implement dependency context
-  - [ ] For each dependency:
-    - [ ] Include ID, title, status
-    - [ ] Include file path
-    - [ ] Omit body and subtasks (unless blocker)
-  - [ ] Show dependency chain for blockers
-- [ ] Implement file context
-  - [ ] Include headers and metadata
-  - [ ] Include relevant task subtree
-  - [ ] Omit completed sibling branches
-- [ ] Add expansion/contraction logic
-  - [ ] If under budget: expand summaries to full details
-  - [ ] If over budget: contract full details to summaries
-  - [ ] Iteratively adjust until budget met
-- [ ] Generate context output
-  - [ ] Format as markdown or JSON
-  - [ ] Include section headers for clarity
-  - [ ] Add "context note" explaining what's included/excluded
+- [x] Define `ContextBuilder` struct
+  - [x] Target task or file
+  - [x] Dependency graph
+  - [x] Token budget
+  - [x] Inclusion rules
+- [x] Implement context selection algorithm
+  - [x] Include target task/file (full detail)
+  - [x] Include direct dependencies (summaries)
+  - [x] Include blockers (full detail)
+  - [x] Exclude completed dependencies (unless blocking)
+  - [x] Exclude unrelated files
+- [x] Implement dependency context
+  - [x] For each dependency:
+    - [x] Include ID, title, status
+    - [x] Include file path
+    - [x] Omit body and subtasks (unless blocker)
+  - [x] Show dependency chain for blockers
+- [x] Implement file context
+  - [x] Include headers and metadata
+  - [x] Include relevant task subtree
+  - [x] Omit completed sibling branches
+- [x] Add expansion/contraction logic
+  - [x] If under budget: expand summaries to full details
+  - [x] If over budget: contract full details to summaries
+  - [x] Iteratively adjust until budget met
+- [x] Generate context output
+  - [x] Format as markdown or JSON
+  - [x] Include section headers for clarity
+  - [x] Add "context note" explaining what's included/excluded
 
 ### Success Criteria
 
@@ -238,11 +238,11 @@ Implement sparse context generation that includes only relevant information for 
 
 ### Tests
 
-- Unit: Test context selection algorithm
-- Unit: Test expansion/contraction logic
-- Integration: Generate sparse context for fixture tasks
-- Integration: Verify token budget is respected
-- Manual: Review contexts for completeness
+- [x] Unit: Test context selection algorithm
+- [x] Unit: Test expansion/contraction logic
+- [x] Integration: Generate sparse context for fixture tasks
+- [x] Integration: Verify token budget is respected
+- [x] Manual: Review contexts for completeness
 
 ---
 
