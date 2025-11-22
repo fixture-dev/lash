@@ -5,8 +5,10 @@
 
   **Minimalist task tracker for devs and agents**
 
+  [![CI](https://github.com/yourusername/lash/workflows/CI/badge.svg)](https://github.com/yourusername/lash/actions)
   [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
   [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+  [![codecov](https://codecov.io/gh/yourusername/lash/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/lash)
   [![Built with Markdown](https://img.shields.io/badge/built%20with-markdown-000000.svg?logo=markdown)](https://commonmark.org/)
   [![SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg?logo=sqlite)](https://www.sqlite.org/)
 
@@ -71,9 +73,10 @@ cargo clippy --workspace -- -D warnings
 This project follows strict quality standards:
 - **Pre-commit hooks**: Auto-enforces formatting, linting, and tests
 - **Zero warnings**: All clippy lints must pass with `clippy::pedantic`
-- **Comprehensive tests**: 1300+ tests across all crates (>80% coverage)
+- **Comprehensive tests**: 920+ tests across all crates (>80% coverage target)
 - **Error taxonomy**: 25+ documented error codes in `docs/error-codes.md`
 - **Doctests**: All public APIs include executable examples
+- **CI/CD**: Automated testing on Linux, macOS, and Windows
 
 ```bash
 # Run with formatting
@@ -83,7 +86,17 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
 cargo test --doc
+
+# Install pre-commit hooks
+./scripts/install-pre-commit-hook.sh
+
+# Generate coverage report
+cargo install cargo-llvm-cov
+cargo llvm-cov --workspace --html
+open target/llvm-cov/html/index.html
 ```
+
+See [docs/TESTING.md](docs/TESTING.md) for detailed testing documentation.
 
 ### Performance Benchmarking
 
