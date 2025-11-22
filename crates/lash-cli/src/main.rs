@@ -324,8 +324,9 @@ fn run(cli: LashCli) -> Result<()> {
         }
 
         Commands::Tui => {
-            // TODO: Implement TUI command
-            anyhow::bail!("The 'tui' command is not yet implemented")
+            let args = commands::tui::TuiArgs { project_root };
+            commands::tui::execute(&args)?;
+            Ok(())
         }
 
         Commands::Completion { shell } => {
