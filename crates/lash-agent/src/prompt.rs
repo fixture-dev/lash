@@ -64,6 +64,7 @@ pub struct AgentPrompt {
 pub struct PromptBuilder {
     config: PromptConfig,
     task_summaries: Vec<String>,
+    sparse_context: Option<String>,
 }
 
 impl PromptBuilder {
@@ -81,6 +82,7 @@ impl PromptBuilder {
         Self {
             config,
             task_summaries: Vec::new(),
+            sparse_context: None,
         }
     }
 
@@ -97,6 +99,40 @@ impl PromptBuilder {
     /// ```
     pub fn add_task_summary(&mut self, summary: String) {
         self.task_summaries.push(summary);
+    }
+
+    /// Add sparse context to include in the prompt
+    ///
+    /// When sparse context is provided, it will be included as a dedicated section
+    /// in the prompt, replacing or supplementing the task summaries.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_agent::prompt::{PromptBuilder, PromptConfig};
+    /// use lash_agent::context::ContextBuilder;
+    /// use lash_core::dependency::{DependencyGraph, NodeData};
+    /// use lash_types::TaskStatus;
+    ///
+    /// let mut graph = DependencyGraph::new();
+    /// graph.add_node(
+    ///     "test#task1".to_string(),
+    ///     NodeData::new("Task 1".to_string(), TaskStatus::Open, "test".to_string(), 0)
+    /// );
+    ///
+    /// let mut context_builder = ContextBuilder::new("test#task1");
+    /// context_builder.with_graph(&graph);
+    /// let sparse_context = context_builder.build();
+    ///
+    /// let config = PromptConfig::default();
+    /// let mut builder = PromptBuilder::new(config);
+    /// builder.set_sparse_context(sparse_context.content);
+    /// let prompt = builder.build();
+    ///
+    /// assert!(prompt.content.contains("Sparse Context"));
+    /// ```
+    pub fn set_sparse_context(&mut self, context: String) {
+        self.sparse_context = Some(context);
     }
 
     /// Build the final prompt
@@ -165,8 +201,14 @@ Lash is a minimalist, Markdown-native task tracker where:
             sections.push(("examples", examples_text, 8));
         }
 
-        // Task summaries
-        if self.config.include_tasks && !self.task_summaries.is_empty() {
+        // Sparse context (if provided, takes precedence over task summaries)
+        if let Some(ref context) = self.sparse_context {
+            let mut context_text = String::from("## Task Context\n\n");
+            context_text.push_str(context);
+            context_text.push('\n');
+            sections.push(("sparse_context", context_text, 7));
+        } else if self.config.include_tasks && !self.task_summaries.is_empty() {
+            // Task summaries (only if no sparse context)
             let mut tasks_text = String::from("## Current Project Tasks\n\n");
             if !self.config.label_filter.is_empty() {
                 tasks_text.push_str(&format!(
