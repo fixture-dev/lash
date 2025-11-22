@@ -1,25 +1,16 @@
 //! Search command implementation
 //!
-//! The `lash search` command provides fuzzy search across all tasks and files in the index.
+//! The `lash search` command provides full-text search across all tasks and files in the index.
 //!
-//! ## Status
+//! ## Implementation
 //!
-//! This command is partially implemented. The command structure and argument parsing are complete,
-//! but the underlying search infrastructure in `lash-db` has not been implemented yet (see
-//! `tasks/tasks.fuzzy-search.md`).
-//!
-//! Once the search API is available in `lash-db`, this module will need to be updated to:
-//! - Call the search API instead of returning an error
-//! - Implement result highlighting and context snippets
-//! - Apply scope filtering if provided via arguments
-//!
-//! ## Implementation Notes
-//!
-//! The search command will use FTS5 (Full-Text Search) or fuzzy matching from `lash-db` to:
+//! This command uses the FTS5 (Full-Text Search) infrastructure from `lash-db` to:
 //! - Search across task titles, bodies, labels, and file paths
-//! - Rank results by relevance
-//! - Highlight matching terms in output
-//! - Support filtering by scope (path prefix)
+//! - Rank results by relevance score
+//! - Display matching terms and context snippets
+//! - Limit results with configurable page size
+//!
+//! The search uses `SQLite`'s FTS5 virtual table for efficient full-text indexing and retrieval.
 
 use anyhow::{Context, Result};
 use lash_db::{open_database, search, SearchQuery};
@@ -178,7 +169,6 @@ fn output_text(results: &[SearchResult], query: &str, no_color: bool) {
         println!();
         println!("Suggestions:");
         println!("  - Try a different query");
-        println!("  - Use a higher --threshold for fuzzier matching");
         println!("  - Check that your files are indexed with `lash index`");
         return;
     }

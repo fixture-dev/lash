@@ -682,12 +682,12 @@ Key design decisions:
 
 ---
 
-## Task 13: Clean Up Unimplemented Search Command Features
+## Task 13: Clean Up Unimplemented Search Command Features ✅
 
 **Priority:** HIGH
 **Effort:** 0.5 days
 **Depends on:** Task 7 (search command)
-**Status:** Not Started
+**Status:** Complete
 
 ### Description
 
@@ -695,30 +695,40 @@ Remove or properly implement unimplemented features in the search command to mai
 
 ### Subtasks
 
-- [ ] Remove `--threshold` flag
-  - [ ] Remove from `SearchArgs` struct
-  - [ ] Remove documentation references
-  - [ ] Verify tests still pass
-  - [ ] Note: FTS5 doesn't support fuzzy threshold; this flag doesn't apply
-- [ ] Remove or implement `highlight_matches()` function
-  - [ ] Option A: Remove function entirely (no match positions from API)
-  - [ ] Option B: Implement using search result metadata if available
-  - [ ] Remove `#[allow(dead_code)]` attribute
-- [ ] Address `--scope` flag TODO
-  - [ ] Option A: Add `--scope` to CLI args now
-  - [ ] Option B: Remove TODO comment and defer to future task
-  - [ ] Document decision
+- [x] Remove `--threshold` flag references
+  - [x] Note: Flag was never in `SearchArgs` struct or CLI args
+  - [x] Removed misleading suggestion from no-results output
+  - [x] Verified tests still pass
+  - [x] Note: FTS5 doesn't support fuzzy threshold; this flag doesn't apply
+- [x] Review `highlight_matches()` function
+  - [x] Note: No dead code found - function doesn't exist in current implementation
+  - [x] No `#[allow(dead_code)]` attributes present
+- [x] Address `--scope` flag
+  - [x] Decision: Defer to future enhancement (not blocking)
+  - [x] Scope parameter exists in SearchQuery but not exposed in CLI
+  - [x] Can be added in future task if needed
+- [x] Update documentation
+  - [x] Removed outdated "partially implemented" status
+  - [x] Updated module docs to reflect actual FTS5 implementation
 
 ### Success Criteria
 
-- No `#[allow(dead_code)]` attributes in search command
-- All defined flags are implemented and functional
-- Code is clean with no misleading TODOs
+- ✅ No `#[allow(dead_code)]` attributes in search command
+- ✅ All defined flags are implemented and functional
+- ✅ Code is clean with no misleading suggestions or outdated docs
 
 ### Tests
 
-- Verify all existing search tests pass
-- Add tests for any newly implemented features
+- ✅ All existing search tests pass
+- ✅ Clippy passes with no warnings
+
+### Implementation Notes
+
+Completed cleanup in search.rs:
+- Removed misleading `--threshold` suggestion from no-results message (line 181)
+- Updated module documentation to reflect actual FTS5 implementation
+- No code removal needed - the `--threshold` flag was never actually implemented
+- The search command is fully functional with FTS5-based full-text search
 
 ---
 
