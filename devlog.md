@@ -5,7 +5,7 @@
 ### Summary
 Implemented a fully functional Terminal UI (TUI) for Lash, providing an interactive two-pane interface for browsing, filtering, and managing tasks. The TUI offers a more ergonomic interface than CLI commands for exploring large task trees and understanding task hierarchies visually.
 
-**Commit:** `[pending]`
+**Commit:** `fe98514`
 
 ### Implementation Overview
 
