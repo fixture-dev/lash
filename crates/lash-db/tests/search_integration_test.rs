@@ -3,6 +3,7 @@
 use lash_db::{init_database, search, SearchQuery};
 use lash_types::TaskStatus;
 use rusqlite::Connection;
+use std::path::PathBuf;
 use tempfile::NamedTempFile;
 
 /// Helper to set up a test database with sample tasks
@@ -28,44 +29,49 @@ fn setup_test_db() -> (NamedTempFile, Connection) {
 
     let file_id: i64 = conn.last_insert_rowid();
 
-    // Insert sample tasks
+    // Insert sample tasks with owner field
     let tasks = vec![
         (
             "implement-parser",
             "Implement markdown parser",
             "open",
             "Need to parse markdown files and extract tasks",
+            Some("alice"),
         ),
         (
             "add-backend-tests",
             "Add backend unit tests",
             "open",
             "Write comprehensive test suite for the backend",
+            Some("bob"),
         ),
         (
             "fix-parser-bug",
             "Fix parser memory leak",
             "done",
             "The parser was leaking memory on large files",
+            Some("alice"),
         ),
         (
             "update-docs",
             "Update documentation",
             "open",
             "Documentation needs to reflect recent changes",
+            None,
         ),
         (
             "refactor-core",
             "Refactor core module",
             "waived",
             "Decided to rewrite instead of refactor",
+            Some("bob"),
         ),
     ];
 
-    for (i, (id, title, status, body)) in tasks.iter().enumerate() {
+    for (i, (id, title, status, body, owner)) in tasks.iter().enumerate() {
         conn.execute(
-            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, '{}')",
+            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, owner, metadata)
+             VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, '{}')",
             (
                 file_id,
                 id,
@@ -74,6 +80,7 @@ fn setup_test_db() -> (NamedTempFile, Connection) {
                 status,
                 i,
                 body,
+                owner,
             ),
         )
         .unwrap();
@@ -317,4 +324,161 @@ fn test_search_snippet_generation() {
     for result in &results.results {
         assert!(!result.snippet.is_empty(), "snippet should not be empty");
     }
+}
+
+#[test]
+fn test_search_with_single_label_filter() {
+    let (_temp, conn) = setup_test_db();
+
+    let query = SearchQuery::new("parser").with_label("backend".to_string());
+    let results = search(&conn, &query).unwrap();
+
+    // Should find tasks that match "parser" AND have "backend" label
+    assert!(!results.results.is_empty());
+    for result in &results.results {
+        assert!(result.labels.contains(&"backend".to_string()));
+    }
+}
+
+#[test]
+fn test_search_with_multiple_label_filters() {
+    let (_temp, conn) = setup_test_db();
+
+    let query = SearchQuery::new("parser")
+        .with_label("backend".to_string())
+        .with_label("parser".to_string());
+    let results = search(&conn, &query).unwrap();
+
+    // Should find tasks that match "parser" AND have both "backend" and "parser" labels
+    for result in &results.results {
+        assert!(result.labels.contains(&"backend".to_string()));
+        assert!(result.labels.contains(&"parser".to_string()));
+    }
+}
+
+#[test]
+fn test_search_with_owner_filter() {
+    let (_temp, conn) = setup_test_db();
+
+    let query = SearchQuery::new("parser").with_owner("alice".to_string());
+    let results = search(&conn, &query).unwrap();
+
+    // Should find parser tasks owned by alice
+    assert!(!results.results.is_empty());
+    for result in &results.results {
+        assert_eq!(result.owner, Some("alice".to_string()));
+    }
+}
+
+#[test]
+fn test_search_with_combined_filters() {
+    let (_temp, conn) = setup_test_db();
+
+    // Search with multiple filters: label + status
+    let query = SearchQuery::new("parser")
+        .with_label("backend".to_string())
+        .with_status(TaskStatus::Open);
+    let results = search(&conn, &query).unwrap();
+
+    // Should find open tasks that match "parser" and have "backend" label
+    for result in &results.results {
+        assert_eq!(result.status, TaskStatus::Open);
+        assert!(result.labels.contains(&"backend".to_string()));
+    }
+}
+
+#[test]
+fn test_search_with_label_status_and_owner_filters() {
+    let (_temp, conn) = setup_test_db();
+
+    // Search with all filters
+    let query = SearchQuery::new("parser")
+        .with_label("parser".to_string())
+        .with_status(TaskStatus::Done)
+        .with_owner("alice".to_string());
+    let results = search(&conn, &query).unwrap();
+
+    // Should find done parser tasks owned by alice with parser label
+    for result in &results.results {
+        assert_eq!(result.status, TaskStatus::Done);
+        assert_eq!(result.owner, Some("alice".to_string()));
+        assert!(result.labels.contains(&"parser".to_string()));
+    }
+}
+
+#[test]
+fn test_search_with_path_scope_filter() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let conn = init_database(temp_file.path()).unwrap();
+
+    // Insert two files in different directories
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        (
+            "core/tasks.md",
+            "core-tasks",
+            "Core Tasks",
+            "hash1",
+            1234567890_i64,
+            "in_progress",
+            "{}",
+        ),
+    )
+    .unwrap();
+    let core_file_id = conn.last_insert_rowid();
+
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        (
+            "ui/tasks.md",
+            "ui-tasks",
+            "UI Tasks",
+            "hash2",
+            1234567890_i64,
+            "in_progress",
+            "{}",
+        ),
+    )
+    .unwrap();
+    let ui_file_id = conn.last_insert_rowid();
+
+    // Insert tasks in both files
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6, '{}')",
+        (
+            core_file_id,
+            "core-parser",
+            "core-tasks#core-parser",
+            "Core parser implementation",
+            "open",
+            "Parser for the core module",
+        ),
+    )
+    .unwrap();
+
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, 1, ?6, '{}')",
+        (
+            ui_file_id,
+            "ui-parser",
+            "ui-tasks#ui-parser",
+            "UI parser implementation",
+            "open",
+            "Parser for the UI layer",
+        ),
+    )
+    .unwrap();
+
+    // Search with path scope filter
+    let query = SearchQuery::new("parser").with_scope(PathBuf::from("core/"));
+    let results = search(&conn, &query).unwrap();
+
+    // Should only find tasks in core/ directory
+    assert_eq!(results.results.len(), 1);
+    assert!(results.results[0].file_path.starts_with("core/"));
+    assert_eq!(results.results[0].full_id, "core-tasks#core-parser");
 }

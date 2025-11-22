@@ -159,6 +159,22 @@ pub enum Commands {
         /// Maximum number of results to show
         #[arg(long, short = 'n', default_value = "20")]
         limit: usize,
+
+        /// Filter by label (can be specified multiple times)
+        #[arg(long, value_name = "LABEL")]
+        label: Vec<String>,
+
+        /// Filter by status
+        #[arg(long, value_name = "STATUS", value_enum)]
+        status: Option<TaskStatus>,
+
+        /// Filter by owner
+        #[arg(long, value_name = "NAME")]
+        owner: Option<String>,
+
+        /// Filter by path prefix
+        #[arg(long, value_name = "PATH")]
+        path: Option<PathBuf>,
     },
 
     /// Show detailed information about a specific task or file

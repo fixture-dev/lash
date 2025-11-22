@@ -36,6 +36,14 @@ pub struct SearchArgs {
     pub no_color: bool,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
+    /// Filter by labels (can specify multiple)
+    pub labels: Vec<String>,
+    /// Filter by status
+    pub status: Option<lash_types::TaskStatus>,
+    /// Filter by owner
+    pub owner: Option<String>,
+    /// Filter by path scope
+    pub path: Option<PathBuf>,
 }
 
 // SearchResult is re-exported from lash_db above
@@ -92,16 +100,30 @@ pub fn execute(args: &SearchArgs) -> Result<i32> {
     // Open database
     let conn = open_database(&db_path).context("Failed to open database")?;
 
-    // Build search query
-    let query = SearchQuery {
-        query: args.query.clone(),
-        scope: None,
-        limit: args.limit,
-        offset: 0,
-        labels: vec![],
-        status: None,
-        owner: None,
-    };
+    // Build search query with filters
+    let mut query = SearchQuery::new(&args.query)
+        .with_limit(args.limit)
+        .with_offset(0);
+
+    // Apply label filters
+    for label in &args.labels {
+        query = query.with_label(label.clone());
+    }
+
+    // Apply status filter
+    if let Some(status) = args.status {
+        query = query.with_status(status);
+    }
+
+    // Apply owner filter
+    if let Some(ref owner) = args.owner {
+        query = query.with_owner(owner.clone());
+    }
+
+    // Apply path scope filter
+    if let Some(ref path) = args.path {
+        query = query.with_scope(path.clone());
+    }
 
     // Execute search
     let results = search(&conn, &query).context("Search query failed")?;

@@ -239,23 +239,23 @@ Integrate search with existing filter options (labels, status, path).
 
 ### Subtasks
 
-- [ ] Extend `SearchQuery` to accept filters
-  - [ ] `labels`: Vec<String>
-  - [ ] `status`: Option<TaskStatus>
-  - [ ] `path`: Option<PathBuf>
-- [ ] Implement filter application
-  - [ ] Combine FTS5 query with SQL WHERE clauses
-  - [ ] Filter results after FTS5 query if needed
-  - [ ] Maintain ranking order while filtering
-- [ ] Add filter query syntax (optional)
-  - [ ] `label:backend query text`
-  - [ ] `status:open query text`
-  - [ ] `path:core/ query text`
-  - [ ] Parse and apply filters from query string
-- [ ] Test filter combinations
-  - [ ] Search + label filter
-  - [ ] Search + status filter
-  - [ ] Search + multiple filters
+- [x] Extend `SearchQuery` to accept filters
+  - [x] `labels`: Vec<String>
+  - [x] `status`: Option<TaskStatus>
+  - [x] `path`: Option<PathBuf>
+- [x] Implement filter application
+  - [x] Combine FTS5 query with SQL WHERE clauses
+  - [x] Filter results after FTS5 query if needed
+  - [x] Maintain ranking order while filtering
+- [x] Add filter query syntax (optional)
+  - [x] `label:backend query text`
+  - [x] `status:open query text`
+  - [x] `path:core/ query text`
+  - [x] Parse and apply filters from query string
+- [x] Test filter combinations
+  - [x] Search + label filter
+  - [x] Search + status filter
+  - [x] Search + multiple filters
 
 ### Success Criteria
 

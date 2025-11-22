@@ -219,13 +219,32 @@ fn run(cli: LashCli) -> Result<()> {
             Ok(())
         }
 
-        Commands::Search { query, limit } => {
+        Commands::Search {
+            query,
+            limit,
+            label,
+            status,
+            owner,
+            path,
+        } => {
+            // Convert status to lash_types::TaskStatus
+            let task_status = status.map(|s| match s {
+                lash_cli::cli::TaskStatus::Open => lash_types::TaskStatus::Open,
+                lash_cli::cli::TaskStatus::Done => lash_types::TaskStatus::Done,
+                lash_cli::cli::TaskStatus::Waived => lash_types::TaskStatus::Waived,
+                lash_cli::cli::TaskStatus::Blocked => lash_types::TaskStatus::Blocked,
+            });
+
             let args = commands::search::SearchArgs {
                 query,
                 limit,
                 json: cli.json,
                 no_color: cli.no_color,
                 project_root,
+                labels: label,
+                status: task_status,
+                owner,
+                path,
             };
             let exit_code = commands::search::execute(&args)?;
             process::exit(exit_code);
