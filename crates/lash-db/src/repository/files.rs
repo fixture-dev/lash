@@ -267,6 +267,48 @@ impl<'conn> FileRepository<'conn> {
             .map_err(Into::into)
     }
 
+    /// Get a file by its database ID
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails or metadata deserialization fails
+    pub fn get_by_db_id(&self, id: i64) -> DbResult<Option<FileRecord>> {
+        self.conn
+            .query_row(
+                "SELECT id, path, file_id, title, hash, mtime, status, metadata, indexed_at
+                 FROM files WHERE id = ?1",
+                [id],
+                |row| {
+                    let metadata_json: String = row.get(7)?;
+                    let metadata: FileMetadata =
+                        serde_json::from_str(&metadata_json).map_err(|e| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                7,
+                                rusqlite::types::Type::Text,
+                                Box::new(e),
+                            )
+                        })?;
+
+                    let status_str: String = row.get(6)?;
+                    let status = FileStatus::from_str_lossy(&status_str);
+
+                    Ok(FileRecord {
+                        id: row.get(0)?,
+                        path: PathBuf::from(row.get::<_, String>(1)?),
+                        file_id: row.get(2)?,
+                        title: row.get(3)?,
+                        hash: row.get(4)?,
+                        mtime: row.get(5)?,
+                        status,
+                        metadata,
+                        indexed_at: row.get(8)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     /// List all files in the database
     ///
     /// # Errors

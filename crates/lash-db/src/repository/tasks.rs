@@ -218,6 +218,23 @@ impl<'conn> TaskRepository<'conn> {
             .map_err(Into::into)
     }
 
+    /// Get a task by its database ID
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails or metadata deserialization fails
+    pub fn get_by_db_id(&self, id: i64) -> DbResult<Option<TaskRecord>> {
+        self.conn
+            .query_row(
+                "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata
+                 FROM tasks WHERE id = ?1",
+                [id],
+                Self::row_to_task_record,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     /// Get the database ID for a task by its full ID
     ///
     /// # Errors
@@ -624,6 +641,33 @@ mod tests {
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.full_id, "test#task1");
         assert_eq!(retrieved.title, "Test Task");
+    }
+
+    #[test]
+    fn test_get_by_db_id() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task = create_test_task("task1", "Test Task", 0, None, 0);
+        let task_repo = TaskRepository::new(&conn);
+        let db_id = task_repo.insert(&task, file_db_id, "test").unwrap();
+
+        // Test retrieving by database ID
+        let retrieved = task_repo.get_by_db_id(db_id).unwrap();
+        assert!(retrieved.is_some());
+
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.id, db_id);
+        assert_eq!(retrieved.full_id, "test#task1");
+        assert_eq!(retrieved.title, "Test Task");
+
+        // Test non-existent ID
+        let not_found = task_repo.get_by_db_id(99999).unwrap();
+        assert!(not_found.is_none());
     }
 
     #[test]
