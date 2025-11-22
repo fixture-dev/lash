@@ -1,5 +1,62 @@
 # Lash Development Log
 
+## 2025-11-22 - Implement Task 5: Search Filters Integration
+
+### Summary
+Extended the CLI layer to expose filter options for the search command, wiring them up to the existing search infrastructure in lash-db. Users can now filter search results by labels, status, owner, and path scope.
+
+**Commit:** `a8abe5b`
+
+### Changes Made
+
+1. **Extended CLI Arguments** (`crates/lash-cli/src/cli.rs`)
+   - Added `--label` flag (can be specified multiple times for AND filtering)
+   - Added `--status` flag for filtering by task status
+   - Added `--owner` flag for filtering by task owner
+   - Added `--path` flag for filtering by path scope
+
+2. **Updated SearchArgs Structure** (`crates/lash-cli/src/commands/search.rs`)
+   - Added `labels: Vec<String>` field
+   - Added `status: Option<lash_types::TaskStatus>` field
+   - Added `owner: Option<String>` field
+   - Added `path: Option<PathBuf>` field
+
+3. **Wired Up Filters** (`crates/lash-cli/src/main.rs` and `crates/lash-cli/src/commands/search.rs`)
+   - Convert CLI TaskStatus enum to lash_types::TaskStatus
+   - Use builder pattern to construct SearchQuery with filters
+   - Apply filters using existing SearchQuery methods: `with_label()`, `with_status()`, `with_owner()`, `with_scope()`
+
+4. **Added Comprehensive Integration Tests** (`crates/lash-db/tests/search_integration_test.rs`)
+   - Updated test fixture to include owner field for tasks
+   - Added test for single label filter
+   - Added test for multiple label filters (AND filtering)
+   - Added test for owner filter
+   - Added test for combined filters (label + status)
+   - Added test for all filters together (label + status + owner)
+   - Added test for path scope filter with dedicated multi-file test setup
+
+5. **Updated Task Tracking** (`tasks/tasks.fuzzy-search.md`)
+   - Marked all Task 5 subtasks as complete
+
+### Usage Examples
+
+```bash
+# Search for "parser" with backend label and open status
+lash search "parser" --label backend --status open
+
+# Search for "fix" owned by alice in core/ directory
+lash search "fix" --owner alice --path core/
+
+# Search for "test" with multiple labels and open status
+lash search "test" --label bug --label urgent --status open
+```
+
+### Test Results
+All 17 search integration tests pass, including 6 new filter-specific tests.
+All workspace tests pass (697 total).
+
+---
+
 ## 2025-11-22 - Implement Task 4: Search Performance Optimization
 
 ### Summary
