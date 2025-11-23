@@ -472,7 +472,7 @@ pub fn parse_annotation_block<'a>(
             }
 
             current_key = Some(key);
-            current_value = value.to_string();
+            current_value.clone_from(&value);
         } else if current_key.is_some() && trimmed.starts_with(' ') {
             // Continuation line (indented)
             if !current_value.is_empty() {
