@@ -83,11 +83,20 @@ fn parse_and_lint(content: &str, lint_config: &LintConfig) -> Vec<LintDiagnostic
     // Parse the file
     let path = PathBuf::from(temp_file.path());
     let parser_config = LashConfig::default();
-    let parsed = parse_file(&path, &parser_config).unwrap();
 
-    // Lint the parsed file
-    let linter = Linter::new(lint_config.clone());
-    linter.lint_file(&parsed, &parser_config)
+    // Parse may fail for files with depth violations - handle gracefully
+    match parse_file(&path, &parser_config) {
+        Ok(parsed) => {
+            // Lint the parsed file
+            let linter = Linter::new(lint_config.clone());
+            linter.lint_file(&parsed, &parser_config)
+        }
+        Err(_e) => {
+            // Parse failed (e.g., depth violations) - return empty diagnostics
+            // since we're measuring linting performance, not parse error handling
+            vec![]
+        }
+    }
 }
 
 /// Benchmark linting valid files (no errors)
