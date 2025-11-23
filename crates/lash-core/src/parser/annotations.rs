@@ -983,7 +983,10 @@ mod tests {
 
     #[test]
     fn test_parse_annotation_block_with_config_known_keys() {
-        let config = ConfigBuilder::new().root("/tmp").build().unwrap();
+        let config = ConfigBuilder::new()
+            .root(std::env::temp_dir())
+            .build()
+            .unwrap();
         let lines = vec!["@id: task-123", "@owner: alice"];
         let block = parse_annotation_block(lines.into_iter(), Some(&config)).unwrap();
         assert_eq!(block.get_single("id"), Some("task-123"));
@@ -992,7 +995,10 @@ mod tests {
 
     #[test]
     fn test_parse_annotation_block_with_config_unknown_key() {
-        let config = ConfigBuilder::new().root("/tmp").build().unwrap();
+        let config = ConfigBuilder::new()
+            .root(std::env::temp_dir())
+            .build()
+            .unwrap();
         let lines = vec!["@unknown: value"];
         let result = parse_annotation_block(lines.into_iter(), Some(&config));
         assert!(result.is_err());
@@ -1001,7 +1007,7 @@ mod tests {
     #[test]
     fn test_parse_annotation_block_with_config_custom_key() {
         let config = ConfigBuilder::new()
-            .root("/tmp")
+            .root(std::env::temp_dir())
             .custom_annotation_keys(vec!["priority".to_string()])
             .build()
             .unwrap();
@@ -1093,7 +1099,10 @@ mod tests {
             "  and continues here",
         ];
 
-        let config = ConfigBuilder::new().root("/tmp").build().unwrap();
+        let config = ConfigBuilder::new()
+            .root(std::env::temp_dir())
+            .build()
+            .unwrap();
         let block = parse_annotation_block(lines.into_iter(), Some(&config)).unwrap();
 
         assert_eq!(block.get_single("id"), Some("my-task"));
