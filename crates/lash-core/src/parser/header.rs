@@ -404,7 +404,7 @@ mod tests {
             }
         }
 
-        fn context(&self) -> ParseContext {
+        fn context(&self) -> ParseContext<'_> {
             ParseContext::new(&self.path, &self.config)
         }
     }
