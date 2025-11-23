@@ -350,6 +350,22 @@ fn run(cli: LashCli) -> Result<()> {
             Ok(())
         }
 
+        Commands::Playground { command } => {
+            use lash_cli::cli::PlaygroundCommand;
+            match command {
+                PlaygroundCommand::Init { path, reset } => {
+                    let args = commands::playground::PlaygroundArgs {
+                        path,
+                        reset,
+                        json: cli.json,
+                        no_color: cli.no_color,
+                    };
+                    let exit_code = commands::playground::execute(args)?;
+                    process::exit(exit_code);
+                }
+            }
+        }
+
         Commands::Completion { shell } => {
             use clap::CommandFactory;
             use lash_cli::cli::Shell;
