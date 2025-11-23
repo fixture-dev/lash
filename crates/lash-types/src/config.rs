@@ -304,6 +304,7 @@ impl ConfigBuilder {
 mod tests {
     use super::*;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_default_config() {
@@ -315,8 +316,9 @@ mod tests {
 
     #[test]
     fn test_config_builder() {
+        let temp_dir = TempDir::new().unwrap();
         let config = ConfigBuilder::new()
-            .root("/tmp")
+            .root(temp_dir.path())
             .max_depth(4)
             .indent_spaces(4)
             .build();
@@ -329,7 +331,11 @@ mod tests {
 
     #[test]
     fn test_invalid_max_depth() {
-        let result = ConfigBuilder::new().root("/tmp").max_depth(10).build();
+        let temp_dir = TempDir::new().unwrap();
+        let result = ConfigBuilder::new()
+            .root(temp_dir.path())
+            .max_depth(10)
+            .build();
         assert!(result.is_err());
         if let Err(LashError::Config { code, .. }) = result {
             assert_eq!(code, codes::E_CONFIG_INVALID_VALUE);
@@ -340,7 +346,11 @@ mod tests {
 
     #[test]
     fn test_invalid_indent_spaces() {
-        let result = ConfigBuilder::new().root("/tmp").indent_spaces(3).build();
+        let temp_dir = TempDir::new().unwrap();
+        let result = ConfigBuilder::new()
+            .root(temp_dir.path())
+            .indent_spaces(3)
+            .build();
         assert!(result.is_err());
     }
 
