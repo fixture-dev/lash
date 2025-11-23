@@ -141,7 +141,7 @@ mod tests {
         let file_path = temp.path().join("test.md");
         fs::write(&file_path, "# Test")?;
 
-        let files = discover_markdown_files(&[file_path.clone()], true)?;
+        let files = discover_markdown_files(std::slice::from_ref(&file_path), true)?;
         assert_eq!(files.len(), 1);
         assert!(files[0].ends_with("test.md"));
 
