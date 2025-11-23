@@ -30,3 +30,7 @@ harness = false
 [[bench]]
 name = "graph_bench"
 harness = false
+
+[[bench]]
+name = "linter_bench"
+harness = false
