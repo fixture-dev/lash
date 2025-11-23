@@ -439,6 +439,8 @@ fn supports_color() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+    use std::panic;
 
     #[test]
     fn test_verbosity_to_level() {
@@ -455,10 +457,16 @@ mod tests {
         assert_eq!(parse_log_level("ERROR").unwrap(), Level::ERROR);
         assert_eq!(parse_log_level("warn").unwrap(), Level::WARN);
         assert_eq!(parse_log_level("warning").unwrap(), Level::WARN);
+        assert_eq!(parse_log_level("WARNING").unwrap(), Level::WARN);
         assert_eq!(parse_log_level("info").unwrap(), Level::INFO);
+        assert_eq!(parse_log_level("INFO").unwrap(), Level::INFO);
         assert_eq!(parse_log_level("debug").unwrap(), Level::DEBUG);
+        assert_eq!(parse_log_level("DEBUG").unwrap(), Level::DEBUG);
         assert_eq!(parse_log_level("trace").unwrap(), Level::TRACE);
+        assert_eq!(parse_log_level("TRACE").unwrap(), Level::TRACE);
         assert!(parse_log_level("invalid").is_err());
+        assert!(parse_log_level("").is_err());
+        assert!(parse_log_level("CRITICAL").is_err());
     }
 
     #[test]
@@ -471,6 +479,22 @@ mod tests {
     }
 
     #[test]
+    fn test_log_config_new_with_json() {
+        let config = LogConfig::new(Verbosity::Verbose, true, false);
+        assert_eq!(config.verbosity, Verbosity::Verbose);
+        assert!(config.json_output);
+        assert!(!config.no_color);
+    }
+
+    #[test]
+    fn test_log_config_new_with_no_color() {
+        let config = LogConfig::new(Verbosity::Normal, false, true);
+        assert_eq!(config.verbosity, Verbosity::Normal);
+        assert!(!config.json_output);
+        assert!(config.no_color);
+    }
+
+    #[test]
     fn test_log_config_with_log_file() {
         let config = LogConfig::new(Verbosity::Normal, false, false)
             .with_log_file(PathBuf::from("/tmp/test.log"));
@@ -478,15 +502,83 @@ mod tests {
     }
 
     #[test]
+    fn test_log_config_builder_pattern() {
+        let config = LogConfig::new(Verbosity::Debug, true, true)
+            .with_log_file(PathBuf::from("/var/log/lash.log"));
+        assert_eq!(config.verbosity, Verbosity::Debug);
+        assert!(config.json_output);
+        assert!(config.no_color);
+        assert_eq!(config.log_file, Some(PathBuf::from("/var/log/lash.log")));
+    }
+
+    #[test]
+    #[serial]
     fn test_log_config_determine_level_from_verbosity() {
+        // Clear env vars to ensure we test verbosity-based level
+        std::env::remove_var("LASH_LOG");
+        std::env::remove_var("RUST_LOG");
+
         let config = LogConfig::new(Verbosity::Debug, false, false);
-        // This might be overridden by environment variables in the test environment
-        // so we just check that it returns a valid level
-        let level = config.determine_level();
-        assert!(matches!(
-            level,
-            Level::ERROR | Level::WARN | Level::INFO | Level::DEBUG | Level::TRACE
-        ));
+        assert_eq!(config.determine_level(), Level::DEBUG);
+
+        let config = LogConfig::new(Verbosity::Quiet, false, false);
+        assert_eq!(config.determine_level(), Level::ERROR);
+
+        let config = LogConfig::new(Verbosity::Trace, false, false);
+        assert_eq!(config.determine_level(), Level::TRACE);
+    }
+
+    #[test]
+    #[serial]
+    fn test_log_config_determine_level_from_lash_log_env() {
+        // LASH_LOG takes priority
+        std::env::set_var("LASH_LOG", "info");
+        std::env::remove_var("RUST_LOG");
+
+        let config = LogConfig::new(Verbosity::Debug, false, false);
+        assert_eq!(config.determine_level(), Level::INFO);
+
+        std::env::remove_var("LASH_LOG");
+    }
+
+    #[test]
+    #[serial]
+    fn test_log_config_determine_level_from_rust_log_env() {
+        // RUST_LOG is fallback
+        std::env::remove_var("LASH_LOG");
+        std::env::set_var("RUST_LOG", "trace");
+
+        let config = LogConfig::new(Verbosity::Normal, false, false);
+        assert_eq!(config.determine_level(), Level::TRACE);
+
+        std::env::remove_var("RUST_LOG");
+    }
+
+    #[test]
+    #[serial]
+    fn test_log_config_determine_level_priority() {
+        // LASH_LOG should override RUST_LOG
+        std::env::set_var("LASH_LOG", "error");
+        std::env::set_var("RUST_LOG", "debug");
+
+        let config = LogConfig::new(Verbosity::Trace, false, false);
+        assert_eq!(config.determine_level(), Level::ERROR);
+
+        std::env::remove_var("LASH_LOG");
+        std::env::remove_var("RUST_LOG");
+    }
+
+    #[test]
+    #[serial]
+    fn test_log_config_determine_level_invalid_env() {
+        // Invalid env var should fall back to verbosity
+        std::env::set_var("LASH_LOG", "invalid_level");
+        std::env::remove_var("RUST_LOG");
+
+        let config = LogConfig::new(Verbosity::Verbose, false, false);
+        assert_eq!(config.determine_level(), Level::INFO);
+
+        std::env::remove_var("LASH_LOG");
     }
 
     #[test]
@@ -498,8 +590,151 @@ mod tests {
     }
 
     #[test]
+    fn test_get_diagnostic_info_contains_version() {
+        let info = get_diagnostic_info();
+        // Should be a valid semver-like version
+        assert!(info.version.contains('.'));
+    }
+
+    #[test]
+    fn test_get_diagnostic_info_platform_values() {
+        let info = get_diagnostic_info();
+        // Should be one of the known platforms
+        assert!(
+            info.platform == "linux"
+                || info.platform == "macos"
+                || info.platform == "windows"
+                || info.platform == "freebsd"
+                || info.platform == "openbsd"
+                || info.platform == "netbsd"
+                || info.platform == "dragonfly"
+                || info.platform == "android"
+                || info.platform == "ios"
+        );
+    }
+
+    #[test]
     fn test_install_panic_hook() {
         // Just ensure it doesn't crash
         install_panic_hook();
+    }
+
+    #[test]
+    fn test_install_panic_hook_idempotent() {
+        // Should be safe to call multiple times
+        install_panic_hook();
+        install_panic_hook();
+    }
+
+    #[test]
+    #[should_panic(expected = "test panic")]
+    fn test_panic_hook_with_string_message() {
+        install_panic_hook();
+        panic!("test panic");
+    }
+
+    #[test]
+    #[serial]
+    fn test_supports_color_with_no_color_env() {
+        // NO_COLOR environment variable should disable color
+        std::env::set_var("NO_COLOR", "1");
+        assert!(!supports_color());
+        std::env::remove_var("NO_COLOR");
+    }
+
+    #[test]
+    #[serial]
+    fn test_supports_color_without_no_color_env() {
+        std::env::remove_var("NO_COLOR");
+        // Result depends on whether stderr is a TTY, which varies by test environment
+        // Just ensure it doesn't crash
+        let _result = supports_color();
+    }
+
+    // Note: We cannot easily test init_logging() and init_logging_with_file()
+    // because they call tracing_subscriber::registry().init(), which can only
+    // be called once per process. They are effectively integration tests that
+    // require separate test processes.
+    //
+    // However, we can test the configuration logic and ensure the functions
+    // don't panic with various configurations.
+
+    #[test]
+    fn test_log_config_all_verbosity_levels() {
+        // Ensure all verbosity levels produce valid configurations
+        for verbosity in [
+            Verbosity::Quiet,
+            Verbosity::Normal,
+            Verbosity::Verbose,
+            Verbosity::Debug,
+            Verbosity::Trace,
+        ] {
+            let config = LogConfig::new(verbosity, false, false);
+            let level = verbosity_to_level(verbosity);
+            let determined_level = config.determine_level();
+            assert!(matches!(
+                level,
+                Level::ERROR | Level::WARN | Level::INFO | Level::DEBUG | Level::TRACE
+            ));
+            assert!(matches!(
+                determined_level,
+                Level::ERROR | Level::WARN | Level::INFO | Level::DEBUG | Level::TRACE
+            ));
+        }
+    }
+
+    #[test]
+    fn test_log_config_all_output_modes() {
+        // Test various configuration combinations
+        let configs = [
+            LogConfig::new(Verbosity::Normal, false, false),
+            LogConfig::new(Verbosity::Normal, true, false),
+            LogConfig::new(Verbosity::Normal, false, true),
+            LogConfig::new(Verbosity::Normal, true, true),
+        ];
+
+        for config in &configs {
+            // Just ensure the configuration is valid
+            let _level = config.determine_level();
+        }
+    }
+
+    #[test]
+    fn test_diagnostic_info_debug_format() {
+        let info = get_diagnostic_info();
+        let debug_str = format!("{info:?}");
+        assert!(debug_str.contains("DiagnosticInfo"));
+        assert!(debug_str.contains("version"));
+        assert!(debug_str.contains("platform"));
+        assert!(debug_str.contains("arch"));
+    }
+
+    #[test]
+    fn test_diagnostic_info_clone() {
+        let info1 = get_diagnostic_info();
+        let info2 = info1.clone();
+        assert_eq!(info1.version, info2.version);
+        assert_eq!(info1.platform, info2.platform);
+        assert_eq!(info1.arch, info2.arch);
+    }
+
+    #[test]
+    fn test_log_config_debug_format() {
+        let config = LogConfig::new(Verbosity::Debug, true, false)
+            .with_log_file(PathBuf::from("/tmp/test.log"));
+        let debug_str = format!("{config:?}");
+        assert!(debug_str.contains("LogConfig"));
+        assert!(debug_str.contains("Debug"));
+    }
+
+    #[test]
+    fn test_log_config_clone() {
+        let config1 = LogConfig::new(Verbosity::Verbose, true, true)
+            .with_log_file(PathBuf::from("/tmp/test.log"));
+        let config2 = config1.clone();
+        assert_eq!(config1.verbosity, config2.verbosity);
+        assert_eq!(config1.json_output, config2.json_output);
+        assert_eq!(config1.no_color, config2.no_color);
+        assert_eq!(config1.log_file, config2.log_file);
     }
 }
