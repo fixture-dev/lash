@@ -201,11 +201,12 @@ Write integration tests that exercise multiple modules working together.
   - [x] Parse complex files, verify all data preserved
   - [x] Parse hierarchical tasks, verify parent-child relationships
   - [x] Parse tasks, verify order preserved
-- [ ] **Index → Query workflow**
-  - [ ] Index project, query tasks
-  - [ ] Filter by label, status, path
-  - [ ] Search integration
-  - [ ] Verify DB consistency
+- [x] **Index → Query workflow**
+  - [x] Index project, query tasks
+  - [x] Filter by label, status, path
+  - [x] Search integration
+  - [x] Verify DB consistency
+  - [x] Cross-file queries
 - [x] **Dependency resolution workflow (covered in existing tests)**
   - [ ] Parse files with dependencies
   - [ ] Build graph
