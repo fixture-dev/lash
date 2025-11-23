@@ -247,12 +247,35 @@ pub enum Commands {
     /// Launch the terminal UI
     Tui,
 
+    /// Initialize a demo playground project
+    #[command()]
+    Playground {
+        /// Playground subcommand
+        #[command(subcommand)]
+        command: PlaygroundCommand,
+    },
+
     /// Generate shell completions
     #[command(hide = true)]
     Completion {
         /// Shell to generate completions for
         #[arg(value_enum)]
         shell: Shell,
+    },
+}
+
+/// Playground subcommands
+#[derive(Subcommand, Debug)]
+pub enum PlaygroundCommand {
+    /// Initialize a demo playground project with realistic sample data
+    Init {
+        /// Target directory path (defaults to ./playground/)
+        #[arg(long, value_name = "PATH")]
+        path: Option<PathBuf>,
+
+        /// Delete and regenerate if playground already exists
+        #[arg(long)]
+        reset: bool,
     },
 }
 
@@ -477,5 +500,41 @@ mod tests {
     fn test_cli_alias_fmt_for_format() {
         let cli = LashCli::try_parse_from(["lash", "fmt"]).unwrap();
         assert!(matches!(cli.command, Commands::Format { .. }));
+    }
+
+    #[test]
+    fn test_cli_parse_playground_init() {
+        let cli = LashCli::try_parse_from(["lash", "playground", "init"]).unwrap();
+        assert!(matches!(cli.command, Commands::Playground { .. }));
+        if let Commands::Playground { command } = cli.command {
+            assert!(matches!(command, PlaygroundCommand::Init { .. }));
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_playground_init_with_path() {
+        let cli =
+            LashCli::try_parse_from(["lash", "playground", "init", "--path", "/tmp/demo"]).unwrap();
+        if let Commands::Playground {
+            command: PlaygroundCommand::Init { path, .. },
+        } = cli.command
+        {
+            assert_eq!(path, Some(PathBuf::from("/tmp/demo")));
+        } else {
+            panic!("Expected Playground Init command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_playground_init_with_reset() {
+        let cli = LashCli::try_parse_from(["lash", "playground", "init", "--reset"]).unwrap();
+        if let Commands::Playground {
+            command: PlaygroundCommand::Init { reset, .. },
+        } = cli.command
+        {
+            assert!(reset);
+        } else {
+            panic!("Expected Playground Init command");
+        }
     }
 }
