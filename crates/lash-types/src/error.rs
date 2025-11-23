@@ -1439,4 +1439,867 @@ mod tests {
         let err = LashError::internal("unexpected state", Some("context".to_string()));
         assert_eq!(ExitCode::from(&err), ExitCode::GeneralError);
     }
+
+    // ===== Parse Error Constructor Tests =====
+
+    #[test]
+    fn test_parse_invalid_annotation() {
+        let err = LashError::parse_invalid_annotation(
+            PathBuf::from("test.md"),
+            10,
+            5,
+            "@invalid: value",
+            "invalid",
+        );
+        assert_eq!(err.code(), codes::E_PARSE_INVALID_ANNOTATION);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("invalid"));
+        assert!(diag.help.as_ref().unwrap().contains("@key: value"));
+        assert_eq!(diag.severity, Severity::Error);
+    }
+
+    #[test]
+    fn test_parse_invalid_header() {
+        let err = LashError::parse_invalid_header(PathBuf::from("test.md"), 1, "##Invalid");
+        assert_eq!(err.code(), codes::E_PARSE_INVALID_HEADER);
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.message, "invalid header format");
+        assert!(diag.snippet.is_some());
+        assert!(diag.help.as_ref().unwrap().contains("space"));
+    }
+
+    #[test]
+    fn test_parse_unexpected_depth() {
+        let err = LashError::parse_unexpected_depth(PathBuf::from("test.md"), 15, 7, 4);
+        assert_eq!(err.code(), codes::E_PARSE_UNEXPECTED_DEPTH);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains('4'));
+        assert!(diag.help.as_ref().unwrap().contains("2 spaces"));
+    }
+
+    #[test]
+    fn test_parse_invalid_date() {
+        let err = LashError::parse_invalid_date(PathBuf::from("test.md"), 5, 10, "2024-13-45");
+        assert_eq!(err.code(), codes::E_PARSE_INVALID_DATE);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("2024-13-45"));
+        assert!(diag.help.as_ref().unwrap().contains("YYYY-MM-DD"));
+    }
+
+    // ===== Lint Error Constructor Tests =====
+
+    #[test]
+    fn test_lint_unknown_annotation() {
+        let err =
+            LashError::lint_unknown_annotation(PathBuf::from("test.md"), 8, 1, "unknown-anno");
+        assert_eq!(err.code(), codes::E_LINT_UNKNOWN_ANNOTATION);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("@unknown-anno"));
+        assert!(diag.help.as_ref().unwrap().contains("@id"));
+    }
+
+    #[test]
+    fn test_lint_depth_exceeded() {
+        let err = LashError::lint_depth_exceeded(PathBuf::from("test.md"), 20, 9, 5, 4);
+        assert_eq!(err.code(), codes::E_LINT_DEPTH_EXCEEDED);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains('5'));
+        assert!(diag.message.contains('4'));
+        assert!(diag.help.as_ref().unwrap().contains('4'));
+    }
+
+    #[test]
+    fn test_lint_status_inconsistency() {
+        let err = LashError::lint_status_inconsistency(PathBuf::from("test.md"), 12, 1, "done");
+        assert_eq!(err.code(), codes::E_LINT_STATUS_INCONSISTENCY);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("parent task"));
+        assert!(diag.help.as_ref().unwrap().contains("done"));
+    }
+
+    #[test]
+    fn test_lint_invalid_label() {
+        let err = LashError::lint_invalid_label(PathBuf::from("test.md"), 7, 8, "invalid label!");
+        assert_eq!(err.code(), codes::E_LINT_INVALID_LABEL);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("invalid label!"));
+        assert!(diag.snippet.as_ref().unwrap().contains("@labels"));
+        assert!(diag.help.as_ref().unwrap().contains("alphanumeric"));
+    }
+
+    #[test]
+    fn test_lint_missing_annotation() {
+        let err = LashError::lint_missing_annotation(PathBuf::from("test.md"), 5, "id");
+        assert_eq!(err.code(), codes::E_LINT_MISSING_ANNOTATION);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("@id"));
+        assert!(diag.help.as_ref().unwrap().contains("add @id"));
+    }
+
+    #[test]
+    fn test_lint_bad_indentation() {
+        let err = LashError::lint_bad_indentation(PathBuf::from("test.md"), 10, 1, 3, 4);
+        assert_eq!(err.code(), codes::E_LINT_BAD_INDENTATION);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains('3'));
+        assert!(diag.message.contains('4'));
+        assert!(diag.help.as_ref().unwrap().contains("lash format"));
+    }
+
+    // ===== Dependency Error Constructor Tests =====
+
+    #[test]
+    fn test_dep_not_found() {
+        let err = LashError::dep_not_found(
+            PathBuf::from("test.md"),
+            10,
+            5,
+            "path/to/missing.md#task:id",
+        );
+        assert_eq!(err.code(), codes::E_DEP_NOT_FOUND);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("missing.md"));
+        assert!(diag.help.is_some());
+    }
+
+    #[test]
+    fn test_dep_invalid_ref() {
+        let err = LashError::dep_invalid_ref(PathBuf::from("test.md"), 8, 3, "invalid-ref-format");
+        assert_eq!(err.code(), codes::E_DEP_INVALID_REF);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("invalid-ref-format"));
+        assert!(diag
+            .help
+            .as_ref()
+            .unwrap()
+            .contains("path/to/file.md#task:id"));
+    }
+
+    #[test]
+    fn test_dep_cycle_empty_chain() {
+        let chain: Vec<String> = vec![];
+        let err = LashError::dep_cycle(&chain);
+        assert_eq!(err.code(), codes::E_DEP_CYCLE);
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.message, "circular dependency detected");
+    }
+
+    // ===== Index Error Constructor Tests =====
+
+    #[test]
+    fn test_index_corrupted() {
+        let err = LashError::index_corrupted("SQLite integrity check failed");
+        assert_eq!(err.code(), codes::E_INDEX_CORRUPTED);
+        let diag = err.to_diagnostic();
+        assert!(diag.labels.is_some());
+        let labels = diag.labels.unwrap();
+        assert_eq!(labels[0].0, "context");
+        assert!(labels[0].1.contains("integrity"));
+    }
+
+    #[test]
+    fn test_index_version_mismatch_message() {
+        let err = LashError::index_version_mismatch(2, 5);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains('2'));
+        assert!(diag.message.contains('5'));
+        assert!(diag.help.as_ref().unwrap().contains("migrate"));
+    }
+
+    #[test]
+    fn test_index_out_of_sync_message() {
+        let err = LashError::index_out_of_sync(42);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("42"));
+        assert!(diag.help.as_ref().unwrap().contains("lash index"));
+    }
+
+    // ===== Query Error Constructor Tests =====
+
+    #[test]
+    fn test_query_invalid_syntax() {
+        let err = LashError::query_invalid_syntax("@invalid::syntax");
+        assert_eq!(err.code(), codes::E_QUERY_INVALID_SYNTAX);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("@invalid::syntax"));
+        assert!(diag.help.as_ref().unwrap().contains("help search"));
+    }
+
+    #[test]
+    fn test_query_no_results() {
+        let err = LashError::query_no_results("nonexistent-term");
+        assert_eq!(err.code(), codes::E_QUERY_NO_RESULTS);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("nonexistent-term"));
+        assert!(diag.help.is_some());
+    }
+
+    // ===== Config Error Constructor Tests =====
+
+    #[test]
+    fn test_config_root_not_found() {
+        let err = LashError::config_root_not_found(PathBuf::from("/home/user/project"));
+        assert_eq!(err.code(), codes::E_CONFIG_ROOT_NOT_FOUND);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("root directory"));
+        assert!(diag.location.is_some());
+        assert_eq!(
+            diag.location.as_ref().unwrap().file_path,
+            PathBuf::from("/home/user/project")
+        );
+    }
+
+    #[test]
+    fn test_config_invalid_value() {
+        let err = LashError::config_invalid_value("max_depth", "not-a-number");
+        assert_eq!(err.code(), codes::E_CONFIG_INVALID_VALUE);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("max_depth"));
+        assert!(diag.message.contains("not-a-number"));
+        assert!(diag.help.as_ref().unwrap().contains("max_depth"));
+    }
+
+    #[test]
+    fn test_config_parse_error() {
+        let err = LashError::config_parse_error(
+            PathBuf::from("lash.config.toml"),
+            "unexpected token at line 5",
+        );
+        assert_eq!(err.code(), codes::E_CONFIG_PARSE_ERROR);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("unexpected token"));
+        assert!(diag.help.as_ref().unwrap().contains("TOML"));
+        assert_eq!(
+            diag.location.as_ref().unwrap().file_path,
+            PathBuf::from("lash.config.toml")
+        );
+    }
+
+    #[test]
+    fn test_config_missing_index() {
+        let err = LashError::config_missing_index();
+        assert_eq!(err.code(), codes::E_CONFIG_MISSING_INDEX);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("lash.index.md"));
+        assert!(diag.help.is_some());
+    }
+
+    // ===== IO Error Constructor Tests =====
+
+    #[test]
+    fn test_io_file_not_found() {
+        let err = LashError::io_file_not_found(PathBuf::from("nonexistent.md"));
+        assert_eq!(err.code(), codes::E_IO_FILE_NOT_FOUND);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("nonexistent.md"));
+    }
+
+    #[test]
+    fn test_io_read_error() {
+        let err = LashError::io_read_error(PathBuf::from("test.md"), "Permission denied");
+        assert_eq!(err.code(), codes::E_IO_READ_ERROR);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("test.md"));
+        assert!(diag.labels.is_some());
+        let labels = diag.labels.unwrap();
+        assert_eq!(labels[0].0, "underlying error");
+        assert!(labels[0].1.contains("Permission denied"));
+    }
+
+    #[test]
+    fn test_io_write_error() {
+        let err = LashError::io_write_error(PathBuf::from("output.md"), "Disk full");
+        assert_eq!(err.code(), codes::E_IO_WRITE_ERROR);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("output.md"));
+        assert!(diag.labels.is_some());
+    }
+
+    #[test]
+    fn test_io_permission_denied() {
+        let err = LashError::io_permission_denied(PathBuf::from("readonly.md"));
+        assert_eq!(err.code(), codes::E_IO_PERMISSION_DENIED);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("permission denied"));
+        assert!(diag.message.contains("readonly.md"));
+    }
+
+    #[test]
+    fn test_io_invalid_path() {
+        let err =
+            LashError::io_invalid_path(PathBuf::from("../../../etc/passwd"), "path traversal");
+        assert_eq!(err.code(), codes::E_IO_INVALID_PATH);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("invalid path"));
+        assert!(diag.labels.is_some());
+    }
+
+    // ===== Internal Error Constructor Tests =====
+
+    #[test]
+    fn test_internal_error_with_context() {
+        let err = LashError::internal("panic in worker thread", Some("thread_id: 42".to_string()));
+        assert_eq!(err.code(), codes::E_INTERNAL);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("panic"));
+        assert!(diag.help.as_ref().unwrap().contains("bug"));
+        assert!(diag.labels.is_some());
+    }
+
+    #[test]
+    fn test_internal_error_without_context() {
+        let err = LashError::internal("unexpected null pointer", None);
+        assert_eq!(err.code(), codes::E_INTERNAL);
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.labels, None);
+        assert!(diag.help.is_some());
+    }
+
+    // ===== Display Trait Tests =====
+
+    #[test]
+    fn test_parse_error_display() {
+        let err = LashError::parse_invalid_checkbox(PathBuf::from("test.md"), 5, 3, "[*] invalid");
+        let display = format!("{err}");
+        assert!(display.contains("parse error"));
+        assert!(display.contains("invalid checkbox syntax"));
+    }
+
+    #[test]
+    fn test_lint_error_display() {
+        let err = LashError::lint_duplicate_id(PathBuf::from("test.md"), 10, 5, "task-id", 5);
+        let display = format!("{err}");
+        assert!(display.contains("lint error"));
+        assert!(display.contains("task-id"));
+    }
+
+    #[test]
+    fn test_index_error_display() {
+        let err = LashError::index_corrupted("details");
+        let display = format!("{err}");
+        assert!(display.contains("index error"));
+        assert!(display.contains("corrupted"));
+    }
+
+    #[test]
+    fn test_dependency_error_display() {
+        let err = LashError::dep_not_found(PathBuf::from("test.md"), 5, 3, "path/to/missing.md#id");
+        let display = format!("{err}");
+        assert!(display.contains("dependency error"));
+    }
+
+    #[test]
+    fn test_query_error_display() {
+        let err = LashError::query_invalid_syntax("@bad");
+        let display = format!("{err}");
+        assert!(display.contains("query error"));
+    }
+
+    #[test]
+    fn test_config_error_display() {
+        let err = LashError::config_missing_index();
+        let display = format!("{err}");
+        assert!(display.contains("configuration error"));
+    }
+
+    #[test]
+    fn test_io_error_display() {
+        let err = LashError::io_file_not_found(PathBuf::from("missing.md"));
+        let display = format!("{err}");
+        assert!(display.contains("I/O error"));
+    }
+
+    #[test]
+    fn test_internal_error_display() {
+        let err = LashError::internal("unexpected", None);
+        let display = format!("{err}");
+        assert!(display.contains("internal error"));
+    }
+
+    // ===== Location Tests =====
+
+    #[test]
+    fn test_location_with_span() {
+        let loc = Location::new(PathBuf::from("test.md"), 5, 10).with_span(20, 30);
+        assert_eq!(loc.span, Some((20, 30)));
+        assert_eq!(loc.line, Some(5));
+        assert_eq!(loc.column, Some(10));
+    }
+
+    #[test]
+    fn test_location_display_without_column() {
+        let mut loc = Location::new(PathBuf::from("test.md"), 10, 5);
+        loc.column = None;
+        let display = format!("{loc}");
+        assert!(display.contains("test.md"));
+        assert!(display.contains("10"));
+        assert!(!display.contains(":5"));
+    }
+
+    #[test]
+    fn test_location_display_file_only() {
+        let loc = Location::file_only(PathBuf::from("test.md"));
+        let display = format!("{loc}");
+        assert_eq!(display, "test.md");
+    }
+
+    // ===== Diagnostic Tests =====
+
+    #[test]
+    fn test_diagnostic_display_full() {
+        let diag = Diagnostic {
+            code: codes::E_LINT_DEPTH_EXCEEDED,
+            severity: Severity::Error,
+            message: "Too deep".to_string(),
+            location: Some(Location::new(PathBuf::from("test.md"), 10, 5)),
+            snippet: Some("- [ ] nested task".to_string()),
+            help: Some("Flatten hierarchy".to_string()),
+            labels: Some(vec![("context".to_string(), "level 5".to_string())]),
+        };
+
+        let display = format!("{diag}");
+        assert!(display.contains("E_LINT_DEPTH_EXCEEDED"));
+        assert!(display.contains("error"));
+        assert!(display.contains("Too deep"));
+        assert!(display.contains("test.md:10:5"));
+        assert!(display.contains("snippet"));
+        assert!(display.contains("help"));
+        assert!(display.contains("context"));
+    }
+
+    #[test]
+    fn test_diagnostic_display_minimal() {
+        let diag = Diagnostic {
+            code: codes::E_INTERNAL,
+            severity: Severity::Error,
+            message: "Internal error".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+        };
+
+        let display = format!("{diag}");
+        assert!(display.contains("E_INTERNAL"));
+        assert!(display.contains("Internal error"));
+        assert!(!display.contains("at "));
+        assert!(!display.contains("snippet:"));
+        assert!(!display.contains("help:"));
+    }
+
+    #[test]
+    fn test_diagnostic_json_serialization_full() {
+        let diag = Diagnostic {
+            code: codes::E_PARSE_INVALID_CHECKBOX,
+            severity: Severity::Error,
+            message: "Invalid checkbox".to_string(),
+            location: Some(Location::new(PathBuf::from("test.md"), 5, 3)),
+            snippet: Some("[*] invalid".to_string()),
+            help: Some("Use [ ], [-], [x], or [!]".to_string()),
+            labels: None,
+        };
+
+        let json = diag.to_json().unwrap();
+        assert!(json.contains("E_PARSE_INVALID_CHECKBOX"));
+        assert!(json.contains("test.md"));
+        assert!(json.contains("\"line\": 5"));
+        assert!(json.contains("\"column\": 3"));
+        assert!(json.contains("[*] invalid"));
+    }
+
+    #[test]
+    fn test_diagnostic_json_omits_none_fields() {
+        let diag = Diagnostic {
+            code: codes::E_INTERNAL,
+            severity: Severity::Warning,
+            message: "Warning message".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+        };
+
+        let json = diag.to_json().unwrap();
+        // None fields should not appear in JSON due to skip_serializing_if
+        assert!(!json.contains("\"location\""));
+        assert!(!json.contains("\"snippet\""));
+        assert!(!json.contains("\"help\""));
+        assert!(!json.contains("\"labels\""));
+    }
+
+    // ===== Edge Cases Tests =====
+
+    #[test]
+    fn test_empty_message_handling() {
+        let err = LashError::internal("", None);
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.message, "");
+    }
+
+    #[test]
+    fn test_very_long_message() {
+        let long_msg = "x".repeat(10000);
+        let err = LashError::internal(&long_msg, None);
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.message.len(), 10000);
+    }
+
+    #[test]
+    fn test_special_characters_in_messages() {
+        let err = LashError::lint_unknown_annotation(
+            PathBuf::from("test.md"),
+            1,
+            1,
+            "anno-with-émojis-🚀-and-symbols-©®™",
+        );
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("🚀"));
+        assert!(diag.message.contains("©"));
+    }
+
+    #[test]
+    fn test_newlines_in_messages() {
+        let err = LashError::internal("Line 1\nLine 2\nLine 3", None);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains('\n'));
+    }
+
+    #[test]
+    fn test_path_with_unicode() {
+        let path = PathBuf::from("/path/to/файл.md"); // Cyrillic characters
+        let err = LashError::io_file_not_found(path);
+        let diag = err.to_diagnostic();
+        assert!(diag.message.contains("файл.md"));
+    }
+
+    #[test]
+    fn test_multiple_labels_in_diagnostic() {
+        let labels = vec![
+            ("label1".to_string(), "value1".to_string()),
+            ("label2".to_string(), "value2".to_string()),
+            ("label3".to_string(), "value3".to_string()),
+        ];
+        let diag = Diagnostic {
+            code: codes::E_INTERNAL,
+            severity: Severity::Error,
+            message: "Test".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+        }
+        .with_labels(labels);
+
+        let display = format!("{diag}");
+        assert!(display.contains("label1: value1"));
+        assert!(display.contains("label2: value2"));
+        assert!(display.contains("label3: value3"));
+    }
+
+    #[test]
+    fn test_diagnostic_builder_chaining() {
+        let diag = Diagnostic {
+            code: codes::E_PARSE_INVALID_CHECKBOX,
+            severity: Severity::Error,
+            message: "Test".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+        }
+        .with_help("Help text")
+        .with_snippet("Code snippet")
+        .with_labels(vec![("key".to_string(), "value".to_string())]);
+
+        assert_eq!(diag.help, Some("Help text".to_string()));
+        assert_eq!(diag.snippet, Some("Code snippet".to_string()));
+        assert!(diag.labels.is_some());
+    }
+
+    // ===== Exit Code Equality and Copy Tests =====
+
+    #[test]
+    fn test_exit_code_equality() {
+        assert_eq!(ExitCode::Success, ExitCode::Success);
+        assert_ne!(ExitCode::Success, ExitCode::GeneralError);
+        assert_eq!(ExitCode::LintError, ExitCode::LintError);
+    }
+
+    #[test]
+    fn test_exit_code_clone_and_copy() {
+        let code = ExitCode::LintError;
+        let cloned = code;
+        assert_eq!(code, cloned);
+        assert_eq!(code.as_i32(), cloned.as_i32());
+    }
+
+    // ===== Severity Serialization Tests =====
+
+    #[test]
+    fn test_severity_serialization() {
+        let json = serde_json::to_string(&Severity::Error).unwrap();
+        assert_eq!(json, "\"error\"");
+
+        let json = serde_json::to_string(&Severity::Warning).unwrap();
+        assert_eq!(json, "\"warning\"");
+
+        let json = serde_json::to_string(&Severity::Info).unwrap();
+        assert_eq!(json, "\"info\"");
+
+        let json = serde_json::to_string(&Severity::Hint).unwrap();
+        assert_eq!(json, "\"hint\"");
+    }
+
+    #[test]
+    fn test_severity_deserialization() {
+        let sev: Severity = serde_json::from_str("\"error\"").unwrap();
+        assert_eq!(sev, Severity::Error);
+
+        let sev: Severity = serde_json::from_str("\"warning\"").unwrap();
+        assert_eq!(sev, Severity::Warning);
+    }
+
+    // ===== Location Equality Tests =====
+
+    #[test]
+    fn test_location_equality() {
+        let loc1 = Location::new(PathBuf::from("test.md"), 10, 5);
+        let loc2 = Location::new(PathBuf::from("test.md"), 10, 5);
+        assert_eq!(loc1, loc2);
+
+        let loc3 = Location::new(PathBuf::from("test.md"), 10, 6);
+        assert_ne!(loc1, loc3);
+    }
+
+    #[test]
+    fn test_location_with_different_spans() {
+        let loc1 = Location::new(PathBuf::from("test.md"), 5, 3).with_span(10, 20);
+        let loc2 = Location::new(PathBuf::from("test.md"), 5, 3).with_span(10, 30);
+        assert_ne!(loc1, loc2);
+    }
+
+    // ===== Error Code Access Tests =====
+
+    #[test]
+    fn test_all_error_variants_return_correct_codes() {
+        let test_cases = vec![
+            (
+                LashError::Parse {
+                    code: codes::E_PARSE_INVALID_CHECKBOX,
+                    message: "test".to_string(),
+                    location: None,
+                    snippet: None,
+                    help: None,
+                },
+                codes::E_PARSE_INVALID_CHECKBOX,
+            ),
+            (
+                LashError::Lint {
+                    code: codes::E_LINT_DUPLICATE_ID,
+                    message: "test".to_string(),
+                    location: None,
+                    snippet: None,
+                    help: None,
+                },
+                codes::E_LINT_DUPLICATE_ID,
+            ),
+            (
+                LashError::Index {
+                    code: codes::E_INDEX_CORRUPTED,
+                    message: "test".to_string(),
+                    context: None,
+                    help: None,
+                },
+                codes::E_INDEX_CORRUPTED,
+            ),
+            (
+                LashError::Dependency {
+                    code: codes::E_DEP_CYCLE,
+                    message: "test".to_string(),
+                    location: None,
+                    chain: None,
+                    help: None,
+                },
+                codes::E_DEP_CYCLE,
+            ),
+            (
+                LashError::Query {
+                    code: codes::E_QUERY_INVALID_SYNTAX,
+                    message: "test".to_string(),
+                    help: None,
+                },
+                codes::E_QUERY_INVALID_SYNTAX,
+            ),
+            (
+                LashError::Config {
+                    code: codes::E_CONFIG_INVALID_VALUE,
+                    message: "test".to_string(),
+                    path: None,
+                    help: None,
+                },
+                codes::E_CONFIG_INVALID_VALUE,
+            ),
+            (
+                LashError::IO {
+                    code: codes::E_IO_READ_ERROR,
+                    message: "test".to_string(),
+                    path: None,
+                    io_error: None,
+                },
+                codes::E_IO_READ_ERROR,
+            ),
+            (
+                LashError::Internal {
+                    code: codes::E_INTERNAL,
+                    message: "test".to_string(),
+                    context: None,
+                },
+                codes::E_INTERNAL,
+            ),
+        ];
+
+        for (error, expected_code) in test_cases {
+            assert_eq!(error.code(), expected_code);
+        }
+    }
+
+    // ===== Diagnostic to_diagnostic Coverage Tests =====
+
+    #[test]
+    fn test_dependency_diagnostic_with_chain() {
+        let chain = vec![
+            "task1".to_string(),
+            "task2".to_string(),
+            "task3".to_string(),
+        ];
+        let err = LashError::Dependency {
+            code: codes::E_DEP_CYCLE,
+            message: "cycle detected".to_string(),
+            location: Some(Location::new(PathBuf::from("test.md"), 5, 3)),
+            chain: Some(chain.clone()),
+            help: Some("break the cycle".to_string()),
+        };
+
+        let diag = err.to_diagnostic();
+        assert!(diag.labels.is_some());
+        let labels = diag.labels.unwrap();
+        assert_eq!(labels.len(), 1);
+        assert_eq!(labels[0].0, "dependency chain");
+        assert_eq!(labels[0].1, "task1 -> task2 -> task3");
+    }
+
+    #[test]
+    fn test_dependency_diagnostic_without_chain() {
+        let err = LashError::Dependency {
+            code: codes::E_DEP_NOT_FOUND,
+            message: "not found".to_string(),
+            location: None,
+            chain: None,
+            help: None,
+        };
+
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.labels, None);
+    }
+
+    #[test]
+    fn test_index_diagnostic_with_context() {
+        let err = LashError::Index {
+            code: codes::E_INDEX_CORRUPTED,
+            message: "corrupted".to_string(),
+            context: Some("integrity check failed".to_string()),
+            help: Some("rebuild".to_string()),
+        };
+
+        let diag = err.to_diagnostic();
+        assert!(diag.labels.is_some());
+        let labels = diag.labels.unwrap();
+        assert_eq!(labels[0].0, "context");
+    }
+
+    #[test]
+    fn test_index_diagnostic_without_context() {
+        let err = LashError::Index {
+            code: codes::E_INDEX_OUT_OF_SYNC,
+            message: "out of sync".to_string(),
+            context: None,
+            help: None,
+        };
+
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.labels, None);
+    }
+
+    #[test]
+    fn test_config_diagnostic_with_path() {
+        let err = LashError::Config {
+            code: codes::E_CONFIG_PARSE_ERROR,
+            message: "parse error".to_string(),
+            path: Some(PathBuf::from("config.toml")),
+            help: None,
+        };
+
+        let diag = err.to_diagnostic();
+        assert!(diag.location.is_some());
+        let loc = diag.location.unwrap();
+        assert_eq!(loc.file_path, PathBuf::from("config.toml"));
+        assert_eq!(loc.line, None);
+        assert_eq!(loc.column, None);
+    }
+
+    #[test]
+    fn test_config_diagnostic_without_path() {
+        let err = LashError::Config {
+            code: codes::E_CONFIG_INVALID_VALUE,
+            message: "invalid value".to_string(),
+            path: None,
+            help: None,
+        };
+
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.location, None);
+    }
+
+    #[test]
+    fn test_io_diagnostic_with_path_and_error() {
+        let err = LashError::IO {
+            code: codes::E_IO_READ_ERROR,
+            message: "read failed".to_string(),
+            path: Some(PathBuf::from("file.md")),
+            io_error: Some("permission denied".to_string()),
+        };
+
+        let diag = err.to_diagnostic();
+        assert!(diag.location.is_some());
+        assert!(diag.labels.is_some());
+        let labels = diag.labels.unwrap();
+        assert_eq!(labels[0].0, "underlying error");
+        assert_eq!(labels[0].1, "permission denied");
+    }
+
+    #[test]
+    fn test_io_diagnostic_without_io_error() {
+        let err = LashError::IO {
+            code: codes::E_IO_FILE_NOT_FOUND,
+            message: "not found".to_string(),
+            path: Some(PathBuf::from("missing.md")),
+            io_error: None,
+        };
+
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.labels, None);
+    }
+
+    #[test]
+    fn test_internal_diagnostic_always_has_help() {
+        let err = LashError::Internal {
+            code: codes::E_INTERNAL,
+            message: "internal error".to_string(),
+            context: None,
+        };
+
+        let diag = err.to_diagnostic();
+        assert!(diag.help.is_some());
+        assert!(diag.help.unwrap().contains("bug"));
+    }
 }
