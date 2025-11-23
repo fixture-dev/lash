@@ -1,5 +1,95 @@
 # Lash Development Log
 
+## 2025-11-23 - Fix Windows CI Test Failure (Path Separator Issue)
+
+### Summary
+Resolved Windows CI test failures caused by platform-specific path separator handling in the `walker::tests::test_gitignore_respect` test. The root cause was a cross-platform path comparison issue where Windows uses backslashes but the test expected Unix-style forward slashes.
+
+**Commit:** `7b966dc`
+
+### Root Cause Analysis
+
+**Problem:**
+- CI failing on Windows (both `windows-latest, stable` and `windows-latest, beta`) with test assertion failure
+- Test `walker::tests::test_gitignore_respect` panicked at line 671
+- Assertion failed: `paths.contains(&"included/file.md".to_string())`
+- All macOS and Ubuntu tests passing successfully
+
+**Investigation Findings:**
+
+1. **Platform-Specific Behavior:**
+   - On Windows: `PathBuf.to_string_lossy()` produces `"included\file.md"` (backslash separator)
+   - On Unix/macOS: `PathBuf.to_string_lossy()` produces `"included/file.md"` (forward slash separator)
+   - The test was comparing Windows paths with Unix-style literal strings
+
+2. **Test Structure:**
+   - The test creates a temporary directory structure with `included/file.md`
+   - Converts `PathBuf` to `String` using `to_string_lossy().to_string()`
+   - Asserts that the resulting path string contains Unix-style path `"included/file.md"`
+   - On Windows, the path is `"included\file.md"` which doesn't match the assertion
+
+3. **Not a Production Code Issue:**
+   - Production code correctly uses `PathBuf` throughout (platform-agnostic)
+   - Only the test assertions were platform-specific
+   - No changes needed to core functionality
+
+### Solution Implemented
+
+Updated the test to normalize path separators before comparison:
+
+**Before:**
+```rust
+let paths: Vec<_> = files
+    .iter()
+    .map(|f| f.relative_path.to_string_lossy().to_string())
+    .collect();
+assert!(paths.contains(&"included/file.md".to_string()));
+```
+
+**After:**
+```rust
+let paths: Vec<_> = files
+    .iter()
+    .map(|f| {
+        // Normalize path separators for cross-platform comparison
+        f.relative_path
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_string()
+    })
+    .collect();
+assert!(paths.contains(&"included/file.md".to_string()));
+```
+
+### Why This Fix is Robust and Lasting
+
+1. **Platform-Agnostic Testing:** The fix normalizes paths to a canonical form (forward slashes) that works across all platforms
+2. **No Production Code Changes:** The fix is isolated to test code, so there's zero risk to production behavior
+3. **Standard Practice:** Converting backslashes to forward slashes for path comparison is a common pattern in cross-platform testing
+4. **Forward Compatible:** This approach will continue to work regardless of future Rust or OS updates
+5. **Minimal Impact:** Single-line change to the path mapping logic, easy to understand and maintain
+6. **Precedent Established:** Similar to the earlier fix in commit `99f44f0` for `normalize_path` in resolver.rs
+
+### Files Changed
+
+**Modified:**
+- `crates/lash-db/src/walker.rs` - Added path separator normalization in `test_gitignore_respect`
+
+### Verification
+
+**Local Testing:**
+- Ran `cargo test -p lash-db walker::tests::test_gitignore_respect` - passed
+- Ran full test suite `cargo test --workspace` - all 1080+ tests passed
+- All doctests passed (0 ignored)
+- Clippy clean with `-D warnings`
+
+**Expected CI Behavior:**
+- Windows tests will now pass with normalized path comparisons
+- macOS and Ubuntu tests continue to pass (no regression)
+- The `replace('\\', "/")` is a no-op on Unix systems (no backslashes to replace)
+
+---
+
 ## 2025-11-23 - Fix CI hashFiles Failures on macOS
 
 ### Summary
