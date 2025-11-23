@@ -113,7 +113,8 @@ impl ValidPathResolutionRule {
         }
 
         let normalized: std::path::PathBuf = components.iter().collect();
-        normalized.to_string_lossy().to_string()
+        // Always use forward slashes for cross-platform consistency in markdown files
+        normalized.to_string_lossy().replace('\\', "/")
     }
 }
 
