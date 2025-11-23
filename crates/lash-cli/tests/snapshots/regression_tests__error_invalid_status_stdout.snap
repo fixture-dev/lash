@@ -1,0 +1,7 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: normalized_stdout
+---
+./invalid.md:1:1: error[E_PARSE]: Failed to parse file: parse error: Invalid checkbox status '?': expected one of ' ' (space), 'x', 'X', '-', or '!'
+  1 | # Invalid
+    | ^
