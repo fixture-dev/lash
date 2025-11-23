@@ -1,5 +1,132 @@
 # Lash Development Log
 
+## 2025-11-23 - Complete Testing Infrastructure Setup (Task 1)
+
+### Summary
+Completed Task 1 (Testing Infrastructure Setup) from `tasks/tasks.testing.md`, implementing comprehensive test fixtures, utilities, and database test infrastructure.
+
+**Commit:** `ac39dd3`
+
+### Components Implemented
+
+#### 1. Test Fixture Library
+Created 40 new fixture files organized into three categories:
+
+**Valid Fixtures (13 total):**
+- Existing: `simple-task.md`, `with-labels.md`, `nested-hierarchy.md`, `with-dependencies.md`
+- New edge cases (8 files):
+  - `with-estimates.md` - Time estimation annotations
+  - `with-blockers.md` - Explicit blocker relationships
+  - `with-agent-notes.md` - AI agent guidance annotations
+  - `waived-tasks.md` - Tasks marked as not applicable
+  - `empty-task-list.md` - Valid file with no tasks
+  - `unicode-content.md` - International characters (中文, 日本語, العربية)
+  - `large-task-list.md` - 50 tasks for performance testing
+  - `maximum-nesting.md` - Deep hierarchy testing
+
+**Invalid Fixtures (9 total):**
+- Existing: `unknown-annotation.md`, `bad-checkbox.md`, `depth-exceeded.md`, `broken-dependency.md`
+- New error cases (5 files):
+  - `missing-id.md` - Missing required @id annotation
+  - `duplicate-id.md` - Duplicate task IDs in file
+  - `invalid-status.md` - Invalid @status value
+  - `malformed-annotation.md` - Syntax errors in annotations
+  - `circular-dependency.md` - Self-referencing dependency
+
+**Project Fixtures (3 complete projects, 26 files):**
+- **Small project** (3 files): Minimal viable project for quick integration tests
+- **Medium project** (10 files): Fullstack application with frontend, backend, docs, tests
+- **Large project** (9 files): Enterprise-scale with microservices, mobile, infrastructure
+
+#### 2. CLI Test Utilities
+Created `crates/lash-cli/tests/common/mod.rs` with builder-pattern utilities:
+
+**TestProject Builder:**
+```rust
+TestProject::builder()
+    .with_index("root", "Project")
+    .with_task_file("feature.md", "feat", "Feature")
+    .build()
+```
+
+**Helper Functions:**
+- `TestProject::from_fixture(size)` - Load small/medium/large fixture projects
+- `assert_file_contains(path, expected)` - Check file contains substring
+- `assert_file_contents(path, expected)` - Verify exact file contents
+- `run_lash_command()` - Execute lash CLI binary with arguments
+- `parse_json_output(json_str)` - Parse and validate JSON output
+- `copy_dir_recursive(src, dst)` - Recursive directory copying
+
+Added 11 tests in `test_helpers.rs` to validate all utilities.
+
+#### 3. Database Test Infrastructure
+Created `crates/lash-db/tests/common/mod.rs` with database testing utilities:
+
+**TestDatabase (430 lines):**
+- `in_memory()` - Fast in-memory SQLite for unit tests
+- `file_based()` - Persistent file-based SQLite for integration tests
+- `at_path(path)` - Custom path database
+- Automatic cleanup with Drop implementation
+
+**DbInspector:**
+- Count methods: `count_files()`, `count_tasks()`, `count_labels()`, `count_dependencies()`
+- Existence checks: `has_file(path)`, `has_task(id)`, `has_label(name)`
+- List methods: `get_file_paths()`, `get_task_ids()`, `get_labels()`
+- Query methods: `get_task_status(id)`, `get_task_labels(task_id)`
+- Debug helper: `print_stats()` for troubleshooting
+
+**Assert Helpers:**
+```rust
+assert_file_count(conn, 5);
+assert_has_task(conn, "feat:setup");
+assert_has_label(conn, "backend");
+```
+
+Added 6 tests in `db_test_helpers.rs` to validate DB infrastructure.
+
+#### 4. Documentation Updates
+- Enhanced `fixtures/README.md` with comprehensive documentation:
+  - Purpose and structure of each fixture
+  - Organization by type (valid/invalid/repos)
+  - Guidelines for adding new fixtures
+  - Usage examples for each project size
+- Updated `tasks/tasks.testing.md` to mark all Task 1 subtasks complete
+
+### Test Results
+- **Total tests:** 1,350 (increased from 920+)
+- **New tests added:** 17 (11 CLI utilities + 6 DB utilities)
+- **Status:** All tests passing, zero failures
+- **Quality:** Zero clippy warnings, formatting passes
+
+### Files Modified/Created
+**Modified:**
+- `crates/lash-cli/tests/common/mod.rs` (+259 lines)
+- `crates/lash-cli/tests/test_helpers.rs` (+70 lines)
+- `crates/lash-cli/tests/fixtures/README.md` (enhanced)
+- `tasks/tasks.testing.md` (checkboxes marked complete)
+
+**Created:**
+- `crates/lash-db/tests/common/mod.rs` (430 lines)
+- `crates/lash-db/tests/db_test_helpers.rs` (110 lines)
+- 8 valid fixture files
+- 5 invalid fixture files
+- 3 complete project fixtures (26 total files)
+
+### Design Principles Applied
+- **DRY:** Shared utilities in `tests/common/mod.rs` eliminate boilerplate
+- **Builder pattern:** Fluent API for readable test setup
+- **Type safety:** Strong typing prevents common test mistakes
+- **Documentation:** All utilities have doctests and examples
+- **Cross-platform:** Uses `tempfile` crate for portable temp directories
+
+### Next Steps
+Task 1 is now complete. Ready to proceed with:
+- Task 2: Unit Tests (ongoing across modules)
+- Task 3: Integration Tests (major workflow testing)
+- Task 4: E2E CLI Tests (already substantial progress with 33 tests)
+
+---
+
 ## 2025-11-23 - Fix Remaining Windows CI Issues (Clippy Warning + Hardcoded Paths)
 
 ### Summary
