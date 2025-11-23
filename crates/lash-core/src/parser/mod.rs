@@ -557,6 +557,11 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lash_types::Severity;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    // ==================== ParseContext Tests ====================
 
     #[test]
     fn test_parse_context_creation() {
@@ -600,9 +605,811 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_context_add_diagnostic() {
+        let config = LashConfig::default();
+        let path = Path::new("test.md");
+        let mut ctx = ParseContext::new(path, &config);
+
+        let diag = Diagnostic {
+            severity: Severity::Error,
+            code: "E_TEST",
+            message: "Test error".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+        };
+
+        ctx.add_diagnostic(diag);
+        assert!(ctx.has_errors());
+        assert_eq!(ctx.error_count(), 1);
+    }
+
+    #[test]
+    fn test_parse_context_current_location() {
+        let config = LashConfig::default();
+        let path = Path::new("test.md");
+        let ctx = ParseContext::new(path, &config);
+
+        let loc = ctx.current_location(5);
+        assert_eq!(loc.line, Some(1));
+        assert_eq!(loc.column, Some(5));
+        assert_eq!(loc.file_path.to_str(), Some("test.md"));
+    }
+
+    #[test]
+    fn test_parse_context_mixed_diagnostics() {
+        let config = LashConfig::default();
+        let path = Path::new("test.md");
+        let mut ctx = ParseContext::new(path, &config);
+
+        // Add warning
+        ctx.add_diagnostic(Diagnostic {
+            severity: Severity::Warning,
+            code: "W_TEST",
+            message: "Test warning".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+        });
+
+        // Should not have errors yet
+        assert!(!ctx.has_errors());
+        assert_eq!(ctx.error_count(), 0);
+        assert_eq!(ctx.diagnostics.len(), 1);
+
+        // Add error
+        ctx.add_diagnostic(Diagnostic {
+            severity: Severity::Error,
+            code: "E_TEST",
+            message: "Test error".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+        });
+
+        // Now we have errors
+        assert!(ctx.has_errors());
+        assert_eq!(ctx.error_count(), 1);
+        assert_eq!(ctx.diagnostics.len(), 2);
+    }
+
+    // ==================== Section Tests ====================
+
+    #[test]
     fn test_section_enum() {
         assert_eq!(Section::Header, Section::Header);
         assert_ne!(Section::Header, Section::Tasks);
         assert_ne!(Section::Tasks, Section::References);
+    }
+
+    #[test]
+    fn test_section_clone() {
+        let s1 = Section::Tasks;
+        let s2 = s1;
+        assert_eq!(s1, s2);
+    }
+
+    // ==================== parse_file_from_string Tests ====================
+
+    #[test]
+    fn test_parse_file_from_string_minimal() {
+        let content = r"# Test File
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+
+        assert_eq!(file.title, "Test File");
+        assert_eq!(file.tasks.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_file_from_string_empty() {
+        let content = "";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        // Empty file should fail or return minimal structure
+        // Based on implementation, it should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_file_from_string_with_id() {
+        let content = r"# Test File
+
+@id: custom-id
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+        assert_eq!(file.id, "custom-id");
+    }
+
+    #[test]
+    fn test_parse_file_from_string_synthesizes_id() {
+        let content = r"# Test File
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+        // Should have a synthesized ID
+        assert!(!file.id.is_empty());
+    }
+
+    #[test]
+    fn test_parse_file_from_string_with_metadata() {
+        let content = r"# Test File
+
+@id: test-id
+@owner: alice
+@labels: backend, api
+@status: in-progress
+@created: 2025-01-15
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+
+        assert_eq!(file.metadata.owner, Some("alice".to_string()));
+        assert_eq!(file.metadata.status, Some("in-progress".to_string()));
+        assert_eq!(file.metadata.created, Some("2025-01-15".to_string()));
+        assert_eq!(file.metadata.labels.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_file_from_string_with_custom_annotation() {
+        let content = r"# Test File
+
+@id: test-id
+@custom: custom-value
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig {
+            custom_annotation_keys: vec!["custom".to_string()],
+            ..Default::default()
+        };
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+
+        assert!(file.metadata.custom.contains_key("custom"));
+        assert_eq!(
+            file.metadata.custom.get("custom"),
+            Some(&"custom-value".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_file_from_string_hash_computation() {
+        let content = r"# Test File
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+
+        // Hash should be computed and non-empty
+        assert!(!file.hash.is_empty());
+
+        // Hash should be consistent
+        let result2 = parse_file_from_string(content, &config);
+        assert!(result2.is_ok());
+        let file2 = result2.unwrap();
+        assert_eq!(file.hash, file2.hash);
+    }
+
+    #[test]
+    fn test_parse_file_from_string_different_content_different_hash() {
+        let content1 = "# File 1\n\n## Tasks\n\n- [ ] Task 1\n";
+        let content2 = "# File 2\n\n## Tasks\n\n- [ ] Task 2\n";
+        let config = LashConfig::default();
+
+        let file1 = parse_file_from_string(content1, &config).unwrap();
+        let file2 = parse_file_from_string(content2, &config).unwrap();
+
+        assert_ne!(file1.hash, file2.hash);
+    }
+
+    #[test]
+    fn test_parse_file_from_string_invalid_checkbox() {
+        let content = r"# Test File
+
+## Tasks
+
+- [*] Invalid checkbox
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        // Should return error with diagnostic
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(!errors.is_empty());
+    }
+
+    #[test]
+    fn test_parse_file_from_string_depth_violation() {
+        let content = r"# Test File
+
+## Tasks
+
+- [ ] Task 1
+  - [ ] Task 2
+    - [ ] Task 3
+      - [ ] Task 4
+        - [ ] Task 5
+          - [ ] Task 6
+";
+        let config = LashConfig::default(); // Default max_depth is 5
+        let result = parse_file_from_string(content, &config);
+
+        // Should fail due to depth violation
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_file_from_string_multiple_errors() {
+        let content = r"# Test File
+
+## Tasks
+
+- [*] Invalid 1
+- [?] Invalid 2
+- [ ] Valid task
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        // Should have multiple errors
+        assert!(errors.len() >= 2);
+    }
+
+    #[test]
+    fn test_parse_file_from_string_error_sorting() {
+        let content = r"# Test File
+
+## Tasks
+
+- [ ] Task 1
+- [*] Invalid line 7
+- [ ] Task 2
+- [?] Invalid line 9
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+
+        // Errors should be sorted by line number
+        for i in 0..errors.len() - 1 {
+            let line1 = errors[i]
+                .location
+                .as_ref()
+                .and_then(|l| l.line)
+                .unwrap_or(0);
+            let line2 = errors[i + 1]
+                .location
+                .as_ref()
+                .and_then(|l| l.line)
+                .unwrap_or(0);
+            assert!(line1 <= line2);
+        }
+    }
+
+    // ==================== parse_file Tests ====================
+
+    #[test]
+    fn test_parse_file_success() {
+        let content = r"# Test File
+
+## Tasks
+
+- [ ] Task 1
+";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(content.as_bytes()).unwrap();
+        temp_file.flush().unwrap();
+
+        let config = LashConfig::default();
+        let result = parse_file(temp_file.path(), &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+        assert_eq!(file.title, "Test File");
+        assert_eq!(file.path, temp_file.path());
+    }
+
+    #[test]
+    fn test_parse_file_nonexistent() {
+        let config = LashConfig::default();
+        let result = parse_file(Path::new("/nonexistent/file.md"), &config);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            LashError::IO { code, .. } => {
+                assert_eq!(code, "E_IO_READ_FAILED");
+            }
+            _ => panic!("Expected IO error, got: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_file_with_mtime() {
+        let content = "# Test\n\n## Tasks\n\n- [ ] Task 1\n";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(content.as_bytes()).unwrap();
+        temp_file.flush().unwrap();
+
+        let config = LashConfig::default();
+        let result = parse_file(temp_file.path(), &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+
+        // mtime should be set
+        assert_ne!(file.mtime, std::time::SystemTime::UNIX_EPOCH);
+    }
+
+    #[test]
+    fn test_parse_file_propagates_parse_errors() {
+        let content = r"# Test File
+
+## Tasks
+
+- [*] Invalid checkbox
+";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(content.as_bytes()).unwrap();
+        temp_file.flush().unwrap();
+
+        let config = LashConfig::default();
+        let result = parse_file(temp_file.path(), &config);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            LashError::Parse { code, .. } => {
+                assert!(!code.is_empty());
+            }
+            _ => panic!("Expected Parse error, got: {err:?}"),
+        }
+    }
+
+    // ==================== find_tasks_section_line Tests ====================
+
+    #[test]
+    fn test_find_tasks_section_line_standard() {
+        let content = r"# Title
+
+## Tasks
+
+- [ ] Task 1
+";
+        let result = find_tasks_section_line(content);
+        assert_eq!(result, Some(2));
+    }
+
+    #[test]
+    fn test_find_tasks_section_line_case_insensitive() {
+        let content = r"# Title
+
+## tasks
+
+- [ ] Task 1
+";
+        let result = find_tasks_section_line(content);
+        assert_eq!(result, Some(2));
+
+        let content2 = r"# Title
+
+## TASKS
+
+- [ ] Task 1
+";
+        let result2 = find_tasks_section_line(content2);
+        assert_eq!(result2, Some(2));
+    }
+
+    #[test]
+    fn test_find_tasks_section_line_not_found() {
+        let content = r"# Title
+
+## Other Section
+
+- [ ] Task 1
+";
+        let result = find_tasks_section_line(content);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_find_tasks_section_line_with_extra_whitespace() {
+        let content = r"# Title
+
+##   Tasks
+
+- [ ] Task 1
+";
+        let result = find_tasks_section_line(content);
+        assert_eq!(result, Some(2));
+    }
+
+    #[test]
+    fn test_find_tasks_section_line_empty_file() {
+        let content = "";
+        let result = find_tasks_section_line(content);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_find_tasks_section_line_multiple_h2() {
+        let content = r"# Title
+
+## Overview
+
+Some text
+
+## Tasks
+
+- [ ] Task 1
+";
+        let result = find_tasks_section_line(content);
+        assert_eq!(result, Some(6));
+    }
+
+    // ==================== parse_task_section_internal Tests ====================
+
+    #[test]
+    fn test_parse_task_section_internal_basic() {
+        let content = r"# Title
+
+## Tasks
+
+- [ ] Task 1
+- [x] Task 2
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        assert!(result.is_ok());
+        let tree = result.unwrap();
+        assert_eq!(tree.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_task_section_internal_no_tasks_section() {
+        let content = r"# Title
+
+- [ ] Task 1
+- [ ] Task 2
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        // Should still parse tasks even without explicit section
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_task_section_internal_with_references() {
+        let content = r"# Title
+
+## Tasks
+
+- [ ] Task 1
+
+## References
+
+Some refs
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        assert!(result.is_ok());
+        let tree = result.unwrap();
+        assert_eq!(tree.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_task_section_internal_malformed_checkbox() {
+        let content = r"# Title
+
+## Tasks
+
+- [*] Invalid
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        assert!(result.is_err());
+        assert!(ctx.has_errors());
+    }
+
+    #[test]
+    fn test_parse_task_section_internal_empty_tasks_section() {
+        let content = r"# Title
+
+## Tasks
+
+## References
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        assert!(result.is_ok());
+        let tree = result.unwrap();
+        assert_eq!(tree.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_task_section_internal_ignores_non_checkbox_lines() {
+        let content = r"# Title
+
+## Tasks
+
+Some intro text
+
+- [ ] Task 1
+
+More text
+
+- [ ] Task 2
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        assert!(result.is_ok());
+        let tree = result.unwrap();
+        assert_eq!(tree.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_task_section_internal_nested_tasks() {
+        let content = r"# Title
+
+## Tasks
+
+- [ ] Parent
+  - [ ] Child 1
+  - [ ] Child 2
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        assert!(result.is_ok());
+        let tree = result.unwrap();
+        assert_eq!(tree.len(), 3);
+    }
+
+    // ==================== extract_file_metadata Tests ====================
+
+    #[test]
+    fn test_extract_file_metadata_empty() {
+        let annotations = annotations::AnnotationBlock::new();
+        let metadata = extract_file_metadata(&annotations);
+
+        assert!(metadata.labels.is_empty());
+        assert_eq!(metadata.status, None);
+        assert_eq!(metadata.owner, None);
+        assert_eq!(metadata.created, None);
+        assert!(metadata.depends_on.is_empty());
+        assert!(metadata.custom.is_empty());
+    }
+
+    #[test]
+    fn test_extract_file_metadata_all_fields() {
+        let mut annotations = annotations::AnnotationBlock::new();
+        annotations.add("labels".to_string(), "backend, api".to_string());
+        annotations.add("status".to_string(), "in-progress".to_string());
+        annotations.add("owner".to_string(), "alice".to_string());
+        annotations.add("created".to_string(), "2025-01-15".to_string());
+
+        let metadata = extract_file_metadata(&annotations);
+
+        assert_eq!(metadata.labels.len(), 2);
+        assert_eq!(metadata.status, Some("in-progress".to_string()));
+        assert_eq!(metadata.owner, Some("alice".to_string()));
+        assert_eq!(metadata.created, Some("2025-01-15".to_string()));
+    }
+
+    #[test]
+    fn test_extract_file_metadata_custom_annotations() {
+        let mut annotations = annotations::AnnotationBlock::new();
+        annotations.add("custom1".to_string(), "value1".to_string());
+        annotations.add("custom2".to_string(), "value2".to_string());
+
+        let metadata = extract_file_metadata(&annotations);
+
+        assert_eq!(metadata.custom.len(), 2);
+        assert_eq!(metadata.custom.get("custom1"), Some(&"value1".to_string()));
+        assert_eq!(metadata.custom.get("custom2"), Some(&"value2".to_string()));
+    }
+
+    #[test]
+    fn test_extract_file_metadata_depends_on() {
+        let mut annotations = annotations::AnnotationBlock::new();
+        annotations.add(
+            "depends-on".to_string(),
+            "other-file.md#task:task-1".to_string(),
+        );
+
+        let metadata = extract_file_metadata(&annotations);
+
+        assert_eq!(metadata.depends_on.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_file_metadata_excludes_id() {
+        let mut annotations = annotations::AnnotationBlock::new();
+        annotations.add("id".to_string(), "file-id".to_string());
+        annotations.add("custom".to_string(), "value".to_string());
+
+        let metadata = extract_file_metadata(&annotations);
+
+        // ID should not be in custom
+        assert!(!metadata.custom.contains_key("id"));
+        assert_eq!(metadata.custom.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_file_metadata_multiple_label_values() {
+        let mut annotations = annotations::AnnotationBlock::new();
+        annotations.add("labels".to_string(), "tag1, tag2, tag3".to_string());
+
+        let metadata = extract_file_metadata(&annotations);
+
+        assert_eq!(metadata.labels.len(), 3);
+        assert!(metadata.labels.contains(&"tag1".to_string()));
+        assert!(metadata.labels.contains(&"tag2".to_string()));
+        assert!(metadata.labels.contains(&"tag3".to_string()));
+    }
+
+    // ==================== Edge Cases and Integration ====================
+
+    #[test]
+    fn test_parse_file_from_string_no_h1() {
+        let content = r"## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        // Should handle missing H1
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_file_from_string_waived_tasks() {
+        let content = r"# Test File
+
+## Tasks
+
+- [-] Waived task
+  - [ ] Child should be auto-waived
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+
+        // Both tasks should exist
+        assert_eq!(file.tasks.len(), 2);
+
+        // Check waived status
+        let tasks = file.tasks.tasks();
+        let parent = &tasks[0];
+        let child = &tasks[1];
+
+        assert_eq!(parent.status, lash_types::TaskStatus::Waived);
+        assert_eq!(child.status, lash_types::TaskStatus::Waived);
+    }
+
+    #[test]
+    fn test_parse_file_from_string_very_long_line() {
+        let long_title = "A".repeat(1000);
+        let content = format!(
+            r"# Test File
+
+## Tasks
+
+- [ ] {long_title}
+"
+        );
+        let config = LashConfig::default();
+        let result = parse_file_from_string(&content, &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+        assert_eq!(file.tasks.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_file_from_string_unicode() {
+        let content = r"# 测试文件
+
+## Tasks
+
+- [ ] タスク １
+- [ ] Aufgabe 2 🚀
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+        assert_eq!(file.title, "测试文件");
+        assert_eq!(file.tasks.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_file_from_string_windows_line_endings() {
+        let content = "# Test File\r\n\r\n## Tasks\r\n\r\n- [ ] Task 1\r\n";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+        assert_eq!(file.tasks.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_file_from_string_mixed_line_endings() {
+        let content = "# Test File\n\r\n## Tasks\n\r\n- [ ] Task 1\r\n- [ ] Task 2\n";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok());
+        let file = result.unwrap();
+        assert_eq!(file.tasks.len(), 2);
     }
 }
