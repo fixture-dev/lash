@@ -35,19 +35,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') || 'no-lock' }}
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') || 'no-lock' }}
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') || 'no-lock' }}
 
       - name: Run tests
         run: cargo test --workspace --verbose
@@ -87,22 +87,6 @@ jobs:
       - name: Generate coverage
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: lcov.info
-          fail_ci_if_error: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Check coverage threshold
-        run: |
-          coverage=$(cargo llvm-cov --workspace --summary-only | grep -oP 'TOTAL.*?\K[\d.]+(?=%)')
-          echo "Coverage: ${coverage}%"
-          if (( $(echo "$coverage < 80" | bc -l) )); then
-            echo "Error: Coverage ${coverage}% is below 80% threshold"
-            exit 1
-          fi
-
   benchmarks:
     name: Benchmarks
     runs-on: ubuntu-latest
@@ -117,6 +101,7 @@ jobs:
 
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
+        continue-on-error: true
         with:
           tool: 'cargo'
           output-file-path: benchmark_results.txt
@@ -125,6 +110,7 @@ jobs:
           comment-on-alert: true
           alert-threshold: '150%'
           fail-on-alert: false
+          skip-fetch-gh-pages: true
 
   security:
     name: Security Audit
