@@ -43,22 +43,22 @@ Set up testing infrastructure, fixtures, and utilities for all test types.
   - [x] `insta` for snapshot testing
   - [x] `rstest` for parameterized tests (optional)
   - [-] `mockall` for mocking (minimal use - not needed, following CLAUDE.md guidance)
-- [ ] Create test fixture library
-  - [ ] Valid task files (various scenarios)
-  - [ ] Invalid task files (for error testing)
-  - [ ] Small, medium, large projects (for performance)
-  - [ ] Projects with dependencies, cycles, etc.
-  - [ ] Store in `tests/fixtures/`
-- [ ] Implement test utilities
-  - [ ] `TestProject` builder for creating temp projects
-  - [ ] `assert_file_contents()` helper
-  - [ ] `run_lash_command()` helper for CLI tests
-  - [ ] `parse_json_output()` helper
-  - [ ] DB inspection utilities
-- [ ] Set up test databases
-  - [ ] In-memory SQLite for fast unit tests
-  - [ ] File-based SQLite for integration tests
-  - [ ] Cleanup strategy (temp dirs)
+- [x] Create test fixture library
+  - [x] Valid task files (various scenarios)
+  - [x] Invalid task files (for error testing)
+  - [x] Small, medium, large projects (for performance)
+  - [x] Projects with dependencies, cycles, etc.
+  - [x] Store in `tests/fixtures/`
+- [x] Implement test utilities
+  - [x] `TestProject` builder for creating temp projects
+  - [x] `assert_file_contents()` helper
+  - [x] `run_lash_command()` helper for CLI tests
+  - [x] `parse_json_output()` helper
+  - [x] DB inspection utilities
+- [x] Set up test databases
+  - [x] In-memory SQLite for fast unit tests
+  - [x] File-based SQLite for integration tests
+  - [x] Cleanup strategy (temp dirs)
 - [x] Configure coverage tracking
   - [x] Use `cargo-llvm-cov`
   - [x] Generate coverage reports (documented in docs/TESTING.md)
