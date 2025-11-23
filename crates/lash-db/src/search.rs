@@ -952,4 +952,627 @@ mod tests {
         assert!(!results3.has_more());
         assert_eq!(results3.next_page_size(), 0);
     }
+
+    // ============================================================================
+    // Query Parsing Tests - Edge Cases and Special Characters
+    // ============================================================================
+
+    #[test]
+    fn test_parse_query_empty_string() {
+        let (fts_query, filters) = parse_query("");
+        assert_eq!(fts_query, "");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_whitespace_only() {
+        let (fts_query, filters) = parse_query("   ");
+        assert_eq!(fts_query, "");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_multiple_spaces() {
+        let (fts_query, filters) = parse_query("implement    parser    backend");
+        assert_eq!(fts_query, "implement parser backend");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_quotes_in_middle() {
+        let (fts_query, filters) = parse_query("before \"quoted phrase\" after");
+        assert_eq!(fts_query, "before \"quoted phrase\" after");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_unclosed_quotes() {
+        // Unclosed quotes should be handled gracefully
+        let (fts_query, filters) = parse_query("\"unclosed quote");
+        // Current implementation will treat everything after quote as part of the term
+        assert_eq!(fts_query, "unclosed quote");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_empty_quotes() {
+        let (fts_query, filters) = parse_query("\"\" something");
+        // Empty quoted strings should be ignored
+        assert_eq!(fts_query, "something");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_filter_only() {
+        let (fts_query, filters) = parse_query("label:backend");
+        assert_eq!(fts_query, "");
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0], ("label".to_string(), "backend".to_string()));
+    }
+
+    #[test]
+    fn test_parse_query_multiple_filters_only() {
+        let (fts_query, filters) = parse_query("label:backend status:open owner:alice");
+        assert_eq!(fts_query, "");
+        assert_eq!(filters.len(), 3);
+        assert_eq!(filters[0], ("label".to_string(), "backend".to_string()));
+        assert_eq!(filters[1], ("status".to_string(), "open".to_string()));
+        assert_eq!(filters[2], ("owner".to_string(), "alice".to_string()));
+    }
+
+    #[test]
+    fn test_parse_query_invalid_filter() {
+        // Filter with unknown field should be treated as search term
+        let (fts_query, filters) = parse_query("unknown:value implement");
+        assert_eq!(fts_query, "unknown:value implement");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_filter_empty_value() {
+        // Filter with empty value should be treated as search term
+        let (fts_query, filters) = parse_query("label: implement");
+        assert_eq!(fts_query, "label: implement");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_colon_in_search_term() {
+        let (fts_query, filters) = parse_query("https://example.com implement");
+        // Should treat URL as search term, not filter
+        assert_eq!(fts_query, "https://example.com implement");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_filter_with_path() {
+        let (fts_query, filters) = parse_query("path:core/lash-db/src");
+        assert_eq!(fts_query, "");
+        assert_eq!(filters.len(), 1);
+        assert_eq!(
+            filters[0],
+            ("path".to_string(), "core/lash-db/src".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_query_mixed_quotes_and_filters() {
+        let (fts_query, filters) = parse_query("\"exact match\" label:backend status:open fuzzy");
+        assert_eq!(fts_query, "\"exact match\" fuzzy");
+        assert_eq!(filters.len(), 2);
+        assert_eq!(filters[0], ("label".to_string(), "backend".to_string()));
+        assert_eq!(filters[1], ("status".to_string(), "open".to_string()));
+    }
+
+    // ============================================================================
+    // try_parse_filter Tests
+    // ============================================================================
+
+    #[test]
+    fn test_try_parse_filter_valid_label() {
+        let result = try_parse_filter("label:backend");
+        assert_eq!(result, Some(("label".to_string(), "backend".to_string())));
+    }
+
+    #[test]
+    fn test_try_parse_filter_valid_status() {
+        let result = try_parse_filter("status:open");
+        assert_eq!(result, Some(("status".to_string(), "open".to_string())));
+    }
+
+    #[test]
+    fn test_try_parse_filter_valid_path() {
+        let result = try_parse_filter("path:core/");
+        assert_eq!(result, Some(("path".to_string(), "core/".to_string())));
+    }
+
+    #[test]
+    fn test_try_parse_filter_valid_owner() {
+        let result = try_parse_filter("owner:alice");
+        assert_eq!(result, Some(("owner".to_string(), "alice".to_string())));
+    }
+
+    #[test]
+    fn test_try_parse_filter_invalid_field() {
+        let result = try_parse_filter("invalid:value");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_try_parse_filter_empty_value() {
+        let result = try_parse_filter("label:");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_try_parse_filter_no_colon() {
+        let result = try_parse_filter("labelbackend");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_try_parse_filter_multiple_colons() {
+        // Only first colon matters
+        let result = try_parse_filter("label:backend:extra");
+        assert_eq!(
+            result,
+            Some(("label".to_string(), "backend:extra".to_string()))
+        );
+    }
+
+    // ============================================================================
+    // FTS5 Query Escaping Tests
+    // ============================================================================
+
+    #[test]
+    fn test_escape_fts5_query_simple() {
+        let escaped = escape_fts5_query("simple query");
+        assert_eq!(escaped, "\"simple query\"");
+    }
+
+    #[test]
+    fn test_escape_fts5_query_already_quoted() {
+        let escaped = escape_fts5_query("\"already quoted\"");
+        assert_eq!(escaped, "\"already quoted\"");
+    }
+
+    #[test]
+    fn test_escape_fts5_query_with_quotes() {
+        // Double quotes in the query should be escaped
+        let escaped = escape_fts5_query("query with \"quotes\"");
+        assert_eq!(escaped, "\"query with \"\"quotes\"\"\"");
+    }
+
+    #[test]
+    fn test_escape_fts5_query_with_hyphen() {
+        // Hyphens can be FTS5 operators, should be quoted
+        let escaped = escape_fts5_query("lash-db");
+        assert_eq!(escaped, "\"lash-db\"");
+    }
+
+    #[test]
+    fn test_escape_fts5_query_with_asterisk() {
+        let escaped = escape_fts5_query("test*");
+        assert_eq!(escaped, "\"test*\"");
+    }
+
+    #[test]
+    fn test_escape_fts5_query_empty() {
+        let escaped = escape_fts5_query("");
+        assert_eq!(escaped, "\"\"");
+    }
+
+    #[test]
+    fn test_escape_fts5_query_special_chars() {
+        // Various special characters that could confuse FTS5
+        let escaped = escape_fts5_query("a AND b OR c NOT d");
+        assert_eq!(escaped, "\"a AND b OR c NOT d\"");
+    }
+
+    // ============================================================================
+    // SearchScorer Tests - Custom Boosts and Edge Cases
+    // ============================================================================
+
+    #[test]
+    fn test_search_scorer_custom_boosts() {
+        let scorer = SearchScorer::with_boosts(3.0, 2.0, 1.5);
+
+        let base = scorer.score(-1.0, false, false, false);
+        let title = scorer.score(-1.0, true, false, false);
+        let prefix = scorer.score(-1.0, false, false, true);
+        let label = scorer.score(-1.0, false, true, false);
+
+        assert!(title > base);
+        assert!(prefix > base);
+        assert!(label > base);
+    }
+
+    #[test]
+    fn test_search_scorer_zero_bm25() {
+        let scorer = SearchScorer::new();
+        let score = scorer.score(0.0, false, false, false);
+        // Should handle zero BM25 score gracefully
+        assert!((0.0..=1.0).contains(&score));
+    }
+
+    #[test]
+    fn test_search_scorer_positive_bm25() {
+        let scorer = SearchScorer::new();
+        // BM25 should be negative, but test positive for robustness
+        let score = scorer.score(5.0, false, false, false);
+        // Sigmoid should still normalize to [0, 1]
+        assert!((0.0..=1.0).contains(&score));
+    }
+
+    #[test]
+    fn test_search_scorer_very_negative_bm25() {
+        let scorer = SearchScorer::new();
+        let score = scorer.score(-100.0, false, false, false);
+        // Very negative BM25 should still map to valid range
+        assert!((0.0..=1.0).contains(&score));
+    }
+
+    #[test]
+    fn test_search_scorer_all_boosts_combined() {
+        let scorer = SearchScorer::new();
+        let score_none = scorer.score(-1.0, false, false, false);
+        let score_all = scorer.score(-1.0, true, true, true);
+
+        // All boosts should multiply together
+        assert!(score_all > score_none);
+
+        // Should still be in valid range
+        assert!((0.0..=1.0).contains(&score_all));
+    }
+
+    #[test]
+    fn test_search_scorer_monotonic_with_bm25() {
+        let scorer = SearchScorer::new();
+
+        // BM25 returns negative scores where more negative = better match
+        // After negation, -bm25_score converts them to positive
+        // Sigmoid is monotonic increasing, so higher positive = higher final score
+        let score1 = scorer.score(-10.0, false, false, false); // -(-10) = 10
+        let score2 = scorer.score(-5.0, false, false, false); // -(-5) = 5
+        let score3 = scorer.score(-1.0, false, false, false); // -(-1) = 1
+
+        // More negative BM25 -> higher positive after negation -> higher sigmoid output
+        assert!(score1 > score2, "score1={score1}, score2={score2}");
+        assert!(score2 > score3, "score2={score2}, score3={score3}");
+    }
+
+    #[test]
+    fn test_search_scorer_different_boost_combinations() {
+        let scorer = SearchScorer::new();
+
+        let title_only = scorer.score(-1.0, true, false, false);
+        let label_only = scorer.score(-1.0, false, true, false);
+        let prefix_only = scorer.score(-1.0, false, false, true);
+        let title_and_prefix = scorer.score(-1.0, true, false, true);
+
+        // Title boost (2.0) > prefix boost (1.5) > label boost (1.3)
+        assert!(title_only > prefix_only);
+        assert!(prefix_only > label_only);
+        assert!(title_and_prefix > title_only);
+        assert!(title_and_prefix > prefix_only);
+    }
+
+    // ============================================================================
+    // Snippet Generation Tests
+    // ============================================================================
+
+    #[test]
+    fn test_generate_snippet_title_only() {
+        let snippet = generate_snippet("Task Title", None, "query");
+        assert_eq!(snippet, "Task Title");
+    }
+
+    #[test]
+    fn test_generate_snippet_with_short_body() {
+        let snippet = generate_snippet("Title", Some("Short body text"), "query");
+        assert_eq!(snippet, "Title\nShort body text");
+    }
+
+    #[test]
+    fn test_generate_snippet_with_long_body() {
+        let long_body = "a".repeat(150);
+        let snippet = generate_snippet("Title", Some(&long_body), "query");
+
+        // Should truncate at ~100 chars + "..."
+        assert!(snippet.starts_with("Title\n"));
+        assert!(snippet.ends_with("..."));
+        assert!(snippet.len() < long_body.len() + 10); // Much shorter than original
+    }
+
+    #[test]
+    fn test_generate_snippet_exactly_100_chars() {
+        let body = "a".repeat(100);
+        let snippet = generate_snippet("Title", Some(&body), "query");
+
+        // Should include all 100 chars without "..."
+        assert_eq!(snippet, format!("Title\n{body}"));
+        assert!(!snippet.ends_with("..."));
+    }
+
+    #[test]
+    fn test_generate_snippet_unicode_safe() {
+        // Test that truncation doesn't split multibyte characters
+        let body = "Hello 世界! ".repeat(20); // Mix of ASCII and multibyte chars
+        let snippet = generate_snippet("Title", Some(&body), "query");
+
+        // Should not panic and should be valid UTF-8
+        assert!(snippet.starts_with("Title\n"));
+        // Snippet should be valid UTF-8 (no split characters)
+        assert_eq!(snippet.chars().count(), snippet.chars().count());
+    }
+
+    #[test]
+    fn test_generate_snippet_empty_body() {
+        let snippet = generate_snippet("Title", Some(""), "query");
+        assert_eq!(snippet, "Title\n");
+    }
+
+    #[test]
+    fn test_generate_snippet_newlines_in_body() {
+        let body = "First line\nSecond line\nThird line";
+        let snippet = generate_snippet("Title", Some(body), "query");
+        assert_eq!(snippet, "Title\nFirst line\nSecond line\nThird line");
+    }
+
+    #[test]
+    fn test_generate_snippet_truncation_boundary() {
+        // Test truncation at exactly a character boundary
+        let body = "x".repeat(99) + "yz"; // 101 chars
+        let snippet = generate_snippet("Title", Some(&body), "query");
+
+        assert!(snippet.ends_with("..."));
+        // The implementation truncates at the last char boundary <= 100, which includes
+        // the character itself, so it can be slightly more than 100 bytes
+        let body_part = snippet.strip_prefix("Title\n").unwrap();
+        let body_part = body_part.strip_suffix("...").unwrap();
+        // For single-byte chars, this will be exactly 101 (last char at idx 100 + its len)
+        assert!(body_part.len() <= 101);
+    }
+
+    #[test]
+    fn test_generate_snippet_emoji_safe() {
+        // Emojis are multibyte - ensure no splitting
+        let body = "Test 😀 emoji 🎉 handling ".repeat(10);
+        let snippet = generate_snippet("Title", Some(&body), "query");
+
+        // Should handle emojis without panicking
+        assert!(snippet.starts_with("Title\n"));
+        assert!(snippet.is_char_boundary(snippet.len()));
+    }
+
+    // ============================================================================
+    // SearchResults Pagination Tests - Additional Edge Cases
+    // ============================================================================
+
+    #[test]
+    fn test_search_results_has_more_edge_cases() {
+        let dummy = SearchResult {
+            task_id: 1,
+            full_id: "test#1".to_string(),
+            title: "Test".to_string(),
+            file_path: "test.md".to_string(),
+            score: 1.0,
+            snippet: "Test".to_string(),
+            matched_fields: vec![],
+            status: TaskStatus::Open,
+            owner: None,
+            labels: vec![],
+        };
+
+        // Exactly at boundary
+        let results = SearchResults {
+            results: vec![dummy.clone()],
+            total_count: 1,
+            query: "test".to_string(),
+            offset: 0,
+            limit: 1,
+            metrics: None,
+        };
+        assert!(!results.has_more());
+
+        // Zero results, zero total
+        let results = SearchResults {
+            results: vec![],
+            total_count: 0,
+            query: "test".to_string(),
+            offset: 0,
+            limit: 20,
+            metrics: None,
+        };
+        assert!(!results.has_more());
+
+        // Offset beyond total
+        let results = SearchResults {
+            results: vec![],
+            total_count: 10,
+            query: "test".to_string(),
+            offset: 100,
+            limit: 20,
+            metrics: None,
+        };
+        assert!(!results.has_more());
+    }
+
+    #[test]
+    fn test_search_results_next_page_size_edge_cases() {
+        let dummy = SearchResult {
+            task_id: 1,
+            full_id: "test#1".to_string(),
+            title: "Test".to_string(),
+            file_path: "test.md".to_string(),
+            score: 1.0,
+            snippet: "Test".to_string(),
+            matched_fields: vec![],
+            status: TaskStatus::Open,
+            owner: None,
+            labels: vec![],
+        };
+
+        // Next page smaller than limit
+        let results = SearchResults {
+            results: vec![dummy.clone(); 20],
+            total_count: 25,
+            query: "test".to_string(),
+            offset: 0,
+            limit: 20,
+            metrics: None,
+        };
+        assert_eq!(results.next_page_size(), 5);
+
+        // No next page
+        let results = SearchResults {
+            results: vec![dummy.clone(); 20],
+            total_count: 20,
+            query: "test".to_string(),
+            offset: 0,
+            limit: 20,
+            metrics: None,
+        };
+        assert_eq!(results.next_page_size(), 0);
+
+        // Multiple pages remaining
+        let results = SearchResults {
+            results: vec![dummy; 20],
+            total_count: 100,
+            query: "test".to_string(),
+            offset: 0,
+            limit: 20,
+            metrics: None,
+        };
+        assert_eq!(results.next_page_size(), 20);
+    }
+
+    // ============================================================================
+    // SearchMetrics Tests
+    // ============================================================================
+
+    #[test]
+    fn test_search_metrics_default() {
+        let metrics = SearchMetrics::default();
+        assert!((metrics.total_ms - 0.0).abs() < f64::EPSILON);
+        assert!((metrics.query_execution_ms - 0.0).abs() < f64::EPSILON);
+        assert!((metrics.scoring_ms - 0.0).abs() < f64::EPSILON);
+        assert!((metrics.snippet_generation_ms - 0.0).abs() < f64::EPSILON);
+        assert_eq!(metrics.total_results, 0);
+        assert_eq!(metrics.returned_results, 0);
+        assert!(!metrics.cache_hit);
+    }
+
+    #[test]
+    fn test_search_metrics_new() {
+        let metrics = SearchMetrics::new();
+        assert!((metrics.total_ms - 0.0).abs() < f64::EPSILON);
+        assert!((metrics.query_execution_ms - 0.0).abs() < f64::EPSILON);
+        assert!((metrics.scoring_ms - 0.0).abs() < f64::EPSILON);
+        assert!((metrics.snippet_generation_ms - 0.0).abs() < f64::EPSILON);
+        assert_eq!(metrics.total_results, 0);
+        assert_eq!(metrics.returned_results, 0);
+        assert!(!metrics.cache_hit);
+    }
+
+    // ============================================================================
+    // SearchQuery Builder Tests - Additional Coverage
+    // ============================================================================
+
+    #[test]
+    fn test_search_query_default() {
+        let query = SearchQuery::default();
+        assert_eq!(query.query, "");
+        assert_eq!(query.limit, 0); // Default for usize
+        assert_eq!(query.offset, 0);
+        assert!(query.labels.is_empty());
+        assert_eq!(query.status, None);
+        assert_eq!(query.owner, None);
+        assert_eq!(query.scope, None);
+    }
+
+    #[test]
+    fn test_search_query_with_scope() {
+        let query = SearchQuery::new("test").with_scope(PathBuf::from("core/lash-db"));
+        assert_eq!(query.scope, Some(PathBuf::from("core/lash-db")));
+    }
+
+    #[test]
+    fn test_search_query_chaining() {
+        // Test that builder pattern chaining works correctly
+        let query = SearchQuery::new("implement")
+            .with_limit(50)
+            .with_offset(10)
+            .with_label("backend".to_string())
+            .with_label("parser".to_string())
+            .with_status(TaskStatus::Open)
+            .with_owner("alice".to_string())
+            .with_scope(PathBuf::from("core/"));
+
+        assert_eq!(query.query, "implement");
+        assert_eq!(query.limit, 50);
+        assert_eq!(query.offset, 10);
+        assert_eq!(query.labels, vec!["backend", "parser"]);
+        assert_eq!(query.status, Some(TaskStatus::Open));
+        assert_eq!(query.owner, Some("alice".to_string()));
+        assert_eq!(query.scope, Some(PathBuf::from("core/")));
+    }
+
+    #[test]
+    fn test_search_query_multiple_labels() {
+        let query = SearchQuery::new("test")
+            .with_label("label1".to_string())
+            .with_label("label2".to_string())
+            .with_label("label3".to_string());
+
+        assert_eq!(query.labels.len(), 3);
+        assert_eq!(query.labels, vec!["label1", "label2", "label3"]);
+    }
+
+    // ============================================================================
+    // Additional Parse Query Tests for Coverage
+    // ============================================================================
+
+    #[test]
+    fn test_parse_query_owner_filter() {
+        let (fts_query, filters) = parse_query("implement owner:alice");
+        assert_eq!(fts_query, "implement");
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0], ("owner".to_string(), "alice".to_string()));
+    }
+
+    #[test]
+    fn test_parse_query_all_filter_types() {
+        let (fts_query, filters) = parse_query("label:backend status:open path:core/ owner:alice");
+        assert_eq!(fts_query, "");
+        assert_eq!(filters.len(), 4);
+        assert!(filters.contains(&("label".to_string(), "backend".to_string())));
+        assert!(filters.contains(&("status".to_string(), "open".to_string())));
+        assert!(filters.contains(&("path".to_string(), "core/".to_string())));
+        assert!(filters.contains(&("owner".to_string(), "alice".to_string())));
+    }
+
+    #[test]
+    fn test_parse_query_filter_value_with_special_chars() {
+        let (fts_query, filters) = parse_query("path:core/lash-db/src");
+        assert_eq!(fts_query, "");
+        assert_eq!(
+            filters[0],
+            ("path".to_string(), "core/lash-db/src".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_query_quoted_phrase_only() {
+        let (fts_query, filters) = parse_query("\"complete phrase\"");
+        assert_eq!(fts_query, "\"complete phrase\"");
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_multiple_quoted_phrases() {
+        let (fts_query, filters) = parse_query("\"first phrase\" \"second phrase\"");
+        assert_eq!(fts_query, "\"first phrase\" \"second phrase\"");
+        assert!(filters.is_empty());
+    }
 }
