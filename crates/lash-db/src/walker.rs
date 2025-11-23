@@ -666,7 +666,13 @@ mod tests {
         assert_eq!(files.len(), 2);
         let paths: Vec<_> = files
             .iter()
-            .map(|f| f.relative_path.to_string_lossy().to_string())
+            .map(|f| {
+                // Normalize path separators for cross-platform comparison
+                f.relative_path
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .to_string()
+            })
             .collect();
         assert!(paths.contains(&"included/file.md".to_string()));
         assert!(paths.contains(&"normal.md".to_string()));
