@@ -75,7 +75,9 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
     let dep_repo = DependencyRepository::new(&conn);
 
     // Determine if target is a task ID or file path
+    // Check for path separators (both forward and back slashes) or .md extension
     let is_file_path = args.target.contains('/')
+        || args.target.contains('\\')
         || std::path::Path::new(&args.target)
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
@@ -100,16 +102,21 @@ fn show_file(
     project_root: &Path,
 ) -> Result<i32> {
     // Convert target to relative path if needed
-    let target_path = if args.target.starts_with('/') {
+    // Normalize path separators - convert forward slashes to native separators
+    let normalized_target = args.target.replace('/', std::path::MAIN_SEPARATOR_STR);
+
+    let target_path = if normalized_target.starts_with(std::path::MAIN_SEPARATOR)
+        || normalized_target.starts_with('/')
+    {
         // Absolute path - make it relative to project root
-        PathBuf::from(&args.target)
+        PathBuf::from(&normalized_target)
             .strip_prefix(project_root)
             .map_or_else(
-                |_| PathBuf::from(&args.target),
+                |_| PathBuf::from(&normalized_target),
                 std::path::Path::to_path_buf,
             )
     } else {
-        PathBuf::from(&args.target)
+        PathBuf::from(&normalized_target)
     };
 
     // Get file record

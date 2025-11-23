@@ -149,7 +149,7 @@ impl CircularDepsRule {
                     // Found a cycle
                     let cycle_start = path.iter().position(|n| n == neighbor).unwrap();
                     let mut cycle = path[cycle_start..].to_vec();
-                    cycle.push(neighbor.to_string());
+                    cycle.push(neighbor.clone());
                     return Some(cycle);
                 }
             }
