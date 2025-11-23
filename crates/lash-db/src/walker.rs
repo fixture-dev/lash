@@ -668,10 +668,7 @@ mod tests {
             .iter()
             .map(|f| {
                 // Normalize path separators for cross-platform comparison
-                f.relative_path
-                    .to_string_lossy()
-                    .replace('\\', "/")
-                    .to_string()
+                f.relative_path.to_string_lossy().replace('\\', "/")
             })
             .collect();
         assert!(paths.contains(&"included/file.md".to_string()));
