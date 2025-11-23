@@ -30,7 +30,7 @@ fn setup_test_db() -> (NamedTempFile, Connection) {
     let file_id: i64 = conn.last_insert_rowid();
 
     // Insert sample tasks with owner field
-    let tasks = vec![
+    let tasks = [
         (
             "implement-parser",
             "Implement markdown parser",
