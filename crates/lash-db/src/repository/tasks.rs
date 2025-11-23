@@ -850,4 +850,779 @@ mod tests {
         let all_tasks = task_repo.get_by_file(file_db_id).unwrap();
         assert_eq!(all_tasks.len(), 3);
     }
+
+    #[test]
+    fn test_get_db_id_by_full_id() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task = create_test_task("task1", "Test Task", 0, None, 0);
+        let task_repo = TaskRepository::new(&conn);
+        let inserted_id = task_repo.insert(&task, file_db_id, "test").unwrap();
+
+        // Test successful lookup
+        let db_id = task_repo.get_db_id_by_full_id("test#task1").unwrap();
+        assert_eq!(db_id, Some(inserted_id));
+
+        // Test non-existent task
+        let not_found = task_repo.get_db_id_by_full_id("test#nonexistent").unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_find_by_label() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create tasks
+        let task1 = create_test_task("task1", "Task 1", 0, None, 0);
+        let task1_db_id = task_repo.insert(&task1, file_db_id, "test").unwrap();
+
+        let task2 = create_test_task("task2", "Task 2", 0, None, 1);
+        let task2_db_id = task_repo.insert(&task2, file_db_id, "test").unwrap();
+
+        let task3 = create_test_task("task3", "Task 3", 0, None, 2);
+        task_repo.insert(&task3, file_db_id, "test").unwrap();
+
+        // Add labels using raw SQL (would normally use LabelRepository)
+        conn.execute(
+            "INSERT INTO labels (name) VALUES (?1), (?2)",
+            ["backend", "frontend"],
+        )
+        .unwrap();
+
+        let backend_label_id: i64 = conn
+            .query_row(
+                "SELECT id FROM labels WHERE name = ?1",
+                ["backend"],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        let frontend_label_id: i64 = conn
+            .query_row(
+                "SELECT id FROM labels WHERE name = ?1",
+                ["frontend"],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // Associate labels with tasks
+        conn.execute(
+            "INSERT INTO task_labels (task_id, label_id) VALUES (?1, ?2), (?3, ?4), (?5, ?6)",
+            (
+                task1_db_id,
+                backend_label_id,
+                task2_db_id,
+                backend_label_id,
+                task2_db_id,
+                frontend_label_id,
+            ),
+        )
+        .unwrap();
+
+        // Find tasks by label
+        let backend_tasks = task_repo.find_by_label("backend").unwrap();
+        assert_eq!(backend_tasks.len(), 2);
+        assert!(backend_tasks.iter().any(|t| t.local_id == "task1"));
+        assert!(backend_tasks.iter().any(|t| t.local_id == "task2"));
+
+        let frontend_tasks = task_repo.find_by_label("frontend").unwrap();
+        assert_eq!(frontend_tasks.len(), 1);
+        assert_eq!(frontend_tasks[0].local_id, "task2");
+
+        // Non-existent label should return empty list
+        let not_found = task_repo.find_by_label("nonexistent").unwrap();
+        assert!(not_found.is_empty());
+    }
+
+    #[test]
+    fn test_get_descendants() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create hierarchy: parent -> child1 -> grandchild1
+        //                           -> child2
+        let parent = create_test_task("parent", "Parent", 0, None, 0);
+        let parent_db_id = task_repo.insert(&parent, file_db_id, "test").unwrap();
+
+        task_repo
+            .insert(
+                &create_test_task("child1", "Child 1", 1, Some("parent".to_string()), 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        task_repo
+            .insert(
+                &create_test_task("child2", "Child 2", 1, Some("parent".to_string()), 1),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        task_repo
+            .insert(
+                &create_test_task(
+                    "grandchild1",
+                    "Grandchild 1",
+                    2,
+                    Some("child1".to_string()),
+                    0,
+                ),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        // Get all descendants of parent
+        let descendants = task_repo.get_descendants(parent_db_id).unwrap();
+        assert_eq!(descendants.len(), 3);
+
+        // Verify all descendants are present
+        let ids: Vec<&str> = descendants.iter().map(|t| t.local_id.as_str()).collect();
+        assert!(ids.contains(&"child1"));
+        assert!(ids.contains(&"child2"));
+        assert!(ids.contains(&"grandchild1"));
+
+        // Verify ordering by depth then order_index
+        assert!(descendants[0].depth <= descendants[1].depth);
+        assert!(descendants[1].depth <= descendants[2].depth);
+    }
+
+    #[test]
+    fn test_get_ancestors() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create hierarchy: grandparent -> parent -> child
+        task_repo
+            .insert(
+                &create_test_task("grandparent", "Grandparent", 0, None, 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        task_repo
+            .insert(
+                &create_test_task("parent", "Parent", 1, Some("grandparent".to_string()), 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        let child = create_test_task("child", "Child", 2, Some("parent".to_string()), 0);
+        let child_db_id = task_repo.insert(&child, file_db_id, "test").unwrap();
+
+        // Get ancestors of child
+        let ancestors = task_repo.get_ancestors(child_db_id).unwrap();
+        assert_eq!(ancestors.len(), 2);
+
+        // Verify ancestors are in order by depth (ascending - grandparent first)
+        assert_eq!(ancestors[0].local_id, "grandparent");
+        assert_eq!(ancestors[1].local_id, "parent");
+
+        // Root task should have no ancestors
+        let root_ancestors = task_repo
+            .get_ancestors(
+                task_repo
+                    .get_db_id_by_full_id("test#grandparent")
+                    .unwrap()
+                    .unwrap(),
+            )
+            .unwrap();
+        assert!(root_ancestors.is_empty());
+    }
+
+    #[test]
+    fn test_find_with_filter() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create tasks with different properties
+        let mut task1 = create_test_task("task1", "Task 1", 0, None, 0);
+        task1.status = TaskStatus::Open;
+        task1.metadata.owner = Some("alice".to_string());
+        task_repo.insert(&task1, file_db_id, "test").unwrap();
+
+        let mut task2 = create_test_task("task2", "Task 2", 0, None, 1);
+        task2.status = TaskStatus::Done;
+        task2.metadata.owner = Some("bob".to_string());
+        task_repo.insert(&task2, file_db_id, "test").unwrap();
+
+        let mut task3 = create_test_task("task3", "Task 3", 0, None, 2);
+        task3.status = TaskStatus::Open;
+        task3.metadata.owner = Some("alice".to_string());
+        task_repo.insert(&task3, file_db_id, "test").unwrap();
+
+        // Test filter by status
+        let filter = TaskFilter {
+            status: Some(TaskStatus::Open),
+            ..Default::default()
+        };
+        let results = task_repo.find(&filter).unwrap();
+        assert_eq!(results.len(), 2);
+
+        // Test filter by owner
+        let filter = TaskFilter {
+            owner: Some("alice".to_string()),
+            ..Default::default()
+        };
+        let results = task_repo.find(&filter).unwrap();
+        assert_eq!(results.len(), 2);
+
+        // Test filter by status AND owner
+        let filter = TaskFilter {
+            status: Some(TaskStatus::Open),
+            owner: Some("alice".to_string()),
+            ..Default::default()
+        };
+        let results = task_repo.find(&filter).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|t| t.status == TaskStatus::Open));
+        assert!(results.iter().all(|t| t.owner.as_deref() == Some("alice")));
+
+        // Test empty filter (should return all)
+        let filter = TaskFilter::default();
+        let results = task_repo.find(&filter).unwrap();
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn test_find_with_file_path_filter() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file_repo = FileRepository::new(&conn);
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create multiple files with tasks
+        let file1 = create_test_file("tasks/file1.md", "file1");
+        let file1_db_id = file_repo.insert(&file1).unwrap();
+        task_repo
+            .insert(
+                &create_test_task("task1", "Task 1", 0, None, 0),
+                file1_db_id,
+                "file1",
+            )
+            .unwrap();
+
+        let file2 = create_test_file("tasks/file2.md", "file2");
+        let file2_db_id = file_repo.insert(&file2).unwrap();
+        task_repo
+            .insert(
+                &create_test_task("task2", "Task 2", 0, None, 0),
+                file2_db_id,
+                "file2",
+            )
+            .unwrap();
+
+        // Filter by file path
+        let filter = TaskFilter {
+            file_path: Some("tasks/file1.md".to_string()),
+            ..Default::default()
+        };
+        let results = task_repo.find(&filter).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].local_id, "task1");
+    }
+
+    #[test]
+    fn test_find_with_labels_filter() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+        let task1_db_id = task_repo
+            .insert(
+                &create_test_task("task1", "Task 1", 0, None, 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        let task2_db_id = task_repo
+            .insert(
+                &create_test_task("task2", "Task 2", 0, None, 1),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        // Create labels
+        conn.execute(
+            "INSERT INTO labels (name) VALUES (?1), (?2), (?3)",
+            ["urgent", "backend", "frontend"],
+        )
+        .unwrap();
+
+        let urgent_id: i64 = conn
+            .query_row("SELECT id FROM labels WHERE name = ?1", ["urgent"], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let backend_id: i64 = conn
+            .query_row(
+                "SELECT id FROM labels WHERE name = ?1",
+                ["backend"],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // task1 has both urgent and backend labels
+        conn.execute(
+            "INSERT INTO task_labels (task_id, label_id) VALUES (?1, ?2), (?3, ?4)",
+            (task1_db_id, urgent_id, task1_db_id, backend_id),
+        )
+        .unwrap();
+
+        // task2 has only urgent label
+        conn.execute(
+            "INSERT INTO task_labels (task_id, label_id) VALUES (?1, ?2)",
+            [task2_db_id, urgent_id],
+        )
+        .unwrap();
+
+        // Filter by single label
+        let filter = TaskFilter {
+            labels: vec!["urgent".to_string()],
+            ..Default::default()
+        };
+        let results = task_repo.find(&filter).unwrap();
+        assert_eq!(results.len(), 2);
+
+        // Filter by multiple labels
+        let filter = TaskFilter {
+            labels: vec!["urgent".to_string(), "backend".to_string()],
+            ..Default::default()
+        };
+        let results = task_repo.find(&filter).unwrap();
+        // Should return tasks that have ANY of the specified labels
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_update_nonexistent_task() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+        let task = create_test_task("nonexistent", "Task", 0, None, 0);
+
+        let result = task_repo.update(&task, "test");
+        assert!(result.is_err());
+        match result {
+            Err(DbError::TaskNotFound(full_id)) => {
+                assert_eq!(full_id, "test#nonexistent");
+            }
+            _ => panic!("Expected TaskNotFound error"),
+        }
+    }
+
+    #[test]
+    fn test_task_with_all_optional_fields() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+        let mut task = create_test_task("task1", "Task with fields", 0, None, 0);
+        task.metadata.owner = Some("alice".to_string());
+        task.metadata.estimate = Some("2h".to_string());
+        task.metadata.agent_note = Some("Important task".to_string());
+        task.body = Some("Detailed description".to_string());
+        task.metadata
+            .custom
+            .insert("created".to_string(), "2024-01-01".to_string());
+
+        task_repo.insert(&task, file_db_id, "test").unwrap();
+
+        let retrieved = task_repo.get_by_full_id("test#task1").unwrap().unwrap();
+        assert_eq!(retrieved.owner, Some("alice".to_string()));
+        assert_eq!(retrieved.estimate, Some("2h".to_string()));
+        assert_eq!(
+            retrieved.metadata.agent_note,
+            Some("Important task".to_string())
+        );
+        assert_eq!(retrieved.body, Some("Detailed description".to_string()));
+        assert_eq!(
+            retrieved.metadata.custom.get("created"),
+            Some(&"2024-01-01".to_string())
+        );
+    }
+
+    #[test]
+    fn test_task_with_no_optional_fields() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+        let task = create_test_task("task1", "Minimal task", 0, None, 0);
+
+        task_repo.insert(&task, file_db_id, "test").unwrap();
+
+        let retrieved = task_repo.get_by_full_id("test#task1").unwrap().unwrap();
+        assert_eq!(retrieved.owner, None);
+        assert_eq!(retrieved.estimate, None);
+        assert_eq!(retrieved.body, None);
+    }
+
+    #[test]
+    fn test_all_task_statuses() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        let statuses = vec![
+            TaskStatus::Open,
+            TaskStatus::Done,
+            TaskStatus::Waived,
+            TaskStatus::Blocked,
+        ];
+
+        for (idx, status) in statuses.iter().enumerate() {
+            let mut task =
+                create_test_task(&format!("task{idx}"), &format!("Task {idx}"), 0, None, idx);
+            task.status = *status;
+            task_repo.insert(&task, file_db_id, "test").unwrap();
+        }
+
+        // Verify each status
+        for (idx, status) in statuses.iter().enumerate() {
+            let retrieved = task_repo
+                .get_by_full_id(&format!("test#task{idx}"))
+                .unwrap()
+                .unwrap();
+            assert_eq!(retrieved.status, *status);
+        }
+
+        // Test finding by each status
+        for status in statuses {
+            let found = task_repo.find_by_status(status).unwrap();
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0].status, status);
+        }
+    }
+
+    #[test]
+    fn test_deep_task_hierarchy() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create a hierarchy of depth 5
+        task_repo
+            .insert(
+                &create_test_task("level0", "Level 0", 0, None, 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        task_repo
+            .insert(
+                &create_test_task("level1", "Level 1", 1, Some("level0".to_string()), 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        task_repo
+            .insert(
+                &create_test_task("level2", "Level 2", 2, Some("level1".to_string()), 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        task_repo
+            .insert(
+                &create_test_task("level3", "Level 3", 3, Some("level2".to_string()), 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        let deepest_task = create_test_task("level4", "Level 4", 4, Some("level3".to_string()), 0);
+        let deepest_id = task_repo.insert(&deepest_task, file_db_id, "test").unwrap();
+
+        // Verify the deepest task can be retrieved
+        let retrieved = task_repo.get_by_db_id(deepest_id).unwrap().unwrap();
+        assert_eq!(retrieved.depth, 4);
+        assert_eq!(retrieved.local_id, "level4");
+
+        // Verify ancestors
+        let ancestors = task_repo.get_ancestors(deepest_id).unwrap();
+        assert_eq!(ancestors.len(), 4);
+    }
+
+    #[test]
+    fn test_delete_nonexistent_task() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Deleting non-existent task should succeed (no error)
+        let result = task_repo.delete("test#nonexistent");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_get_children_empty() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+        let task_db_id = task_repo
+            .insert(
+                &create_test_task("task1", "Task 1", 0, None, 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        // Task with no children
+        let children = task_repo.get_children(task_db_id).unwrap();
+        assert!(children.is_empty());
+    }
+
+    #[test]
+    fn test_get_by_file_empty() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // File with no tasks
+        let tasks = task_repo.get_by_file(file_db_id).unwrap();
+        assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn test_find_by_status_empty() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Insert only open tasks
+        task_repo
+            .insert(
+                &create_test_task("task1", "Task 1", 0, None, 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        // Search for done tasks should return empty
+        let done_tasks = task_repo.find_by_status(TaskStatus::Done).unwrap();
+        assert!(done_tasks.is_empty());
+    }
+
+    #[test]
+    fn test_get_full_id_not_found() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        let result = task_repo.get_by_full_id("test#nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_insert_batch_with_parent_child() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        // Create parent and child tasks
+        let parent = create_test_task("parent", "Parent", 0, None, 0);
+        let child = create_test_task("child", "Child", 1, Some("parent".to_string()), 0);
+
+        let tasks = vec![
+            (parent, file_db_id, "test".to_string()),
+            (child, file_db_id, "test".to_string()),
+        ];
+
+        let task_repo = TaskRepository::new(&conn);
+        task_repo.insert_batch(&tasks).unwrap();
+
+        // Verify parent-child relationship
+        let parent_record = task_repo.get_by_full_id("test#parent").unwrap().unwrap();
+        let child_record = task_repo.get_by_full_id("test#child").unwrap().unwrap();
+
+        assert_eq!(child_record.parent_id, Some(parent_record.id));
+    }
+
+    #[test]
+    fn test_update_with_parent_change() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create two potential parents and a child
+        task_repo
+            .insert(
+                &create_test_task("parent1", "Parent 1", 0, None, 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        task_repo
+            .insert(
+                &create_test_task("parent2", "Parent 2", 0, None, 1),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        let mut child = create_test_task("child", "Child", 1, Some("parent1".to_string()), 0);
+        task_repo.insert(&child, file_db_id, "test").unwrap();
+
+        // Update child to have different parent
+        child.parent_id = Some("parent2".to_string());
+        task_repo.update(&child, "test").unwrap();
+
+        let parent2_record = task_repo.get_by_full_id("test#parent2").unwrap().unwrap();
+        let child_record = task_repo.get_by_full_id("test#child").unwrap().unwrap();
+
+        assert_eq!(child_record.parent_id, Some(parent2_record.id));
+    }
+
+    #[test]
+    fn test_update_to_remove_parent() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        task_repo
+            .insert(
+                &create_test_task("parent", "Parent", 0, None, 0),
+                file_db_id,
+                "test",
+            )
+            .unwrap();
+
+        let mut child = create_test_task("child", "Child", 1, Some("parent".to_string()), 0);
+        task_repo.insert(&child, file_db_id, "test").unwrap();
+
+        // Update to remove parent
+        child.parent_id = None;
+        child.depth = 0;
+        task_repo.update(&child, "test").unwrap();
+
+        let child_record = task_repo.get_by_full_id("test#child").unwrap().unwrap();
+        assert_eq!(child_record.parent_id, None);
+        assert_eq!(child_record.depth, 0);
+    }
+
+    #[test]
+    fn test_large_order_index() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Test with a large order index
+        let task = create_test_task("task1", "Task 1", 0, None, 9999);
+        task_repo.insert(&task, file_db_id, "test").unwrap();
+
+        let retrieved = task_repo.get_by_full_id("test#task1").unwrap().unwrap();
+        assert_eq!(retrieved.order_index, 9999);
+    }
 }
