@@ -1,5 +1,94 @@
 # Lash Development Log
 
+## 2025-11-23 - Fix Remaining Windows CI Issues (Clippy Warning + Hardcoded Paths)
+
+### Summary
+Resolved two additional Windows CI issues identified in root cause analysis: a clippy warning from the previous fix and hardcoded Unix paths in config tests.
+
+**Commit:** `8a5ca50`
+
+### Issues Fixed
+
+#### Root Cause #2: Redundant .to_string() After .replace()
+**Problem:**
+- The previous Windows path fix (commit `7b966dc`) introduced a clippy warning
+- Code called `.replace('\\', "/").to_string()`
+- The `.replace()` method already returns a `String`, making `.to_string()` redundant
+
+**Solution:**
+- Simplified to `.replace('\\', "/")` removing the redundant call
+- File: `crates/lash-db/src/walker.rs:671`
+
+**Before:**
+```rust
+.map(|f| {
+    f.relative_path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_string()  // Redundant!
+})
+```
+
+**After:**
+```rust
+.map(|f| {
+    f.relative_path.to_string_lossy().replace('\\', "/")
+})
+```
+
+#### Root Cause #3: Hardcoded /tmp Paths in Config Tests
+**Problem:**
+- Three tests used hardcoded `/tmp` path which doesn't exist on Windows
+- Tests: `test_config_builder`, `test_invalid_max_depth`, `test_invalid_indent_spaces`
+- Windows doesn't have a `/tmp` directory, causing test failures
+- File: `crates/lash-types/src/config.rs` (lines 319, 332, 343)
+
+**Solution:**
+- Replaced hardcoded `/tmp` with `TempDir::new()` from `tempfile` crate
+- Used cross-platform temporary directory creation
+- Pattern already existed in `test_find_project_root` at line 350
+
+**Example Before:**
+```rust
+#[test]
+fn test_config_builder() {
+    let config = ConfigBuilder::new()
+        .root("/tmp")  // Fails on Windows!
+        .max_depth(4)
+        .indent_spaces(4)
+        .build();
+    // ...
+}
+```
+
+**Example After:**
+```rust
+#[test]
+fn test_config_builder() {
+    let temp_dir = TempDir::new().unwrap();
+    let config = ConfigBuilder::new()
+        .root(temp_dir.path())  // Cross-platform!
+        .max_depth(4)
+        .indent_spaces(4)
+        .build();
+    // ...
+}
+```
+
+### Verification
+- All local tests pass (1,065 tests total)
+- No clippy warnings
+- Changes maintain existing test behavior while adding cross-platform compatibility
+- Pre-commit hooks pass successfully
+
+### Platform Compatibility Impact
+These fixes, combined with the previous path separator fix, should resolve all Windows CI failures:
+- Ubuntu: Already passing
+- macOS: Already passing
+- Windows: Should now pass (pending CI verification)
+
+---
+
 ## 2025-11-23 - Fix Windows CI Test Failure (Path Separator Issue)
 
 ### Summary
