@@ -1,0 +1,5 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: code.to_string()
+---
+0

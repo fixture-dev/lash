@@ -1,0 +1,7 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: normalized_stdout
+---
+./日本語.md:0:0: warning[W_INDEX_ORPHAN]: File './日本語.md' is not referenced in the root index
+  help: Add './日本語.md' to ./lash.index.md or move to an archive directory
+[32m✓ Linting passed (with warnings)[39m

@@ -1,0 +1,26 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: normalized_stdout
+---
+./api.md:0:0: warning[W_INDEX_ORPHAN]: File './api.md' is not referenced in the root index
+  help: Add './api.md' to ./lash.index.md or move to an archive directory
+./authentication.md:0:0: warning[W_INDEX_ORPHAN]: File './authentication.md' is not referenced in the root index
+  help: Add './authentication.md' to ./lash.index.md or move to an archive directory
+./database.md:0:0: warning[W_INDEX_ORPHAN]: File './database.md' is not referenced in the root index
+  help: Add './database.md' to ./lash.index.md or move to an archive directory
+./deployment.md:0:0: warning[W_INDEX_ORPHAN]: File './deployment.md' is not referenced in the root index
+  help: Add './deployment.md' to ./lash.index.md or move to an archive directory
+./documentation.md:0:0: warning[W_INDEX_ORPHAN]: File './documentation.md' is not referenced in the root index
+  help: Add './documentation.md' to ./lash.index.md or move to an archive directory
+./frontend.md:0:0: warning[W_INDEX_ORPHAN]: File './frontend.md' is not referenced in the root index
+  help: Add './frontend.md' to ./lash.index.md or move to an archive directory
+./monitoring.md:0:0: warning[W_INDEX_ORPHAN]: File './monitoring.md' is not referenced in the root index
+  help: Add './monitoring.md' to ./lash.index.md or move to an archive directory
+./security.md:0:0: warning[W_INDEX_ORPHAN]: File './security.md' is not referenced in the root index
+  help: Add './security.md' to ./lash.index.md or move to an archive directory
+./testing.md:0:0: warning[W_SEM_STATUS_INCONSISTENT]: Parent task "Unit tests" is marked complete but has 1 incomplete child(ren)
+  help: Complete all children first, or waive them. Incomplete children:
+  - "Frontend unit tests"
+./testing.md:0:0: warning[W_INDEX_ORPHAN]: File './testing.md' is not referenced in the root index
+  help: Add './testing.md' to ./lash.index.md or move to an archive directory
+[32m✓ Linting passed (with warnings)[39m

@@ -1,0 +1,111 @@
+# Very Long List (100 tasks)
+
+@id: long-list-100
+@status: in-progress
+@labels: performance, large-list
+@created: 2024-01-10
+
+Test file with 100 tasks to verify performance and handling of large lists.
+
+## Tasks
+
+- [ ] Task 1
+- [ ] Task 2
+- [ ] Task 3
+- [ ] Task 4
+- [ ] Task 5
+- [ ] Task 6
+- [ ] Task 7
+- [ ] Task 8
+- [ ] Task 9
+- [x] Task 10 (completed)
+- [ ] Task 11
+- [ ] Task 12
+- [ ] Task 13
+- [ ] Task 14
+- [ ] Task 15
+- [ ] Task 16
+- [ ] Task 17
+- [ ] Task 18
+- [ ] Task 19
+- [x] Task 20 (completed)
+- [ ] Task 21
+- [ ] Task 22
+- [ ] Task 23
+- [ ] Task 24
+- [ ] Task 25
+- [ ] Task 26
+- [ ] Task 27
+- [ ] Task 28
+- [ ] Task 29
+- [x] Task 30 (completed)
+- [ ] Task 31
+- [ ] Task 32
+- [ ] Task 33
+- [ ] Task 34
+- [ ] Task 35
+- [ ] Task 36
+- [ ] Task 37
+- [ ] Task 38
+- [ ] Task 39
+- [x] Task 40 (completed)
+- [ ] Task 41
+- [ ] Task 42
+- [ ] Task 43
+- [ ] Task 44
+- [ ] Task 45
+- [ ] Task 46
+- [ ] Task 47
+- [ ] Task 48
+- [ ] Task 49
+- [x] Task 50 (completed)
+- [ ] Task 51
+- [ ] Task 52
+- [ ] Task 53
+- [ ] Task 54
+- [ ] Task 55
+- [ ] Task 56
+- [ ] Task 57
+- [ ] Task 58
+- [ ] Task 59
+- [x] Task 60 (completed)
+- [ ] Task 61
+- [ ] Task 62
+- [ ] Task 63
+- [ ] Task 64
+- [ ] Task 65
+- [ ] Task 66
+- [ ] Task 67
+- [ ] Task 68
+- [ ] Task 69
+- [x] Task 70 (completed)
+- [ ] Task 71
+- [ ] Task 72
+- [ ] Task 73
+- [ ] Task 74
+- [ ] Task 75
+- [ ] Task 76
+- [ ] Task 77
+- [ ] Task 78
+- [ ] Task 79
+- [x] Task 80 (completed)
+- [ ] Task 81
+- [ ] Task 82
+- [ ] Task 83
+- [ ] Task 84
+- [ ] Task 85
+- [ ] Task 86
+- [ ] Task 87
+- [ ] Task 88
+- [ ] Task 89
+- [x] Task 90 (completed)
+- [ ] Task 91
+- [ ] Task 92
+- [ ] Task 93
+- [ ] Task 94
+- [ ] Task 95
+- [ ] Task 96
+- [ ] Task 97
+- [ ] Task 98
+- [ ] Task 99
+- [x] Task 100 (completed)
