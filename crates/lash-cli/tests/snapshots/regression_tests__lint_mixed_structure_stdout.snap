@@ -1,0 +1,17 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: normalized_stdout
+---
+./nested/nested-task-1.md:0:0: warning[W_INDEX_ORPHAN]: File './nested/nested-task-1.md' is not referenced in the root index
+  help: Add './nested/nested-task-1.md' to ./lash.index.md or move to an archive directory
+./nested/sub1/deep-task-1.md:0:0: warning[W_INDEX_ORPHAN]: File './nested/sub1/deep-task-1.md' is not referenced in the root index
+  help: Add './nested/sub1/deep-task-1.md' to ./lash.index.md or move to an archive directory
+./nested/sub1/sub2/deepest-task.md:0:0: warning[W_INDEX_ORPHAN]: File './nested/sub1/sub2/deepest-task.md' is not referenced in the root index
+  help: Add './nested/sub1/sub2/deepest-task.md' to ./lash.index.md or move to an archive directory
+./root-task-1.md:0:0: warning[W_INDEX_ORPHAN]: File './root-task-1.md' is not referenced in the root index
+  help: Add './root-task-1.md' to ./lash.index.md or move to an archive directory
+./root-task-2.md:0:0: warning[W_INDEX_ORPHAN]: File './root-task-2.md' is not referenced in the root index
+  help: Add './root-task-2.md' to ./lash.index.md or move to an archive directory
+./root-task-3.md:0:0: warning[W_INDEX_ORPHAN]: File './root-task-3.md' is not referenced in the root index
+  help: Add './root-task-3.md' to ./lash.index.md or move to an archive directory
+[32m✓ Linting passed (with warnings)[39m

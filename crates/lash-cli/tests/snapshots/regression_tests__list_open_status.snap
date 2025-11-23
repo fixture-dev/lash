@@ -1,0 +1,102 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: normalized
+---
+[1mID                                                       [0m  [1mSTATUS [0m  [1mTITLE                                 [0m  [1mLABELS[0m
+--------------------------------------------------------------------------------------------------------------------------
+[36mbackend.api#add-api-documentation-docs                   [39m  [34mopen[39m    Add API documentation #docs             [2mdocs[0m
+[36mbackend.api#example-requests                             [39m  [34mopen[39m    Example requests                        
+[36mbackend.api#implement-authentication-security            [39m  [34mopen[39m    Implement authentication #security      [2msecurity[0m
+[36mbackend.api#implement-crud-endpoints-core                [39m  [34mopen[39m    Implement CRUD endpoints #core          [2mcore[0m
+[36mbackend.api#oauth2-integration-p1                        [39m  [34mopen[39m    OAuth2 integration #p1                  [2mp1[0m
+[36mbackend.api#openapi-spec                                 [39m  [34mopen[39m    OpenAPI spec                            
+[36mbackend.api#project-endpoints                            [39m  [34mopen[39m    Project endpoints                       
+[36mbackend.api#session-management                           [39m  [34mopen[39m    Session management                      
+[36mbackend.api#task-endpoints                               [39m  [34mopen[39m    Task endpoints                          
+[36mbackend.tests#auth-flow-tests                            [39m  [34mopen[39m    Auth flow tests                         
+[36mbackend.tests#database-integration-tests                 [39m  [34mopen[39m    Database integration tests              
+[36mbackend.tests#integration-tests-integration-testing      [39m  [34mopen[39m    Integration tests #integration-testing  [2mintegration-testing[0m
+[36mbackend.tests#load-testing                               [39m  [34mopen[39m    Load testing                            
+[36mbackend.tests#performance-tests-performance              [39m  [34mopen[39m    Performance tests #performance          [2mperformance[0m
+[36mbackend.tests#service-tests                              [39m  [34mopen[39m    Service tests                           
+[36mbackend.tests#stress-testing                             [39m  [34mopen[39m    Stress testing                          
+[36mbackend.tests#unit-tests-unit-testing                    [39m  [34mopen[39m    Unit tests #unit-testing                [2munit-testing[0m
+[36mbackend.tests#utility-tests                              [39m  [34mopen[39m    Utility tests                           
+[36mdocs.api#api-guide-guides                                [39m  [34mopen[39m    API guide #guides                       [2mguides[0m
+[36mdocs.api#api-reference-documentation-docs                [39m  [34mopen[39m    API reference documentation #docs       [2mdocs[0m
+[36mdocs.api#authentication-endpoints                        [39m  [34mopen[39m    Authentication endpoints                
+[36mdocs.api#authentication-guide                            [39m  [34mopen[39m    Authentication guide                    
+[36mdocs.api#code-examples-examples                          [39m  [34mopen[39m    Code examples #examples                 [2mexamples[0m
+[36mdocs.api#curl-examples                                   [39m  [34mopen[39m    cURL examples                           
+[36mdocs.api#error-handling                                  [39m  [34mopen[39m    Error handling                          
+[36mdocs.api#getting-started                                 [39m  [34mopen[39m    Getting started                         
+[36mdocs.api#javascript-examples                             [39m  [34mopen[39m    JavaScript examples                     
+[36mdocs.api#project-endpoints                               [39m  [34mopen[39m    Project endpoints                       
+[36mdocs.api#python-examples                                 [39m  [34mopen[39m    Python examples                         
+[36mdocs.api#rate-limiting                                   [39m  [34mopen[39m    Rate limiting                           
+[36mdocs.api#task-endpoints                                  [39m  [34mopen[39m    Task endpoints                          
+[36mdocs.api#user-endpoints                                  [39m  [34mopen[39m    User endpoints                          
+[36mdocs.user-guide#advanced-features                        [39m  [34mopen[39m    Advanced features                       
+[36mdocs.user-guide#basic-concepts                           [39m  [34mopen[39m    Basic concepts                          
+[36mdocs.user-guide#best-practices                           [39m  [34mopen[39m    Best practices                          
+[36mdocs.user-guide#collaboration                            [39m  [34mopen[39m    Collaboration                           
+[36mdocs.user-guide#common-questions                         [39m  [34mopen[39m    Common questions                        
+[36mdocs.user-guide#faq-support                              [39m  [34mopen[39m    FAQ #support                            [2msupport[0m
+[36mdocs.user-guide#feature-documentation-features           [39m  [34mopen[39m    Feature documentation #features         [2mfeatures[0m
+[36mdocs.user-guide#first-project                            [39m  [34mopen[39m    First project                           
+[36mdocs.user-guide#getting-started-guide-guides             [39m  [34mopen[39m    Getting started guide #guides           [2mguides[0m
+[36mdocs.user-guide#installation                             [39m  [34mopen[39m    Installation                            
+[36mdocs.user-guide#project-organization                     [39m  [34mopen[39m    Project organization                    
+[36mdocs.user-guide#quick-start                              [39m  [34mopen[39m    Quick start                             
+[36mdocs.user-guide#search-and-filtering                     [39m  [34mopen[39m    Search and filtering                    
+[36mdocs.user-guide#task-management                          [39m  [34mopen[39m    Task management                         
+[36mdocs.user-guide#team-workflow                            [39m  [34mopen[39m    Team workflow                           
+[36mdocs.user-guide#troubleshooting                          [39m  [34mopen[39m    Troubleshooting                         
+[36mdocs.user-guide#tutorial-tutorials                       [39m  [34mopen[39m    Tutorial #tutorials                     [2mtutorials[0m
+[36mfrontend.components#add-component-tests-testing          [39m  [34mopen[39m    Add component tests #testing            [2mtesting[0m
+[36mfrontend.components#dropdown                             [39m  [34mopen[39m    Dropdown                                
+[36mfrontend.components#implement-base-components-components [39m  [34mopen[39m    Implement base components #components   [2mcomponents[0m
+[36mfrontend.components#implement-feature-components-features[39m  [34mopen[39m    Implement feature components #features  [2mfeatures[0m
+[36mfrontend.components#login-form                           [39m  [34mopen[39m    Login form                              
+[36mfrontend.components#modal                                [39m  [34mopen[39m    Modal                                   
+[36mfrontend.components#project-dashboard                    [39m  [34mopen[39m    Project dashboard                       
+[36mfrontend.components#task-detail                          [39m  [34mopen[39m    Task detail                             
+[36mfrontend.components#task-list                            [39m  [34mopen[39m    Task list                               
+[36mfrontend.components#visual-regression-tests              [39m  [34mopen[39m    Visual regression tests                 
+[36mfrontend.state#action-tests                              [39m  [34mopen[39m    Action tests                            
+[36mfrontend.state#add-api-integration-api                   [39m  [34mopen[39m    Add API integration #api                [2mapi[0m
+[36mfrontend.state#add-state-tests-testing                   [39m  [34mopen[39m    Add state tests #testing                [2mtesting[0m
+[36mfrontend.state#caching-strategy                          [39m  [34mopen[39m    Caching strategy                        
+[36mfrontend.state#data-fetching                             [39m  [34mopen[39m    Data fetching                           
+[36mfrontend.state#error-handling                            [39m  [34mopen[39m    Error handling                          
+[36mfrontend.state#implement-state-slices-state              [39m  [34mopen[39m    Implement state slices #state           [2mstate[0m
+[36mfrontend.state#projects-state                            [39m  [34mopen[39m    Projects state                          
+[36mfrontend.state#reducer-tests                             [39m  [34mopen[39m    Reducer tests                           
+[36mfrontend.state#selector-tests                            [39m  [34mopen[39m    Selector tests                          
+[36mfrontend.state#tasks-state                               [39m  [34mopen[39m    Tasks state                             
+[36mfrontend.state#ui-state                                  [39m  [34mopen[39m    UI state                                
+[36mfrontend.tests#component-tests-component-testing         [39m  [34mopen[39m    Component tests #component-testing      [2mcomponent-testing[0m
+[36mfrontend.tests#critical-paths                            [39m  [34mopen[39m    Critical paths                          
+[36mfrontend.tests#e2e-tests-e2e-testing                     [39m  [34mopen[39m    E2E tests #e2e-testing                  [2me2e-testing[0m
+[36mfrontend.tests#error-scenarios                           [39m  [34mopen[39m    Error scenarios                         
+[36mfrontend.tests#feature-component-tests                   [39m  [34mopen[39m    Feature component tests                 
+[36mfrontend.tests#integration-tests                         [39m  [34mopen[39m    Integration tests                       
+[36mfrontend.tests#snapshot-tests                            [39m  [34mopen[39m    Snapshot tests                          
+[36mfrontend.tests#user-flows                                [39m  [34mopen[39m    User flows                              
+[36mfrontend.tests#visual-regression                         [39m  [34mopen[39m    Visual regression                       
+[36mfrontend.tests#visual-tests-visual-testing               [39m  [34mopen[39m    Visual tests #visual-testing            [2mvisual-testing[0m
+[36mmedium-project#api-docs                                  [39m  [34mopen[39m    API docs                                
+[36mmedium-project#api-implementation                        [39m  [34mopen[39m    API implementation                      
+[36mmedium-project#backend-development-backend               [39m  [34mopen[39m    Backend development #backend            [2mbackend[0m
+[36mmedium-project#backend-tests                             [39m  [34mopen[39m    Backend tests                           
+[36mmedium-project#deployment-ops                            [39m  [34mopen[39m    Deployment #ops                         [2mops[0m
+[36mmedium-project#documentation-docs                        [39m  [34mopen[39m    Documentation #docs                     [2mdocs[0m
+[36mmedium-project#frontend-development-frontend             [39m  [34mopen[39m    Frontend development #frontend          [2mfrontend[0m
+[36mmedium-project#frontend-tests                            [39m  [34mopen[39m    Frontend tests                          
+[36mmedium-project#production-deployment                     [39m  [34mopen[39m    Production deployment                   
+[36mmedium-project#staging-environment                       [39m  [34mopen[39m    Staging environment                     
+[36mmedium-project#state-management                          [39m  [34mopen[39m    State management                        
+[36mmedium-project#ui-components                             [39m  [34mopen[39m    UI components                           
+[36mmedium-project#user-guide                                [39m  [34mopen[39m    User guide                              
+
+[1mTotal: 94 task(s)[0m

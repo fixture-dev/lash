@@ -1,0 +1,266 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: normalized
+---
+{
+  "count": 15,
+  "tasks": [
+    {
+      "body": null,
+      "depth": 0,
+      "estimate": null,
+      "file_id": 1,
+      "full_id": "bugs#fix-authentication-bug-critical",
+      "id": 1,
+      "local_id": "fix-authentication-bug-critical",
+      "metadata": {
+        "labels": [
+          "critical"
+        ]
+      },
+      "order_index": 0,
+      "owner": null,
+      "parent_id": null,
+      "status": "done",
+      "title": "Fix authentication bug #critical"
+    },
+    {
+      "body": null,
+      "depth": 0,
+      "estimate": null,
+      "file_id": 1,
+      "full_id": "bugs#resolve-memory-leak-p1",
+      "id": 2,
+      "local_id": "resolve-memory-leak-p1",
+      "metadata": {
+        "labels": [
+          "p1"
+        ]
+      },
+      "order_index": 1,
+      "owner": null,
+      "parent_id": null,
+      "status": "open",
+      "title": "Resolve memory leak #p1"
+    },
+    {
+      "body": null,
+      "depth": 0,
+      "estimate": null,
+      "file_id": 1,
+      "full_id": "bugs#update-dependencies-maintenance",
+      "id": 3,
+      "local_id": "update-dependencies-maintenance",
+      "metadata": {
+        "labels": [
+          "maintenance"
+        ]
+      },
+      "order_index": 2,
+      "owner": null,
+      "parent_id": null,
+      "status": "open",
+      "title": "Update dependencies #maintenance"
+    },
+    {
+      "body": null,
+      "depth": 1,
+      "estimate": null,
+      "file_id": 3,
+      "full_id": "dev-tasks#api-documentation",
+      "id": 14,
+      "local_id": "api-documentation",
+      "metadata": {},
+      "order_index": 0,
+      "owner": null,
+      "parent_id": 13,
+      "status": "open",
+      "title": "API documentation"
+    },
+    {
+      "body": null,
+      "depth": 1,
+      "estimate": null,
+      "file_id": 3,
+      "full_id": "dev-tasks#design-api",
+      "id": 10,
+      "local_id": "design-api",
+      "metadata": {},
+      "order_index": 0,
+      "owner": null,
+      "parent_id": 9,
+      "status": "done",
+      "title": "Design API"
+    },
+    {
+      "body": null,
+      "depth": 0,
+      "estimate": null,
+      "file_id": 3,
+      "full_id": "dev-tasks#documentation-docs",
+      "id": 13,
+      "local_id": "documentation-docs",
+      "metadata": {
+        "labels": [
+          "docs"
+        ]
+      },
+      "order_index": 1,
+      "owner": null,
+      "parent_id": null,
+      "status": "open",
+      "title": "Documentation #docs"
+    },
+    {
+      "body": null,
+      "depth": 0,
+      "estimate": null,
+      "file_id": 3,
+      "full_id": "dev-tasks#feature-development",
+      "id": 9,
+      "local_id": "feature-development",
+      "metadata": {},
+      "order_index": 0,
+      "owner": null,
+      "parent_id": null,
+      "status": "open",
+      "title": "Feature development"
+    },
+    {
+      "body": null,
+      "depth": 1,
+      "estimate": null,
+      "file_id": 3,
+      "full_id": "dev-tasks#implement-endpoints-backend",
+      "id": 11,
+      "local_id": "implement-endpoints-backend",
+      "metadata": {
+        "labels": [
+          "backend"
+        ]
+      },
+      "order_index": 1,
+      "owner": null,
+      "parent_id": 9,
+      "status": "open",
+      "title": "Implement endpoints #backend"
+    },
+    {
+      "body": null,
+      "depth": 1,
+      "estimate": null,
+      "file_id": 3,
+      "full_id": "dev-tasks#user-guide",
+      "id": 15,
+      "local_id": "user-guide",
+      "metadata": {},
+      "order_index": 1,
+      "owner": null,
+      "parent_id": 13,
+      "status": "open",
+      "title": "User guide"
+    },
+    {
+      "body": null,
+      "depth": 1,
+      "estimate": null,
+      "file_id": 3,
+      "full_id": "dev-tasks#write-tests-testing",
+      "id": 12,
+      "local_id": "write-tests-testing",
+      "metadata": {
+        "labels": [
+          "testing"
+        ]
+      },
+      "order_index": 2,
+      "owner": null,
+      "parent_id": 9,
+      "status": "open",
+      "title": "Write tests #testing"
+    },
+    {
+      "body": null,
+      "depth": 1,
+      "estimate": null,
+      "file_id": 2,
+      "full_id": "small-project#advanced-features",
+      "id": 7,
+      "local_id": "advanced-features",
+      "metadata": {},
+      "order_index": 1,
+      "owner": null,
+      "parent_id": 5,
+      "status": "open",
+      "title": "Advanced features"
+    },
+    {
+      "body": null,
+      "depth": 1,
+      "estimate": null,
+      "file_id": 2,
+      "full_id": "small-project#basic-functionality",
+      "id": 6,
+      "local_id": "basic-functionality",
+      "metadata": {},
+      "order_index": 0,
+      "owner": null,
+      "parent_id": 5,
+      "status": "done",
+      "title": "Basic functionality"
+    },
+    {
+      "body": null,
+      "depth": 0,
+      "estimate": null,
+      "file_id": 2,
+      "full_id": "small-project#fix-known-bugs-bug",
+      "id": 8,
+      "local_id": "fix-known-bugs-bug",
+      "metadata": {
+        "labels": [
+          "bug"
+        ]
+      },
+      "order_index": 2,
+      "owner": null,
+      "parent_id": null,
+      "status": "open",
+      "title": "Fix known bugs #bug"
+    },
+    {
+      "body": null,
+      "depth": 0,
+      "estimate": null,
+      "file_id": 2,
+      "full_id": "small-project#implement-core-features-feature",
+      "id": 5,
+      "local_id": "implement-core-features-feature",
+      "metadata": {
+        "labels": [
+          "feature"
+        ]
+      },
+      "order_index": 1,
+      "owner": null,
+      "parent_id": null,
+      "status": "open",
+      "title": "Implement core features #feature"
+    },
+    {
+      "body": null,
+      "depth": 0,
+      "estimate": null,
+      "file_id": 2,
+      "full_id": "small-project#set-up-project-structure",
+      "id": 4,
+      "local_id": "set-up-project-structure",
+      "metadata": {},
+      "order_index": 0,
+      "owner": null,
+      "parent_id": null,
+      "status": "done",
+      "title": "Set up project structure"
+    }
+  ]
+}
