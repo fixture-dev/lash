@@ -904,3 +904,87 @@ fn test_modify_and_reindex_workflow() {
         .success()
         .stdout(predicate::str::contains("New task"));
 }
+
+#[test]
+fn test_playground_full_workflow() {
+    let temp = TempDir::new().unwrap();
+    let playground_path = temp.path().join("playground");
+
+    // 1. Initialize playground
+    create_lash_command()
+        .arg("playground")
+        .arg("init")
+        .arg("--path")
+        .arg(&playground_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PixelQuest"));
+
+    // 2. List gameplay tasks
+    create_lash_command()
+        .current_dir(&playground_path)
+        .arg("list")
+        .arg("--label")
+        .arg("gameplay")
+        .assert()
+        .success();
+
+    // 3. Search for boss-related tasks
+    create_lash_command()
+        .current_dir(&playground_path)
+        .arg("search")
+        .arg("boss")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("boss"));
+
+    // 4. Show a specific file
+    create_lash_command()
+        .current_dir(&playground_path)
+        .arg("show")
+        .arg("features/player-movement.md")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Player Movement"));
+
+    // 5. Generate dependency graph
+    let graph_output = playground_path.join("graph.dot");
+    create_lash_command()
+        .current_dir(&playground_path)
+        .arg("graph")
+        .arg("--output")
+        .arg(&graph_output)
+        .assert()
+        .success();
+
+    assert!(graph_output.exists());
+    let graph_content = fs::read_to_string(&graph_output).unwrap();
+    assert!(graph_content.contains("digraph"));
+
+    // 6. Check all links are valid
+    create_lash_command()
+        .current_dir(&playground_path)
+        .arg("check-links")
+        .assert()
+        .success();
+
+    // 7. List tasks by different labels
+    create_lash_command()
+        .current_dir(&playground_path)
+        .arg("list")
+        .arg("--label")
+        .arg("backend")
+        .assert()
+        .success();
+
+    create_lash_command()
+        .current_dir(&playground_path)
+        .arg("list")
+        .arg("--label")
+        .arg("art")
+        .assert()
+        .success();
+
+    // 8. Verify index was created (in .lash directory)
+    assert!(playground_path.join(".lash/lash.db").exists());
+}

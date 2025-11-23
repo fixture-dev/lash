@@ -67,6 +67,30 @@ cargo fmt --check
 cargo clippy --workspace -- -D warnings
 ```
 
+## Try the Playground
+
+Want to explore Lash's features without setting up your own project? Try the playground!
+
+```bash
+lash playground init
+cd playground
+lash list --label gameplay
+```
+
+The playground creates "PixelQuest" - a realistic game development demo project with:
+- 23 task files + index across features, systems, content, and milestones
+- Hundreds of tasks showing realistic project complexity
+- Examples of dependencies, labels, statuses, and annotations
+- A comprehensive `PLAYGROUND_GUIDE.md` with usage examples
+
+Perfect for:
+- Learning Lash's features
+- Testing new commands
+- Demos and presentations
+- Understanding best practices
+
+See `playground/PLAYGROUND_GUIDE.md` for detailed usage instructions.
+
 ## Development
 
 This project follows strict quality standards:
