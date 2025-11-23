@@ -39,7 +39,7 @@
 use super::graph::DependencyGraph;
 use lash_types::TaskStatus;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write;
 
 /// Options for filtering graph export
@@ -155,8 +155,8 @@ impl<'a> GraphExporter<'a> {
         // Get filtered nodes
         let nodes = self.filter_nodes(options);
 
-        // Group nodes by file for clustering
-        let mut file_groups: HashMap<String, Vec<String>> = HashMap::new();
+        // Group nodes by file for clustering (using BTreeMap for deterministic ordering)
+        let mut file_groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for node_id in &nodes {
             if let Some(node) = self.graph.get_node(node_id) {
                 file_groups
@@ -164,6 +164,11 @@ impl<'a> GraphExporter<'a> {
                     .or_default()
                     .push(node_id.clone());
             }
+        }
+
+        // Sort task_ids within each file for deterministic output
+        for task_ids in file_groups.values_mut() {
+            task_ids.sort();
         }
 
         // Output nodes grouped by file (clusters)
@@ -195,11 +200,18 @@ impl<'a> GraphExporter<'a> {
             output.push_str("  }\n\n");
         }
 
-        // Output edges
+        // Output edges (sort node IDs for deterministic output)
         output.push_str("  // Dependencies\n");
-        for node_id in &nodes {
+        let mut sorted_nodes: Vec<_> = nodes.iter().collect();
+        sorted_nodes.sort();
+
+        for node_id in sorted_nodes {
             if let Some(deps) = self.graph.get_dependencies(node_id) {
-                for dep in deps {
+                // Sort dependencies for deterministic output
+                let mut sorted_deps: Vec<_> = deps.iter().collect();
+                sorted_deps.sort_by(|a, b| a.target_id.cmp(&b.target_id));
+
+                for dep in sorted_deps {
                     let target_id = &dep.target_id;
 
                     // Only output edge if target is in filtered nodes

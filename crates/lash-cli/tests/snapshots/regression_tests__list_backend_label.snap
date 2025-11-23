@@ -1,0 +1,9 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: normalized
+---
+[1mID                                        [0m  [1mSTATUS [0m  [1mTITLE                       [0m  [1mLABELS[0m
+-------------------------------------------------------------------------------------------------
+[36mmedium-project#backend-development-backend[39m  [34mopen[39m    Backend development #backend  [2mbackend[0m
+
+[1mTotal: 1 task(s)[0m

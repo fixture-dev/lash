@@ -1,0 +1,400 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: normalized
+---
+digraph dependencies {
+  // Graph settings
+  rankdir=TB;
+  node [shape=box, style=filled];
+  edge [fontsize=10];
+
+  // File: backend.api
+  subgraph cluster_backend_api {
+    label="backend.api";
+    style=dashed;
+    color=gray;
+
+    "backend.api#add-api-documentation-docs" [label="Add API documentation #docs", fillcolor="lightyellow"];
+    "backend.api#define-endpoints" [label="Define endpoints", fillcolor="lightgreen"];
+    "backend.api#design-requestresponse-schemas" [label="Design request/response schemas", fillcolor="lightgreen"];
+    "backend.api#design-rest-api" [label="Design REST API", fillcolor="lightgreen"];
+    "backend.api#example-requests" [label="Example requests", fillcolor="lightyellow"];
+    "backend.api#implement-authentication-security" [label="Implement authentication #security", fillcolor="lightyellow"];
+    "backend.api#implement-crud-endpoints-core" [label="Implement CRUD endpoints #core", fillcolor="lightyellow"];
+    "backend.api#jwt-token-generation" [label="JWT token generation", fillcolor="lightgreen"];
+    "backend.api#oauth2-integration-p1" [label="OAuth2 integration #p1", fillcolor="lightyellow"];
+    "backend.api#openapi-spec" [label="OpenAPI spec", fillcolor="lightyellow"];
+    "backend.api#project-endpoints" [label="Project endpoints", fillcolor="lightyellow"];
+    "backend.api#session-management" [label="Session management", fillcolor="lightyellow"];
+    "backend.api#task-endpoints" [label="Task endpoints", fillcolor="lightyellow"];
+    "backend.api#user-endpoints" [label="User endpoints", fillcolor="lightgreen"];
+  }
+
+  // File: backend.database
+  subgraph cluster_backend_database {
+    label="backend.database";
+    style=dashed;
+    color=gray;
+
+    "backend.database#add-database-layer-core" [label="Add database layer #core", fillcolor="lightgreen"];
+    "backend.database#add-indexes" [label="Add indexes", fillcolor="lightgreen"];
+    "backend.database#connection-pooling" [label="Connection pooling", fillcolor="lightgreen"];
+    "backend.database#design-database-schema" [label="Design database schema", fillcolor="lightgreen"];
+    "backend.database#initial-schema-migration" [label="Initial schema migration", fillcolor="lightgreen"];
+    "backend.database#migration-framework" [label="Migration framework", fillcolor="lightgreen"];
+    "backend.database#performance-optimization-performance" [label="Performance optimization #performance", fillcolor="lightgreen"];
+    "backend.database#projects-table" [label="Projects table", fillcolor="lightgreen"];
+    "backend.database#query-builders" [label="Query builders", fillcolor="lightgreen"];
+    "backend.database#query-optimization" [label="Query optimization", fillcolor="lightgreen"];
+    "backend.database#relationships" [label="Relationships", fillcolor="lightgreen"];
+    "backend.database#seed-data" [label="Seed data", fillcolor="lightgreen"];
+    "backend.database#set-up-migrations-infrastructure" [label="Set up migrations #infrastructure", fillcolor="lightgreen"];
+    "backend.database#tasks-table" [label="Tasks table", fillcolor="lightgreen"];
+    "backend.database#transaction-support" [label="Transaction support", fillcolor="lightgreen"];
+    "backend.database#users-table" [label="Users table", fillcolor="lightgreen"];
+  }
+
+  // File: backend.tests
+  subgraph cluster_backend_tests {
+    label="backend.tests";
+    style=dashed;
+    color=gray;
+
+    "backend.tests#api-endpoint-tests" [label="API endpoint tests", fillcolor="lightgreen"];
+    "backend.tests#auth-flow-tests" [label="Auth flow tests", fillcolor="lightyellow"];
+    "backend.tests#database-integration-tests" [label="Database integration tests", fillcolor="lightyellow"];
+    "backend.tests#helper-functions" [label="Helper functions", fillcolor="lightgreen"];
+    "backend.tests#integration-tests-integration-testing" [label="Integration tests #integration-testing", fillcolor="lightyellow"];
+    "backend.tests#load-testing" [label="Load testing", fillcolor="lightyellow"];
+    "backend.tests#model-tests" [label="Model tests", fillcolor="lightgreen"];
+    "backend.tests#performance-tests-performance" [label="Performance tests #performance", fillcolor="lightyellow"];
+    "backend.tests#service-tests" [label="Service tests", fillcolor="lightyellow"];
+    "backend.tests#set-up-test-infrastructure" [label="Set up test infrastructure", fillcolor="lightgreen"];
+    "backend.tests#stress-testing" [label="Stress testing", fillcolor="lightyellow"];
+    "backend.tests#test-database" [label="Test database", fillcolor="lightgreen"];
+    "backend.tests#test-fixtures" [label="Test fixtures", fillcolor="lightgreen"];
+    "backend.tests#unit-tests-unit-testing" [label="Unit tests #unit-testing", fillcolor="lightyellow"];
+    "backend.tests#utility-tests" [label="Utility tests", fillcolor="lightyellow"];
+  }
+
+  // File: docs.api
+  subgraph cluster_docs_api {
+    label="docs.api";
+    style=dashed;
+    color=gray;
+
+    "docs.api#api-guide-guides" [label="API guide #guides", fillcolor="lightyellow"];
+    "docs.api#api-reference-documentation-docs" [label="API reference documentation #docs", fillcolor="lightyellow"];
+    "docs.api#authentication-endpoints" [label="Authentication endpoints", fillcolor="lightyellow"];
+    "docs.api#authentication-guide" [label="Authentication guide", fillcolor="lightyellow"];
+    "docs.api#code-examples-examples" [label="Code examples #examples", fillcolor="lightyellow"];
+    "docs.api#curl-examples" [label="cURL examples", fillcolor="lightyellow"];
+    "docs.api#error-handling" [label="Error handling", fillcolor="lightyellow"];
+    "docs.api#getting-started" [label="Getting started", fillcolor="lightyellow"];
+    "docs.api#javascript-examples" [label="JavaScript examples", fillcolor="lightyellow"];
+    "docs.api#project-endpoints" [label="Project endpoints", fillcolor="lightyellow"];
+    "docs.api#python-examples" [label="Python examples", fillcolor="lightyellow"];
+    "docs.api#rate-limiting" [label="Rate limiting", fillcolor="lightyellow"];
+    "docs.api#task-endpoints" [label="Task endpoints", fillcolor="lightyellow"];
+    "docs.api#user-endpoints" [label="User endpoints", fillcolor="lightyellow"];
+  }
+
+  // File: docs.user-guide
+  subgraph cluster_docs_user_guide {
+    label="docs.user-guide";
+    style=dashed;
+    color=gray;
+
+    "docs.user-guide#advanced-features" [label="Advanced features", fillcolor="lightyellow"];
+    "docs.user-guide#basic-concepts" [label="Basic concepts", fillcolor="lightyellow"];
+    "docs.user-guide#best-practices" [label="Best practices", fillcolor="lightyellow"];
+    "docs.user-guide#collaboration" [label="Collaboration", fillcolor="lightyellow"];
+    "docs.user-guide#common-questions" [label="Common questions", fillcolor="lightyellow"];
+    "docs.user-guide#faq-support" [label="FAQ #support", fillcolor="lightyellow"];
+    "docs.user-guide#feature-documentation-features" [label="Feature documentation #features", fillcolor="lightyellow"];
+    "docs.user-guide#first-project" [label="First project", fillcolor="lightyellow"];
+    "docs.user-guide#getting-started-guide-guides" [label="Getting started guide #guides", fillcolor="lightyellow"];
+    "docs.user-guide#installation" [label="Installation", fillcolor="lightyellow"];
+    "docs.user-guide#project-organization" [label="Project organization", fillcolor="lightyellow"];
+    "docs.user-guide#quick-start" [label="Quick start", fillcolor="lightyellow"];
+    "docs.user-guide#search-and-filtering" [label="Search and filtering", fillcolor="lightyellow"];
+    "docs.user-guide#task-management" [label="Task management", fillcolor="lightyellow"];
+    "docs.user-guide#team-workflow" [label="Team workflow", fillcolor="lightyellow"];
+    "docs.user-guide#troubleshooting" [label="Troubleshooting", fillcolor="lightyellow"];
+    "docs.user-guide#tutorial-tutorials" [label="Tutorial #tutorials", fillcolor="lightyellow"];
+  }
+
+  // File: frontend.components
+  subgraph cluster_frontend_components {
+    label="frontend.components";
+    style=dashed;
+    color=gray;
+
+    "frontend.components#add-component-tests-testing" [label="Add component tests #testing", fillcolor="lightyellow"];
+    "frontend.components#button" [label="Button", fillcolor="lightgreen"];
+    "frontend.components#card" [label="Card", fillcolor="lightgreen"];
+    "frontend.components#choose-framework" [label="Choose framework", fillcolor="lightgreen"];
+    "frontend.components#configure-build" [label="Configure build", fillcolor="lightgreen"];
+    "frontend.components#dropdown" [label="Dropdown", fillcolor="lightyellow"];
+    "frontend.components#implement-base-components-components" [label="Implement base components #components", fillcolor="lightyellow"];
+    "frontend.components#implement-feature-components-features" [label="Implement feature components #features", fillcolor="lightyellow"];
+    "frontend.components#input" [label="Input", fillcolor="lightgreen"];
+    "frontend.components#login-form" [label="Login form", fillcolor="lightyellow"];
+    "frontend.components#modal" [label="Modal", fillcolor="lightyellow"];
+    "frontend.components#project-dashboard" [label="Project dashboard", fillcolor="lightyellow"];
+    "frontend.components#set-up-component-library" [label="Set up component library", fillcolor="lightgreen"];
+    "frontend.components#set-up-storybook" [label="Set up storybook", fillcolor="lightgreen"];
+    "frontend.components#task-detail" [label="Task detail", fillcolor="lightyellow"];
+    "frontend.components#task-list" [label="Task list", fillcolor="lightyellow"];
+    "frontend.components#unit-tests" [label="Unit tests", fillcolor="lightgreen"];
+    "frontend.components#visual-regression-tests" [label="Visual regression tests", fillcolor="lightyellow"];
+  }
+
+  // File: frontend.state
+  subgraph cluster_frontend_state {
+    label="frontend.state";
+    style=dashed;
+    color=gray;
+
+    "frontend.state#action-tests" [label="Action tests", fillcolor="lightyellow"];
+    "frontend.state#add-api-integration-api" [label="Add API integration #api", fillcolor="lightyellow"];
+    "frontend.state#add-state-tests-testing" [label="Add state tests #testing", fillcolor="lightyellow"];
+    "frontend.state#api-client" [label="API client", fillcolor="lightgreen"];
+    "frontend.state#auth-state" [label="Auth state", fillcolor="lightgreen"];
+    "frontend.state#caching-strategy" [label="Caching strategy", fillcolor="lightyellow"];
+    "frontend.state#choose-library" [label="Choose library", fillcolor="lightgreen"];
+    "frontend.state#configure-store" [label="Configure store", fillcolor="lightgreen"];
+    "frontend.state#data-fetching" [label="Data fetching", fillcolor="lightyellow"];
+    "frontend.state#define-state-shape" [label="Define state shape", fillcolor="lightgreen"];
+    "frontend.state#error-handling" [label="Error handling", fillcolor="lightyellow"];
+    "frontend.state#implement-state-slices-state" [label="Implement state slices #state", fillcolor="lightyellow"];
+    "frontend.state#projects-state" [label="Projects state", fillcolor="lightyellow"];
+    "frontend.state#reducer-tests" [label="Reducer tests", fillcolor="lightyellow"];
+    "frontend.state#selector-tests" [label="Selector tests", fillcolor="lightyellow"];
+    "frontend.state#set-up-state-management" [label="Set up state management", fillcolor="lightgreen"];
+    "frontend.state#tasks-state" [label="Tasks state", fillcolor="lightyellow"];
+    "frontend.state#ui-state" [label="UI state", fillcolor="lightyellow"];
+  }
+
+  // File: frontend.tests
+  subgraph cluster_frontend_tests {
+    label="frontend.tests";
+    style=dashed;
+    color=gray;
+
+    "frontend.tests#base-component-tests" [label="Base component tests", fillcolor="lightgreen"];
+    "frontend.tests#component-tests-component-testing" [label="Component tests #component-testing", fillcolor="lightyellow"];
+    "frontend.tests#critical-paths" [label="Critical paths", fillcolor="lightyellow"];
+    "frontend.tests#e2e-tests-e2e-testing" [label="E2E tests #e2e-testing", fillcolor="lightyellow"];
+    "frontend.tests#error-scenarios" [label="Error scenarios", fillcolor="lightyellow"];
+    "frontend.tests#feature-component-tests" [label="Feature component tests", fillcolor="lightyellow"];
+    "frontend.tests#integration-tests" [label="Integration tests", fillcolor="lightyellow"];
+    "frontend.tests#mock-api" [label="Mock API", fillcolor="lightgreen"];
+    "frontend.tests#set-up-test-infrastructure" [label="Set up test infrastructure", fillcolor="lightgreen"];
+    "frontend.tests#snapshot-tests" [label="Snapshot tests", fillcolor="lightyellow"];
+    "frontend.tests#test-runner" [label="Test runner", fillcolor="lightgreen"];
+    "frontend.tests#testing-library" [label="Testing library", fillcolor="lightgreen"];
+    "frontend.tests#user-flows" [label="User flows", fillcolor="lightyellow"];
+    "frontend.tests#visual-regression" [label="Visual regression", fillcolor="lightyellow"];
+    "frontend.tests#visual-tests-visual-testing" [label="Visual tests #visual-testing", fillcolor="lightyellow"];
+  }
+
+  // File: medium-project
+  subgraph cluster_medium_project {
+    label="medium-project";
+    style=dashed;
+    color=gray;
+
+    "medium-project#api-docs" [label="API docs", fillcolor="lightyellow"];
+    "medium-project#api-implementation" [label="API implementation", fillcolor="lightyellow"];
+    "medium-project#backend-development-backend" [label="Backend development #backend", fillcolor="lightyellow"];
+    "medium-project#backend-tests" [label="Backend tests", fillcolor="lightyellow"];
+    "medium-project#configure-build-system" [label="Configure build system", fillcolor="lightgreen"];
+    "medium-project#database-schema" [label="Database schema", fillcolor="lightgreen"];
+    "medium-project#deployment-ops" [label="Deployment #ops", fillcolor="lightyellow"];
+    "medium-project#documentation-docs" [label="Documentation #docs", fillcolor="lightyellow"];
+    "medium-project#frontend-development-frontend" [label="Frontend development #frontend", fillcolor="lightyellow"];
+    "medium-project#frontend-tests" [label="Frontend tests", fillcolor="lightyellow"];
+    "medium-project#production-deployment" [label="Production deployment", fillcolor="lightyellow"];
+    "medium-project#project-initialization" [label="Project initialization", fillcolor="lightgreen"];
+    "medium-project#set-up-cicd" [label="Set up CI/CD", fillcolor="lightgreen"];
+    "medium-project#set-up-repository" [label="Set up repository", fillcolor="lightgreen"];
+    "medium-project#staging-environment" [label="Staging environment", fillcolor="lightyellow"];
+    "medium-project#state-management" [label="State management", fillcolor="lightyellow"];
+    "medium-project#ui-components" [label="UI components", fillcolor="lightyellow"];
+    "medium-project#user-guide" [label="User guide", fillcolor="lightyellow"];
+  }
+
+  // Dependencies
+  "backend.api#define-endpoints" -> "backend.api#design-rest-api" [label="Hierarchy"];
+  "backend.api#design-requestresponse-schemas" -> "backend.api#design-rest-api" [label="Hierarchy"];
+  "backend.api#design-rest-api" -> "backend.api#define-endpoints" [label="Hierarchy"];
+  "backend.api#design-rest-api" -> "backend.api#design-requestresponse-schemas" [label="Hierarchy"];
+  "backend.api#example-requests" -> "backend.api#add-api-documentation-docs" [label="Hierarchy"];
+  "backend.api#implement-authentication-security" -> "backend.api#oauth2-integration-p1" [label="Hierarchy"];
+  "backend.api#implement-authentication-security" -> "backend.api#session-management" [label="Hierarchy"];
+  "backend.api#implement-crud-endpoints-core" -> "backend.api#project-endpoints" [label="Hierarchy"];
+  "backend.api#jwt-token-generation" -> "backend.api#implement-authentication-security" [label="Hierarchy"];
+  "backend.api#oauth2-integration-p1" -> "backend.api#implement-authentication-security" [label="Hierarchy"];
+  "backend.api#openapi-spec" -> "backend.api#add-api-documentation-docs" [label="Hierarchy"];
+  "backend.api#project-endpoints" -> "backend.api#implement-crud-endpoints-core" [label="Hierarchy"];
+  "backend.api#session-management" -> "backend.api#implement-authentication-security" [label="Hierarchy"];
+  "backend.api#task-endpoints" -> "backend.api#implement-crud-endpoints-core" [label="Hierarchy"];
+  "backend.api#user-endpoints" -> "backend.api#implement-crud-endpoints-core" [label="Hierarchy"];
+  "backend.database#add-database-layer-core" -> "backend.database#transaction-support" [label="Hierarchy"];
+  "backend.database#add-indexes" -> "backend.database#performance-optimization-performance" [label="Hierarchy"];
+  "backend.database#connection-pooling" -> "backend.database#add-database-layer-core" [label="Hierarchy"];
+  "backend.database#design-database-schema" -> "backend.database#projects-table" [label="Hierarchy"];
+  "backend.database#design-database-schema" -> "backend.database#relationships" [label="Hierarchy"];
+  "backend.database#design-database-schema" -> "backend.database#tasks-table" [label="Hierarchy"];
+  "backend.database#design-database-schema" -> "backend.database#users-table" [label="Hierarchy"];
+  "backend.database#initial-schema-migration" -> "backend.database#set-up-migrations-infrastructure" [label="Hierarchy"];
+  "backend.database#migration-framework" -> "backend.database#set-up-migrations-infrastructure" [label="Hierarchy"];
+  "backend.database#projects-table" -> "backend.database#design-database-schema" [label="Hierarchy"];
+  "backend.database#query-builders" -> "backend.database#add-database-layer-core" [label="Hierarchy"];
+  "backend.database#query-optimization" -> "backend.database#performance-optimization-performance" [label="Hierarchy"];
+  "backend.database#relationships" -> "backend.database#design-database-schema" [label="Hierarchy"];
+  "backend.database#seed-data" -> "backend.database#set-up-migrations-infrastructure" [label="Hierarchy"];
+  "backend.database#set-up-migrations-infrastructure" -> "backend.database#initial-schema-migration" [label="Hierarchy"];
+  "backend.database#set-up-migrations-infrastructure" -> "backend.database#seed-data" [label="Hierarchy"];
+  "backend.database#tasks-table" -> "backend.database#design-database-schema" [label="Hierarchy"];
+  "backend.database#transaction-support" -> "backend.database#add-database-layer-core" [label="Hierarchy"];
+  "backend.database#users-table" -> "backend.database#design-database-schema" [label="Hierarchy"];
+  "backend.tests#api-endpoint-tests" -> "backend.tests#integration-tests-integration-testing" [label="Hierarchy"];
+  "backend.tests#auth-flow-tests" -> "backend.tests#integration-tests-integration-testing" [label="Hierarchy"];
+  "backend.tests#database-integration-tests" -> "backend.tests#integration-tests-integration-testing" [label="Hierarchy"];
+  "backend.tests#helper-functions" -> "backend.tests#set-up-test-infrastructure" [label="Hierarchy"];
+  "backend.tests#integration-tests-integration-testing" -> "backend.tests#auth-flow-tests" [label="Hierarchy"];
+  "backend.tests#load-testing" -> "backend.tests#performance-tests-performance" [label="Hierarchy"];
+  "backend.tests#model-tests" -> "backend.tests#unit-tests-unit-testing" [label="Hierarchy"];
+  "backend.tests#service-tests" -> "backend.tests#unit-tests-unit-testing" [label="Hierarchy"];
+  "backend.tests#set-up-test-infrastructure" -> "backend.tests#helper-functions" [label="Hierarchy"];
+  "backend.tests#set-up-test-infrastructure" -> "backend.tests#test-database" [label="Hierarchy"];
+  "backend.tests#set-up-test-infrastructure" -> "backend.tests#test-fixtures" [label="Hierarchy"];
+  "backend.tests#stress-testing" -> "backend.tests#performance-tests-performance" [label="Hierarchy"];
+  "backend.tests#test-database" -> "backend.tests#set-up-test-infrastructure" [label="Hierarchy"];
+  "backend.tests#test-fixtures" -> "backend.tests#set-up-test-infrastructure" [label="Hierarchy"];
+  "backend.tests#unit-tests-unit-testing" -> "backend.tests#service-tests" [label="Hierarchy"];
+  "backend.tests#unit-tests-unit-testing" -> "backend.tests#utility-tests" [label="Hierarchy"];
+  "backend.tests#utility-tests" -> "backend.tests#unit-tests-unit-testing" [label="Hierarchy"];
+  "docs.api#api-guide-guides" -> "docs.api#authentication-guide" [label="Hierarchy"];
+  "docs.api#api-guide-guides" -> "docs.api#error-handling" [label="Hierarchy"];
+  "docs.api#api-guide-guides" -> "docs.api#rate-limiting" [label="Hierarchy"];
+  "docs.api#api-reference-documentation-docs" -> "docs.api#authentication-endpoints" [label="Hierarchy"];
+  "docs.api#api-reference-documentation-docs" -> "docs.api#project-endpoints" [label="Hierarchy"];
+  "docs.api#api-reference-documentation-docs" -> "docs.api#task-endpoints" [label="Hierarchy"];
+  "docs.api#api-reference-documentation-docs" -> "docs.api#user-endpoints" [label="Hierarchy"];
+  "docs.api#authentication-endpoints" -> "docs.api#api-reference-documentation-docs" [label="Hierarchy"];
+  "docs.api#authentication-guide" -> "docs.api#api-guide-guides" [label="Hierarchy"];
+  "docs.api#code-examples-examples" -> "docs.api#python-examples" [label="Hierarchy"];
+  "docs.api#curl-examples" -> "docs.api#code-examples-examples" [label="Hierarchy"];
+  "docs.api#error-handling" -> "docs.api#api-guide-guides" [label="Hierarchy"];
+  "docs.api#getting-started" -> "docs.api#api-guide-guides" [label="Hierarchy"];
+  "docs.api#javascript-examples" -> "docs.api#code-examples-examples" [label="Hierarchy"];
+  "docs.api#project-endpoints" -> "docs.api#api-reference-documentation-docs" [label="Hierarchy"];
+  "docs.api#python-examples" -> "docs.api#code-examples-examples" [label="Hierarchy"];
+  "docs.api#rate-limiting" -> "docs.api#api-guide-guides" [label="Hierarchy"];
+  "docs.api#task-endpoints" -> "docs.api#api-reference-documentation-docs" [label="Hierarchy"];
+  "docs.api#user-endpoints" -> "docs.api#api-reference-documentation-docs" [label="Hierarchy"];
+  "docs.user-guide#advanced-features" -> "docs.user-guide#tutorial-tutorials" [label="Hierarchy"];
+  "docs.user-guide#basic-concepts" -> "docs.user-guide#getting-started-guide-guides" [label="Hierarchy"];
+  "docs.user-guide#best-practices" -> "docs.user-guide#faq-support" [label="Hierarchy"];
+  "docs.user-guide#collaboration" -> "docs.user-guide#feature-documentation-features" [label="Hierarchy"];
+  "docs.user-guide#common-questions" -> "docs.user-guide#faq-support" [label="Hierarchy"];
+  "docs.user-guide#feature-documentation-features" -> "docs.user-guide#collaboration" [label="Hierarchy"];
+  "docs.user-guide#feature-documentation-features" -> "docs.user-guide#project-organization" [label="Hierarchy"];
+  "docs.user-guide#feature-documentation-features" -> "docs.user-guide#search-and-filtering" [label="Hierarchy"];
+  "docs.user-guide#first-project" -> "docs.user-guide#tutorial-tutorials" [label="Hierarchy"];
+  "docs.user-guide#getting-started-guide-guides" -> "docs.user-guide#basic-concepts" [label="Hierarchy"];
+  "docs.user-guide#getting-started-guide-guides" -> "docs.user-guide#installation" [label="Hierarchy"];
+  "docs.user-guide#getting-started-guide-guides" -> "docs.user-guide#quick-start" [label="Hierarchy"];
+  "docs.user-guide#installation" -> "docs.user-guide#getting-started-guide-guides" [label="Hierarchy"];
+  "docs.user-guide#project-organization" -> "docs.user-guide#feature-documentation-features" [label="Hierarchy"];
+  "docs.user-guide#quick-start" -> "docs.user-guide#getting-started-guide-guides" [label="Hierarchy"];
+  "docs.user-guide#search-and-filtering" -> "docs.user-guide#feature-documentation-features" [label="Hierarchy"];
+  "docs.user-guide#task-management" -> "docs.user-guide#feature-documentation-features" [label="Hierarchy"];
+  "docs.user-guide#team-workflow" -> "docs.user-guide#tutorial-tutorials" [label="Hierarchy"];
+  "docs.user-guide#troubleshooting" -> "docs.user-guide#faq-support" [label="Hierarchy"];
+  "docs.user-guide#tutorial-tutorials" -> "docs.user-guide#advanced-features" [label="Hierarchy"];
+  "frontend.components#button" -> "frontend.components#implement-base-components-components" [label="Hierarchy"];
+  "frontend.components#card" -> "frontend.components#implement-base-components-components" [label="Hierarchy"];
+  "frontend.components#choose-framework" -> "frontend.components#set-up-component-library" [label="Hierarchy"];
+  "frontend.components#configure-build" -> "frontend.components#set-up-component-library" [label="Hierarchy"];
+  "frontend.components#dropdown" -> "frontend.components#implement-base-components-components" [label="Hierarchy"];
+  "frontend.components#implement-base-components-components" -> "frontend.components#card" [label="Hierarchy"];
+  "frontend.components#implement-base-components-components" -> "frontend.components#dropdown" [label="Hierarchy"];
+  "frontend.components#implement-base-components-components" -> "frontend.components#input" [label="Hierarchy"];
+  "frontend.components#implement-base-components-components" -> "frontend.components#modal" [label="Hierarchy"];
+  "frontend.components#implement-feature-components-features" -> "frontend.components#project-dashboard" [label="Hierarchy"];
+  "frontend.components#implement-feature-components-features" -> "frontend.components#task-detail" [label="Hierarchy"];
+  "frontend.components#input" -> "frontend.components#implement-base-components-components" [label="Hierarchy"];
+  "frontend.components#login-form" -> "frontend.components#implement-feature-components-features" [label="Hierarchy"];
+  "frontend.components#modal" -> "frontend.components#implement-base-components-components" [label="Hierarchy"];
+  "frontend.components#project-dashboard" -> "frontend.components#implement-feature-components-features" [label="Hierarchy"];
+  "frontend.components#set-up-component-library" -> "frontend.components#choose-framework" [label="Hierarchy"];
+  "frontend.components#set-up-component-library" -> "frontend.components#configure-build" [label="Hierarchy"];
+  "frontend.components#set-up-component-library" -> "frontend.components#set-up-storybook" [label="Hierarchy"];
+  "frontend.components#set-up-storybook" -> "frontend.components#set-up-component-library" [label="Hierarchy"];
+  "frontend.components#task-detail" -> "frontend.components#implement-feature-components-features" [label="Hierarchy"];
+  "frontend.components#task-list" -> "frontend.components#implement-feature-components-features" [label="Hierarchy"];
+  "frontend.components#unit-tests" -> "frontend.components#add-component-tests-testing" [label="Hierarchy"];
+  "frontend.components#visual-regression-tests" -> "frontend.components#add-component-tests-testing" [label="Hierarchy"];
+  "frontend.state#action-tests" -> "frontend.state#add-state-tests-testing" [label="Hierarchy"];
+  "frontend.state#add-api-integration-api" -> "frontend.state#caching-strategy" [label="Hierarchy"];
+  "frontend.state#add-api-integration-api" -> "frontend.state#error-handling" [label="Hierarchy"];
+  "frontend.state#api-client" -> "frontend.state#add-api-integration-api" [label="Hierarchy"];
+  "frontend.state#auth-state" -> "frontend.state#implement-state-slices-state" [label="Hierarchy"];
+  "frontend.state#caching-strategy" -> "frontend.state#add-api-integration-api" [label="Hierarchy"];
+  "frontend.state#choose-library" -> "frontend.state#set-up-state-management" [label="Hierarchy"];
+  "frontend.state#configure-store" -> "frontend.state#set-up-state-management" [label="Hierarchy"];
+  "frontend.state#data-fetching" -> "frontend.state#add-api-integration-api" [label="Hierarchy"];
+  "frontend.state#define-state-shape" -> "frontend.state#set-up-state-management" [label="Hierarchy"];
+  "frontend.state#error-handling" -> "frontend.state#add-api-integration-api" [label="Hierarchy"];
+  "frontend.state#implement-state-slices-state" -> "frontend.state#projects-state" [label="Hierarchy"];
+  "frontend.state#implement-state-slices-state" -> "frontend.state#tasks-state" [label="Hierarchy"];
+  "frontend.state#implement-state-slices-state" -> "frontend.state#ui-state" [label="Hierarchy"];
+  "frontend.state#projects-state" -> "frontend.state#implement-state-slices-state" [label="Hierarchy"];
+  "frontend.state#reducer-tests" -> "frontend.state#add-state-tests-testing" [label="Hierarchy"];
+  "frontend.state#selector-tests" -> "frontend.state#add-state-tests-testing" [label="Hierarchy"];
+  "frontend.state#set-up-state-management" -> "frontend.state#choose-library" [label="Hierarchy"];
+  "frontend.state#set-up-state-management" -> "frontend.state#configure-store" [label="Hierarchy"];
+  "frontend.state#set-up-state-management" -> "frontend.state#define-state-shape" [label="Hierarchy"];
+  "frontend.state#tasks-state" -> "frontend.state#implement-state-slices-state" [label="Hierarchy"];
+  "frontend.state#ui-state" -> "frontend.state#implement-state-slices-state" [label="Hierarchy"];
+  "frontend.tests#base-component-tests" -> "frontend.tests#component-tests-component-testing" [label="Hierarchy"];
+  "frontend.tests#component-tests-component-testing" -> "frontend.tests#feature-component-tests" [label="Hierarchy"];
+  "frontend.tests#component-tests-component-testing" -> "frontend.tests#integration-tests" [label="Hierarchy"];
+  "frontend.tests#critical-paths" -> "frontend.tests#e2e-tests-e2e-testing" [label="Hierarchy"];
+  "frontend.tests#e2e-tests-e2e-testing" -> "frontend.tests#error-scenarios" [label="Hierarchy"];
+  "frontend.tests#error-scenarios" -> "frontend.tests#e2e-tests-e2e-testing" [label="Hierarchy"];
+  "frontend.tests#feature-component-tests" -> "frontend.tests#component-tests-component-testing" [label="Hierarchy"];
+  "frontend.tests#integration-tests" -> "frontend.tests#component-tests-component-testing" [label="Hierarchy"];
+  "frontend.tests#mock-api" -> "frontend.tests#set-up-test-infrastructure" [label="Hierarchy"];
+  "frontend.tests#set-up-test-infrastructure" -> "frontend.tests#mock-api" [label="Hierarchy"];
+  "frontend.tests#set-up-test-infrastructure" -> "frontend.tests#test-runner" [label="Hierarchy"];
+  "frontend.tests#set-up-test-infrastructure" -> "frontend.tests#testing-library" [label="Hierarchy"];
+  "frontend.tests#snapshot-tests" -> "frontend.tests#visual-tests-visual-testing" [label="Hierarchy"];
+  "frontend.tests#test-runner" -> "frontend.tests#set-up-test-infrastructure" [label="Hierarchy"];
+  "frontend.tests#testing-library" -> "frontend.tests#set-up-test-infrastructure" [label="Hierarchy"];
+  "frontend.tests#user-flows" -> "frontend.tests#e2e-tests-e2e-testing" [label="Hierarchy"];
+  "frontend.tests#visual-regression" -> "frontend.tests#visual-tests-visual-testing" [label="Hierarchy"];
+  "medium-project#api-docs" -> "medium-project#documentation-docs" [label="Hierarchy"];
+  "medium-project#api-implementation" -> "medium-project#backend-development-backend" [label="Hierarchy"];
+  "medium-project#backend-development-backend" -> "medium-project#api-implementation" [label="Hierarchy"];
+  "medium-project#backend-development-backend" -> "medium-project#backend-tests" [label="Hierarchy"];
+  "medium-project#backend-tests" -> "medium-project#backend-development-backend" [label="Hierarchy"];
+  "medium-project#configure-build-system" -> "medium-project#project-initialization" [label="Hierarchy"];
+  "medium-project#database-schema" -> "medium-project#backend-development-backend" [label="Hierarchy"];
+  "medium-project#frontend-development-frontend" -> "medium-project#frontend-tests" [label="Hierarchy"];
+  "medium-project#frontend-tests" -> "medium-project#frontend-development-frontend" [label="Hierarchy"];
+  "medium-project#production-deployment" -> "medium-project#deployment-ops" [label="Hierarchy"];
+  "medium-project#project-initialization" -> "medium-project#configure-build-system" [label="Hierarchy"];
+  "medium-project#project-initialization" -> "medium-project#set-up-cicd" [label="Hierarchy"];
+  "medium-project#project-initialization" -> "medium-project#set-up-repository" [label="Hierarchy"];
+  "medium-project#set-up-cicd" -> "medium-project#project-initialization" [label="Hierarchy"];
+  "medium-project#set-up-repository" -> "medium-project#project-initialization" [label="Hierarchy"];
+  "medium-project#staging-environment" -> "medium-project#deployment-ops" [label="Hierarchy"];
+  "medium-project#state-management" -> "medium-project#frontend-development-frontend" [label="Hierarchy"];
+  "medium-project#ui-components" -> "medium-project#frontend-development-frontend" [label="Hierarchy"];
+  "medium-project#user-guide" -> "medium-project#documentation-docs" [label="Hierarchy"];
+}

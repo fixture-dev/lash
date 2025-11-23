@@ -1,0 +1,165 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: normalized
+---
+# Lash Agent Usage Guide
+
+## Overview
+
+Lash is a minimalist, Markdown-native task tracker where:
+- Markdown files are the single source of truth
+- Tasks are hierarchical checkbox lists with annotations
+- SQLite provides fast indexing and search (fully reconstructible from Markdown)
+- Format is strictly enforced by linting for predictability
+
+## File Format
+
+# Lash Task File Format
+
+Lash task file format - hierarchical Markdown checkboxes with annotations
+
+**Version:** 1.0
+
+## Annotations
+
+Task files support the following metadata annotations:
+
+- `@id`: Unique identifier within the file
+  - Example: `@id: feature-auth`
+- `@labels`: Comma-separated tags for cross-cutting organization
+  - Example: `@labels: backend, security`
+- `@status`: Overall status of the file or section
+  - Example: `@status: in-progress`
+- `@owner`: Person or agent responsible for this task
+  - Example: `@owner: alice`
+- `@created`: Creation date in YYYY-MM-DD format
+  - Example: `@created: 2025-01-15`
+- `@estimate`: Time estimate for completion
+  - Example: `@estimate: 2d`
+- `@depends-on`: Cross-file dependency reference
+  - Example: `@depends-on: path/to/file.md#task:id`
+- `@agent-note`: Hints or instructions for AI agents
+  - Example: `@agent-note: Use existing auth patterns`
+
+## Task Status Values
+
+- `[ ]` (open) - Task not yet started or in progress
+- `[x]` (done) - Task completed successfully
+- `[-]` (waived) - Task marked as not applicable or cancelled
+- `[!]` (blocked) - Task blocked by dependencies or external factors
+
+## Constraints
+
+- **unique_ids**: Task IDs must be unique within each file (per-file uniqueness)
+- **max_depth**: Maximum nesting depth for task hierarchies (3-4 levels)
+- **status_consistency**: Parent tasks complete only when all children are done or waived (hierarchical consistency)
+- **valid_dependencies**: Dependency references must point to existing tasks (resolvable references)
+
+## Allowed Operations
+
+### add_task
+
+Add a new task to the hierarchy
+
+```markdown
+- [ ] New task description
+```
+
+### update_status
+
+Mark a task as done, waived, or blocked
+
+```markdown
+- [x] Completed task
+```
+
+### add_subtask
+
+Add a child task (indent with 2 spaces)
+
+```markdown
+  - [ ] Subtask description
+```
+
+### add_annotation
+
+Add metadata annotation to a task or file
+
+```markdown
+@labels: backend, api
+```
+
+### add_dependency
+
+Link to a task in another file
+
+```markdown
+@depends-on: core/auth.md#task:login
+```
+
+### waive_task
+
+Mark a task as not applicable
+
+```markdown
+- [-] Task no longer needed
+```
+
+
+## Examples
+
+### Minimal Valid File
+
+```markdown
+# Feature: User Authentication
+
+@id: feature-auth
+@labels: backend, security
+@status: in-progress
+@owner: alice
+
+## Tasks
+
+- [ ] Implement login endpoint
+  - [ ] Add password hashing
+  - [ ] Add JWT token generation
+- [ ] Add user registration
+- [x] Set up database schema
+```
+
+### File with Dependencies
+
+```markdown
+# Feature: User Profile Page
+
+@id: feature-profile
+@labels: frontend
+@depends-on: backend/auth.md#task:feature-auth
+
+## Tasks
+
+- [ ] Design profile UI
+  - [ ] Create mockups
+  - [ ] Get design approval
+- [ ] Implement profile component
+  - [ ] Fetch user data from API
+  - [ ] Display user information
+- [ ] Add edit functionality
+```
+
+## Current Project Tasks
+
+- bugs.md, 3 tasks, 33% complete, 2 open
+- lash.index.md, 5 tasks, 40% complete, 3 open
+- tasks.md, 7 tasks, 14% complete, 6 open
+
+## Safety Guidelines
+
+When working with Lash files:
+
+1. **Always run `lash lint` after modifications** to validate your changes
+2. **Respect depth limits** (3-4 levels maximum for task hierarchies)
+3. **Don't break dependency references** - ensure `@depends-on` targets exist
+4. **Maintain status consistency** - parent tasks complete only when children are done/waived
+5. **Use unique IDs** within each file
+6. **Run `lash index`** after making changes to update the search index

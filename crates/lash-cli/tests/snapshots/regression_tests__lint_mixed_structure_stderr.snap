@@ -1,0 +1,5 @@
+---
+source: crates/lash-cli/tests/regression_tests.rs
+expression: "normalize_output(&stderr, project.path())"
+---
+Checked 7 files: 0 errors, 6 warnings, 0 info, 0 hints

@@ -477,8 +477,8 @@ Build a comprehensive set of regression test fixtures and tests to prevent bugs 
   - `medium-project-realistic` (23 files, ~250 tasks) ⭐ NEW
   - `large-project` (20+ files)
   - `flat-project` (10 files) ⭐ NEW
-  - `deeply-nested` (9 files, 8 levels) ⭐ NEW
-  - `mixed-structure` (7 files) ⭐ NEW
+  - `deeply-nested-project` (9 files, 8 levels) ⭐ NEW
+  - `mixed-structure-project` (7 files) ⭐ NEW
 
 **Fixture Generator Infrastructure:**
 - Created `generators/mod.rs` with `ProjectGenerator` fluent API
@@ -489,13 +489,17 @@ Build a comprehensive set of regression test fixtures and tests to prevent bugs 
 - Created `tests/regression_tests.rs` with 18 snapshot tests
 - Uses `insta` crate for snapshot management
 - Tests cover: lint, list, show, search, graph, check-links, agent-prompt, JSON output
-- Initial snapshots captured and accepted
-- Note: Some tests need refinement for proper CLI usage patterns
+- All 18 tests passing (exit code 0)
+- 17 snapshot files captured and version-controlled
+
+**Critical Bug Fixed:**
+- ⚠️ Fixed non-deterministic graph output in `graph_exporter.rs` (HashMap → BTreeMap)
+- Graph output now deterministic and testable via snapshots
 
 **Edge Cases Covered:**
 - ✅ Unicode filenames (Japanese, Russian, Arabic, Emoji)
 - ✅ Very long lists (100, 500 tasks)
-- ✅ Line ending variants (CRLF, mixed)
+- ✅ Line ending variants (CRLF, mixed, no trailing newline)
 - ✅ Circular dependencies (3-file cycle)
 - ✅ Broken links (missing files, missing IDs)
 - ✅ Deep nesting (8 levels)

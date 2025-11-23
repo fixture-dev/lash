@@ -114,7 +114,7 @@ fn test_lint_mixed_structure_snapshot() {
 #[test]
 fn test_list_all_tasks_snapshot() {
     let project = TestProject::from_fixture("medium");
-    let (_stdout, _stderr, code) = run_lash(&["index", "."], project.path());
+    let (_stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
     let (stdout, _stderr, code) = run_lash(&["list"], project.path());
@@ -127,7 +127,7 @@ fn test_list_all_tasks_snapshot() {
 #[test]
 fn test_list_with_label_filter_snapshot() {
     let project = TestProject::from_fixture("medium");
-    let (stdout, _stderr, code) = run_lash(&["index", "."], project.path());
+    let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
     let (stdout, _stderr, code) = run_lash(&["list", "--label", "backend"], project.path());
@@ -140,7 +140,7 @@ fn test_list_with_label_filter_snapshot() {
 #[test]
 fn test_list_with_status_filter_snapshot() {
     let project = TestProject::from_fixture("medium");
-    let (stdout, _stderr, code) = run_lash(&["index", "."], project.path());
+    let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
     let (stdout, _stderr, code) = run_lash(&["list", "--status", "open"], project.path());
@@ -153,7 +153,7 @@ fn test_list_with_status_filter_snapshot() {
 #[test]
 fn test_show_file_snapshot() {
     let project = TestProject::from_fixture("small");
-    let (stdout, _stderr, code) = run_lash(&["index", "."], project.path());
+    let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
     let (stdout, _stderr, code) = run_lash(&["show", "tasks.md"], project.path());
@@ -166,7 +166,7 @@ fn test_show_file_snapshot() {
 #[test]
 fn test_graph_output_snapshot() {
     let project = TestProject::from_fixture("medium");
-    let (stdout, _stderr, code) = run_lash(&["index", "."], project.path());
+    let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
     let (stdout, _stderr, code) = run_lash(&["graph"], project.path());
@@ -206,7 +206,9 @@ fn test_error_missing_id_snapshot() {
 
     let (stdout, stderr, code) = run_lash(&["lint", "."], project.path());
 
-    assert_ne!(code, 0, "Linting file without ID should fail");
+    // Files without @id get a synthesized ID, but produce orphan warning
+    // Exit code should be 0 (warnings don't cause failure)
+    assert_eq!(code, 0, "Linting file without ID should pass with warnings");
 
     let normalized_stdout = normalize_output(&stdout, project.path());
     let normalized_stderr = normalize_output(&stderr, project.path());
@@ -218,7 +220,7 @@ fn test_error_missing_id_snapshot() {
 #[test]
 fn test_json_output_format_snapshot() {
     let project = TestProject::from_fixture("small");
-    let (stdout, _stderr, code) = run_lash(&["index", "."], project.path());
+    let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
     let (stdout, _stderr, code) = run_lash(&["list", "--json"], project.path());
@@ -235,7 +237,7 @@ fn test_json_output_format_snapshot() {
 #[test]
 fn test_search_query_snapshot() {
     let project = TestProject::from_fixture("medium");
-    let (stdout, _stderr, code) = run_lash(&["index", "."], project.path());
+    let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
     let (stdout, _stderr, code) = run_lash(&["search", "api"], project.path());
@@ -248,7 +250,7 @@ fn test_search_query_snapshot() {
 #[test]
 fn test_check_links_snapshot() {
     let project = TestProject::from_fixture("medium");
-    let (stdout, _stderr, code) = run_lash(&["index", "."], project.path());
+    let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
     let (stdout, stderr, code) = run_lash(&["check-links"], project.path());
@@ -264,7 +266,7 @@ fn test_check_links_snapshot() {
 #[test]
 fn test_agent_prompt_snapshot() {
     let project = TestProject::from_fixture("small");
-    let (stdout, _stderr, code) = run_lash(&["index", "."], project.path());
+    let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
     let (stdout, _stderr, code) = run_lash(&["agent-prompt"], project.path());
