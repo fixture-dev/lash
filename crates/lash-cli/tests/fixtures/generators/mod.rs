@@ -885,3 +885,6 @@ fn add_docs_module(gen: ProjectGenerator) -> ProjectGenerator {
         .end_task()
         .done()
 }
+
+// Export pixelquest module
+pub mod pixelquest;
