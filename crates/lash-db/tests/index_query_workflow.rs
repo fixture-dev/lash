@@ -659,3 +659,168 @@ fn test_index_multi_file_cross_queries() {
         "Should have tasks from at least 4 different files"
     );
 }
+
+#[test]
+fn test_file_level_label_filtering() {
+    // Test scenario: Verify file-level labels are indexed and filterable
+    // This test explicitly verifies that @labels from file metadata are:
+    // 1. Indexed into the labels and file_labels tables
+    // 2. Queryable via TaskFilter
+    // 3. Properly associated with all tasks in the file
+    let project = create_multi_file_project();
+    let root = project.path().to_path_buf();
+    let db = TestDatabase::file_based();
+    let conn = db.connection();
+
+    // Index the project
+    let config = IndexerConfig::new(root.clone())
+        .with_incremental(false)
+        .with_progress(false);
+    let parser_config = LashConfig::default();
+    let mut indexer = Indexer::new(&conn, config, &parser_config);
+    indexer.index_project().expect("Index should succeed");
+
+    // Verify file-level labels are in the labels table
+    let inspector = DbInspector::new(&conn);
+    let labels = inspector.get_labels();
+    assert!(
+        !labels.is_empty(),
+        "File-level labels should be indexed into labels table"
+    );
+
+    // Verify specific labels exist
+    assert!(
+        labels.contains(&"backend".to_string()),
+        "Should have 'backend' label from auth.md and database.md"
+    );
+    assert!(
+        labels.contains(&"frontend".to_string()),
+        "Should have 'frontend' label from ui.md"
+    );
+    assert!(
+        labels.contains(&"security".to_string()),
+        "Should have 'security' label from auth.md"
+    );
+
+    // Test 1: Filter by file-level label "backend"
+    let task_repo = TaskRepository::new(&conn);
+    let backend_tasks = task_repo
+        .find(&TaskFilter {
+            labels: vec!["backend".to_string()],
+            ..Default::default()
+        })
+        .expect("Should find tasks by file-level label");
+
+    // Should get ALL tasks from auth.md (5 tasks) and database.md (3 tasks) = 8 tasks
+    assert!(
+        backend_tasks.len() >= 5,
+        "Should have at least 5 tasks from backend-labeled files, got {}",
+        backend_tasks.len()
+    );
+
+    // Verify all tasks are from backend-labeled files
+    let file_repo = FileRepository::new(&conn);
+    for task in &backend_tasks {
+        let file = file_repo
+            .get_by_db_id(task.file_id)
+            .expect("Should get file")
+            .expect("File should exist");
+        let path = file.path.to_string_lossy();
+        assert!(
+            path.contains("auth.md") || path.contains("database.md"),
+            "Backend task should be from auth.md or database.md, got: {path}"
+        );
+    }
+
+    // Test 2: Filter by file-level label "frontend"
+    let frontend_tasks = task_repo
+        .find(&TaskFilter {
+            labels: vec!["frontend".to_string()],
+            ..Default::default()
+        })
+        .expect("Should find tasks by file-level label");
+
+    // Should get ALL tasks from ui.md (3 tasks)
+    assert_eq!(
+        frontend_tasks.len(),
+        3,
+        "Should have exactly 3 tasks from ui.md"
+    );
+
+    // Verify all tasks are from ui.md
+    for task in &frontend_tasks {
+        let file = file_repo
+            .get_by_db_id(task.file_id)
+            .expect("Should get file")
+            .expect("File should exist");
+        assert!(
+            file.path.to_string_lossy().contains("ui.md"),
+            "Frontend task should be from ui.md"
+        );
+    }
+
+    // Test 3: Filter by file-level label "bug"
+    let bug_tasks = task_repo
+        .find(&TaskFilter {
+            labels: vec!["bug".to_string()],
+            ..Default::default()
+        })
+        .expect("Should find tasks by file-level label");
+
+    // Should get ALL tasks from bugs.md (3 tasks)
+    assert_eq!(
+        bug_tasks.len(),
+        3,
+        "Should have exactly 3 tasks from bugs.md"
+    );
+
+    // Test 4: Filter by file-level label "security" (only on auth.md)
+    let security_tasks = task_repo
+        .find(&TaskFilter {
+            labels: vec!["security".to_string()],
+            ..Default::default()
+        })
+        .expect("Should find tasks by file-level label");
+
+    // Should get ALL tasks from auth.md (5 tasks)
+    assert_eq!(
+        security_tasks.len(),
+        5,
+        "Should have exactly 5 tasks from auth.md"
+    );
+
+    // Test 5: Combine file-level label with status filter
+    let open_backend_tasks = task_repo
+        .find(&TaskFilter {
+            labels: vec!["backend".to_string()],
+            status: Some(TaskStatus::Open),
+            ..Default::default()
+        })
+        .expect("Should find tasks with combined filters");
+
+    // Verify all results match both criteria
+    for task in &open_backend_tasks {
+        assert_eq!(task.status, TaskStatus::Open, "Should only be open tasks");
+        let file = file_repo
+            .get_by_db_id(task.file_id)
+            .expect("Should get file")
+            .expect("File should exist");
+        let path = file.path.to_string_lossy();
+        assert!(
+            path.contains("auth.md") || path.contains("database.md"),
+            "Should be from backend-labeled file"
+        );
+    }
+
+    // Test 6: Verify no cross-contamination between different file-level labels
+    let backend_ids: std::collections::HashSet<_> =
+        backend_tasks.iter().map(|t| &t.full_id).collect();
+    let frontend_ids: std::collections::HashSet<_> =
+        frontend_tasks.iter().map(|t| &t.full_id).collect();
+
+    let overlap: Vec<_> = backend_ids.intersection(&frontend_ids).collect();
+    assert!(
+        overlap.is_empty(),
+        "Backend and frontend tasks should not overlap (different files), found: {overlap:?}"
+    );
+}
