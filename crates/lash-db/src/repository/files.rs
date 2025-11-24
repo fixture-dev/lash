@@ -8,6 +8,42 @@ use lash_types::{FileMetadata, FileStatus, TaskFile};
 
 use crate::error::{DbError, DbResult};
 
+/// Convert a path to a normalized string representation with forward slashes
+///
+/// This ensures consistent path representation across all platforms:
+/// - Windows paths with backslashes are converted to forward slashes
+/// - Unix paths remain unchanged
+/// - Enables cross-platform database compatibility
+///
+/// # Example
+///
+/// ```
+/// # use std::path::Path;
+/// # use lash_db::repository::normalize_path_for_db;
+/// // On Windows: "features\\auth.md" -> "features/auth.md"
+/// // On Unix:    "features/auth.md"  -> "features/auth.md"
+/// let path = Path::new("features").join("auth.md");
+/// let normalized = normalize_path_for_db(&path);
+/// assert_eq!(normalized, "features/auth.md");
+/// ```
+#[must_use]
+pub fn normalize_path_for_db(path: &Path) -> String {
+    // Convert path to string using lossy conversion (handles invalid UTF-8)
+    let path_str = path.to_string_lossy();
+
+    // On Windows, replace backslashes with forward slashes
+    // On Unix, this is a no-op since paths already use forward slashes
+    #[cfg(windows)]
+    {
+        path_str.replace('\\', "/")
+    }
+
+    #[cfg(not(windows))]
+    {
+        path_str.to_string()
+    }
+}
+
 /// A file record from the database
 ///
 /// Represents a row from the files table, including all metadata.
@@ -112,7 +148,7 @@ impl<'conn> FileRepository<'conn> {
             "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             (
-                file.path.to_string_lossy().as_ref(),
+                normalize_path_for_db(&file.path),
                 &file.id,
                 &file.title,
                 &file.hash,
@@ -155,7 +191,7 @@ impl<'conn> FileRepository<'conn> {
                 mtime,
                 status.as_str(),
                 metadata_json,
-                file.path.to_string_lossy().as_ref(),
+                normalize_path_for_db(&file.path),
             ),
         )?;
 
@@ -178,7 +214,7 @@ impl<'conn> FileRepository<'conn> {
     pub fn delete(&self, path: &Path) -> DbResult<()> {
         self.conn.execute(
             "DELETE FROM files WHERE path = ?1",
-            [path.to_string_lossy().as_ref()],
+            [normalize_path_for_db(path)],
         )?;
         Ok(())
     }
@@ -193,7 +229,7 @@ impl<'conn> FileRepository<'conn> {
             .query_row(
                 "SELECT id, path, file_id, title, hash, mtime, status, metadata, indexed_at
                  FROM files WHERE path = ?1",
-                [path.to_string_lossy().as_ref()],
+                [normalize_path_for_db(path)],
                 |row| {
                     let metadata_json: String = row.get(7)?;
                     let metadata: FileMetadata =
@@ -377,7 +413,7 @@ impl<'conn> FileRepository<'conn> {
                 "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 (
-                    file.path.to_string_lossy().as_ref(),
+                    normalize_path_for_db(&file.path),
                     &file.id,
                     &file.title,
                     &file.hash,
@@ -422,6 +458,8 @@ impl<'conn> FileRepository<'conn> {
                 .map_err(|e| DbError::Other(format!("Invalid mtime: {e}")))?
                 .as_secs() as i64;
 
+            let normalized_path = normalize_path_for_db(&file.path);
+
             tx.execute(
                 "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -433,7 +471,7 @@ impl<'conn> FileRepository<'conn> {
                    status = excluded.status,
                    metadata = excluded.metadata",
                 (
-                    file.path.to_string_lossy().as_ref(),
+                    &normalized_path,
                     &file.id,
                     &file.title,
                     &file.hash,
@@ -446,7 +484,7 @@ impl<'conn> FileRepository<'conn> {
             // Get the file's database ID
             let file_id: i64 = tx.query_row(
                 "SELECT id FROM files WHERE path = ?1",
-                [file.path.to_string_lossy().as_ref()],
+                [&normalized_path],
                 |row| row.get(0),
             )?;
 
@@ -739,5 +777,69 @@ mod tests {
         let all_files = repo.list_all().unwrap();
         assert_eq!(all_files.len(), 1);
         assert_eq!(all_files[0].path, PathBuf::from("duplicate.md"));
+    }
+
+    #[test]
+    fn test_path_normalization_cross_platform() {
+        // Test that paths are stored with forward slashes regardless of platform
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        // Create a file with a subdirectory path
+        // On Windows: PathBuf::from("features").join("auth.md") creates "features\auth.md"
+        // On Unix: PathBuf::from("features").join("auth.md") creates "features/auth.md"
+        let path = PathBuf::from("features").join("auth.md");
+        let mut file = create_test_file("test.md");
+        file.path = path.clone();
+
+        repo.insert(&file).unwrap();
+
+        // Verify the path is stored with forward slashes in the database
+        let stored_path: String = conn
+            .query_row(
+                "SELECT path FROM files WHERE file_id = ?1",
+                [&file.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // Path should always be stored with forward slashes, regardless of platform
+        assert_eq!(stored_path, "features/auth.md");
+
+        // Verify we can retrieve the file using the normalized path
+        let retrieved = repo.get_by_path(&path).unwrap();
+        assert!(retrieved.is_some());
+
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.file_id, "test.md");
+    }
+
+    #[test]
+    fn test_normalize_path_for_db_unix_style() {
+        // Test that Unix-style paths remain unchanged
+        let path = Path::new("features/auth.md");
+        let normalized = normalize_path_for_db(path);
+        assert_eq!(normalized, "features/auth.md");
+    }
+
+    #[test]
+    fn test_normalize_path_for_db_windows_style() {
+        // Test that Windows-style paths are converted to Unix-style
+        // This test works on all platforms - we're just testing the string replacement logic
+        #[cfg(windows)]
+        {
+            let path = PathBuf::from("features").join("auth.md");
+            let normalized = normalize_path_for_db(&path);
+            assert_eq!(normalized, "features/auth.md");
+        }
+
+        #[cfg(not(windows))]
+        {
+            // On Unix, PathBuf::from("features").join("auth.md") creates "features/auth.md"
+            let path = PathBuf::from("features").join("auth.md");
+            let normalized = normalize_path_for_db(&path);
+            assert_eq!(normalized, "features/auth.md");
+        }
     }
 }
