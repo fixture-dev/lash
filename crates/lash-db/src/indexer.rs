@@ -618,6 +618,18 @@ impl<'conn> Indexer<'conn> {
                 .get(&task_file.path)
                 .ok_or_else(|| DbError::Other("File ID not found after upsert".to_string()))?;
 
+            // Index file-level labels
+            let start = Instant::now();
+            for label in &task_file.metadata.labels {
+                let label_id = label_repo.get_or_create(label)?;
+                label_repo.add_file_label(*file_db_id, label_id)?;
+            }
+            profiler.record_db_operation(
+                "index_file_labels",
+                task_file.metadata.labels.len(),
+                start.elapsed(),
+            );
+
             // Delete existing tasks for this file (ensures clean re-index)
             self.conn
                 .execute("DELETE FROM tasks WHERE file_id = ?1", [file_db_id])?;

@@ -2,8 +2,53 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized
 ---
-[1mID                                        [0m  [1mSTATUS [0m  [1mTITLE                       [0m  [1mLABELS[0m
--------------------------------------------------------------------------------------------------
-[36mmedium-project#backend-development-backend[39m  [34mopen[39m    Backend development #backend  [2mbackend[0m
+[1mID                                                   [0m  [1mSTATUS [0m  [1mTITLE                                 [0m  [1mLABELS[0m
+----------------------------------------------------------------------------------------------------------------------
+[36mbackend.api#add-api-documentation-docs               [39m  [34mopen[39m    Add API documentation #docs             [2mdocs[0m
+[36mbackend.api#define-endpoints                         [39m  [32mdone[39m    Define endpoints                        
+[36mbackend.api#design-requestresponse-schemas           [39m  [32mdone[39m    Design request/response schemas         
+[36mbackend.api#design-rest-api                          [39m  [32mdone[39m    Design REST API                         
+[36mbackend.api#example-requests                         [39m  [34mopen[39m    Example requests                        
+[36mbackend.api#implement-authentication-security        [39m  [34mopen[39m    Implement authentication #security      [2msecurity[0m
+[36mbackend.api#implement-crud-endpoints-core            [39m  [34mopen[39m    Implement CRUD endpoints #core          [2mcore[0m
+[36mbackend.api#jwt-token-generation                     [39m  [32mdone[39m    JWT token generation                    
+[36mbackend.api#oauth2-integration-p1                    [39m  [34mopen[39m    OAuth2 integration #p1                  [2mp1[0m
+[36mbackend.api#openapi-spec                             [39m  [34mopen[39m    OpenAPI spec                            
+[36mbackend.api#project-endpoints                        [39m  [34mopen[39m    Project endpoints                       
+[36mbackend.api#session-management                       [39m  [34mopen[39m    Session management                      
+[36mbackend.api#task-endpoints                           [39m  [34mopen[39m    Task endpoints                          
+[36mbackend.api#user-endpoints                           [39m  [32mdone[39m    User endpoints                          
+[36mbackend.database#add-database-layer-core             [39m  [32mdone[39m    Add database layer #core                [2mcore[0m
+[36mbackend.database#add-indexes                         [39m  [32mdone[39m    Add indexes                             
+[36mbackend.database#connection-pooling                  [39m  [32mdone[39m    Connection pooling                      
+[36mbackend.database#design-database-schema              [39m  [32mdone[39m    Design database schema                  
+[36mbackend.database#initial-schema-migration            [39m  [32mdone[39m    Initial schema migration                
+[36mbackend.database#migration-framework                 [39m  [32mdone[39m    Migration framework                     
+[36mbackend.database#performance-optimization-performance[39m  [32mdone[39m    Performance optimization #performance   [2mperformance[0m
+[36mbackend.database#projects-table                      [39m  [32mdone[39m    Projects table                          
+[36mbackend.database#query-builders                      [39m  [32mdone[39m    Query builders                          
+[36mbackend.database#query-optimization                  [39m  [32mdone[39m    Query optimization                      
+[36mbackend.database#relationships                       [39m  [32mdone[39m    Relationships                           
+[36mbackend.database#seed-data                           [39m  [32mdone[39m    Seed data                               
+[36mbackend.database#set-up-migrations-infrastructure    [39m  [32mdone[39m    Set up migrations #infrastructure       [2minfrastructure[0m
+[36mbackend.database#tasks-table                         [39m  [32mdone[39m    Tasks table                             
+[36mbackend.database#transaction-support                 [39m  [32mdone[39m    Transaction support                     
+[36mbackend.database#users-table                         [39m  [32mdone[39m    Users table                             
+[36mbackend.tests#api-endpoint-tests                     [39m  [32mdone[39m    API endpoint tests                      
+[36mbackend.tests#auth-flow-tests                        [39m  [34mopen[39m    Auth flow tests                         
+[36mbackend.tests#database-integration-tests             [39m  [34mopen[39m    Database integration tests              
+[36mbackend.tests#helper-functions                       [39m  [32mdone[39m    Helper functions                        
+[36mbackend.tests#integration-tests-integration-testing  [39m  [34mopen[39m    Integration tests #integration-testing  [2mintegration-testing[0m
+[36mbackend.tests#load-testing                           [39m  [34mopen[39m    Load testing                            
+[36mbackend.tests#model-tests                            [39m  [32mdone[39m    Model tests                             
+[36mbackend.tests#performance-tests-performance          [39m  [34mopen[39m    Performance tests #performance          [2mperformance[0m
+[36mbackend.tests#service-tests                          [39m  [34mopen[39m    Service tests                           
+[36mbackend.tests#set-up-test-infrastructure             [39m  [32mdone[39m    Set up test infrastructure              
+[36mbackend.tests#stress-testing                         [39m  [34mopen[39m    Stress testing                          
+[36mbackend.tests#test-database                          [39m  [32mdone[39m    Test database                           
+[36mbackend.tests#test-fixtures                          [39m  [32mdone[39m    Test fixtures                           
+[36mbackend.tests#unit-tests-unit-testing                [39m  [34mopen[39m    Unit tests #unit-testing                [2munit-testing[0m
+[36mbackend.tests#utility-tests                          [39m  [34mopen[39m    Utility tests                           
+[36mmedium-project#backend-development-backend           [39m  [34mopen[39m    Backend development #backend            [2mbackend[0m
 
-[1mTotal: 1 task(s)[0m
+[1mTotal: 46 task(s)[0m

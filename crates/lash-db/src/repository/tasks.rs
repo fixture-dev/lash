@@ -289,15 +289,20 @@ impl<'conn> TaskRepository<'conn> {
 
     /// Find tasks by label
     ///
+    /// Finds tasks that have the label directly (via `task_labels`) OR
+    /// are in a file with the label (via `file_labels`).
+    ///
     /// # Errors
     ///
     /// Returns error if query fails
     pub fn find_by_label(&self, label: &str) -> DbResult<Vec<TaskRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata
+            "SELECT DISTINCT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata
              FROM tasks t
-             JOIN task_labels tl ON t.id = tl.task_id
-             JOIN labels l ON tl.label_id = l.id
+             JOIN files f ON t.file_id = f.id
+             LEFT JOIN task_labels tl ON t.id = tl.task_id
+             LEFT JOIN file_labels fl ON f.id = fl.file_id
+             JOIN labels l ON (l.id = tl.label_id OR l.id = fl.label_id)
              WHERE l.name = ?1
              ORDER BY t.full_id",
         )?;
@@ -398,16 +403,22 @@ impl<'conn> TaskRepository<'conn> {
         let mut wheres = Vec::new();
 
         // Add joins for labels if needed
+        // Match tasks that have the label directly OR are in a file with the label
         if !filter.labels.is_empty() {
+            // Always join files table when filtering by labels (needed for file_labels lookup)
+            if filter.file_path.is_none() {
+                joins.push("JOIN files f ON t.file_id = f.id".to_string());
+            }
             joins.push(
-                "JOIN task_labels tl ON t.id = tl.task_id
-                 JOIN labels l ON tl.label_id = l.id"
+                "LEFT JOIN task_labels tl ON t.id = tl.task_id
+                 LEFT JOIN file_labels fl ON f.id = fl.file_id
+                 JOIN labels l ON (l.id = tl.label_id OR l.id = fl.label_id)"
                     .to_string(),
             );
         }
 
         // Add joins for file path if needed
-        if filter.file_path.is_some() {
+        if filter.file_path.is_some() && filter.labels.is_empty() {
             joins.push("JOIN files f ON t.file_id = f.id".to_string());
         }
 
