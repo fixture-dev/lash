@@ -625,12 +625,21 @@ Integrate all tests and checks into CI/CD pipeline (GitHub Actions or similar).
 - `scripts/install-pre-commit-hook.sh` - Installation script
 - `docs/TESTING.md` - Comprehensive testing documentation
 
+### Critical Fixes
+
+- **2025-11-23:** Fixed Windows CI failures (incremental indexing tests)
+  - Root cause: Path separator inconsistency (Windows `\` vs Unix `/`)
+  - Solution: Implemented `normalize_path_for_db()` to store all paths with forward slashes
+  - Files: `crates/lash-db/src/repository/files.rs`, `crates/lash-db/src/repository/mod.rs`
+  - Impact: All platforms now use consistent path representation in database
+  - Commit: 1954473
+
 ### Success Criteria
 
-- All tests run automatically on every PR
-- CI catches bugs before merge
-- CI is fast (<10 minutes for full suite)
-- CI is reliable (no flaky tests)
+- ✅ All tests run automatically on every PR
+- ✅ CI catches bugs before merge
+- ✅ CI is fast (<10 minutes for full suite)
+- ✅ CI is reliable (no flaky tests, cross-platform compatibility verified)
 
 ### Tests
 
