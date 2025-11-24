@@ -23,6 +23,9 @@ Thumbs.db
 .lash/*.db-shm
 .lash/*.db-wal
 
+## Lash testing/demo
+playground/
+
 # Test artifacts
 /tests/tmp/
 
