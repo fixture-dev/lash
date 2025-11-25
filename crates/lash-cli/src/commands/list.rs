@@ -4,9 +4,11 @@
 
 use anyhow::{Context, Result};
 use lash_cli::theme::CliTheme;
-use lash_db::repository::tasks::{TaskFilter, TaskRecord};
-use lash_db::{open_database, TaskRepository};
-use lash_types::TaskStatus;
+use lash_cli::tree_formatter::TreeFormatter;
+use lash_db::repository::files::FileRecord;
+use lash_db::{open_database, FileRepository};
+use lash_types::tree::TreeNode;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
@@ -21,16 +23,17 @@ pub enum OutputFormat {
 
 /// Arguments for the list command
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ListArgs {
-    /// Filter by label (can be specified multiple times)
+    /// Filter by label (can be specified multiple times) - currently unused in file view
     pub labels: Vec<String>,
-    /// Filter by status
-    pub status: Option<TaskStatus>,
-    /// Filter by path prefix
+    /// Filter by status - currently unused in file view
+    pub status: Option<lash_types::TaskStatus>,
+    /// Filter by path prefix - currently unused in file view
     pub path: Option<PathBuf>,
-    /// Only show blocked tasks
+    /// Only show blocked tasks - currently unused in file view
     pub blocked: bool,
-    /// Filter by owner
+    /// Filter by owner - currently unused in file view
     pub owner: Option<String>,
     /// Output format
     pub format: OutputFormat,
@@ -38,6 +41,12 @@ pub struct ListArgs {
     pub project_root: Option<PathBuf>,
     /// Optional CLI theme for styling
     pub theme: Option<CliTheme>,
+    /// Enable tree view (None = use config default)
+    pub tree_view: Option<bool>,
+    /// Maximum tree depth
+    pub max_depth: Option<usize>,
+    /// Use ASCII characters for tree
+    pub ascii: bool,
 }
 
 /// Execute the list command
@@ -49,10 +58,11 @@ pub struct ListArgs {
 /// # Returns
 ///
 /// Exit code: 0 (success), 1 (general error), 3 (DB error)
+#[allow(clippy::needless_pass_by_value)]
 pub fn execute(args: ListArgs) -> Result<i32> {
     // Determine project root
-    let project_root = if let Some(root) = args.project_root {
-        root
+    let project_root = if let Some(ref root) = args.project_root {
+        root.clone()
     } else {
         let cwd = std::env::current_dir().context("Failed to get current directory")?;
         find_project_root(&cwd)
@@ -82,28 +92,33 @@ pub fn execute(args: ListArgs) -> Result<i32> {
     // Open database
     let conn = open_database(&db_path).context("Failed to open database")?;
 
-    // Create task repository
-    let task_repo = TaskRepository::new(&conn);
+    // Create repositories
+    let file_repo = FileRepository::new(&conn);
 
-    // Build filter
-    let filter = TaskFilter {
-        status: args.status,
-        labels: args.labels.clone(),
-        owner: args.owner.clone(),
-        file_path: args.path.as_ref().map(|p| p.display().to_string()),
-        blocked: if args.blocked { Some(true) } else { None },
-    };
+    // Check if tree view is enabled
+    let use_tree_view = determine_tree_view_enabled(&args);
 
-    // Execute query
-    let tasks = task_repo.find(&filter).context("Failed to query tasks")?;
+    tracing::debug!(
+        use_tree_view = use_tree_view,
+        "Determined tree view setting"
+    );
 
-    tracing::debug!(task_count = tasks.len(), "Retrieved tasks");
+    // Get files
+    let files = file_repo.list_all()?;
+
+    tracing::debug!(file_count = files.len(), "Retrieved files");
 
     // Output results
     match args.format {
-        OutputFormat::Json => output_json(&tasks)?,
-        OutputFormat::JsonPretty => output_json_pretty(&tasks)?,
-        OutputFormat::Text => output_text(&tasks, args.theme.as_ref()),
+        OutputFormat::Json => output_json_files(&files)?,
+        OutputFormat::JsonPretty => output_json_pretty_files(&files)?,
+        OutputFormat::Text => {
+            if use_tree_view {
+                output_text_tree(&files, &args);
+            } else {
+                output_text_flat(&files, args.theme.as_ref());
+            }
+        }
     }
 
     Ok(0)
@@ -114,6 +129,156 @@ fn get_database_path(project_root: &Path) -> PathBuf {
     project_root.join(".lash/lash.db")
 }
 
+/// Determine if tree view should be enabled
+///
+/// Priority: CLI flag > config > default (true)
+fn determine_tree_view_enabled(args: &ListArgs) -> bool {
+    // Check CLI flag first
+    if let Some(tree_view) = args.tree_view {
+        return tree_view;
+    }
+
+    // Fall back to config
+    match lash_types::UserConfig::load() {
+        Ok(config) => config.tree_view.enabled,
+        Err(_) => true, // Default to true if config can't be loaded
+    }
+}
+
+/// Represents a directory or file node in the file tree
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct DirectoryNode {
+    /// Display name (directory name or file name)
+    name: String,
+    /// Full path
+    path: PathBuf,
+    /// true for directory, false for file
+    is_directory: bool,
+    /// For files, the underlying `FileRecord`
+    file_record: Option<FileRecord>,
+}
+
+/// Build file tree from flat file list
+fn build_file_tree(
+    files: &[FileRecord],
+    max_depth: usize,
+    default_expanded: bool,
+) -> Vec<TreeNode<DirectoryNode>> {
+    if files.is_empty() {
+        return Vec::new();
+    }
+
+    // Group files by directory
+    let mut dir_map: HashMap<PathBuf, Vec<FileRecord>> = HashMap::new();
+    for file in files {
+        let dir = file
+            .path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(""));
+        dir_map
+            .entry(dir.to_path_buf())
+            .or_default()
+            .push(file.clone());
+    }
+
+    // Build tree structure
+    let mut roots: Vec<TreeNode<DirectoryNode>> = Vec::new();
+    let mut dir_nodes: HashMap<PathBuf, TreeNode<DirectoryNode>> = HashMap::new();
+
+    // Sort directories by path for consistent ordering
+    let mut sorted_dirs: Vec<_> = dir_map.keys().collect();
+    sorted_dirs.sort();
+
+    for dir_path in sorted_dirs {
+        let dir_files = dir_map.get(dir_path).unwrap();
+        let depth = dir_path.components().count();
+
+        // Create directory node if it doesn't exist
+        if !dir_nodes.contains_key(dir_path) && depth > 0 {
+            let dir_name = dir_path
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new(""))
+                .to_string_lossy()
+                .to_string();
+
+            let mut dir_node = TreeNode::new(
+                DirectoryNode {
+                    name: dir_name,
+                    path: dir_path.clone(),
+                    is_directory: true,
+                    file_record: None,
+                },
+                depth,
+            );
+
+            if default_expanded && depth < max_depth {
+                dir_node.expand();
+            }
+
+            dir_nodes.insert(dir_path.clone(), dir_node);
+        }
+
+        // Add file nodes to directory
+        for file in dir_files {
+            let file_name = file
+                .path
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new(""))
+                .to_string_lossy()
+                .to_string();
+
+            let file_node = TreeNode::new(
+                DirectoryNode {
+                    name: file_name,
+                    path: file.path.clone(),
+                    is_directory: false,
+                    file_record: Some(file.clone()),
+                },
+                depth + 1,
+            );
+
+            // Add to parent directory or root
+            if depth == 0 {
+                roots.push(file_node);
+            } else if let Some(parent) = dir_nodes.get_mut(dir_path) {
+                parent.children.push(file_node);
+            }
+        }
+    }
+
+    // Build parent-child relationships for directories
+    // Sort for deterministic order
+    let mut dir_paths: Vec<PathBuf> = dir_nodes.keys().cloned().collect();
+    dir_paths.sort();
+    for dir_path in &dir_paths {
+        if let Some(parent_path) = dir_path.parent() {
+            if parent_path.as_os_str().is_empty() {
+                // This is a root directory
+                if let Some(node) = dir_nodes.remove(dir_path) {
+                    roots.push(node);
+                }
+            } else if dir_nodes.contains_key(parent_path) {
+                // This directory has a parent in the tree
+                if let Some(node) = dir_nodes.remove(dir_path) {
+                    if let Some(parent) = dir_nodes.get_mut(parent_path) {
+                        parent.children.push(node);
+                    }
+                }
+            } else {
+                // Parent doesn't exist, add as root
+                if let Some(node) = dir_nodes.remove(dir_path) {
+                    roots.push(node);
+                }
+            }
+        }
+    }
+
+    // Sort roots by name for deterministic order
+    roots.sort_by(|a, b| a.data.name.cmp(&b.data.name));
+    roots
+}
+
 /// Output JSON when database doesn't exist
 fn output_json_no_db() -> Result<()> {
     use serde_json::json;
@@ -121,180 +286,149 @@ fn output_json_no_db() -> Result<()> {
     let output = json!({
         "error": "Database not found",
         "suggestion": "Run `lash index` to create the database",
-        "tasks": []
+        "files": []
     });
 
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
 }
 
-/// Output tasks as compact JSON
-fn output_json(tasks: &[TaskRecord]) -> Result<()> {
+/// Output files as compact JSON
+fn output_json_files(files: &[FileRecord]) -> Result<()> {
     use serde_json::json;
 
     let output = json!({
-        "count": tasks.len(),
-        "tasks": tasks
+        "count": files.len(),
+        "files": files
     });
 
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
 }
 
-/// Output tasks as pretty-printed JSON
-fn output_json_pretty(tasks: &[TaskRecord]) -> Result<()> {
+/// Output files as pretty-printed JSON
+fn output_json_pretty_files(files: &[FileRecord]) -> Result<()> {
     use serde_json::json;
 
     let output = json!({
-        "count": tasks.len(),
-        "tasks": tasks
+        "count": files.len(),
+        "files": files
     });
 
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
 }
 
-/// Output tasks as human-readable text
-fn output_text(tasks: &[TaskRecord], theme: Option<&CliTheme>) {
-    if tasks.is_empty() {
-        let msg = "No tasks match your filters";
+/// Output files as human-readable flat list
+fn output_text_flat(files: &[FileRecord], theme: Option<&CliTheme>) {
+    if files.is_empty() {
+        let msg = "No files found";
         if let Some(theme) = theme {
             println!("{}", theme.style_warning(msg));
         } else {
             println!("{msg}");
         }
         println!();
-        println!("Try:");
-        println!("  - Removing filters to broaden the search");
-        println!("  - Running `lash index` to ensure the database is up to date");
+        println!("Try running `lash index` to build the file index");
         return;
     }
 
-    // Calculate column widths
-    let max_id_len = tasks
-        .iter()
-        .map(|t| t.full_id.len())
-        .max()
-        .unwrap_or(10)
-        .max(10);
-
-    let max_title_len = tasks
-        .iter()
-        .map(|t| t.title.len())
-        .max()
-        .unwrap_or(40)
-        .min(60); // Cap at 60 chars
-
-    // Print header
-    let header_id = "ID";
-    let header_status = "STATUS";
-    let header_title = "TITLE";
-    let header_labels = "LABELS";
-
-    if let Some(_theme) = theme {
-        use owo_colors::OwoColorize;
-        println!(
-            "{:<width_id$}  {:<width_status$}  {:<width_title$}  {}",
-            header_id.bold(),
-            header_status.bold(),
-            header_title.bold(),
-            header_labels.bold(),
-            width_id = max_id_len,
-            width_status = 7,
-            width_title = max_title_len,
-        );
-    } else {
-        println!(
-            "{:<width_id$}  {:<width_status$}  {:<width_title$}  {header_labels}",
-            header_id,
-            header_status,
-            header_title,
-            width_id = max_id_len,
-            width_status = 7,
-            width_title = max_title_len,
-        );
-    }
-
-    // Print separator
-    println!("{}", "-".repeat(max_id_len + 7 + max_title_len + 20));
-
-    // Print each task
-    for task in tasks {
-        let status_display = format_status(task.status, theme);
-        let title_display = truncate_string(&task.title, max_title_len);
-        let labels_display = format_labels(&task.metadata.labels, theme);
-
-        // Format the ID with theme colors if available
-        let id_display = if let Some(theme) = theme {
-            theme.style_info(&task.full_id)
-        } else {
-            task.full_id.clone()
+    // Print each file
+    for file in files {
+        let status_indicator = match file.status {
+            lash_types::FileStatus::Complete => "✓",
+            lash_types::FileStatus::Blocked => "!",
+            lash_types::FileStatus::InProgress => "○",
+            lash_types::FileStatus::Empty => "·",
         };
 
-        // Note: When using colored output, we need to account for invisible ANSI codes
-        // in the field width. However, owo_colors handles this for us in most cases.
-        // For precise alignment with colors, we'd need to calculate visual width separately.
-        println!(
-            "{:<width_id$}  {:<width_status$}  {:<width_title$}  {}",
-            id_display,
-            status_display,
-            title_display,
-            labels_display,
-            width_id = max_id_len,
-            width_status = 7,
-            width_title = max_title_len,
-        );
+        if let Some(theme) = theme {
+            let status_styled = match file.status {
+                lash_types::FileStatus::Complete => theme.style_success(status_indicator),
+                lash_types::FileStatus::Blocked => theme.style_error(status_indicator),
+                lash_types::FileStatus::InProgress => theme.style_info(status_indicator),
+                lash_types::FileStatus::Empty => theme.style_muted(status_indicator),
+            };
+            let path = theme.style_info(&file.path.display().to_string());
+            println!("{status_styled} {path}");
+        } else {
+            println!("{} {}", status_indicator, file.path.display());
+        }
     }
 
     // Print summary
     println!();
-    let summary = format!("Total: {} task(s)", tasks.len());
-    if let Some(_theme) = theme {
-        use owo_colors::OwoColorize;
-        println!("{}", summary.bold());
-    } else {
-        println!("{summary}");
-    }
+    println!("Total: {} file(s)", files.len());
 }
 
-/// Format task status with theme-aware colors
-fn format_status(status: TaskStatus, theme: Option<&CliTheme>) -> String {
-    let status_str = match status {
-        TaskStatus::Open => "open",
-        TaskStatus::Done => "done",
-        TaskStatus::Waived => "waived",
-        TaskStatus::Blocked => "blocked",
-    };
-
-    if let Some(theme) = theme {
-        theme.style_task_status(status_str, status)
-    } else {
-        status_str.to_string()
-    }
-}
-
-/// Format labels for display with theme-aware colors
-fn format_labels(labels: &[String], theme: Option<&CliTheme>) -> String {
-    if labels.is_empty() {
-        return String::new();
+/// Output files as human-readable tree view
+fn output_text_tree(files: &[FileRecord], args: &ListArgs) {
+    if files.is_empty() {
+        let msg = "No files found";
+        if let Some(theme) = args.theme.as_ref() {
+            println!("{}", theme.style_warning(msg));
+        } else {
+            println!("{msg}");
+        }
+        println!();
+        println!("Try running `lash index` to build the file index");
+        return;
     }
 
-    let labels_str = labels.join(", ");
+    // Get config for tree settings
+    let config = lash_types::UserConfig::load().unwrap_or_default();
+    let max_depth = args.max_depth.unwrap_or(config.tree_view.max_depth);
+    let default_expanded = config.tree_view.default_expanded;
 
-    if let Some(theme) = theme {
-        theme.style_muted(&labels_str)
-    } else {
-        labels_str
-    }
-}
+    // Build tree
+    let trees = build_file_tree(files, max_depth, default_expanded);
 
-/// Truncate a string to a maximum length, adding ellipsis if needed
-fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len.saturating_sub(3)])
+    // Create formatter
+    let formatter = TreeFormatter::new(args.ascii, max_depth, args.theme.clone());
+
+    // Format tree
+    let lines = formatter.format_tree(&trees, |node, fmt| {
+        if node.is_directory {
+            // Directory node
+            if let Some(theme) = fmt.theme() {
+                format!("{}/", theme.style_info(&node.name))
+            } else {
+                format!("{}/", node.name)
+            }
+        } else if let Some(file) = &node.file_record {
+            // File node
+            let status_indicator = match file.status {
+                lash_types::FileStatus::Complete => "✓",
+                lash_types::FileStatus::Blocked => "!",
+                lash_types::FileStatus::InProgress => "○",
+                lash_types::FileStatus::Empty => "·",
+            };
+
+            if let Some(theme) = fmt.theme() {
+                let status_styled = match file.status {
+                    lash_types::FileStatus::Complete => theme.style_success(status_indicator),
+                    lash_types::FileStatus::Blocked => theme.style_error(status_indicator),
+                    lash_types::FileStatus::InProgress => theme.style_info(status_indicator),
+                    lash_types::FileStatus::Empty => theme.style_muted(status_indicator),
+                };
+                format!("{status_styled} {}", theme.style_label(&node.name))
+            } else {
+                format!("{status_indicator} {}", node.name)
+            }
+        } else {
+            // Fallback for nodes without file records
+            node.name.clone()
+        }
+    });
+
+    // Print lines
+    for line in lines {
+        println!("{line}");
     }
+
+    // Print summary
+    println!();
+    println!("Total: {} file(s)", files.len());
 }
 
 #[cfg(test)]
@@ -302,30 +436,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_truncate_string() {
-        assert_eq!(truncate_string("short", 10), "short");
-        assert_eq!(
-            truncate_string("this is a very long string", 10),
-            "this is..."
-        );
-        assert_eq!(truncate_string("exact", 5), "exact");
+    fn test_determine_tree_view_enabled_default() {
+        let args = ListArgs {
+            labels: vec![],
+            status: None,
+            path: None,
+            blocked: false,
+            owner: None,
+            format: OutputFormat::Text,
+            project_root: None,
+            theme: None,
+            tree_view: None,
+            max_depth: None,
+            ascii: false,
+        };
+
+        // Should default to true if no config exists
+        let result = determine_tree_view_enabled(&args);
+        assert!(result); // Defaults to true
     }
 
     #[test]
-    fn test_format_status() {
-        assert_eq!(format_status(TaskStatus::Open, None), "open");
-        assert_eq!(format_status(TaskStatus::Done, None), "done");
-        assert_eq!(format_status(TaskStatus::Waived, None), "waived");
-        assert_eq!(format_status(TaskStatus::Blocked, None), "blocked");
+    fn test_determine_tree_view_enabled_with_flag() {
+        let args = ListArgs {
+            labels: vec![],
+            status: None,
+            path: None,
+            blocked: false,
+            owner: None,
+            format: OutputFormat::Text,
+            project_root: None,
+            theme: None,
+            tree_view: Some(false),
+            max_depth: None,
+            ascii: false,
+        };
+
+        assert!(!determine_tree_view_enabled(&args));
     }
 
     #[test]
-    fn test_format_labels() {
-        assert_eq!(format_labels(&[], None), "");
-        assert_eq!(format_labels(&["backend".to_string()], None), "backend");
-        assert_eq!(
-            format_labels(&["backend".to_string(), "api".to_string()], None),
-            "backend, api"
-        );
+    fn test_build_file_tree_empty() {
+        let files = vec![];
+        let trees = build_file_tree(&files, 5, false);
+        assert!(trees.is_empty());
     }
 }

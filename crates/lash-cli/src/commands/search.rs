@@ -15,8 +15,11 @@
 use anyhow::{Context, Result};
 use lash_cli::formatter::{TextFormatter, Verbosity};
 use lash_cli::theme::{self, CliTheme};
+use lash_cli::tree_formatter::TreeFormatter;
 use lash_db::{open_database, search, SearchQuery};
+use lash_types::tree::TreeNode;
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
@@ -47,6 +50,12 @@ pub struct SearchArgs {
     pub path: Option<PathBuf>,
     /// Optional color scheme name to use for styling
     pub color_scheme: Option<String>,
+    /// Enable tree view (None = use config default)
+    pub tree_view: Option<bool>,
+    /// Maximum tree depth
+    pub max_depth: Option<usize>,
+    /// Use ASCII characters for tree
+    pub ascii: bool,
 }
 
 // SearchResult is re-exported from lash_db above
@@ -144,9 +153,16 @@ pub fn execute(args: &SearchArgs) -> Result<i32> {
         // Load theme for colored output
         let colors_enabled = !args.no_color && theme::supports_color();
         let theme = CliTheme::load(args.color_scheme.as_deref(), colors_enabled)?;
-        let formatter = TextFormatter::with_theme(theme, Verbosity::Normal);
+        let formatter = TextFormatter::with_theme(theme.clone(), Verbosity::Normal);
 
-        output_text(&results.results, &args.query, &formatter);
+        // Determine if tree view is enabled
+        let use_tree_view = determine_tree_view_enabled(args);
+
+        if use_tree_view {
+            output_text_tree(&results.results, &args.query, args, theme);
+        } else {
+            output_text(&results.results, &args.query, &formatter);
+        }
     }
 
     // Return success - "no results" is a successful search, not an error
@@ -156,6 +172,283 @@ pub fn execute(args: &SearchArgs) -> Result<i32> {
 /// Get the database path for a project
 fn get_database_path(project_root: &Path) -> PathBuf {
     project_root.join(".lash/lash.db")
+}
+
+/// Determine if tree view should be enabled
+///
+/// Priority: CLI flag > config > default (true)
+fn determine_tree_view_enabled(args: &SearchArgs) -> bool {
+    // Check CLI flag first
+    if let Some(tree_view) = args.tree_view {
+        return tree_view;
+    }
+
+    // Fall back to config
+    match lash_types::UserConfig::load() {
+        Ok(config) => config.tree_view.enabled,
+        Err(_) => true, // Default to true if config can't be loaded
+    }
+}
+
+/// Represents a directory or result node in the search tree
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct SearchTreeNode {
+    /// Display name (directory name or result title)
+    name: String,
+    /// Full path for directories
+    path: PathBuf,
+    /// true for directory, false for result
+    is_directory: bool,
+    /// For results, the underlying `SearchResult`
+    result: Option<SearchResult>,
+}
+
+/// Build search tree from flat results list
+///
+/// Groups search results by their file path in a hierarchical tree structure.
+#[allow(clippy::too_many_lines)]
+fn build_search_tree(
+    results: &[SearchResult],
+    max_depth: usize,
+    default_expanded: bool,
+) -> Vec<TreeNode<SearchTreeNode>> {
+    if results.is_empty() {
+        return Vec::new();
+    }
+
+    // Group results by directory
+    let mut dir_map: HashMap<PathBuf, Vec<&SearchResult>> = HashMap::new();
+    for result in results {
+        let path = PathBuf::from(&result.file_path);
+        let dir = path.parent().unwrap_or_else(|| Path::new(""));
+        dir_map.entry(dir.to_path_buf()).or_default().push(result);
+    }
+
+    // Build tree structure
+    let mut roots: Vec<TreeNode<SearchTreeNode>> = Vec::new();
+    let mut dir_nodes: HashMap<PathBuf, TreeNode<SearchTreeNode>> = HashMap::new();
+
+    // Sort directories by path for consistent ordering
+    let mut sorted_dirs: Vec<_> = dir_map.keys().collect();
+    sorted_dirs.sort();
+
+    for dir_path in sorted_dirs {
+        let dir_results = dir_map.get(dir_path).unwrap();
+        let depth = dir_path.components().count();
+
+        // Create directory node if it doesn't exist
+        if !dir_nodes.contains_key(dir_path) && depth > 0 {
+            let dir_name = dir_path
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new(""))
+                .to_string_lossy()
+                .to_string();
+
+            let mut dir_node = TreeNode::new(
+                SearchTreeNode {
+                    name: dir_name,
+                    path: dir_path.clone(),
+                    is_directory: true,
+                    result: None,
+                },
+                depth,
+            );
+
+            if default_expanded && depth < max_depth {
+                dir_node.expand();
+            }
+
+            dir_nodes.insert(dir_path.clone(), dir_node);
+        }
+
+        // Group results by file path within this directory
+        let mut file_results: HashMap<PathBuf, Vec<&SearchResult>> = HashMap::new();
+        for result in dir_results {
+            let file_path = PathBuf::from(&result.file_path);
+            file_results.entry(file_path).or_default().push(result);
+        }
+
+        // Sort file paths for deterministic order
+        let mut sorted_files: Vec<_> = file_results.keys().collect();
+        sorted_files.sort();
+
+        for file_path in sorted_files {
+            let results_for_file = file_results.get(file_path).unwrap();
+            let file_name = file_path
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new(""))
+                .to_string_lossy()
+                .to_string();
+
+            // Create file node as container for results
+            let mut file_node = TreeNode::new(
+                SearchTreeNode {
+                    name: file_name,
+                    path: file_path.clone(),
+                    is_directory: true, // Treat files as containers
+                    result: None,
+                },
+                depth + 1,
+            );
+
+            if default_expanded && (depth + 1) < max_depth {
+                file_node.expand();
+            }
+
+            // Add result nodes as children
+            for result in results_for_file {
+                let result_node = TreeNode::new(
+                    SearchTreeNode {
+                        name: result.title.clone(),
+                        path: file_path.clone(),
+                        is_directory: false,
+                        result: Some((*result).clone()),
+                    },
+                    depth + 2,
+                );
+                file_node.children.push(result_node);
+            }
+
+            // Add file node to parent directory or root
+            if depth == 0 {
+                roots.push(file_node);
+            } else if let Some(parent) = dir_nodes.get_mut(dir_path) {
+                parent.children.push(file_node);
+            }
+        }
+    }
+
+    // Build parent-child relationships for directories
+    let mut dir_paths: Vec<PathBuf> = dir_nodes.keys().cloned().collect();
+    dir_paths.sort();
+    for dir_path in &dir_paths {
+        if let Some(parent_path) = dir_path.parent() {
+            if parent_path.as_os_str().is_empty() {
+                // This is a root directory
+                if let Some(node) = dir_nodes.remove(dir_path) {
+                    roots.push(node);
+                }
+            } else if dir_nodes.contains_key(parent_path) {
+                // This directory has a parent in the tree
+                if let Some(node) = dir_nodes.remove(dir_path) {
+                    if let Some(parent) = dir_nodes.get_mut(parent_path) {
+                        parent.children.push(node);
+                    }
+                }
+            } else {
+                // Parent doesn't exist, add as root
+                if let Some(node) = dir_nodes.remove(dir_path) {
+                    roots.push(node);
+                }
+            }
+        }
+    }
+
+    // Sort roots by name for deterministic order
+    roots.sort_by(|a, b| a.data.name.cmp(&b.data.name));
+    roots
+}
+
+/// Output search results as tree view
+#[allow(clippy::needless_pass_by_value)]
+fn output_text_tree(
+    results: &[SearchResult],
+    query: &str,
+    args: &SearchArgs,
+    theme: Option<CliTheme>,
+) {
+    let has_theme = theme.is_some();
+
+    if results.is_empty() {
+        let no_results = format!("No results found for '{query}'");
+        if let Some(ref theme) = theme {
+            println!("{}", theme.style_warning(&no_results));
+        } else {
+            println!("{no_results}");
+        }
+        println!();
+        println!("Suggestions:");
+        println!("  - Try a different query");
+        println!("  - Check that your files are indexed with `lash index`");
+        return;
+    }
+
+    // Print header
+    if has_theme {
+        if let Some(ref theme) = theme {
+            println!(
+                "{} {} {}",
+                theme.style_info("Found"),
+                theme.style_info(&results.len().to_string()),
+                theme.style_info(&format!("result(s) for '{query}'"))
+            );
+        } else {
+            println!("Found {} result(s) for '{}'", results.len(), query);
+        }
+    } else {
+        println!("Found {} result(s) for '{}'", results.len(), query);
+    }
+    println!();
+
+    // Get config for tree settings
+    let config = lash_types::UserConfig::load().unwrap_or_default();
+    let max_depth = args.max_depth.unwrap_or(config.tree_view.max_depth);
+    // For search results, always expand nodes by default so results are visible
+    let default_expanded = true;
+
+    // Build tree
+    let trees = build_search_tree(results, max_depth, default_expanded);
+
+    // Create formatter
+    let formatter = TreeFormatter::new(args.ascii, max_depth, theme.clone());
+
+    // Format tree
+    let lines = formatter.format_tree(&trees, |node, fmt| {
+        if node.is_directory {
+            // Directory or file node
+            if let Some(theme) = fmt.theme() {
+                format!("{}/", theme.style_info(&node.name))
+            } else {
+                format!("{}/", node.name)
+            }
+        } else if let Some(ref result) = node.result {
+            // Search result node
+            let status_indicator = match result.status {
+                lash_types::TaskStatus::Open => "[ ]",
+                lash_types::TaskStatus::Done => "[x]",
+                lash_types::TaskStatus::Waived => "[-]",
+                lash_types::TaskStatus::Blocked => "[!]",
+            };
+
+            if let Some(theme) = fmt.theme() {
+                let status_styled = match result.status {
+                    lash_types::TaskStatus::Done => theme.style_success(status_indicator),
+                    lash_types::TaskStatus::Blocked => theme.style_error(status_indicator),
+                    lash_types::TaskStatus::Open | lash_types::TaskStatus::Waived => {
+                        theme.style_muted(status_indicator)
+                    }
+                };
+                let score_str = format!("({:.2})", result.score);
+                format!(
+                    "{} {} {}",
+                    status_styled,
+                    theme.style_label(&node.name),
+                    theme.style_muted(&score_str)
+                )
+            } else {
+                format!("{} {} ({:.2})", status_indicator, node.name, result.score)
+            }
+        } else {
+            // Fallback
+            node.name.clone()
+        }
+    });
+
+    // Print lines
+    for line in lines {
+        println!("{line}");
+    }
 }
 
 /// Output error message as JSON

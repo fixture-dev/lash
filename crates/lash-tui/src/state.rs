@@ -5,6 +5,21 @@
 use crate::colors::Theme;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::tasks::TaskRecord;
+use lash_types::tree::{TreeChars, TreeNode};
+use std::path::PathBuf;
+
+/// Represents a directory or file node in the file tree
+#[derive(Debug, Clone)]
+pub struct DirectoryNode {
+    /// Display name (directory name or file name)
+    pub name: String,
+    /// Full path
+    pub path: PathBuf,
+    /// `true` for directory, `false` for file
+    pub is_directory: bool,
+    /// For files, the underlying `FileRecord`
+    pub file_record: Option<FileRecord>,
+}
 
 /// Which pane is currently focused
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +79,15 @@ pub struct AppState {
 
     /// Theme selector state (None = closed, Some = open with selection index)
     pub theme_selector_state: Option<ThemeSelectorState>,
+
+    /// File tree (hierarchical directory structure)
+    pub file_tree: Option<Vec<TreeNode<DirectoryNode>>>,
+
+    /// Task tree (hierarchical task structure)
+    pub task_tree: Option<Vec<TreeNode<TaskRecord>>>,
+
+    /// Tree rendering characters (Unicode or ASCII)
+    pub tree_chars: TreeChars,
 }
 
 /// State for the theme selector modal
@@ -104,6 +128,9 @@ impl AppState {
             should_quit: false,
             theme,
             theme_selector_state: None,
+            file_tree: None,
+            task_tree: None,
+            tree_chars: TreeChars::detect(),
         }
     }
 
@@ -312,6 +339,198 @@ impl AppState {
     #[must_use]
     pub fn selected_task(&self) -> Option<&TaskRecord> {
         self.tasks.get(self.selected_task_index)
+    }
+
+    /// Build file tree from flat file list
+    ///
+    /// Converts the flat `self.files` list into a hierarchical directory tree.
+    /// Groups files by directory path components and creates intermediate directory nodes.
+    pub fn build_file_tree(&mut self) {
+        use lash_types::UserConfig;
+        use std::collections::HashMap;
+
+        if self.files.is_empty() {
+            self.file_tree = None;
+            return;
+        }
+
+        // Load config for default_expanded setting
+        let config = UserConfig::load().unwrap_or_default();
+        let default_expanded = config.tree_view.default_expanded;
+        let max_depth = config.tree_view.max_depth;
+
+        // Group files by directory
+        let mut dir_map: HashMap<PathBuf, Vec<FileRecord>> = HashMap::new();
+        for file in &self.files {
+            let dir = file
+                .path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new(""));
+            dir_map
+                .entry(dir.to_path_buf())
+                .or_default()
+                .push(file.clone());
+        }
+
+        // Build tree structure
+        let mut roots: Vec<TreeNode<DirectoryNode>> = Vec::new();
+        let mut dir_nodes: HashMap<PathBuf, TreeNode<DirectoryNode>> = HashMap::new();
+
+        // Sort directories by path for consistent ordering
+        let mut sorted_dirs: Vec<_> = dir_map.keys().collect();
+        sorted_dirs.sort();
+
+        for dir_path in sorted_dirs {
+            let files = dir_map.get(dir_path).unwrap();
+            let depth = dir_path.components().count();
+
+            // Create directory node if it doesn't exist
+            if !dir_nodes.contains_key(dir_path) && depth > 0 {
+                let dir_name = dir_path
+                    .file_name()
+                    .unwrap_or_else(|| std::ffi::OsStr::new(""))
+                    .to_string_lossy()
+                    .to_string();
+
+                let mut dir_node = TreeNode::new(
+                    DirectoryNode {
+                        name: dir_name,
+                        path: dir_path.clone(),
+                        is_directory: true,
+                        file_record: None,
+                    },
+                    depth,
+                );
+
+                if default_expanded && depth < max_depth {
+                    dir_node.expand();
+                }
+
+                dir_nodes.insert(dir_path.clone(), dir_node);
+            }
+
+            // Add file nodes to directory
+            for file in files {
+                let file_name = file
+                    .path
+                    .file_name()
+                    .unwrap_or_else(|| std::ffi::OsStr::new(""))
+                    .to_string_lossy()
+                    .to_string();
+
+                let file_node = TreeNode::new(
+                    DirectoryNode {
+                        name: file_name,
+                        path: file.path.clone(),
+                        is_directory: false,
+                        file_record: Some(file.clone()),
+                    },
+                    depth + 1,
+                );
+
+                // Add to parent directory or root
+                if depth == 0 {
+                    roots.push(file_node);
+                } else if let Some(parent) = dir_nodes.get_mut(dir_path) {
+                    parent.children.push(file_node);
+                }
+            }
+        }
+
+        // Build parent-child relationships for directories
+        let dir_paths: Vec<PathBuf> = dir_nodes.keys().cloned().collect();
+        for dir_path in &dir_paths {
+            if let Some(parent_path) = dir_path.parent() {
+                if parent_path.as_os_str().is_empty() {
+                    // This is a root directory
+                    if let Some(node) = dir_nodes.remove(dir_path) {
+                        roots.push(node);
+                    }
+                } else if dir_nodes.contains_key(parent_path) {
+                    // This directory has a parent in the tree
+                    if let Some(node) = dir_nodes.remove(dir_path) {
+                        if let Some(parent) = dir_nodes.get_mut(parent_path) {
+                            parent.children.push(node);
+                        }
+                    }
+                } else {
+                    // Parent doesn't exist, add as root
+                    if let Some(node) = dir_nodes.remove(dir_path) {
+                        roots.push(node);
+                    }
+                }
+            }
+        }
+
+        self.file_tree = Some(roots);
+    }
+
+    /// Build task tree from flat task list
+    ///
+    /// Converts the flat `self.tasks` list into a hierarchical task tree.
+    /// Uses `parent_id` and `depth` fields from `TaskRecord` to build the hierarchy.
+    pub fn build_task_tree(&mut self) {
+        use lash_types::UserConfig;
+
+        /// Recursively build tree from root nodes (`parent_id = None`)
+        fn build_subtree(
+            parent_id: Option<i64>,
+            children_map: &std::collections::HashMap<Option<i64>, Vec<TaskRecord>>,
+            default_expanded: bool,
+            max_depth: usize,
+        ) -> Vec<TreeNode<TaskRecord>> {
+            let Some(children) = children_map.get(&parent_id) else {
+                return Vec::new();
+            };
+
+            children
+                .iter()
+                .map(|task| {
+                    let depth = task.depth as usize;
+                    let mut node = TreeNode::new(task.clone(), depth);
+
+                    // Recursively add children
+                    node.children =
+                        build_subtree(Some(task.id), children_map, default_expanded, max_depth);
+
+                    // Expand if configured and within depth limit
+                    if default_expanded && depth < max_depth && !node.children.is_empty() {
+                        node.expand();
+                    }
+
+                    node
+                })
+                .collect()
+        }
+
+        if self.tasks.is_empty() {
+            self.task_tree = None;
+            return;
+        }
+
+        // Load config for default_expanded setting
+        let config = UserConfig::load().unwrap_or_default();
+        let default_expanded = config.tree_view.default_expanded;
+        let max_depth = config.tree_view.max_depth;
+
+        // Group tasks by parent_id
+        let mut children_map: std::collections::HashMap<Option<i64>, Vec<TaskRecord>> =
+            std::collections::HashMap::new();
+
+        for task in &self.tasks {
+            children_map
+                .entry(task.parent_id)
+                .or_default()
+                .push(task.clone());
+        }
+
+        // Sort children by order_index within each parent group
+        for children in children_map.values_mut() {
+            children.sort_by_key(|t| t.order_index);
+        }
+
+        let roots = build_subtree(None, &children_map, default_expanded, max_depth);
+        self.task_tree = Some(roots);
     }
 }
 

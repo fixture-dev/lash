@@ -227,6 +227,15 @@ fn run(cli: LashCli) -> Result<()> {
                 }
             };
 
+            // Determine tree view settings
+            let tree_view = if cli.tree_view {
+                Some(true)
+            } else if cli.no_tree_view {
+                Some(false)
+            } else {
+                None
+            };
+
             let args = commands::list::ListArgs {
                 labels: label,
                 status: task_status,
@@ -236,6 +245,9 @@ fn run(cli: LashCli) -> Result<()> {
                 format: output_format,
                 project_root,
                 theme: theme.clone(),
+                tree_view,
+                max_depth: cli.max_depth,
+                ascii: cli.ascii,
             };
             let exit_code = commands::list::execute(args)?;
             process::exit(exit_code);
@@ -257,6 +269,15 @@ fn run(cli: LashCli) -> Result<()> {
                 lash_cli::cli::TaskStatus::Blocked => lash_types::TaskStatus::Blocked,
             });
 
+            // Determine tree view settings
+            let tree_view = if cli.tree_view {
+                Some(true)
+            } else if cli.no_tree_view {
+                Some(false)
+            } else {
+                None
+            };
+
             let args = commands::search::SearchArgs {
                 query,
                 limit,
@@ -268,6 +289,9 @@ fn run(cli: LashCli) -> Result<()> {
                 owner,
                 path,
                 color_scheme: cli.color_scheme.clone(),
+                tree_view,
+                max_depth: cli.max_depth,
+                ascii: cli.ascii,
             };
             let exit_code = commands::search::execute(&args)?;
             process::exit(exit_code);
@@ -278,6 +302,15 @@ fn run(cli: LashCli) -> Result<()> {
             deps,
             rdeps,
         } => {
+            // Determine tree view settings
+            let tree_view = if cli.tree_view {
+                Some(true)
+            } else if cli.no_tree_view {
+                Some(false)
+            } else {
+                None
+            };
+
             let args = commands::show::ShowArgs {
                 target,
                 deps,
@@ -285,6 +318,9 @@ fn run(cli: LashCli) -> Result<()> {
                 json: cli.json,
                 no_color: cli.no_color,
                 project_root,
+                tree_view,
+                max_depth: cli.max_depth,
+                ascii: cli.ascii,
             };
             let exit_code = commands::show::execute(&args)?;
             process::exit(exit_code);
