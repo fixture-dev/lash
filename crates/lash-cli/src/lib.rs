@@ -21,6 +21,7 @@ pub mod logging;
 pub mod progress;
 pub mod project_root;
 pub mod theme;
+pub mod tree_formatter;
 
 // Re-export commonly used types
 pub use cli::{Commands, LashCli};

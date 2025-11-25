@@ -4,9 +4,11 @@
 
 use anyhow::{Context, Result};
 use lash_cli::theme::CliTheme;
+use lash_cli::tree_formatter::TreeFormatter;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::tasks::TaskRecord;
 use lash_db::{open_database, DependencyRepository, FileRepository, TaskRepository};
+use lash_types::tree::TreeNode;
 use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
@@ -27,6 +29,12 @@ pub struct ShowArgs {
     pub no_color: bool,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
+    /// Enable tree view (None = use config default)
+    pub tree_view: Option<bool>,
+    /// Maximum tree depth
+    pub max_depth: Option<usize>,
+    /// Use ASCII characters for tree
+    pub ascii: bool,
 }
 
 /// Execute the show command
@@ -142,10 +150,28 @@ fn show_file(
     if args.json {
         output_json_file(&file, &tasks)?;
     } else {
-        output_text_file(&file, &tasks, theme);
+        // Determine if tree view is enabled
+        let use_tree_view = determine_tree_view_enabled(args);
+        output_text_file(&file, &tasks, theme, use_tree_view, args);
     }
 
     Ok(0)
+}
+
+/// Determine if tree view should be enabled
+///
+/// Priority: CLI flag > config > default (true)
+fn determine_tree_view_enabled(args: &ShowArgs) -> bool {
+    // Check CLI flag first
+    if let Some(tree_view) = args.tree_view {
+        return tree_view;
+    }
+
+    // Fall back to config
+    match lash_types::UserConfig::load() {
+        Ok(config) => config.tree_view.enabled,
+        Err(_) => true, // Default to true if config can't be loaded
+    }
 }
 
 /// Show detailed information about a task
@@ -319,7 +345,13 @@ fn output_json_task(
 }
 
 /// Output file as human-readable text
-fn output_text_file(file: &FileRecord, tasks: &[TaskRecord], theme: Option<&CliTheme>) {
+fn output_text_file(
+    file: &FileRecord,
+    tasks: &[TaskRecord],
+    theme: Option<&CliTheme>,
+    use_tree_view: bool,
+    args: &ShowArgs,
+) {
     // File header
     if let Some(theme) = theme {
         println!("{}", theme.style_info("File:"));
@@ -351,7 +383,10 @@ fn output_text_file(file: &FileRecord, tasks: &[TaskRecord], theme: Option<&CliT
 
     if tasks.is_empty() {
         println!("  (no tasks)");
+    } else if use_tree_view {
+        output_tasks_as_tree(tasks, theme, args);
     } else {
+        // Flat view with indentation
         for task in tasks {
             let indent = "  ".repeat(task.depth as usize + 1);
             if let Some(theme) = theme {
@@ -368,6 +403,93 @@ fn output_text_file(file: &FileRecord, tasks: &[TaskRecord], theme: Option<&CliT
                 );
             }
         }
+    }
+}
+
+/// Represents a task node in the tree view
+#[derive(Debug, Clone)]
+struct TaskTreeNode {
+    /// Task title
+    title: String,
+    /// Task full ID
+    full_id: String,
+    /// Task status
+    status: lash_types::TaskStatus,
+}
+
+/// Output tasks as a tree view
+fn output_tasks_as_tree(tasks: &[TaskRecord], theme: Option<&CliTheme>, args: &ShowArgs) {
+    // Build tree structure from flat task list
+    // Tasks are already ordered by parent-child relationship with depth info
+    let config = lash_types::UserConfig::load().unwrap_or_default();
+    let max_depth = args.max_depth.unwrap_or(config.tree_view.max_depth);
+
+    // Build tree by tracking parent indices for each depth level
+    let mut roots: Vec<TreeNode<TaskTreeNode>> = Vec::new();
+    let mut stack: Vec<*mut TreeNode<TaskTreeNode>> = Vec::new();
+
+    for task in tasks {
+        let node = TreeNode::new(
+            TaskTreeNode {
+                title: task.title.clone(),
+                full_id: task.full_id.clone(),
+                status: task.status,
+            },
+            task.depth as usize,
+        );
+
+        let depth = task.depth as usize;
+
+        if depth == 0 {
+            // Root node - just add and expand
+            let mut new_node = node;
+            new_node.expand();
+            roots.push(new_node);
+            // Update stack pointer to point to the new root
+            stack.clear();
+            stack.push(roots.last_mut().unwrap() as *mut _);
+        } else {
+            // Child node - find parent at depth-1
+            // Truncate stack to parent depth
+            stack.truncate(depth);
+
+            if let Some(&parent_ptr) = stack.last() {
+                // SAFETY: We maintain the invariant that pointers in stack are valid
+                // and point to nodes in roots tree structure
+                unsafe {
+                    let parent = &mut *parent_ptr;
+                    let mut new_node = node;
+                    new_node.expand();
+                    parent.children.push(new_node);
+                    // Add pointer to the new child
+                    stack.push(parent.children.last_mut().unwrap() as *mut _);
+                }
+            }
+        }
+    }
+
+    // Create formatter and render
+    let formatter = TreeFormatter::new(args.ascii, max_depth, theme.cloned());
+
+    let lines = formatter.format_tree(&roots, |node, fmt| {
+        let status_indicator = match node.status {
+            lash_types::TaskStatus::Open => "[ ]",
+            lash_types::TaskStatus::Done => "[x]",
+            lash_types::TaskStatus::Waived => "[-]",
+            lash_types::TaskStatus::Blocked => "[!]",
+        };
+
+        if let Some(theme) = fmt.theme() {
+            let checkbox = theme.styled_checkbox(node.status);
+            let full_id = theme.style_muted(&node.full_id);
+            format!("{} {} ({})", checkbox, node.title, full_id)
+        } else {
+            format!("{} {} ({})", status_indicator, node.title, node.full_id)
+        }
+    });
+
+    for line in lines {
+        println!("  {line}");
     }
 }
 

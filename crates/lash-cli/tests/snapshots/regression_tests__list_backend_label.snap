@@ -2,53 +2,9 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized
 ---
-ID                                                     STATUS   TITLE                                   LABELS
-----------------------------------------------------------------------------------------------------------------------
-backend.api#add-api-documentation-docs                 open     Add API documentation #docs             docs
-backend.api#define-endpoints                           done     Define endpoints                        
-backend.api#design-requestresponse-schemas             done     Design request/response schemas         
-backend.api#design-rest-api                            done     Design REST API                         
-backend.api#example-requests                           open     Example requests                        
-backend.api#implement-authentication-security          open     Implement authentication #security      security
-backend.api#implement-crud-endpoints-core              open     Implement CRUD endpoints #core          core
-backend.api#jwt-token-generation                       done     JWT token generation                    
-backend.api#oauth2-integration-p1                      open     OAuth2 integration #p1                  p1
-backend.api#openapi-spec                               open     OpenAPI spec                            
-backend.api#project-endpoints                          open     Project endpoints                       
-backend.api#session-management                         open     Session management                      
-backend.api#task-endpoints                             open     Task endpoints                          
-backend.api#user-endpoints                             done     User endpoints                          
-backend.database#add-database-layer-core               done     Add database layer #core                core
-backend.database#add-indexes                           done     Add indexes                             
-backend.database#connection-pooling                    done     Connection pooling                      
-backend.database#design-database-schema                done     Design database schema                  
-backend.database#initial-schema-migration              done     Initial schema migration                
-backend.database#migration-framework                   done     Migration framework                     
-backend.database#performance-optimization-performance  done     Performance optimization #performance   performance
-backend.database#projects-table                        done     Projects table                          
-backend.database#query-builders                        done     Query builders                          
-backend.database#query-optimization                    done     Query optimization                      
-backend.database#relationships                         done     Relationships                           
-backend.database#seed-data                             done     Seed data                               
-backend.database#set-up-migrations-infrastructure      done     Set up migrations #infrastructure       infrastructure
-backend.database#tasks-table                           done     Tasks table                             
-backend.database#transaction-support                   done     Transaction support                     
-backend.database#users-table                           done     Users table                             
-backend.tests#api-endpoint-tests                       done     API endpoint tests                      
-backend.tests#auth-flow-tests                          open     Auth flow tests                         
-backend.tests#database-integration-tests               open     Database integration tests              
-backend.tests#helper-functions                         done     Helper functions                        
-backend.tests#integration-tests-integration-testing    open     Integration tests #integration-testing  integration-testing
-backend.tests#load-testing                             open     Load testing                            
-backend.tests#model-tests                              done     Model tests                             
-backend.tests#performance-tests-performance            open     Performance tests #performance          performance
-backend.tests#service-tests                            open     Service tests                           
-backend.tests#set-up-test-infrastructure               done     Set up test infrastructure              
-backend.tests#stress-testing                           open     Stress testing                          
-backend.tests#test-database                            done     Test database                           
-backend.tests#test-fixtures                            done     Test fixtures                           
-backend.tests#unit-tests-unit-testing                  open     Unit tests #unit-testing                unit-testing
-backend.tests#utility-tests                            open     Utility tests                           
-medium-project#backend-development-backend             open     Backend development #backend            backend
+└── backend/
+└── docs/
+└── frontend/
+└── ○ lash.index.md
 
-Total: 46 task(s)
+Total: 9 file(s)

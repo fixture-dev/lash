@@ -131,9 +131,13 @@ impl TuiApp {
                     AppEvent::Help => self.state.toggle_help(),
                     AppEvent::OpenEditor => self.handle_open_editor()?,
                     AppEvent::OpenThemeSelector => self.state.open_theme_selector(),
+                    AppEvent::Left => self.handle_left(),
+                    AppEvent::ExpandAll => self.handle_expand_all(),
+                    AppEvent::CollapseAll => self.handle_collapse_all(),
 
                     // TODO: implement these features
-                    AppEvent::Left
+                    AppEvent::ExpandNode
+                    | AppEvent::CollapseNode
                     | AppEvent::ClearFilters
                     | AppEvent::Search
                     | AppEvent::LabelFilter
@@ -250,6 +254,61 @@ impl TuiApp {
         }
 
         Ok(())
+    }
+
+    /// Handle Left event (collapse node or go to parent in tree view)
+    #[allow(clippy::unused_self)]
+    fn handle_left(&mut self) {
+        // TODO: Implement tree navigation for file/task tree
+        // For now, no-op (Left is not used in flat list view)
+    }
+
+    /// Handle expand all nodes in current tree
+    fn handle_expand_all(&mut self) {
+        use crate::state::FocusedPane;
+        use lash_types::UserConfig;
+
+        let config = UserConfig::load().unwrap_or_default();
+        let max_depth = config.tree_view.max_depth;
+
+        match self.state.focused_pane {
+            FocusedPane::Navigation => {
+                if let Some(trees) = &mut self.state.file_tree {
+                    for tree in trees {
+                        tree.expand_all(max_depth);
+                    }
+                }
+            }
+            FocusedPane::Detail => {
+                if let Some(trees) = &mut self.state.task_tree {
+                    for tree in trees {
+                        tree.expand_all(max_depth);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Handle collapse all nodes in current tree
+    fn handle_collapse_all(&mut self) {
+        use crate::state::FocusedPane;
+
+        match self.state.focused_pane {
+            FocusedPane::Navigation => {
+                if let Some(trees) = &mut self.state.file_tree {
+                    for tree in trees {
+                        tree.collapse_all();
+                    }
+                }
+            }
+            FocusedPane::Detail => {
+                if let Some(trees) = &mut self.state.task_tree {
+                    for tree in trees {
+                        tree.collapse_all();
+                    }
+                }
+            }
+        }
     }
 }
 

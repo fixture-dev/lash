@@ -111,14 +111,15 @@ fn test_playground_indexes_successfully() {
         "Database should exist at .lash/lash.db"
     );
 
-    // Verify can query
+    // Verify can query - tree view shows directory structure with file count
     Command::cargo_bin("lash")
         .unwrap()
         .current_dir(&playground_path)
         .arg("list")
         .assert()
         .success()
-        .stdout(predicate::str::contains("player-movement"));
+        // Tree view shows directories and total file count
+        .stdout(predicate::str::contains("features/").or(predicate::str::contains("24 file(s)")));
 }
 
 #[test]

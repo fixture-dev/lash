@@ -48,6 +48,14 @@ pub enum AppEvent {
     OpenThemeSelector,
     /// Close theme selector
     CloseThemeSelector,
+    /// Expand current node
+    ExpandNode,
+    /// Collapse current node
+    CollapseNode,
+    /// Expand all nodes
+    ExpandAll,
+    /// Collapse all nodes
+    CollapseAll,
     /// Resize terminal
     Resize(u16, u16),
     /// No event (timeout)
@@ -80,8 +88,10 @@ fn handle_key_event(key: KeyEvent) -> AppEvent {
         // Navigation
         (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => AppEvent::Down,
         (KeyCode::Char('k'), KeyModifiers::NONE) | (KeyCode::Up, _) => AppEvent::Up,
-        (KeyCode::Char('h'), KeyModifiers::NONE) => AppEvent::Left,
-        (KeyCode::Char('l'), KeyModifiers::NONE) | (KeyCode::Enter, _) => AppEvent::Right,
+        (KeyCode::Char('h'), KeyModifiers::NONE) | (KeyCode::Left, _) => AppEvent::Left,
+        (KeyCode::Char('l'), KeyModifiers::NONE) | (KeyCode::Right | KeyCode::Enter, _) => {
+            AppEvent::Right
+        }
 
         // Go to top/bottom
         (KeyCode::Char('g'), KeyModifiers::NONE) => AppEvent::GoTop,
@@ -90,6 +100,10 @@ fn handle_key_event(key: KeyEvent) -> AppEvent {
         // Task jumps
         (KeyCode::Char('{'), KeyModifiers::SHIFT) => AppEvent::PrevTask,
         (KeyCode::Char('}'), KeyModifiers::SHIFT) => AppEvent::NextTask,
+
+        // Tree expansion (vim-style fold commands)
+        (KeyCode::Char('H'), KeyModifiers::SHIFT) => AppEvent::CollapseAll,
+        (KeyCode::Char('L'), KeyModifiers::SHIFT) => AppEvent::ExpandAll,
 
         // Pane switching
         (KeyCode::Tab, _) | (KeyCode::Char('h' | 'l'), KeyModifiers::CONTROL) => {

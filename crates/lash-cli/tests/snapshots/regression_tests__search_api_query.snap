@@ -4,86 +4,32 @@ expression: normalized
 ---
 Found 20 result(s) for 'api'
 
-1. backend.api#design-rest-api (score: 0.58) [title]
-   Design REST API
-   └─ backend/api.md
-
-2. frontend.state#add-api-integration-api (score: 0.60) [title, labels]
-   Add API integration #api
-   └─ frontend/state.md
-      #api
-
-3. backend.api#add-api-documentation-docs (score: 0.57) [title]
-   Add API documentation #docs
-   └─ backend/api.md
-      #docs
-
-4. docs.api#api-guide-guides (score: 0.61) [title]
-   API guide #guides
-   └─ docs/api-docs.md
-      #guides
-
-5. docs.api#api-reference-documentation-docs (score: 0.60) [title]
-   API reference documentation #docs
-   └─ docs/api-docs.md
-      #docs
-
-6. backend.api#define-endpoints (score: 0.53) 
-   Define endpoints
-   └─ backend/api.md
-
-7. backend.api#session-management (score: 0.53) 
-   Session management
-   └─ backend/api.md
-
-8. backend.api#user-endpoints (score: 0.53) 
-   User endpoints
-   └─ backend/api.md
-
-9. backend.api#task-endpoints (score: 0.53) 
-   Task endpoints
-   └─ backend/api.md
-
-10. backend.api#project-endpoints (score: 0.53) 
-   Project endpoints
-   └─ backend/api.md
-
-11. backend.api#openapi-spec (score: 0.56) [title]
-   OpenAPI spec
-   └─ backend/api.md
-
-12. backend.api#example-requests (score: 0.53) 
-   Example requests
-   └─ backend/api.md
-
-13. frontend.state#api-client (score: 0.59) [title]
-   API client
-   └─ frontend/state.md
-
-14. frontend.tests#mock-api (score: 0.56) [title]
-   Mock API
-   └─ frontend/tests.md
-
-15. medium-project#api-implementation (score: 0.59) [title]
-   API implementation
-   └─ lash.index.md
-
-16. medium-project#api-docs (score: 0.59) [title]
-   API docs
-   └─ lash.index.md
-
-17. backend.api#jwt-token-generation (score: 0.53) 
-   JWT token generation
-   └─ backend/api.md
-
-18. backend.tests#api-endpoint-tests (score: 0.59) [title]
-   API endpoint tests
-   └─ backend/tests.md
-
-19. docs.api#authentication-endpoints (score: 0.53) 
-   Authentication endpoints
-   └─ docs/api-docs.md
-
-20. docs.api#user-endpoints (score: 0.53) 
-   User endpoints
-   └─ docs/api-docs.md
+└── backend/
+    ├── api.md/
+    │   ├── [x] Design REST API (0.58)
+    │   ├── [ ] Add API documentation #docs (0.57)
+    │   ├── [x] Define endpoints (0.53)
+    │   ├── [ ] Session management (0.53)
+    │   ├── [x] User endpoints (0.53)
+    │   ├── [ ] Task endpoints (0.53)
+    │   ├── [ ] Project endpoints (0.53)
+    │   ├── [ ] OpenAPI spec (0.56)
+    │   ├── [ ] Example requests (0.53)
+    │   └── [x] JWT token generation (0.53)
+    └── tests.md/
+        └── [x] API endpoint tests (0.59)
+└── docs/
+    └── api-docs.md/
+        ├── [ ] API guide #guides (0.61)
+        ├── [ ] API reference documentation #docs (0.60)
+        ├── [ ] Authentication endpoints (0.53)
+        └── [ ] User endpoints (0.53)
+└── frontend/
+    ├── state.md/
+    │   ├── [ ] Add API integration #api (0.60)
+    │   └── [x] API client (0.59)
+    └── tests.md/
+        └── [x] Mock API (0.56)
+└── lash.index.md/
+    ├── [ ] API implementation (0.59)
+    └── [ ] API docs (0.59)
