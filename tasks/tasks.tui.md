@@ -635,6 +635,201 @@ Task 8 implemented the color scheme infrastructure and TUI integration. The `--c
 
 ---
 
+## Task 10: Tree View Support
+
+**Priority:** HIGH
+**Effort:** 3-4 days
+**Depends on:** Task 2, Task 3, Task 9
+**Status:** NOT STARTED
+
+### Description
+
+Add support for viewing tasks and files in a hierarchical tree view format. This applies to both the TUI (files pane and task detail pane) and CLI command output. The tree view should be interactive in the TUI, allowing users to expand/collapse directories and task hierarchies.
+
+### Background
+
+Currently, the navigation pane displays files in a flat list format (as noted in Task 2: "flat list for v1, tree deferred"). This task implements the full tree view functionality that was deferred, extending it to both the TUI and CLI commands for a consistent experience.
+
+### Subtasks
+
+- [x] **Phase 1.1: Add tree view configuration**
+  - [x] Add `--tree-view` global CLI flag
+  - [x] Add `--no-tree-view` flag to disable tree view
+  - [x] Add `--max-depth` / `-d` CLI flag (default: `5`)
+  - [x] Add `--ascii` flag to force ASCII mode
+  - [x] Add tree view settings to user config (`~/.lash/config.toml`):
+    - [x] `tree_view.enabled` (default: `true`)
+    - [x] `tree_view.max_depth` (default: `5`, range 1-10)
+    - [x] `tree_view.default_expanded` (default: `false` - start collapsed)
+    - [x] `tree_view.ascii_mode` (default: `false`)
+  - [x] Add `TreeViewConfig` struct with serialization/deserialization
+  - [x] Add validation for `max_depth` (1-10 range)
+  - [x] Priority: CLI flag > user config > default
+- [x] **Phase 1.2: Implement tree data structure**
+  - [x] Create `TreeNode<T>` generic struct in `lash-types/src/tree.rs`:
+    - [x] `data: T` (file info or task info)
+    - [x] `children: Vec<TreeNode<T>>`
+    - [x] `expanded: bool` (for interactive mode)
+    - [x] `depth: usize`
+  - [x] Implement core methods:
+    - [x] `new(data, depth)` - create node
+    - [x] `with_children(data, depth, children)` - create node with children
+    - [x] `has_children()` - check if node has children
+    - [x] `expand()`, `collapse()`, `toggle()` - expansion control
+    - [x] `expand_all(max_depth)`, `collapse_all()` - recursive operations
+    - [x] `flatten()` - flatten tree for rendering
+    - [x] `visible_count()` - count visible nodes
+  - [x] Create `TreeChars` enum for Unicode/ASCII rendering:
+    - [x] `Unicode` variant with `├──`, `└──`, `│`, `▸`, `▾`
+    - [x] `Ascii` variant with `+--`, `\--`, `|`, `>`, `v`
+    - [x] Methods: `branch()`, `last_branch()`, `vertical()`, `empty()`, `collapsed()`, `expanded()`
+    - [x] `detect()` - auto-detect from LANG env var
+  - [x] Export `TreeNode` and `TreeChars` from `lash-types`
+  - [x] Write comprehensive unit tests (all passing)
+  - [x] All code clippy clean
+- [ ] Implement TUI tree view for files pane
+  - [ ] Convert flat file list to hierarchical directory tree
+  - [ ] Render tree with Unicode box-drawing characters:
+    - [ ] `├──` for intermediate children
+    - [ ] `└──` for last child
+    - [ ] `│   ` for depth continuation
+    - [ ] `▸` / `▾` for collapsed/expanded indicators
+  - [ ] Show directories as expandable nodes
+  - [ ] Show files as leaf nodes with task count
+  - [ ] Respect `max_depth` configuration
+  - [ ] Implement keyboard navigation:
+    - [ ] `h` or `←`: collapse current node or go to parent
+    - [ ] `l` or `→` or `Enter`: expand current node or enter
+    - [ ] `H`: collapse all nodes
+    - [ ] `L`: expand all nodes (up to max_depth)
+    - [ ] `zo`: expand current node (vim-style)
+    - [ ] `zc`: collapse current node (vim-style)
+    - [ ] `zM`: collapse all (vim-style)
+    - [ ] `zR`: expand all (vim-style)
+  - [ ] Persist expansion state during session
+- [ ] Implement TUI tree view for task detail pane
+  - [ ] Display task hierarchy with proper indentation
+  - [ ] Show expand/collapse indicators for tasks with subtasks
+  - [ ] Support same keyboard shortcuts as files pane
+  - [ ] Highlight blocked tasks in tree context
+- [ ] Implement CLI tree view for `list` command
+  - [ ] Add `--tree` / `--no-tree` flags (inherit global default)
+  - [ ] Add `--depth` flag to override max depth
+  - [ ] Render hierarchical output with tree characters
+  - [ ] Example output:
+    ```
+    tasks/
+    ├── tasks.md [3/5]
+    ├── backend/
+    │   ├── api.md [2/4]
+    │   └── db.md [5/5] ✓
+    └── frontend/
+        ├── components.md [1/3]
+        └── styles.md [0/2]
+    ```
+  - [ ] Respect `--max-depth` to limit tree depth
+  - [ ] Apply theme colors to tree characters
+- [ ] Implement CLI tree view for `search` command
+  - [ ] Group search results by file path in tree format
+  - [ ] Show matched tasks under their file nodes
+  - [ ] Maintain tree structure in output
+- [ ] Implement CLI tree view for `show` command
+  - [ ] Display task with its subtask hierarchy
+  - [ ] Show parent context in tree format
+  - [ ] Include dependency tree visualization
+- [ ] Add ASCII fallback mode
+  - [ ] Detect terminal Unicode support
+  - [ ] Use ASCII characters when Unicode unavailable:
+    - [ ] `+--` instead of `├──`
+    - [ ] `\--` instead of `└──`
+    - [ ] `|   ` instead of `│   `
+    - [ ] `>` / `v` instead of `▸` / `▾`
+  - [ ] Add `--ascii` flag to force ASCII mode
+- [ ] Handle edge cases
+  - [ ] Very deep hierarchies (beyond max_depth): show `...` indicator
+  - [ ] Empty directories: show "(empty)" or hide
+  - [ ] Single-file projects: graceful fallback to flat view
+  - [ ] Circular dependencies in task trees: detect and warn
+
+### Success Criteria
+
+- [ ] `lash list --tree` displays files in hierarchical tree format
+- [ ] `lash list --no-tree` displays files in flat list format
+- [ ] `lash list --depth 3` limits tree depth to 3 levels
+- [ ] TUI files pane shows expandable/collapsible directory tree
+- [ ] TUI task pane shows expandable/collapsible task hierarchy
+- [ ] `h`/`l` keys expand/collapse nodes in TUI
+- [ ] `H`/`L` keys expand/collapse all nodes
+- [ ] Tree view respects user config defaults
+- [ ] Tree characters render correctly in common terminals
+- [ ] ASCII fallback works on limited terminals
+- [ ] All existing tests continue to pass
+
+### Tests
+
+- [ ] Unit: Test tree node creation and traversal
+- [ ] Unit: Test depth limiting logic
+- [ ] Unit: Test tree character rendering
+- [ ] Unit: Test ASCII fallback
+- [ ] Integration: Test `--tree` and `--no-tree` flags
+- [ ] Integration: Test `--depth` flag with various values
+- [ ] Integration: Test TUI tree navigation keys
+- [ ] Integration: Test expansion state persistence
+- [ ] Manual: Visual inspection of tree rendering
+- [ ] Manual: Test with deeply nested directories (10+ levels)
+- [ ] Manual: Test Unicode vs ASCII rendering
+
+### Implementation Notes
+
+**Tree Character Set (Unicode):**
+```
+├── intermediate child
+└── last child
+│   continuation
+▸   collapsed (has children)
+▾   expanded (has children)
+    leaf (no children) - just indent
+```
+
+**Tree Character Set (ASCII):**
+```
++-- intermediate child
+\-- last child
+|   continuation
+>   collapsed
+v   expanded
+```
+
+**Config File Example (`~/.lash/config.toml`):**
+```toml
+[tree_view]
+enabled = true
+max_depth = 5
+default_expanded = false
+ascii_mode = false
+```
+
+**Keyboard Shortcuts Summary:**
+| Key | Action |
+|-----|--------|
+| `h` / `←` | Collapse node or go to parent |
+| `l` / `→` / `Enter` | Expand node or enter |
+| `H` | Collapse all |
+| `L` | Expand all (to max_depth) |
+| `zo` | Expand current (vim) |
+| `zc` | Collapse current (vim) |
+| `zM` | Collapse all (vim) |
+| `zR` | Expand all (vim) |
+
+### References
+
+- Task 2: Navigation Pane (deferred tree view)
+- ratatui tree widget examples
+- vim fold commands for keyboard shortcut inspiration
+- Unicode box-drawing characters: U+2500 block
+
+---
+
 ## Non-Goals (for v1)
 
 - Mouse support (keyboard-only is sufficient)
