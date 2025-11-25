@@ -485,6 +485,133 @@ Add support for Gogh color schemes (https://github.com/Gogh-Co/Gogh) with select
 
 ---
 
+## Task 9: CLI Color Scheme Integration
+
+**Priority:** MEDIUM
+**Effort:** 2-3 days
+**Depends on:** Task 8
+
+### Description
+
+Extend the Gogh color scheme support to all CLI command output (list, search, show, etc.) so that the `--color-scheme` flag applies consistently across both TUI and CLI output.
+
+### Background
+
+Task 8 implemented the color scheme infrastructure and TUI integration. The `--color-scheme` flag was added globally but currently only affects TUI. This task completes the integration by applying themes to all CLI command output.
+
+### Subtasks
+
+- [ ] Create CLI color theme module
+  - [ ] Create `lash-cli/src/theme.rs` or extend existing formatter
+  - [ ] Implement `CliTheme` wrapper around `lash-tui` Theme
+  - [ ] Add method to load theme from config + CLI args (reuse UserConfig)
+  - [ ] Provide theme-aware styling functions for CLI output
+- [ ] Refactor output formatting infrastructure
+  - [ ] Create centralized `Formatter` trait/struct in `lash-cli/src/formatter.rs`
+  - [ ] Accept `&CliTheme` parameter in all formatting functions
+  - [ ] Replace hardcoded colors with theme lookups
+  - [ ] Map semantic colors (success, error, warning, info) to theme palette
+- [ ] Apply theming to `list` command
+  - [ ] Task status indicators (✓, ✗, ⚠) use theme colors
+  - [ ] Task status: done=green, blocked=red, open=default, waived=gray
+  - [ ] File paths: use theme's foreground color
+  - [ ] Counts and metadata: use theme's secondary colors
+- [ ] Apply theming to `search` command
+  - [ ] Match highlighting uses theme's accent color
+  - [ ] File paths use theme colors
+  - [ ] Line numbers use theme's muted color
+  - [ ] Search results maintain theme consistency
+- [ ] Apply theming to `show` command
+  - [ ] Task metadata (labels, owner, status) use theme colors
+  - [ ] Dependencies displayed with theme colors
+  - [ ] Blockers highlighted in red (theme's error color)
+  - [ ] Overall layout respects theme
+- [ ] Apply theming to other commands
+  - [ ] `graph`: dependency graph edges/nodes use theme colors
+  - [ ] `check-links`: errors/warnings use theme colors
+  - [ ] `lint`: validation messages use theme colors
+  - [ ] Error messages across all commands use theme's error color
+- [ ] Handle output context detection
+  - [ ] Detect TTY vs pipe: use `atty` or `std::io::IsTerminal`
+  - [ ] Disable colors when piping to file or other commands
+  - [ ] Respect `NO_COLOR` environment variable
+  - [ ] Respect `--no-color` CLI flag (if exists, or add it)
+  - [ ] Fall back gracefully on terminals with limited color support
+- [ ] Add `--no-color` global flag
+  - [ ] Add to `LashCli` struct
+  - [ ] Override theme loading: force plain output
+  - [ ] Document in help text
+- [ ] Update theme loading logic
+  - [ ] Priority: `--no-color` > `--color-scheme` > user config > default
+  - [ ] Share theme loading between TUI and CLI commands
+  - [ ] Cache loaded theme to avoid repeated file I/O
+- [ ] Testing
+  - [ ] Unit tests for theme-aware formatting functions
+  - [ ] Integration tests for each command with `--color-scheme`
+  - [ ] Test output to TTY vs pipe
+  - [ ] Test `NO_COLOR` environment variable
+  - [ ] Test `--no-color` flag
+  - [ ] Visual regression testing (manual): verify colors for multiple themes
+
+### Success Criteria
+
+- [ ] `lash list --color-scheme "Nord"` shows themed output
+- [ ] `lash search --color-scheme "Dracula" "TODO"` highlights matches with Dracula colors
+- [ ] `lash show --color-scheme "Solarized Dark" task.md#1` displays themed task details
+- [ ] All CLI commands respect the `--color-scheme` flag
+- [ ] Piped output (`lash list | less`) has no color codes
+- [ ] `NO_COLOR=1 lash list` produces plain output
+- [ ] `lash list --no-color` produces plain output
+- [ ] Theme colors are consistent between TUI and CLI
+- [ ] All existing tests continue to pass
+
+### Tests
+
+- [ ] Unit: Test theme loading priority (no-color > scheme > config > default)
+- [ ] Unit: Test TTY detection and color suppression
+- [ ] Unit: Test NO_COLOR environment variable handling
+- [ ] Integration: Run each command with `--color-scheme` and verify output
+- [ ] Integration: Pipe output and verify no ANSI codes
+- [ ] Manual: Visual inspection of themed output for 5+ schemes
+- [ ] Manual: Test with different terminal backgrounds (light/dark)
+
+### Implementation Notes
+
+**Architecture Recommendations:**
+
+1. **Shared Theme Loading**: Extract theme loading logic to a shared location (e.g., `lash-types/src/theme.rs`) that both TUI and CLI can use.
+
+2. **Color Mapping Strategy**:
+   - Success/Done: Green (ANSI color 2 or 10)
+   - Error/Blocked: Red (ANSI color 1 or 9)
+   - Warning: Yellow (ANSI color 3 or 11)
+   - Info: Blue (ANSI color 4 or 12)
+   - Muted: Gray (ANSI color 8)
+
+3. **Output Libraries**: Consider using existing crates:
+   - `owo-colors` for styled terminal output (may already be in use)
+   - `termcolor` for cross-platform color support
+   - Or reuse `ratatui::style::Color` and convert to ANSI codes
+
+4. **Formatting Approach**: Refactor formatters to accept `&Theme` and apply colors via wrapper functions:
+   ```rust
+   fn format_task_status(status: TaskStatus, theme: &Theme) -> String {
+       let color = theme.task_status_color(status);
+       format_with_color(&status.to_string(), color)
+   }
+   ```
+
+5. **Backward Compatibility**: Ensure existing output format remains the same (just with colors added), so scripts parsing output continue to work.
+
+### References
+
+- Task 8 implementation in `crates/lash-tui/src/colors/`
+- Gogh color scheme data: `crates/lash-tui/data/themes.json`
+- NO_COLOR spec: https://no-color.org/
+- `owo-colors` crate: https://docs.rs/owo-colors/
+
+---
+
 ## Non-Goals (for v1)
 
 - Mouse support (keyboard-only is sufficient)
