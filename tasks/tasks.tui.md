@@ -521,11 +521,11 @@ Task 8 implemented the color scheme infrastructure and TUI integration. The `--c
   - [ ] File paths use theme colors
   - [ ] Line numbers use theme's muted color
   - [ ] Search results maintain theme consistency
-- [ ] Apply theming to `show` command
-  - [ ] Task metadata (labels, owner, status) use theme colors
-  - [ ] Dependencies displayed with theme colors
-  - [ ] Blockers highlighted in red (theme's error color)
-  - [ ] Overall layout respects theme
+- [x] Apply theming to `show` command
+  - [x] Task metadata (labels, owner, status) use theme colors
+  - [x] Dependencies displayed with theme colors
+  - [x] Blockers highlighted in red (theme's error color)
+  - [x] Overall layout respects theme
 - [ ] Apply theming to other commands
   - [ ] `graph`: dependency graph edges/nodes use theme colors
   - [ ] `check-links`: errors/warnings use theme colors
