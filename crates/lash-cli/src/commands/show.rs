@@ -3,6 +3,7 @@
 //! The `lash show` command displays detailed information about a specific task or file.
 
 use anyhow::{Context, Result};
+use lash_cli::theme::CliTheme;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::tasks::TaskRecord;
 use lash_db::{open_database, DependencyRepository, FileRepository, TaskRepository};
@@ -52,6 +53,9 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
         "Starting show operation"
     );
 
+    // Load theme for colored output
+    let theme = CliTheme::load(None, !args.no_color)?;
+
     // Determine database path
     let db_path = get_database_path(&project_root);
 
@@ -85,10 +89,10 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
     // Show file or task information and return appropriate exit code
     let exit_code = if is_file_path {
         // Show file information
-        show_file(&file_repo, &task_repo, args, &project_root)?
+        show_file(&file_repo, &task_repo, args, &project_root, theme.as_ref())?
     } else {
         // Show task information
-        show_task(&task_repo, &file_repo, &dep_repo, args)?
+        show_task(&task_repo, &file_repo, &dep_repo, args, theme.as_ref())?
     };
 
     Ok(exit_code)
@@ -100,6 +104,7 @@ fn show_file(
     task_repo: &TaskRepository,
     args: &ShowArgs,
     project_root: &Path,
+    theme: Option<&CliTheme>,
 ) -> Result<i32> {
     // Convert target to relative path if needed
     // Normalize path separators - convert forward slashes to native separators
@@ -137,7 +142,7 @@ fn show_file(
     if args.json {
         output_json_file(&file, &tasks)?;
     } else {
-        output_text_file(&file, &tasks, args.no_color);
+        output_text_file(&file, &tasks, theme);
     }
 
     Ok(0)
@@ -149,6 +154,7 @@ fn show_task(
     file_repo: &FileRepository,
     dep_repo: &DependencyRepository,
     args: &ShowArgs,
+    theme: Option<&CliTheme>,
 ) -> Result<i32> {
     // Get task record
     let Some(task) = task_repo.get_by_full_id(&args.target)? else {
@@ -228,7 +234,7 @@ fn show_task(
             &file,
             dependencies.as_ref(),
             dependents.as_ref(),
-            args.no_color,
+            theme,
         );
     }
 
@@ -313,30 +319,32 @@ fn output_json_task(
 }
 
 /// Output file as human-readable text
-fn output_text_file(file: &FileRecord, tasks: &[TaskRecord], no_color: bool) {
-    use owo_colors::OwoColorize;
-
-    let use_color = !no_color;
-
+fn output_text_file(file: &FileRecord, tasks: &[TaskRecord], theme: Option<&CliTheme>) {
     // File header
-    if use_color {
-        println!("{}", "File:".bold());
-        println!("  Path:     {}", file.path.display().to_string().cyan());
-        println!("  Title:    {}", file.title.bold());
-        println!("  ID:       {}", file.file_id);
-        println!("  Status:   {}", format_file_status(file.status, use_color));
+    if let Some(theme) = theme {
+        println!("{}", theme.style_info("File:"));
+        println!(
+            "  Path:     {}",
+            theme.style_label(&file.path.display().to_string())
+        );
+        println!("  Title:    {}", theme.style_info(&file.title));
+        println!("  ID:       {}", theme.style_muted(&file.file_id));
+        println!(
+            "  Status:   {}",
+            format_file_status(file.status, Some(theme))
+        );
     } else {
         println!("File:");
         println!("  Path:     {}", file.path.display());
         println!("  Title:    {}", file.title);
         println!("  ID:       {}", file.file_id);
-        println!("  Status:   {}", format_file_status(file.status, use_color));
+        println!("  Status:   {}", format_file_status(file.status, None));
     }
 
     // Task summary
     println!();
-    if use_color {
-        println!("{}", format!("Tasks ({}):", tasks.len()).bold());
+    if let Some(theme) = theme {
+        println!("{}", theme.style_info(&format!("Tasks ({}):", tasks.len())));
     } else {
         println!("Tasks ({}):", tasks.len());
     }
@@ -346,14 +354,10 @@ fn output_text_file(file: &FileRecord, tasks: &[TaskRecord], no_color: bool) {
     } else {
         for task in tasks {
             let indent = "  ".repeat(task.depth as usize + 1);
-            if use_color {
-                println!(
-                    "{}{} {} ({})",
-                    indent,
-                    format_task_status_icon(task.status),
-                    task.title,
-                    task.full_id.dimmed()
-                );
+            if let Some(theme) = theme {
+                let checkbox = theme.styled_checkbox(task.status);
+                let full_id = theme.style_muted(&task.full_id);
+                println!("{}{} {} ({})", indent, checkbox, task.title, full_id);
             } else {
                 println!(
                     "{}{} {} ({})",
@@ -374,39 +378,56 @@ fn output_text_task(
     file: &FileRecord,
     dependencies: Option<&Vec<TaskRecord>>,
     dependents: Option<&Vec<TaskRecord>>,
-    no_color: bool,
+    theme: Option<&CliTheme>,
 ) {
-    use owo_colors::OwoColorize;
-
-    let use_color = !no_color;
-
     // Task header
-    if use_color {
-        println!("{}", "Task:".bold());
-        println!("  ID:       {}", task.full_id.cyan());
-        println!("  Title:    {}", task.title.bold());
-        println!("  Status:   {}", format_task_status(task.status, use_color));
-        println!("  File:     {}", file.path.display().to_string().dimmed());
+    if let Some(theme) = theme {
+        println!("{}", theme.style_info("Task:"));
+        println!("  ID:       {}", theme.style_label(&task.full_id));
+        println!("  Title:    {}", theme.style_info(&task.title));
+        println!(
+            "  Status:   {}",
+            format_task_status(task.status, Some(theme))
+        );
+        println!(
+            "  File:     {}",
+            theme.style_muted(&file.path.display().to_string())
+        );
     } else {
         println!("Task:");
         println!("  ID:       {}", task.full_id);
         println!("  Title:    {}", task.title);
-        println!("  Status:   {}", format_task_status(task.status, use_color));
+        println!("  Status:   {}", format_task_status(task.status, None));
         println!("  File:     {}", file.path.display());
     }
 
     // Optional fields
     if let Some(ref owner) = task.owner {
-        println!("  Owner:    {owner}");
+        if let Some(theme) = theme {
+            println!("  Owner:    {}", theme.style_info(owner));
+        } else {
+            println!("  Owner:    {owner}");
+        }
     }
     if let Some(ref estimate) = task.estimate {
-        println!("  Estimate: {estimate}");
+        if let Some(theme) = theme {
+            println!("  Estimate: {}", theme.style_info(estimate));
+        } else {
+            println!("  Estimate: {estimate}");
+        }
     }
 
     // Labels
     if !task.metadata.labels.is_empty() {
-        if use_color {
-            println!("  Labels:   {}", task.metadata.labels.join(", ").dimmed());
+        if let Some(theme) = theme {
+            let labels = task
+                .metadata
+                .labels
+                .iter()
+                .map(|l| theme.style_label(l))
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!("  Labels:   {labels}");
         } else {
             println!("  Labels:   {}", task.metadata.labels.join(", "));
         }
@@ -415,8 +436,8 @@ fn output_text_task(
     // Body
     if let Some(ref body) = task.body {
         println!();
-        if use_color {
-            println!("{}", "Description:".bold());
+        if let Some(theme) = theme {
+            println!("{}", theme.style_info("Description:"));
         } else {
             println!("Description:");
         }
@@ -428,8 +449,11 @@ fn output_text_task(
     // Dependencies
     if let Some(deps) = dependencies {
         println!();
-        if use_color {
-            println!("{}", format!("Dependencies ({}):", deps.len()).bold());
+        if let Some(theme) = theme {
+            println!(
+                "{}",
+                theme.style_info(&format!("Dependencies ({}):", deps.len()))
+            );
         } else {
             println!("Dependencies ({}):", deps.len());
         }
@@ -438,13 +462,10 @@ fn output_text_task(
             println!("  (none)");
         } else {
             for dep in deps {
-                if use_color {
-                    println!(
-                        "  {} {} ({})",
-                        format_task_status_icon(dep.status),
-                        dep.title,
-                        dep.full_id.dimmed()
-                    );
+                if let Some(theme) = theme {
+                    let checkbox = theme.styled_checkbox(dep.status);
+                    let full_id = theme.style_muted(&dep.full_id);
+                    println!("  {} {} ({})", checkbox, dep.title, full_id);
                 } else {
                     println!(
                         "  {} {} ({})",
@@ -460,8 +481,11 @@ fn output_text_task(
     // Dependents
     if let Some(deps) = dependents {
         println!();
-        if use_color {
-            println!("{}", format!("Depended on by ({}):", deps.len()).bold());
+        if let Some(theme) = theme {
+            println!(
+                "{}",
+                theme.style_info(&format!("Depended on by ({}):", deps.len()))
+            );
         } else {
             println!("Depended on by ({}):", deps.len());
         }
@@ -470,13 +494,10 @@ fn output_text_task(
             println!("  (none)");
         } else {
             for dep in deps {
-                if use_color {
-                    println!(
-                        "  {} {} ({})",
-                        format_task_status_icon(dep.status),
-                        dep.title,
-                        dep.full_id.dimmed()
-                    );
+                if let Some(theme) = theme {
+                    let checkbox = theme.styled_checkbox(dep.status);
+                    let full_id = theme.style_muted(&dep.full_id);
+                    println!("  {} {} ({})", checkbox, dep.title, full_id);
                 } else {
                     println!(
                         "  {} {} ({})",
@@ -491,9 +512,7 @@ fn output_text_task(
 }
 
 /// Format task status with color
-fn format_task_status(status: lash_types::TaskStatus, use_color: bool) -> String {
-    use owo_colors::OwoColorize;
-
+fn format_task_status(status: lash_types::TaskStatus, theme: Option<&CliTheme>) -> String {
     let status_str = match status {
         lash_types::TaskStatus::Open => "open",
         lash_types::TaskStatus::Done => "done",
@@ -501,13 +520,8 @@ fn format_task_status(status: lash_types::TaskStatus, use_color: bool) -> String
         lash_types::TaskStatus::Blocked => "blocked",
     };
 
-    if use_color {
-        match status {
-            lash_types::TaskStatus::Open => status_str.blue().to_string(),
-            lash_types::TaskStatus::Done => status_str.green().to_string(),
-            lash_types::TaskStatus::Waived => status_str.yellow().to_string(),
-            lash_types::TaskStatus::Blocked => status_str.red().to_string(),
-        }
+    if let Some(theme) = theme {
+        theme.style_task_status(status_str, status)
     } else {
         status_str.to_string()
     }
@@ -524,9 +538,7 @@ fn format_task_status_icon(status: lash_types::TaskStatus) -> &'static str {
 }
 
 /// Format file status with color
-fn format_file_status(status: lash_types::FileStatus, use_color: bool) -> String {
-    use owo_colors::OwoColorize;
-
+fn format_file_status(status: lash_types::FileStatus, theme: Option<&CliTheme>) -> String {
     let status_str = match status {
         lash_types::FileStatus::InProgress => "in-progress",
         lash_types::FileStatus::Complete => "complete",
@@ -534,12 +546,12 @@ fn format_file_status(status: lash_types::FileStatus, use_color: bool) -> String
         lash_types::FileStatus::Empty => "empty",
     };
 
-    if use_color {
+    if let Some(theme) = theme {
         match status {
-            lash_types::FileStatus::InProgress => status_str.blue().to_string(),
-            lash_types::FileStatus::Complete => status_str.green().to_string(),
-            lash_types::FileStatus::Blocked => status_str.red().to_string(),
-            lash_types::FileStatus::Empty => status_str.dimmed().to_string(),
+            lash_types::FileStatus::InProgress => theme.style_info(status_str),
+            lash_types::FileStatus::Complete => theme.style_success(status_str),
+            lash_types::FileStatus::Blocked => theme.style_error(status_str),
+            lash_types::FileStatus::Empty => theme.style_muted(status_str),
         }
     } else {
         status_str.to_string()

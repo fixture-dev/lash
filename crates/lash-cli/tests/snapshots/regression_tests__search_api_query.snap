@@ -2,88 +2,88 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized
 ---
-[1mFound[0m [1m[36m20[39m[0m [1mresult(s) for 'api'[0m
+Found 20 result(s) for 'api'
 
-[2m1[0m. [36mbackend.api#design-rest-api[39m [2m(score: 0.58)[0m [2m[title][0m
-   [1mDesign REST API[0m
-   [2m└─[0m [34mbackend/api.md[39m
+1. backend.api#design-rest-api (score: 0.58) [title]
+   Design REST API
+   └─ backend/api.md
 
-[2m2[0m. [36mfrontend.state#add-api-integration-api[39m [2m(score: 0.60)[0m [2m[title, labels][0m
-   [1mAdd API integration #api[0m
-   [2m└─[0m [34mfrontend/state.md[39m
-      [2m#api[0m
+2. frontend.state#add-api-integration-api (score: 0.60) [title, labels]
+   Add API integration #api
+   └─ frontend/state.md
+      #api
 
-[2m3[0m. [36mbackend.api#add-api-documentation-docs[39m [2m(score: 0.57)[0m [2m[title][0m
-   [1mAdd API documentation #docs[0m
-   [2m└─[0m [34mbackend/api.md[39m
-      [2m#docs[0m
+3. backend.api#add-api-documentation-docs (score: 0.57) [title]
+   Add API documentation #docs
+   └─ backend/api.md
+      #docs
 
-[2m4[0m. [36mdocs.api#api-guide-guides[39m [2m(score: 0.61)[0m [2m[title][0m
-   [1mAPI guide #guides[0m
-   [2m└─[0m [34mdocs/api-docs.md[39m
-      [2m#guides[0m
+4. docs.api#api-guide-guides (score: 0.61) [title]
+   API guide #guides
+   └─ docs/api-docs.md
+      #guides
 
-[2m5[0m. [36mdocs.api#api-reference-documentation-docs[39m [2m(score: 0.60)[0m [2m[title][0m
-   [1mAPI reference documentation #docs[0m
-   [2m└─[0m [34mdocs/api-docs.md[39m
-      [2m#docs[0m
+5. docs.api#api-reference-documentation-docs (score: 0.60) [title]
+   API reference documentation #docs
+   └─ docs/api-docs.md
+      #docs
 
-[2m6[0m. [36mbackend.api#define-endpoints[39m [2m(score: 0.53)[0m 
-   [1mDefine endpoints[0m
-   [2m└─[0m [34mbackend/api.md[39m
+6. backend.api#define-endpoints (score: 0.53) 
+   Define endpoints
+   └─ backend/api.md
 
-[2m7[0m. [36mbackend.api#session-management[39m [2m(score: 0.53)[0m 
-   [1mSession management[0m
-   [2m└─[0m [34mbackend/api.md[39m
+7. backend.api#session-management (score: 0.53) 
+   Session management
+   └─ backend/api.md
 
-[2m8[0m. [36mbackend.api#user-endpoints[39m [2m(score: 0.53)[0m 
-   [1mUser endpoints[0m
-   [2m└─[0m [34mbackend/api.md[39m
+8. backend.api#user-endpoints (score: 0.53) 
+   User endpoints
+   └─ backend/api.md
 
-[2m9[0m. [36mbackend.api#task-endpoints[39m [2m(score: 0.53)[0m 
-   [1mTask endpoints[0m
-   [2m└─[0m [34mbackend/api.md[39m
+9. backend.api#task-endpoints (score: 0.53) 
+   Task endpoints
+   └─ backend/api.md
 
-[2m10[0m. [36mbackend.api#project-endpoints[39m [2m(score: 0.53)[0m 
-   [1mProject endpoints[0m
-   [2m└─[0m [34mbackend/api.md[39m
+10. backend.api#project-endpoints (score: 0.53) 
+   Project endpoints
+   └─ backend/api.md
 
-[2m11[0m. [36mbackend.api#openapi-spec[39m [2m(score: 0.56)[0m [2m[title][0m
-   [1mOpenAPI spec[0m
-   [2m└─[0m [34mbackend/api.md[39m
+11. backend.api#openapi-spec (score: 0.56) [title]
+   OpenAPI spec
+   └─ backend/api.md
 
-[2m12[0m. [36mbackend.api#example-requests[39m [2m(score: 0.53)[0m 
-   [1mExample requests[0m
-   [2m└─[0m [34mbackend/api.md[39m
+12. backend.api#example-requests (score: 0.53) 
+   Example requests
+   └─ backend/api.md
 
-[2m13[0m. [36mfrontend.state#api-client[39m [2m(score: 0.59)[0m [2m[title][0m
-   [1mAPI client[0m
-   [2m└─[0m [34mfrontend/state.md[39m
+13. frontend.state#api-client (score: 0.59) [title]
+   API client
+   └─ frontend/state.md
 
-[2m14[0m. [36mfrontend.tests#mock-api[39m [2m(score: 0.56)[0m [2m[title][0m
-   [1mMock API[0m
-   [2m└─[0m [34mfrontend/tests.md[39m
+14. frontend.tests#mock-api (score: 0.56) [title]
+   Mock API
+   └─ frontend/tests.md
 
-[2m15[0m. [36mmedium-project#api-implementation[39m [2m(score: 0.59)[0m [2m[title][0m
-   [1mAPI implementation[0m
-   [2m└─[0m [34mlash.index.md[39m
+15. medium-project#api-implementation (score: 0.59) [title]
+   API implementation
+   └─ lash.index.md
 
-[2m16[0m. [36mmedium-project#api-docs[39m [2m(score: 0.59)[0m [2m[title][0m
-   [1mAPI docs[0m
-   [2m└─[0m [34mlash.index.md[39m
+16. medium-project#api-docs (score: 0.59) [title]
+   API docs
+   └─ lash.index.md
 
-[2m17[0m. [36mbackend.api#jwt-token-generation[39m [2m(score: 0.53)[0m 
-   [1mJWT token generation[0m
-   [2m└─[0m [34mbackend/api.md[39m
+17. backend.api#jwt-token-generation (score: 0.53) 
+   JWT token generation
+   └─ backend/api.md
 
-[2m18[0m. [36mbackend.tests#api-endpoint-tests[39m [2m(score: 0.59)[0m [2m[title][0m
-   [1mAPI endpoint tests[0m
-   [2m└─[0m [34mbackend/tests.md[39m
+18. backend.tests#api-endpoint-tests (score: 0.59) [title]
+   API endpoint tests
+   └─ backend/tests.md
 
-[2m19[0m. [36mdocs.api#authentication-endpoints[39m [2m(score: 0.53)[0m 
-   [1mAuthentication endpoints[0m
-   [2m└─[0m [34mdocs/api-docs.md[39m
+19. docs.api#authentication-endpoints (score: 0.53) 
+   Authentication endpoints
+   └─ docs/api-docs.md
 
-[2m20[0m. [36mdocs.api#user-endpoints[39m [2m(score: 0.53)[0m 
-   [1mUser endpoints[0m
-   [2m└─[0m [34mdocs/api-docs.md[39m
+20. docs.api#user-endpoints (score: 0.53) 
+   User endpoints
+   └─ docs/api-docs.md

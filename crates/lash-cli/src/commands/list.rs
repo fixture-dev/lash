@@ -3,6 +3,7 @@
 //! The `lash list` command queries and filters tasks from the `SQLite` database.
 
 use anyhow::{Context, Result};
+use lash_cli::theme::CliTheme;
 use lash_db::repository::tasks::{TaskFilter, TaskRecord};
 use lash_db::{open_database, TaskRepository};
 use lash_types::TaskStatus;
@@ -33,10 +34,10 @@ pub struct ListArgs {
     pub owner: Option<String>,
     /// Output format
     pub format: OutputFormat,
-    /// Disable colored output
-    pub no_color: bool,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
+    /// Optional CLI theme for styling
+    pub theme: Option<CliTheme>,
 }
 
 /// Execute the list command
@@ -102,7 +103,7 @@ pub fn execute(args: ListArgs) -> Result<i32> {
     match args.format {
         OutputFormat::Json => output_json(&tasks)?,
         OutputFormat::JsonPretty => output_json_pretty(&tasks)?,
-        OutputFormat::Text => output_text(&tasks, args.no_color),
+        OutputFormat::Text => output_text(&tasks, args.theme.as_ref()),
     }
 
     Ok(0)
@@ -154,16 +155,13 @@ fn output_json_pretty(tasks: &[TaskRecord]) -> Result<()> {
 }
 
 /// Output tasks as human-readable text
-fn output_text(tasks: &[TaskRecord], no_color: bool) {
-    use owo_colors::OwoColorize;
-
-    let use_color = !no_color;
-
+fn output_text(tasks: &[TaskRecord], theme: Option<&CliTheme>) {
     if tasks.is_empty() {
-        if use_color {
-            println!("{}", "No tasks match your filters".yellow());
+        let msg = "No tasks match your filters";
+        if let Some(theme) = theme {
+            println!("{}", theme.style_warning(msg));
         } else {
-            println!("No tasks match your filters");
+            println!("{msg}");
         }
         println!();
         println!("Try:");
@@ -188,23 +186,29 @@ fn output_text(tasks: &[TaskRecord], no_color: bool) {
         .min(60); // Cap at 60 chars
 
     // Print header
-    if use_color {
+    let header_id = "ID";
+    let header_status = "STATUS";
+    let header_title = "TITLE";
+    let header_labels = "LABELS";
+
+    if let Some(_theme) = theme {
+        use owo_colors::OwoColorize;
         println!(
             "{:<width_id$}  {:<width_status$}  {:<width_title$}  {}",
-            "ID".bold(),
-            "STATUS".bold(),
-            "TITLE".bold(),
-            "LABELS".bold(),
+            header_id.bold(),
+            header_status.bold(),
+            header_title.bold(),
+            header_labels.bold(),
             width_id = max_id_len,
             width_status = 7,
             width_title = max_title_len,
         );
     } else {
         println!(
-            "{:<width_id$}  {:<width_status$}  {:<width_title$}  LABELS",
-            "ID",
-            "STATUS",
-            "TITLE",
+            "{:<width_id$}  {:<width_status$}  {:<width_title$}  {header_labels}",
+            header_id,
+            header_status,
+            header_title,
             width_id = max_id_len,
             width_status = 7,
             width_title = max_title_len,
@@ -216,50 +220,45 @@ fn output_text(tasks: &[TaskRecord], no_color: bool) {
 
     // Print each task
     for task in tasks {
-        let status_display = format_status(task.status, use_color);
+        let status_display = format_status(task.status, theme);
         let title_display = truncate_string(&task.title, max_title_len);
+        let labels_display = format_labels(&task.metadata.labels, theme);
 
-        // Get labels for this task
-        let labels_display = format_labels(&task.metadata.labels, use_color);
-
-        if use_color {
-            println!(
-                "{:<width_id$}  {:<width_status$}  {:<width_title$}  {}",
-                task.full_id.cyan(),
-                status_display,
-                title_display,
-                labels_display,
-                width_id = max_id_len,
-                width_status = 7 + if use_color { 9 } else { 0 }, // Account for color codes
-                width_title = max_title_len,
-            );
+        // Format the ID with theme colors if available
+        let id_display = if let Some(theme) = theme {
+            theme.style_info(&task.full_id)
         } else {
-            println!(
-                "{:<width_id$}  {:<width_status$}  {:<width_title$}  {}",
-                task.full_id,
-                status_display,
-                title_display,
-                labels_display,
-                width_id = max_id_len,
-                width_status = 7,
-                width_title = max_title_len,
-            );
-        }
+            task.full_id.clone()
+        };
+
+        // Note: When using colored output, we need to account for invisible ANSI codes
+        // in the field width. However, owo_colors handles this for us in most cases.
+        // For precise alignment with colors, we'd need to calculate visual width separately.
+        println!(
+            "{:<width_id$}  {:<width_status$}  {:<width_title$}  {}",
+            id_display,
+            status_display,
+            title_display,
+            labels_display,
+            width_id = max_id_len,
+            width_status = 7,
+            width_title = max_title_len,
+        );
     }
 
     // Print summary
     println!();
-    if use_color {
-        println!("{}", format!("Total: {} task(s)", tasks.len()).bold());
+    let summary = format!("Total: {} task(s)", tasks.len());
+    if let Some(_theme) = theme {
+        use owo_colors::OwoColorize;
+        println!("{}", summary.bold());
     } else {
-        println!("Total: {} task(s)", tasks.len());
+        println!("{summary}");
     }
 }
 
-/// Format task status with color
-fn format_status(status: TaskStatus, use_color: bool) -> String {
-    use owo_colors::OwoColorize;
-
+/// Format task status with theme-aware colors
+fn format_status(status: TaskStatus, theme: Option<&CliTheme>) -> String {
     let status_str = match status {
         TaskStatus::Open => "open",
         TaskStatus::Done => "done",
@@ -267,30 +266,23 @@ fn format_status(status: TaskStatus, use_color: bool) -> String {
         TaskStatus::Blocked => "blocked",
     };
 
-    if use_color {
-        match status {
-            TaskStatus::Open => status_str.blue().to_string(),
-            TaskStatus::Done => status_str.green().to_string(),
-            TaskStatus::Waived => status_str.yellow().to_string(),
-            TaskStatus::Blocked => status_str.red().to_string(),
-        }
+    if let Some(theme) = theme {
+        theme.style_task_status(status_str, status)
     } else {
         status_str.to_string()
     }
 }
 
-/// Format labels for display
-fn format_labels(labels: &[String], use_color: bool) -> String {
-    use owo_colors::OwoColorize;
-
+/// Format labels for display with theme-aware colors
+fn format_labels(labels: &[String], theme: Option<&CliTheme>) -> String {
     if labels.is_empty() {
         return String::new();
     }
 
     let labels_str = labels.join(", ");
 
-    if use_color {
-        labels_str.dimmed().to_string()
+    if let Some(theme) = theme {
+        theme.style_muted(&labels_str)
     } else {
         labels_str
     }
@@ -321,18 +313,18 @@ mod tests {
 
     #[test]
     fn test_format_status() {
-        assert_eq!(format_status(TaskStatus::Open, false), "open");
-        assert_eq!(format_status(TaskStatus::Done, false), "done");
-        assert_eq!(format_status(TaskStatus::Waived, false), "waived");
-        assert_eq!(format_status(TaskStatus::Blocked, false), "blocked");
+        assert_eq!(format_status(TaskStatus::Open, None), "open");
+        assert_eq!(format_status(TaskStatus::Done, None), "done");
+        assert_eq!(format_status(TaskStatus::Waived, None), "waived");
+        assert_eq!(format_status(TaskStatus::Blocked, None), "blocked");
     }
 
     #[test]
     fn test_format_labels() {
-        assert_eq!(format_labels(&[], false), "");
-        assert_eq!(format_labels(&["backend".to_string()], false), "backend");
+        assert_eq!(format_labels(&[], None), "");
+        assert_eq!(format_labels(&["backend".to_string()], None), "backend");
         assert_eq!(
-            format_labels(&["backend".to_string(), "api".to_string()], false),
+            format_labels(&["backend".to_string(), "api".to_string()], None),
             "backend, api"
         );
     }

@@ -20,6 +20,7 @@ pub mod formatter;
 pub mod logging;
 pub mod progress;
 pub mod project_root;
+pub mod theme;
 
 // Re-export commonly used types
 pub use cli::{Commands, LashCli};
@@ -37,3 +38,4 @@ pub use progress::{
     JsonProgressReporter, ProgressReporter, QuietProgressReporter, TerminalProgressReporter,
 };
 pub use project_root::ProjectRootFinder;
+pub use theme::{supports_color, CliTheme, Theme};

@@ -2,17 +2,17 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized
 ---
-[1mFile:[0m
-  Path:     [36mtasks.md[39m
-  Title:    [1mDevelopment Tasks[0m
+File:
+  Path:     tasks.md
+  Title:    Development Tasks
   ID:       dev-tasks
-  Status:   [34min-progress[39m
+  Status:   in-progress
 
-[1mTasks (7):[0m
-  [ ] Feature development ([2mdev-tasks#feature-development[0m)
-    [x] Design API ([2mdev-tasks#design-api[0m)
-    [ ] API documentation ([2mdev-tasks#api-documentation[0m)
-    [ ] Implement endpoints #backend ([2mdev-tasks#implement-endpoints-backend[0m)
-  [ ] Documentation #docs ([2mdev-tasks#documentation-docs[0m)
-    [ ] User guide ([2mdev-tasks#user-guide[0m)
-    [ ] Write tests #testing ([2mdev-tasks#write-tests-testing[0m)
+Tasks (7):
+  [ ] Feature development (dev-tasks#feature-development)
+    [x] Design API (dev-tasks#design-api)
+    [ ] API documentation (dev-tasks#api-documentation)
+    [ ] Implement endpoints #backend (dev-tasks#implement-endpoints-backend)
+  [ ] Documentation #docs (dev-tasks#documentation-docs)
+    [ ] User guide (dev-tasks#user-guide)
+    [ ] Write tests #testing (dev-tasks#write-tests-testing)

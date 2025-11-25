@@ -24,6 +24,7 @@ struct SearchArgs {
     json: bool,
     no_color: bool,
     project_root: Option<PathBuf>,
+    color_scheme: Option<String>,
 }
 
 /// Test that search command structure is valid
@@ -67,6 +68,7 @@ fn test_search_args_construction() {
         json: true,
         no_color: false,
         project_root: Some(PathBuf::from("/tmp/test")),
+        color_scheme: Some("Dracula".to_string()),
     };
 
     assert_eq!(args.query, "test");
@@ -74,6 +76,7 @@ fn test_search_args_construction() {
     assert!(args.json);
     assert!(!args.no_color);
     assert_eq!(args.project_root, Some(PathBuf::from("/tmp/test")));
+    assert_eq!(args.color_scheme, Some("Dracula".to_string()));
 }
 
 /// Test SearchResult serialization

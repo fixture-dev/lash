@@ -37,6 +37,7 @@ tracing-appender = { workspace = true }
 strsim = { workspace = true }
 regex = { workspace = true }
 chrono = { workspace = true }
+ratatui = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

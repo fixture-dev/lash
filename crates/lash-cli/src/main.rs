@@ -16,6 +16,7 @@ use lash_cli::formatter::{
 };
 use lash_cli::logging::{init_logging, install_panic_hook, LogConfig};
 use lash_cli::project_root::ProjectRootFinder;
+use lash_cli::theme::{supports_color, CliTheme};
 use lash_types::error::ExitCode;
 use std::process;
 
@@ -83,12 +84,24 @@ fn main() {
 #[allow(clippy::too_many_lines)] // Will be refactored when commands are implemented
 #[allow(unused_variables)] // Variables will be used when commands are implemented
 fn run(cli: LashCli) -> Result<()> {
-    // Determine output format based on flags
-    let use_color = !cli.no_color && !cli.json;
+    // Determine if colors should be enabled based on:
+    // 1. --no-color flag
+    // 2. --json flag (JSON shouldn't have ANSI codes)
+    // 3. NO_COLOR environment variable
+    // 4. Whether stdout is a TTY
+    let colors_enabled = !cli.no_color && !cli.json && supports_color();
+
     let verbosity = if cli.quiet {
         Verbosity::Quiet
     } else {
         Verbosity::from(cli.verbose)
+    };
+
+    // Load the theme based on priority: CLI arg > user config > default
+    let theme = if colors_enabled {
+        CliTheme::load(cli.color_scheme.as_deref(), true)?
+    } else {
+        None
     };
 
     // Create formatter based on output mode
@@ -97,7 +110,7 @@ fn run(cli: LashCli) -> Result<()> {
     } else if cli.quiet {
         Box::new(QuietFormatter::new())
     } else {
-        Box::new(TextFormatter::new(use_color, verbosity))
+        Box::new(TextFormatter::with_theme(theme.clone(), verbosity))
     };
 
     // Find project root if needed
@@ -221,8 +234,8 @@ fn run(cli: LashCli) -> Result<()> {
                 blocked,
                 owner,
                 format: output_format,
-                no_color: cli.no_color,
                 project_root,
+                theme: theme.clone(),
             };
             let exit_code = commands::list::execute(args)?;
             process::exit(exit_code);
@@ -254,6 +267,7 @@ fn run(cli: LashCli) -> Result<()> {
                 status: task_status,
                 owner,
                 path,
+                color_scheme: cli.color_scheme.clone(),
             };
             let exit_code = commands::search::execute(&args)?;
             process::exit(exit_code);

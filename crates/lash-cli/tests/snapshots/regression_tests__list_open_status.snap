@@ -2,101 +2,101 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized
 ---
-[1mID                                                       [0m  [1mSTATUS [0m  [1mTITLE                                 [0m  [1mLABELS[0m
+ID                                                         STATUS   TITLE                                   LABELS
 --------------------------------------------------------------------------------------------------------------------------
-[36mbackend.api#add-api-documentation-docs                   [39m  [34mopen[39m    Add API documentation #docs             [2mdocs[0m
-[36mbackend.api#example-requests                             [39m  [34mopen[39m    Example requests                        
-[36mbackend.api#implement-authentication-security            [39m  [34mopen[39m    Implement authentication #security      [2msecurity[0m
-[36mbackend.api#implement-crud-endpoints-core                [39m  [34mopen[39m    Implement CRUD endpoints #core          [2mcore[0m
-[36mbackend.api#oauth2-integration-p1                        [39m  [34mopen[39m    OAuth2 integration #p1                  [2mp1[0m
-[36mbackend.api#openapi-spec                                 [39m  [34mopen[39m    OpenAPI spec                            
-[36mbackend.api#project-endpoints                            [39m  [34mopen[39m    Project endpoints                       
-[36mbackend.api#session-management                           [39m  [34mopen[39m    Session management                      
-[36mbackend.api#task-endpoints                               [39m  [34mopen[39m    Task endpoints                          
-[36mbackend.tests#auth-flow-tests                            [39m  [34mopen[39m    Auth flow tests                         
-[36mbackend.tests#database-integration-tests                 [39m  [34mopen[39m    Database integration tests              
-[36mbackend.tests#integration-tests-integration-testing      [39m  [34mopen[39m    Integration tests #integration-testing  [2mintegration-testing[0m
-[36mbackend.tests#load-testing                               [39m  [34mopen[39m    Load testing                            
-[36mbackend.tests#performance-tests-performance              [39m  [34mopen[39m    Performance tests #performance          [2mperformance[0m
-[36mbackend.tests#service-tests                              [39m  [34mopen[39m    Service tests                           
-[36mbackend.tests#stress-testing                             [39m  [34mopen[39m    Stress testing                          
-[36mbackend.tests#unit-tests-unit-testing                    [39m  [34mopen[39m    Unit tests #unit-testing                [2munit-testing[0m
-[36mbackend.tests#utility-tests                              [39m  [34mopen[39m    Utility tests                           
-[36mdocs.api#api-guide-guides                                [39m  [34mopen[39m    API guide #guides                       [2mguides[0m
-[36mdocs.api#api-reference-documentation-docs                [39m  [34mopen[39m    API reference documentation #docs       [2mdocs[0m
-[36mdocs.api#authentication-endpoints                        [39m  [34mopen[39m    Authentication endpoints                
-[36mdocs.api#authentication-guide                            [39m  [34mopen[39m    Authentication guide                    
-[36mdocs.api#code-examples-examples                          [39m  [34mopen[39m    Code examples #examples                 [2mexamples[0m
-[36mdocs.api#curl-examples                                   [39m  [34mopen[39m    cURL examples                           
-[36mdocs.api#error-handling                                  [39m  [34mopen[39m    Error handling                          
-[36mdocs.api#getting-started                                 [39m  [34mopen[39m    Getting started                         
-[36mdocs.api#javascript-examples                             [39m  [34mopen[39m    JavaScript examples                     
-[36mdocs.api#project-endpoints                               [39m  [34mopen[39m    Project endpoints                       
-[36mdocs.api#python-examples                                 [39m  [34mopen[39m    Python examples                         
-[36mdocs.api#rate-limiting                                   [39m  [34mopen[39m    Rate limiting                           
-[36mdocs.api#task-endpoints                                  [39m  [34mopen[39m    Task endpoints                          
-[36mdocs.api#user-endpoints                                  [39m  [34mopen[39m    User endpoints                          
-[36mdocs.user-guide#advanced-features                        [39m  [34mopen[39m    Advanced features                       
-[36mdocs.user-guide#basic-concepts                           [39m  [34mopen[39m    Basic concepts                          
-[36mdocs.user-guide#best-practices                           [39m  [34mopen[39m    Best practices                          
-[36mdocs.user-guide#collaboration                            [39m  [34mopen[39m    Collaboration                           
-[36mdocs.user-guide#common-questions                         [39m  [34mopen[39m    Common questions                        
-[36mdocs.user-guide#faq-support                              [39m  [34mopen[39m    FAQ #support                            [2msupport[0m
-[36mdocs.user-guide#feature-documentation-features           [39m  [34mopen[39m    Feature documentation #features         [2mfeatures[0m
-[36mdocs.user-guide#first-project                            [39m  [34mopen[39m    First project                           
-[36mdocs.user-guide#getting-started-guide-guides             [39m  [34mopen[39m    Getting started guide #guides           [2mguides[0m
-[36mdocs.user-guide#installation                             [39m  [34mopen[39m    Installation                            
-[36mdocs.user-guide#project-organization                     [39m  [34mopen[39m    Project organization                    
-[36mdocs.user-guide#quick-start                              [39m  [34mopen[39m    Quick start                             
-[36mdocs.user-guide#search-and-filtering                     [39m  [34mopen[39m    Search and filtering                    
-[36mdocs.user-guide#task-management                          [39m  [34mopen[39m    Task management                         
-[36mdocs.user-guide#team-workflow                            [39m  [34mopen[39m    Team workflow                           
-[36mdocs.user-guide#troubleshooting                          [39m  [34mopen[39m    Troubleshooting                         
-[36mdocs.user-guide#tutorial-tutorials                       [39m  [34mopen[39m    Tutorial #tutorials                     [2mtutorials[0m
-[36mfrontend.components#add-component-tests-testing          [39m  [34mopen[39m    Add component tests #testing            [2mtesting[0m
-[36mfrontend.components#dropdown                             [39m  [34mopen[39m    Dropdown                                
-[36mfrontend.components#implement-base-components-components [39m  [34mopen[39m    Implement base components #components   [2mcomponents[0m
-[36mfrontend.components#implement-feature-components-features[39m  [34mopen[39m    Implement feature components #features  [2mfeatures[0m
-[36mfrontend.components#login-form                           [39m  [34mopen[39m    Login form                              
-[36mfrontend.components#modal                                [39m  [34mopen[39m    Modal                                   
-[36mfrontend.components#project-dashboard                    [39m  [34mopen[39m    Project dashboard                       
-[36mfrontend.components#task-detail                          [39m  [34mopen[39m    Task detail                             
-[36mfrontend.components#task-list                            [39m  [34mopen[39m    Task list                               
-[36mfrontend.components#visual-regression-tests              [39m  [34mopen[39m    Visual regression tests                 
-[36mfrontend.state#action-tests                              [39m  [34mopen[39m    Action tests                            
-[36mfrontend.state#add-api-integration-api                   [39m  [34mopen[39m    Add API integration #api                [2mapi[0m
-[36mfrontend.state#add-state-tests-testing                   [39m  [34mopen[39m    Add state tests #testing                [2mtesting[0m
-[36mfrontend.state#caching-strategy                          [39m  [34mopen[39m    Caching strategy                        
-[36mfrontend.state#data-fetching                             [39m  [34mopen[39m    Data fetching                           
-[36mfrontend.state#error-handling                            [39m  [34mopen[39m    Error handling                          
-[36mfrontend.state#implement-state-slices-state              [39m  [34mopen[39m    Implement state slices #state           [2mstate[0m
-[36mfrontend.state#projects-state                            [39m  [34mopen[39m    Projects state                          
-[36mfrontend.state#reducer-tests                             [39m  [34mopen[39m    Reducer tests                           
-[36mfrontend.state#selector-tests                            [39m  [34mopen[39m    Selector tests                          
-[36mfrontend.state#tasks-state                               [39m  [34mopen[39m    Tasks state                             
-[36mfrontend.state#ui-state                                  [39m  [34mopen[39m    UI state                                
-[36mfrontend.tests#component-tests-component-testing         [39m  [34mopen[39m    Component tests #component-testing      [2mcomponent-testing[0m
-[36mfrontend.tests#critical-paths                            [39m  [34mopen[39m    Critical paths                          
-[36mfrontend.tests#e2e-tests-e2e-testing                     [39m  [34mopen[39m    E2E tests #e2e-testing                  [2me2e-testing[0m
-[36mfrontend.tests#error-scenarios                           [39m  [34mopen[39m    Error scenarios                         
-[36mfrontend.tests#feature-component-tests                   [39m  [34mopen[39m    Feature component tests                 
-[36mfrontend.tests#integration-tests                         [39m  [34mopen[39m    Integration tests                       
-[36mfrontend.tests#snapshot-tests                            [39m  [34mopen[39m    Snapshot tests                          
-[36mfrontend.tests#user-flows                                [39m  [34mopen[39m    User flows                              
-[36mfrontend.tests#visual-regression                         [39m  [34mopen[39m    Visual regression                       
-[36mfrontend.tests#visual-tests-visual-testing               [39m  [34mopen[39m    Visual tests #visual-testing            [2mvisual-testing[0m
-[36mmedium-project#api-docs                                  [39m  [34mopen[39m    API docs                                
-[36mmedium-project#api-implementation                        [39m  [34mopen[39m    API implementation                      
-[36mmedium-project#backend-development-backend               [39m  [34mopen[39m    Backend development #backend            [2mbackend[0m
-[36mmedium-project#backend-tests                             [39m  [34mopen[39m    Backend tests                           
-[36mmedium-project#deployment-ops                            [39m  [34mopen[39m    Deployment #ops                         [2mops[0m
-[36mmedium-project#documentation-docs                        [39m  [34mopen[39m    Documentation #docs                     [2mdocs[0m
-[36mmedium-project#frontend-development-frontend             [39m  [34mopen[39m    Frontend development #frontend          [2mfrontend[0m
-[36mmedium-project#frontend-tests                            [39m  [34mopen[39m    Frontend tests                          
-[36mmedium-project#production-deployment                     [39m  [34mopen[39m    Production deployment                   
-[36mmedium-project#staging-environment                       [39m  [34mopen[39m    Staging environment                     
-[36mmedium-project#state-management                          [39m  [34mopen[39m    State management                        
-[36mmedium-project#ui-components                             [39m  [34mopen[39m    UI components                           
-[36mmedium-project#user-guide                                [39m  [34mopen[39m    User guide                              
+backend.api#add-api-documentation-docs                     open     Add API documentation #docs             docs
+backend.api#example-requests                               open     Example requests                        
+backend.api#implement-authentication-security              open     Implement authentication #security      security
+backend.api#implement-crud-endpoints-core                  open     Implement CRUD endpoints #core          core
+backend.api#oauth2-integration-p1                          open     OAuth2 integration #p1                  p1
+backend.api#openapi-spec                                   open     OpenAPI spec                            
+backend.api#project-endpoints                              open     Project endpoints                       
+backend.api#session-management                             open     Session management                      
+backend.api#task-endpoints                                 open     Task endpoints                          
+backend.tests#auth-flow-tests                              open     Auth flow tests                         
+backend.tests#database-integration-tests                   open     Database integration tests              
+backend.tests#integration-tests-integration-testing        open     Integration tests #integration-testing  integration-testing
+backend.tests#load-testing                                 open     Load testing                            
+backend.tests#performance-tests-performance                open     Performance tests #performance          performance
+backend.tests#service-tests                                open     Service tests                           
+backend.tests#stress-testing                               open     Stress testing                          
+backend.tests#unit-tests-unit-testing                      open     Unit tests #unit-testing                unit-testing
+backend.tests#utility-tests                                open     Utility tests                           
+docs.api#api-guide-guides                                  open     API guide #guides                       guides
+docs.api#api-reference-documentation-docs                  open     API reference documentation #docs       docs
+docs.api#authentication-endpoints                          open     Authentication endpoints                
+docs.api#authentication-guide                              open     Authentication guide                    
+docs.api#code-examples-examples                            open     Code examples #examples                 examples
+docs.api#curl-examples                                     open     cURL examples                           
+docs.api#error-handling                                    open     Error handling                          
+docs.api#getting-started                                   open     Getting started                         
+docs.api#javascript-examples                               open     JavaScript examples                     
+docs.api#project-endpoints                                 open     Project endpoints                       
+docs.api#python-examples                                   open     Python examples                         
+docs.api#rate-limiting                                     open     Rate limiting                           
+docs.api#task-endpoints                                    open     Task endpoints                          
+docs.api#user-endpoints                                    open     User endpoints                          
+docs.user-guide#advanced-features                          open     Advanced features                       
+docs.user-guide#basic-concepts                             open     Basic concepts                          
+docs.user-guide#best-practices                             open     Best practices                          
+docs.user-guide#collaboration                              open     Collaboration                           
+docs.user-guide#common-questions                           open     Common questions                        
+docs.user-guide#faq-support                                open     FAQ #support                            support
+docs.user-guide#feature-documentation-features             open     Feature documentation #features         features
+docs.user-guide#first-project                              open     First project                           
+docs.user-guide#getting-started-guide-guides               open     Getting started guide #guides           guides
+docs.user-guide#installation                               open     Installation                            
+docs.user-guide#project-organization                       open     Project organization                    
+docs.user-guide#quick-start                                open     Quick start                             
+docs.user-guide#search-and-filtering                       open     Search and filtering                    
+docs.user-guide#task-management                            open     Task management                         
+docs.user-guide#team-workflow                              open     Team workflow                           
+docs.user-guide#troubleshooting                            open     Troubleshooting                         
+docs.user-guide#tutorial-tutorials                         open     Tutorial #tutorials                     tutorials
+frontend.components#add-component-tests-testing            open     Add component tests #testing            testing
+frontend.components#dropdown                               open     Dropdown                                
+frontend.components#implement-base-components-components   open     Implement base components #components   components
+frontend.components#implement-feature-components-features  open     Implement feature components #features  features
+frontend.components#login-form                             open     Login form                              
+frontend.components#modal                                  open     Modal                                   
+frontend.components#project-dashboard                      open     Project dashboard                       
+frontend.components#task-detail                            open     Task detail                             
+frontend.components#task-list                              open     Task list                               
+frontend.components#visual-regression-tests                open     Visual regression tests                 
+frontend.state#action-tests                                open     Action tests                            
+frontend.state#add-api-integration-api                     open     Add API integration #api                api
+frontend.state#add-state-tests-testing                     open     Add state tests #testing                testing
+frontend.state#caching-strategy                            open     Caching strategy                        
+frontend.state#data-fetching                               open     Data fetching                           
+frontend.state#error-handling                              open     Error handling                          
+frontend.state#implement-state-slices-state                open     Implement state slices #state           state
+frontend.state#projects-state                              open     Projects state                          
+frontend.state#reducer-tests                               open     Reducer tests                           
+frontend.state#selector-tests                              open     Selector tests                          
+frontend.state#tasks-state                                 open     Tasks state                             
+frontend.state#ui-state                                    open     UI state                                
+frontend.tests#component-tests-component-testing           open     Component tests #component-testing      component-testing
+frontend.tests#critical-paths                              open     Critical paths                          
+frontend.tests#e2e-tests-e2e-testing                       open     E2E tests #e2e-testing                  e2e-testing
+frontend.tests#error-scenarios                             open     Error scenarios                         
+frontend.tests#feature-component-tests                     open     Feature component tests                 
+frontend.tests#integration-tests                           open     Integration tests                       
+frontend.tests#snapshot-tests                              open     Snapshot tests                          
+frontend.tests#user-flows                                  open     User flows                              
+frontend.tests#visual-regression                           open     Visual regression                       
+frontend.tests#visual-tests-visual-testing                 open     Visual tests #visual-testing            visual-testing
+medium-project#api-docs                                    open     API docs                                
+medium-project#api-implementation                          open     API implementation                      
+medium-project#backend-development-backend                 open     Backend development #backend            backend
+medium-project#backend-tests                               open     Backend tests                           
+medium-project#deployment-ops                              open     Deployment #ops                         ops
+medium-project#documentation-docs                          open     Documentation #docs                     docs
+medium-project#frontend-development-frontend               open     Frontend development #frontend          frontend
+medium-project#frontend-tests                              open     Frontend tests                          
+medium-project#production-deployment                       open     Production deployment                   
+medium-project#staging-environment                         open     Staging environment                     
+medium-project#state-management                            open     State management                        
+medium-project#ui-components                               open     UI components                           
+medium-project#user-guide                                  open     User guide                              
 
-[1mTotal: 94 task(s)[0m
+Total: 94 task(s)

@@ -1057,6 +1057,7 @@ dependencies = [
  "lash-types",
  "owo-colors",
  "predicates",
+ "ratatui",
  "regex",
  "rstest",
  "serde",
