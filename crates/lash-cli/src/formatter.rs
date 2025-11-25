@@ -4,8 +4,10 @@
 //! JSON, and quiet modes. It respects terminal capabilities and environment variables.
 
 use anyhow::Result;
-use owo_colors::{OwoColorize, Stream, Style};
+use lash_types::TaskStatus;
 use serde::Serialize;
+
+use crate::theme::CliTheme;
 
 /// Output format mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,7 +87,7 @@ pub trait OutputFormatter {
 
 /// Text-based formatter with optional colors
 pub struct TextFormatter {
-    use_color: bool,
+    theme: Option<CliTheme>,
     verbosity: Verbosity,
 }
 
@@ -106,16 +108,41 @@ impl TextFormatter {
     /// ```
     #[must_use]
     pub fn new(use_color: bool, verbosity: Verbosity) -> Self {
-        Self {
-            use_color: use_color && supports_color(),
-            verbosity,
-        }
+        // For backward compatibility, create a default theme if colors are enabled
+        let theme = if use_color && supports_color() {
+            CliTheme::load(None, true).ok().flatten()
+        } else {
+            None
+        };
+
+        Self { theme, verbosity }
+    }
+
+    /// Create a new text formatter with an optional theme
+    ///
+    /// # Arguments
+    ///
+    /// * `theme` - Optional CLI theme for styling
+    /// * `verbosity` - Verbosity level
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use lash_cli::formatter::{TextFormatter, Verbosity};
+    /// use lash_cli::theme::CliTheme;
+    ///
+    /// let theme = CliTheme::load(None, true).unwrap();
+    /// let formatter = TextFormatter::with_theme(theme, Verbosity::Normal);
+    /// ```
+    #[must_use]
+    pub fn with_theme(theme: Option<CliTheme>, verbosity: Verbosity) -> Self {
+        Self { theme, verbosity }
     }
 
     /// Check if colors are enabled
     #[must_use]
     pub fn has_color(&self) -> bool {
-        self.use_color
+        self.theme.is_some()
     }
 
     /// Get the verbosity level
@@ -124,29 +151,25 @@ impl TextFormatter {
         self.verbosity
     }
 
-    /// Format text with color if enabled
-    fn colorize(&self, text: &str, style: Style) -> String {
-        if self.use_color {
-            text.if_supports_color(Stream::Stdout, |t| t.style(style))
-                .to_string()
-        } else {
-            text.to_string()
-        }
+    /// Get the theme if available
+    #[must_use]
+    pub fn theme(&self) -> Option<&CliTheme> {
+        self.theme.as_ref()
     }
 }
 
 impl OutputFormatter for TextFormatter {
     fn format_success(&self, message: &str) -> Result<String> {
-        Ok(self.colorize(message, Style::new().green()))
+        if let Some(ref theme) = self.theme {
+            Ok(theme.style_success(message))
+        } else {
+            Ok(message.to_string())
+        }
     }
 
     fn format_error(&self, message: &str) -> Result<String> {
-        let formatted = if self.use_color {
-            format!(
-                "{}: {}",
-                "error".if_supports_color(Stream::Stderr, |t| t.style(Style::new().red().bold())),
-                message
-            )
+        let formatted = if let Some(ref theme) = self.theme {
+            format!("{}: {}", theme.style_error("error"), message)
         } else {
             format!("error: {message}")
         };
@@ -154,13 +177,8 @@ impl OutputFormatter for TextFormatter {
     }
 
     fn format_warning(&self, message: &str) -> Result<String> {
-        let formatted = if self.use_color {
-            format!(
-                "{}: {}",
-                "warning"
-                    .if_supports_color(Stream::Stdout, |t| t.style(Style::new().yellow().bold())),
-                message
-            )
+        let formatted = if let Some(ref theme) = self.theme {
+            format!("{}: {}", theme.style_warning("warning"), message)
         } else {
             format!("warning: {message}")
         };
@@ -168,12 +186,8 @@ impl OutputFormatter for TextFormatter {
     }
 
     fn format_info(&self, message: &str) -> Result<String> {
-        let formatted = if self.use_color {
-            format!(
-                "{}: {}",
-                "info".if_supports_color(Stream::Stdout, |t| t.style(Style::new().blue())),
-                message
-            )
+        let formatted = if let Some(ref theme) = self.theme {
+            format!("{}: {}", theme.style_info("info"), message)
         } else {
             format!("info: {message}")
         };
@@ -237,6 +251,71 @@ impl OutputFormatter for TextFormatter {
         }
 
         Ok(output)
+    }
+}
+
+impl TextFormatter {
+    /// Format text based on task status with theme-aware colors
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - The text to format
+    /// * `status` - The task status determining the color
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use lash_cli::formatter::{TextFormatter, Verbosity};
+    /// use lash_types::TaskStatus;
+    ///
+    /// let formatter = TextFormatter::new(true, Verbosity::Normal);
+    /// let formatted = formatter.format_task_status("[x]", TaskStatus::Done);
+    /// ```
+    #[must_use]
+    pub fn format_task_status(&self, text: &str, status: TaskStatus) -> String {
+        if let Some(ref theme) = self.theme {
+            theme.style_task_status(text, status)
+        } else {
+            text.to_string()
+        }
+    }
+
+    /// Format text as a label with theme-aware colors
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use lash_cli::formatter::{TextFormatter, Verbosity};
+    ///
+    /// let formatter = TextFormatter::new(true, Verbosity::Normal);
+    /// let formatted = formatter.format_label("#backend");
+    /// ```
+    #[must_use]
+    pub fn format_label(&self, label: &str) -> String {
+        if let Some(ref theme) = self.theme {
+            theme.style_label(label)
+        } else {
+            label.to_string()
+        }
+    }
+
+    /// Format text as muted/secondary text with theme-aware colors
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use lash_cli::formatter::{TextFormatter, Verbosity};
+    ///
+    /// let formatter = TextFormatter::new(true, Verbosity::Normal);
+    /// let formatted = formatter.format_muted("(optional)");
+    /// ```
+    #[must_use]
+    pub fn format_muted(&self, text: &str) -> String {
+        if let Some(ref theme) = self.theme {
+            theme.style_muted(text)
+        } else {
+            text.to_string()
+        }
     }
 }
 
@@ -513,5 +592,78 @@ mod tests {
     fn test_text_formatter_verbosity() {
         let formatter = TextFormatter::new(false, Verbosity::Debug);
         assert_eq!(formatter.verbosity(), Verbosity::Debug);
+    }
+
+    #[test]
+    fn test_text_formatter_with_theme() {
+        use crate::theme::CliTheme;
+        use lash_tui::colors::{Theme, REGISTRY};
+
+        // Create a formatter with a theme
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let tui_theme = Theme::new(scheme.clone());
+        let cli_theme = CliTheme::new(tui_theme, true);
+
+        let formatter = TextFormatter::with_theme(Some(cli_theme), Verbosity::Normal);
+        assert!(formatter.has_color());
+        assert!(formatter.theme().is_some());
+
+        // Test that formatting methods work (they should return non-empty strings)
+        let success = formatter.format_success("success").unwrap();
+        assert!(!success.is_empty());
+
+        let error = formatter.format_error("error").unwrap();
+        assert!(error.contains("error"));
+
+        let warning = formatter.format_warning("warning").unwrap();
+        assert!(warning.contains("warning"));
+
+        let info = formatter.format_info("info").unwrap();
+        assert!(info.contains("info"));
+    }
+
+    #[test]
+    fn test_text_formatter_theme_aware_methods() {
+        use crate::theme::CliTheme;
+        use lash_tui::colors::{Theme, REGISTRY};
+
+        // Create a formatter with a theme
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let tui_theme = Theme::new(scheme.clone());
+        let cli_theme = CliTheme::new(tui_theme, true);
+
+        let formatter = TextFormatter::with_theme(Some(cli_theme), Verbosity::Normal);
+
+        // Test task status formatting
+        let done = formatter.format_task_status("[x]", TaskStatus::Done);
+        assert!(done.contains('x'));
+
+        let blocked = formatter.format_task_status("[!]", TaskStatus::Blocked);
+        assert!(blocked.contains('!'));
+
+        // Test label formatting
+        let label = formatter.format_label("#backend");
+        assert!(label.contains("#backend"));
+
+        // Test muted formatting
+        let muted = formatter.format_muted("(optional)");
+        assert!(muted.contains("(optional)"));
+    }
+
+    #[test]
+    fn test_text_formatter_theme_aware_methods_no_color() {
+        let formatter = TextFormatter::with_theme(None, Verbosity::Normal);
+        assert!(!formatter.has_color());
+        assert!(formatter.theme().is_none());
+
+        // Without theme, methods should return unstyled text
+        let done = formatter.format_task_status("[x]", TaskStatus::Done);
+        assert_eq!(done, "[x]");
+
+        let label = formatter.format_label("#backend");
+        assert_eq!(label, "#backend");
+
+        let muted = formatter.format_muted("(optional)");
+        assert_eq!(muted, "(optional)");
     }
 }
