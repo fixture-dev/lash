@@ -117,7 +117,7 @@ fn test_list_all_tasks_snapshot() {
     let (_stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
-    let (stdout, _stderr, code) = run_lash(&["list"], project.path());
+    let (stdout, _stderr, code) = run_lash(&["list", "--no-color"], project.path());
     assert_eq!(code, 0, "List should succeed");
 
     let normalized = normalize_output(&stdout, project.path());
@@ -130,7 +130,10 @@ fn test_list_with_label_filter_snapshot() {
     let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
-    let (stdout, _stderr, code) = run_lash(&["list", "--label", "backend"], project.path());
+    let (stdout, _stderr, code) = run_lash(
+        &["list", "--label", "backend", "--no-color"],
+        project.path(),
+    );
     assert_eq!(code, 0, "List with label should succeed");
 
     let normalized = normalize_output(&stdout, project.path());
@@ -143,7 +146,8 @@ fn test_list_with_status_filter_snapshot() {
     let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
-    let (stdout, _stderr, code) = run_lash(&["list", "--status", "open"], project.path());
+    let (stdout, _stderr, code) =
+        run_lash(&["list", "--status", "open", "--no-color"], project.path());
     assert_eq!(code, 0, "List with status should succeed");
 
     let normalized = normalize_output(&stdout, project.path());
@@ -156,7 +160,7 @@ fn test_show_file_snapshot() {
     let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
-    let (stdout, _stderr, code) = run_lash(&["show", "tasks.md"], project.path());
+    let (stdout, _stderr, code) = run_lash(&["show", "tasks.md", "--no-color"], project.path());
     assert_eq!(code, 0, "Show file should succeed");
 
     let normalized = normalize_output(&stdout, project.path());
@@ -240,7 +244,7 @@ fn test_search_query_snapshot() {
     let (stdout, _stderr, code) = run_lash(&["index"], project.path());
     assert_eq!(code, 0, "Indexing should succeed");
 
-    let (stdout, _stderr, code) = run_lash(&["search", "api"], project.path());
+    let (stdout, _stderr, code) = run_lash(&["search", "api", "--no-color"], project.path());
     assert_eq!(code, 0, "Search should succeed");
 
     let normalized = normalize_output(&stdout, project.path());

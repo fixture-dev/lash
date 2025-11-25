@@ -13,8 +13,9 @@
 //! The search uses `SQLite`'s FTS5 virtual table for efficient full-text indexing and retrieval.
 
 use anyhow::{Context, Result};
+use lash_cli::formatter::{TextFormatter, Verbosity};
+use lash_cli::theme::{self, CliTheme};
 use lash_db::{open_database, search, SearchQuery};
-use owo_colors::OwoColorize;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
@@ -44,6 +45,8 @@ pub struct SearchArgs {
     pub owner: Option<String>,
     /// Filter by path scope
     pub path: Option<PathBuf>,
+    /// Optional color scheme name to use for styling
+    pub color_scheme: Option<String>,
 }
 
 // SearchResult is re-exported from lash_db above
@@ -138,7 +141,12 @@ pub fn execute(args: &SearchArgs) -> Result<i32> {
     if args.json {
         output_json(&results.results, &args.query)?;
     } else {
-        output_text(&results.results, &args.query, args.no_color);
+        // Load theme for colored output
+        let colors_enabled = !args.no_color && theme::supports_color();
+        let theme = CliTheme::load(args.color_scheme.as_deref(), colors_enabled)?;
+        let formatter = TextFormatter::with_theme(theme, Verbosity::Normal);
+
+        output_text(&results.results, &args.query, &formatter);
     }
 
     // Return success - "no results" is a successful search, not an error
@@ -175,14 +183,19 @@ fn output_json(results: &[SearchResult], query: &str) -> Result<()> {
 }
 
 /// Output search results as human-readable text
-fn output_text(results: &[SearchResult], query: &str, no_color: bool) {
-    let use_color = !no_color;
+fn output_text(results: &[SearchResult], query: &str, formatter: &TextFormatter) {
+    let has_theme = formatter.has_color();
 
     if results.is_empty() {
-        if use_color {
-            println!("{}", format!("No results found for '{query}'").yellow());
+        let no_results = format!("No results found for '{query}'");
+        if has_theme {
+            if let Some(theme) = formatter.theme() {
+                println!("{}", theme.style_warning(&no_results));
+            } else {
+                println!("{no_results}");
+            }
         } else {
-            println!("No results found for '{query}'");
+            println!("{no_results}");
         }
         println!();
         println!("Suggestions:");
@@ -192,13 +205,17 @@ fn output_text(results: &[SearchResult], query: &str, no_color: bool) {
     }
 
     // Print header
-    if use_color {
-        println!(
-            "{} {} {}",
-            "Found".bold(),
-            results.len().to_string().cyan().bold(),
-            format!("result(s) for '{query}'").bold()
-        );
+    if has_theme {
+        if let Some(theme) = formatter.theme() {
+            println!(
+                "{} {} {}",
+                theme.style_info("Found"),
+                theme.style_info(&results.len().to_string()),
+                theme.style_info(&format!("result(s) for '{query}'"))
+            );
+        } else {
+            println!("Found {} result(s) for '{}'", results.len(), query);
+        }
     } else {
         println!("Found {} result(s) for '{}'", results.len(), query);
     }
@@ -206,30 +223,36 @@ fn output_text(results: &[SearchResult], query: &str, no_color: bool) {
 
     // Print each result
     for (i, result) in results.iter().enumerate() {
-        if use_color {
-            // ID and score
-            println!(
-                "{}. {} {} {}",
-                (i + 1).to_string().dimmed(),
-                result.full_id.cyan(),
-                format!("(score: {:.2})", result.score).dimmed(),
-                format_matched_fields(&result.matched_fields, use_color)
-            );
+        if has_theme {
+            if let Some(theme) = formatter.theme() {
+                // ID and score
+                println!(
+                    "{}. {} {} {}",
+                    formatter.format_muted(&(i + 1).to_string()),
+                    theme.style_info(&result.full_id),
+                    formatter.format_muted(&format!("(score: {:.2})", result.score)),
+                    format_matched_fields(&result.matched_fields, formatter)
+                );
 
-            // Title (potentially with highlighting)
-            println!("   {}", result.title.bold());
+                // Title - use success color to emphasize it
+                println!("   {}", theme.style_success(&result.title));
 
-            // File location
-            println!("   {} {}", "└─".dimmed(), result.file_path.blue(),);
+                // File location - use info color for paths
+                println!(
+                    "   {} {}",
+                    formatter.format_muted("└─"),
+                    theme.style_info(&result.file_path)
+                );
 
-            // Snippet (if present and different from title)
-            if !result.snippet.is_empty() && result.snippet != result.title {
-                println!("   {}", result.snippet.dimmed());
-            }
+                // Snippet (if present and different from title)
+                if !result.snippet.is_empty() && result.snippet != result.title {
+                    println!("   {}", formatter.format_muted(&result.snippet));
+                }
 
-            // Labels (if present)
-            if !result.labels.is_empty() {
-                println!("      {}", format_labels(&result.labels, use_color));
+                // Labels (if present)
+                if !result.labels.is_empty() {
+                    println!("      {}", format_labels(&result.labels, formatter));
+                }
             }
         } else {
             // No color version
@@ -238,7 +261,7 @@ fn output_text(results: &[SearchResult], query: &str, no_color: bool) {
                 i + 1,
                 result.full_id,
                 result.score,
-                format_matched_fields(&result.matched_fields, use_color)
+                format_matched_fields(&result.matched_fields, formatter)
             );
             println!("   {}", result.title);
             println!("   └─ {}", result.file_path);
@@ -248,7 +271,7 @@ fn output_text(results: &[SearchResult], query: &str, no_color: bool) {
             }
 
             if !result.labels.is_empty() {
-                println!("      {}", format_labels(&result.labels, use_color));
+                println!("      {}", format_labels(&result.labels, formatter));
             }
         }
 
@@ -257,62 +280,65 @@ fn output_text(results: &[SearchResult], query: &str, no_color: bool) {
 }
 
 /// Format matched fields for display
-fn format_matched_fields(fields: &[String], use_color: bool) -> String {
+fn format_matched_fields(fields: &[String], formatter: &TextFormatter) -> String {
     if fields.is_empty() {
         return String::new();
     }
 
     let fields_str = format!("[{}]", fields.join(", "));
-
-    if use_color {
-        fields_str.dimmed().to_string()
-    } else {
-        fields_str
-    }
+    formatter.format_muted(&fields_str)
 }
 
 /// Format labels for display
-fn format_labels(labels: &[String], use_color: bool) -> String {
+fn format_labels(labels: &[String], formatter: &TextFormatter) -> String {
     if labels.is_empty() {
         return String::new();
     }
 
     let labels_str = labels
         .iter()
-        .map(|l| format!("#{l}"))
+        .map(|l| {
+            let label_text = format!("#{l}");
+            formatter.format_label(&label_text)
+        })
         .collect::<Vec<_>>()
         .join(" ");
 
-    if use_color {
-        labels_str.dimmed().to_string()
-    } else {
-        labels_str
-    }
+    labels_str
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn no_color_formatter() -> TextFormatter {
+        TextFormatter::with_theme(None, Verbosity::Normal)
+    }
+
     #[test]
     fn test_format_matched_fields() {
-        assert_eq!(format_matched_fields(&[], false), "");
+        let formatter = no_color_formatter();
+        assert_eq!(format_matched_fields(&[], &formatter), "");
         assert_eq!(
-            format_matched_fields(&["title".to_string()], false),
+            format_matched_fields(&["title".to_string()], &formatter),
             "[title]"
         );
         assert_eq!(
-            format_matched_fields(&["title".to_string(), "body".to_string()], false),
+            format_matched_fields(&["title".to_string(), "body".to_string()], &formatter),
             "[title, body]"
         );
     }
 
     #[test]
     fn test_format_labels() {
-        assert_eq!(format_labels(&[], false), "");
-        assert_eq!(format_labels(&["backend".to_string()], false), "#backend");
+        let formatter = no_color_formatter();
+        assert_eq!(format_labels(&[], &formatter), "");
         assert_eq!(
-            format_labels(&["backend".to_string(), "api".to_string()], false),
+            format_labels(&["backend".to_string()], &formatter),
+            "#backend"
+        );
+        assert_eq!(
+            format_labels(&["backend".to_string(), "api".to_string()], &formatter),
             "#backend #api"
         );
     }
