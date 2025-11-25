@@ -62,6 +62,9 @@ impl TuiApp {
             .list_all()
             .map_err(|e| TuiError::App(format!("Failed to load files: {e}")))?;
 
+        // Build file tree for tree view
+        state.build_file_tree();
+
         // Load tasks for first file if available
         if let Some(file) = state.selected_file() {
             let task_repo = TaskRepository::new(&conn);
