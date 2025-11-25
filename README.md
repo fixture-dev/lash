@@ -11,7 +11,7 @@
   [![Built with Markdown](https://img.shields.io/badge/built%20with-markdown-000000.svg?logo=markdown)](https://commonmark.org/)
   [![SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg?logo=sqlite)](https://www.sqlite.org/)
 
-  **Status:** Active Development (Phase 4 - Dependencies & Queries)
+  **Status:** Active Development (Phase 4/5 - TUI Complete, Queries In Progress)
 </div>
 
 ## Overview
@@ -32,9 +32,11 @@ Core functionality is production-ready:
 - **Linter & Formatter** - 20 validation rules with auto-formatting (607 tests)
 - **SQLite Indexing** - Fast indexing engine exceeding performance targets by 8-12x
 - **Dependency Resolution** - Complete graph analysis with cycle detection (495 tests)
+- **Terminal UI (TUI)** - Interactive interface with 300+ Gogh color schemes
 - **CLI Framework** - Configuration, logging, and command execution infrastructure
+- **Query Commands** - List, search, show, and graph commands for exploring tasks
 
-Next up: Query commands (`list`, `show`, `search`, `graph`)
+Next up: Agent integration and prompt generation
 
 ## Project Structure
 
@@ -44,9 +46,9 @@ lash/
 │   ├── lash-types/    # Shared types, errors, config ✅
 │   ├── lash-core/     # Markdown parsing & validation ✅
 │   ├── lash-db/       # SQLite indexing & queries ✅
-│   ├── lash-agent/    # Agent integration (planned)
-│   ├── lash-tui/      # Terminal UI (planned)
-│   └── lash-cli/      # CLI binary (in progress)
+│   ├── lash-agent/    # Agent integration (in progress)
+│   ├── lash-tui/      # Terminal UI ✅
+│   └── lash-cli/      # CLI binary ✅
 ├── docs/              # Design docs & error codes
 └── tasks/             # Development task tracking
 ```
@@ -186,13 +188,9 @@ lash lint [PATH...]
 lash format [PATH...]
 
 # Index files into database
-lash index  # Coming soon
-```
+lash index
 
-**Planned commands:**
-
-```bash
-# List tasks
+# List tasks (with filters)
 lash list [--label backend] [--status open]
 
 # Search tasks
@@ -204,11 +202,33 @@ lash show task-id
 # Export dependency graph
 lash graph [--format dot|json]
 
+# Launch TUI (with optional color scheme)
+lash tui [--color-scheme "Nord"]
+```
+
+### Color Schemes
+
+Lash supports 300+ color schemes from the [Gogh](https://gogh-co.github.io/Gogh/) collection. You can:
+
+- **Set globally** via `~/.lash/config.toml`:
+  ```toml
+  color_scheme = "Nord"
+  ```
+
+- **Override per-command** with `--color-scheme`:
+  ```bash
+  lash tui --color-scheme "Dracula"
+  ```
+
+- **Change in TUI** by pressing `t` to open the theme selector
+
+Popular schemes include: Nord, Dracula, Solarized Dark, Solarized Light, Monokai, Tokyo Night, Catppuccin, and Base2Tone Desert (default).
+
+**Planned commands:**
+
+```bash
 # Generate agent prompt
 lash agent-prompt
-
-# Launch TUI
-lash tui
 ```
 
 ## Documentation

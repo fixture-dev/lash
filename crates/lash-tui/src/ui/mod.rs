@@ -4,6 +4,7 @@ mod detail_pane;
 mod help;
 mod nav_pane;
 mod status_bar;
+mod theme_selector;
 mod themes;
 
 use ratatui::{
@@ -41,5 +42,10 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     // Render help overlay if active
     if state.show_help {
         help::render(frame, frame.area(), state);
+    }
+
+    // Render theme selector overlay if active
+    if state.theme_selector_state.is_some() {
+        theme_selector::render(frame, frame.area(), state);
     }
 }

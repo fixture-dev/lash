@@ -44,6 +44,10 @@ pub enum AppEvent {
     PrevTask,
     /// Jump to next top-level task
     NextTask,
+    /// Open theme selector
+    OpenThemeSelector,
+    /// Close theme selector
+    CloseThemeSelector,
     /// Resize terminal
     Resize(u16, u16),
     /// No event (timeout)
@@ -99,6 +103,8 @@ fn handle_key_event(key: KeyEvent) -> AppEvent {
         (KeyCode::Char('c'), KeyModifiers::NONE) => AppEvent::ClearFilters,
         (KeyCode::Char('g'), KeyModifiers::CONTROL) => AppEvent::DependencyGraph,
         (KeyCode::Char('?'), KeyModifiers::SHIFT) => AppEvent::Help,
+        (KeyCode::Char('t'), KeyModifiers::NONE) => AppEvent::OpenThemeSelector,
+        (KeyCode::Esc, _) => AppEvent::CloseThemeSelector,
 
         _ => AppEvent::None,
     }

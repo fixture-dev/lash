@@ -8,6 +8,8 @@ use std::path::PathBuf;
 pub struct TuiArgs {
     /// Project root (if None, auto-detect)
     pub project_root: Option<PathBuf>,
+    /// Color scheme to use (overrides user config)
+    pub color_scheme: Option<String>,
 }
 
 /// Execute the TUI command
@@ -37,8 +39,13 @@ pub fn execute(args: &TuiArgs) -> Result<()> {
         );
     }
 
-    // Run the TUI
-    lash_tui::run(&db_path).context("TUI execution failed")?;
+    // Run the TUI with optional color scheme
+    if let Some(scheme) = &args.color_scheme {
+        lash_tui::run_with_scheme(&db_path, Some(scheme.as_str()))
+            .context("TUI execution failed")?;
+    } else {
+        lash_tui::run(&db_path).context("TUI execution failed")?;
+    }
 
     Ok(())
 }

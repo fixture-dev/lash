@@ -345,7 +345,10 @@ fn run(cli: LashCli) -> Result<()> {
         }
 
         Commands::Tui => {
-            let args = commands::tui::TuiArgs { project_root };
+            let args = commands::tui::TuiArgs {
+                project_root,
+                color_scheme: cli.color_scheme,
+            };
             commands::tui::execute(&args)?;
             Ok(())
         }

@@ -28,7 +28,7 @@ pub mod report;
 pub mod status;
 pub mod task;
 
-pub use config::{ConfigBuilder, LashConfig};
+pub use config::{ConfigBuilder, LashConfig, UserConfig};
 pub use dependency::{
     make_full_id, parse_dependency_ref, parse_full_id, Dependency, DependencyKind, DependencyRef,
 };

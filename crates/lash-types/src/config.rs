@@ -3,6 +3,7 @@
 use crate::error::{codes, LashError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::{fs, io::Write};
 
 /// Lash project configuration
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -201,6 +202,150 @@ impl LashConfig {
     #[must_use]
     pub fn index_path(&self) -> PathBuf {
         self.root_path.join(&self.index_file)
+    }
+}
+
+/// User-level configuration
+///
+/// Stored at `~/.lash/config.toml` for user preferences that apply across all projects.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UserConfig {
+    /// Selected color scheme name (default: `Base2Tone Desert`)
+    #[serde(default = "default_color_scheme")]
+    pub color_scheme: String,
+}
+
+fn default_color_scheme() -> String {
+    "Base2Tone Desert".to_string()
+}
+
+impl Default for UserConfig {
+    fn default() -> Self {
+        Self {
+            color_scheme: default_color_scheme(),
+        }
+    }
+}
+
+impl UserConfig {
+    /// Get the user config directory path (~/.lash)
+    ///
+    /// # Errors
+    ///
+    /// Returns error if home directory cannot be determined
+    pub fn user_config_dir() -> Result<PathBuf> {
+        dirs::home_dir()
+            .map(|home| home.join(".lash"))
+            .ok_or_else(|| LashError::Config {
+                code: codes::E_CONFIG_INVALID_VALUE,
+                message: "Could not determine home directory".to_string(),
+                path: None,
+                help: Some("Set HOME environment variable".to_string()),
+            })
+    }
+
+    /// Get the user config file path (~/.lash/config.toml)
+    ///
+    /// # Errors
+    ///
+    /// Returns error if home directory cannot be determined
+    pub fn user_config_path() -> Result<PathBuf> {
+        Ok(Self::user_config_dir()?.join("config.toml"))
+    }
+
+    /// Load user configuration from ~/.lash/config.toml
+    ///
+    /// If the file doesn't exist, returns default configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if config file exists but is invalid
+    pub fn load() -> Result<Self> {
+        let config_path = Self::user_config_path()?;
+
+        if !config_path.exists() {
+            return Ok(Self::default());
+        }
+
+        let content = fs::read_to_string(&config_path).map_err(|e| LashError::IO {
+            code: codes::E_IO_READ_ERROR,
+            message: format!("Failed to read user config file: {e}"),
+            path: Some(config_path.clone()),
+            io_error: Some(e.to_string()),
+        })?;
+
+        let config: UserConfig = toml::from_str(&content).map_err(|e| LashError::Config {
+            code: codes::E_CONFIG_PARSE_ERROR,
+            message: format!("Failed to parse user config file: {e}"),
+            path: Some(config_path),
+            help: Some("check that the configuration file is valid TOML".to_string()),
+        })?;
+
+        Ok(config)
+    }
+
+    /// Save user configuration to ~/.lash/config.toml
+    ///
+    /// Creates the directory if it doesn't exist. Uses atomic writes to prevent corruption.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if config cannot be written
+    pub fn save(&self) -> Result<()> {
+        let config_dir = Self::user_config_dir()?;
+        let config_path = Self::user_config_path()?;
+
+        // Create directory if it doesn't exist
+        if !config_dir.exists() {
+            fs::create_dir_all(&config_dir).map_err(|e| LashError::IO {
+                code: codes::E_IO_WRITE_ERROR,
+                message: format!("Failed to create user config directory: {e}"),
+                path: Some(config_dir.clone()),
+                io_error: Some(e.to_string()),
+            })?;
+        }
+
+        // Serialize to TOML
+        let content = toml::to_string_pretty(self).map_err(|e| LashError::Config {
+            code: codes::E_CONFIG_PARSE_ERROR,
+            message: format!("Failed to serialize user config: {e}"),
+            path: Some(config_path.clone()),
+            help: None,
+        })?;
+
+        // Write atomically using a temporary file
+        let tmp_path = config_path.with_extension("toml.tmp");
+        let mut file = fs::File::create(&tmp_path).map_err(|e| LashError::IO {
+            code: codes::E_IO_WRITE_ERROR,
+            message: format!("Failed to create temporary config file: {e}"),
+            path: Some(tmp_path.clone()),
+            io_error: Some(e.to_string()),
+        })?;
+
+        file.write_all(content.as_bytes())
+            .map_err(|e| LashError::IO {
+                code: codes::E_IO_WRITE_ERROR,
+                message: format!("Failed to write config file: {e}"),
+                path: Some(tmp_path.clone()),
+                io_error: Some(e.to_string()),
+            })?;
+
+        file.sync_all().map_err(|e| LashError::IO {
+            code: codes::E_IO_WRITE_ERROR,
+            message: format!("Failed to sync config file: {e}"),
+            path: Some(tmp_path.clone()),
+            io_error: Some(e.to_string()),
+        })?;
+
+        // Atomic rename
+        fs::rename(&tmp_path, &config_path).map_err(|e| LashError::IO {
+            code: codes::E_IO_WRITE_ERROR,
+            message: format!("Failed to save config file: {e}"),
+            path: Some(config_path),
+            io_error: Some(e.to_string()),
+        })?;
+
+        Ok(())
     }
 }
 
@@ -412,5 +557,42 @@ mod tests {
         assert_eq!(config.index_path(), temp_dir.join("my-index.md"));
 
         fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_user_config_default() {
+        let config = UserConfig::default();
+        assert_eq!(config.color_scheme, "Base2Tone Desert");
+    }
+
+    #[test]
+    fn test_user_config_load_nonexistent() {
+        // This test assumes ~/.lash/config.toml doesn't exist or is valid
+        // If it exists, it should parse successfully
+        let result = UserConfig::load();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_user_config_save_and_load() {
+        // Create a custom config
+        let config = UserConfig {
+            color_scheme: "Test Theme".to_string(),
+        };
+
+        // Save it
+        let save_result = config.save();
+        assert!(
+            save_result.is_ok(),
+            "Failed to save config: {:?}",
+            save_result
+        );
+
+        // Load it back
+        let loaded = UserConfig::load().unwrap();
+        assert_eq!(loaded.color_scheme, "Test Theme");
+
+        // Restore default
+        UserConfig::default().save().unwrap();
     }
 }

@@ -58,6 +58,16 @@ pub struct LashCli {
     #[arg(long, global = true, help_heading = "Global Options")]
     pub no_color: bool,
 
+    /// Color scheme to use (e.g., "Nord", "Dracula", "Solarized Dark")
+    #[arg(
+        short = 'c',
+        long,
+        global = true,
+        value_name = "SCHEME",
+        help_heading = "Global Options"
+    )]
+    pub color_scheme: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }

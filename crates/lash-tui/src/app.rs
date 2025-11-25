@@ -35,9 +35,26 @@ impl TuiApp {
     /// - Database connection fails
     /// - Terminal setup fails
     pub fn new(db_path: &Path) -> TuiResult<Self> {
+        Self::new_with_scheme(db_path, None)
+    }
+
+    /// Create a new TUI application with a specific color scheme
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Database connection fails
+    /// - Terminal setup fails
+    /// - Color scheme is invalid
+    pub fn new_with_scheme(db_path: &Path, color_scheme: Option<&str>) -> TuiResult<Self> {
         let terminal = terminal::setup()?;
         let conn = lash_db::open_database(db_path)?;
-        let mut state = AppState::new();
+        let mut state = if let Some(scheme_name) = color_scheme {
+            AppState::with_color_scheme(scheme_name)
+                .map_err(|e| TuiError::App(format!("Invalid color scheme: {e}")))?
+        } else {
+            AppState::new()
+        };
 
         // Load initial files
         let file_repo = FileRepository::new(&conn);
@@ -73,31 +90,60 @@ impl TuiApp {
             // Handle events
             let event = poll_event(Duration::from_millis(100))?;
 
+            // Route events based on active modal
             #[allow(clippy::match_same_arms)] // Placeholder arms for future features
-            match event {
-                AppEvent::Quit => {
-                    self.state.should_quit = true;
+            if self.state.theme_selector_state.is_some() {
+                // Theme selector is open - route events to it
+                match event {
+                    AppEvent::CloseThemeSelector | AppEvent::Quit => {
+                        self.state.close_theme_selector();
+                    }
+                    AppEvent::Up => self.state.theme_selector_up(),
+                    AppEvent::Down => self.state.theme_selector_down(),
+                    AppEvent::Right | AppEvent::Select => {
+                        if let Err(e) = self.state.apply_selected_theme() {
+                            eprintln!("Failed to apply theme: {e}");
+                        }
+                    }
+                    _ => {} // Ignore other events when selector is open
                 }
-                AppEvent::Up => self.state.move_up(),
-                AppEvent::Down => self.state.move_down(),
-                AppEvent::Right => self.handle_select()?,
-                AppEvent::Select => self.handle_toggle_status()?,
-                AppEvent::SwitchPane => self.state.switch_pane(),
-                AppEvent::GoTop => self.state.go_top(),
-                AppEvent::GoBottom => self.state.go_bottom(),
-                AppEvent::Help => self.state.toggle_help(),
-                AppEvent::OpenEditor => self.handle_open_editor()?,
+            } else if self.state.show_help {
+                // Help is open - only handle close events
+                match event {
+                    AppEvent::Help | AppEvent::CloseThemeSelector => {
+                        self.state.toggle_help();
+                    }
+                    _ => {} // Ignore other events when help is shown
+                }
+            } else {
+                // Normal event handling
+                match event {
+                    AppEvent::Quit => {
+                        self.state.should_quit = true;
+                    }
+                    AppEvent::Up => self.state.move_up(),
+                    AppEvent::Down => self.state.move_down(),
+                    AppEvent::Right => self.handle_select()?,
+                    AppEvent::Select => self.handle_toggle_status()?,
+                    AppEvent::SwitchPane => self.state.switch_pane(),
+                    AppEvent::GoTop => self.state.go_top(),
+                    AppEvent::GoBottom => self.state.go_bottom(),
+                    AppEvent::Help => self.state.toggle_help(),
+                    AppEvent::OpenEditor => self.handle_open_editor()?,
+                    AppEvent::OpenThemeSelector => self.state.open_theme_selector(),
 
-                // TODO: implement these features
-                AppEvent::Left
-                | AppEvent::ClearFilters
-                | AppEvent::Search
-                | AppEvent::LabelFilter
-                | AppEvent::DependencyGraph
-                | AppEvent::PrevTask
-                | AppEvent::NextTask
-                | AppEvent::Resize(_, _)
-                | AppEvent::None => {}
+                    // TODO: implement these features
+                    AppEvent::Left
+                    | AppEvent::ClearFilters
+                    | AppEvent::Search
+                    | AppEvent::LabelFilter
+                    | AppEvent::DependencyGraph
+                    | AppEvent::PrevTask
+                    | AppEvent::NextTask
+                    | AppEvent::CloseThemeSelector
+                    | AppEvent::Resize(_, _)
+                    | AppEvent::None => {}
+                }
             }
 
             if self.state.should_quit {

@@ -1,52 +1,65 @@
 //! Color schemes and theming
+//!
+//! This module provides backward-compatible theme functions that now use
+//! the Theme struct. All functions now require a theme parameter.
 
-use ratatui::style::{Color, Modifier, Style};
-
+use crate::colors::Theme;
 use lash_types::{FileStatus, TaskStatus};
+use ratatui::style::Style;
 
 /// Get style for task status
-pub fn status_style(status: TaskStatus) -> Style {
-    match status {
-        TaskStatus::Done => Style::default().fg(Color::Green),
-        TaskStatus::Blocked => Style::default().fg(Color::Red),
-        TaskStatus::Open => Style::default().fg(Color::White),
-        TaskStatus::Waived => Style::default().fg(Color::DarkGray),
-    }
+///
+/// # Arguments
+///
+/// * `status` - Task status
+/// * `theme` - Color theme to use
+pub fn status_style(status: TaskStatus, theme: &Theme) -> Style {
+    theme.task_status_style(status)
 }
 
 /// Get style for file status
-pub fn file_status_style(status: FileStatus) -> Style {
-    match status {
-        FileStatus::Complete => Style::default().fg(Color::Green),
-        FileStatus::Blocked => Style::default().fg(Color::Red),
-        FileStatus::InProgress => Style::default().fg(Color::Yellow),
-        FileStatus::Empty => Style::default().fg(Color::DarkGray),
-    }
+///
+/// # Arguments
+///
+/// * `status` - File status
+/// * `theme` - Color theme to use
+pub fn file_status_style(status: FileStatus, theme: &Theme) -> Style {
+    theme.file_status_style(status)
 }
 
 /// Get checkbox character for task status
-pub fn checkbox_char(status: TaskStatus) -> &'static str {
-    match status {
-        TaskStatus::Open => "[ ]",
-        TaskStatus::Done => "[x]",
-        TaskStatus::Waived => "[-]",
-        TaskStatus::Blocked => "[!]",
-    }
+///
+/// # Arguments
+///
+/// * `status` - Task status
+/// * `theme` - Color theme to use
+pub fn checkbox_char(status: TaskStatus, theme: &Theme) -> &'static str {
+    theme.checkbox_char(status)
 }
 
 /// Style for selected items
-pub fn selected_style() -> Style {
-    Style::default()
-        .bg(Color::DarkGray)
-        .add_modifier(Modifier::BOLD)
+///
+/// # Arguments
+///
+/// * `theme` - Color theme to use
+pub fn selected_style(theme: &Theme) -> Style {
+    theme.selected_style()
 }
 
 /// Style for focused pane border
-pub fn focused_border_style() -> Style {
-    Style::default().fg(Color::Cyan)
+///
+/// # Arguments
+///
+/// * `theme` - Color theme to use
+pub fn focused_border_style(theme: &Theme) -> Style {
+    theme.focused_border_style()
 }
 
 /// Style for unfocused pane border
-pub fn unfocused_border_style() -> Style {
-    Style::default().fg(Color::DarkGray)
+///
+/// # Arguments
+///
+/// * `theme` - Color theme to use
+pub fn unfocused_border_style(theme: &Theme) -> Style {
+    theme.unfocused_border_style()
 }
