@@ -213,16 +213,90 @@ pub struct UserConfig {
     /// Selected color scheme name (default: `Base2Tone Desert`)
     #[serde(default = "default_color_scheme")]
     pub color_scheme: String,
+
+    /// Tree view configuration
+    #[serde(default)]
+    pub tree_view: TreeViewConfig,
 }
 
 fn default_color_scheme() -> String {
     "Base2Tone Desert".to_string()
 }
 
+/// Tree view configuration
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreeViewConfig {
+    /// Enable tree view by default (default: true)
+    #[serde(default = "default_tree_enabled")]
+    pub enabled: bool,
+
+    /// Maximum depth to display (default: 5)
+    #[serde(default = "default_max_depth")]
+    pub max_depth: usize,
+
+    /// Start with all nodes expanded (default: false)
+    #[serde(default = "default_expanded")]
+    pub default_expanded: bool,
+
+    /// Force ASCII mode instead of Unicode (default: false)
+    #[serde(default = "default_ascii")]
+    pub ascii_mode: bool,
+}
+
+fn default_tree_enabled() -> bool {
+    true
+}
+
+fn default_max_depth() -> usize {
+    5
+}
+
+fn default_expanded() -> bool {
+    false
+}
+
+fn default_ascii() -> bool {
+    false
+}
+
+impl Default for TreeViewConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_tree_enabled(),
+            max_depth: default_max_depth(),
+            default_expanded: default_expanded(),
+            ascii_mode: default_ascii(),
+        }
+    }
+}
+
+impl TreeViewConfig {
+    /// Validate tree view configuration values
+    ///
+    /// # Errors
+    ///
+    /// Returns error if `max_depth` is outside the valid range (1-10)
+    pub fn validate(&self) -> Result<()> {
+        if !(1..=10).contains(&self.max_depth) {
+            return Err(LashError::Config {
+                code: codes::E_CONFIG_INVALID_VALUE,
+                message: format!(
+                    "tree_view.max_depth must be between 1 and 10, got {}",
+                    self.max_depth
+                ),
+                path: None,
+                help: Some("tree_view.max_depth must be between 1 and 10".to_string()),
+            });
+        }
+        Ok(())
+    }
+}
+
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
             color_scheme: default_color_scheme(),
+            tree_view: TreeViewConfig::default(),
         }
     }
 }
@@ -280,6 +354,9 @@ impl UserConfig {
             path: Some(config_path),
             help: Some("check that the configuration file is valid TOML".to_string()),
         })?;
+
+        // Validate the tree view configuration
+        config.tree_view.validate()?;
 
         Ok(config)
     }
@@ -563,6 +640,83 @@ mod tests {
     fn test_user_config_default() {
         let config = UserConfig::default();
         assert_eq!(config.color_scheme, "Base2Tone Desert");
+        assert!(config.tree_view.enabled);
+        assert_eq!(config.tree_view.max_depth, 5);
+        assert!(!config.tree_view.default_expanded);
+        assert!(!config.tree_view.ascii_mode);
+    }
+
+    #[test]
+    fn test_tree_view_config_default() {
+        let config = TreeViewConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.max_depth, 5);
+        assert!(!config.default_expanded);
+        assert!(!config.ascii_mode);
+    }
+
+    #[test]
+    fn test_tree_view_config_validation_valid() {
+        let config = TreeViewConfig {
+            enabled: true,
+            max_depth: 1,
+            default_expanded: false,
+            ascii_mode: false,
+        };
+        assert!(config.validate().is_ok());
+
+        let config = TreeViewConfig {
+            enabled: true,
+            max_depth: 10,
+            default_expanded: false,
+            ascii_mode: false,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_tree_view_config_validation_invalid() {
+        let config = TreeViewConfig {
+            enabled: true,
+            max_depth: 0,
+            default_expanded: false,
+            ascii_mode: false,
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(LashError::Config { code, .. }) = result {
+            assert_eq!(code, codes::E_CONFIG_INVALID_VALUE);
+        }
+
+        let config = TreeViewConfig {
+            enabled: true,
+            max_depth: 11,
+            default_expanded: false,
+            ascii_mode: false,
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(LashError::Config { code, .. }) = result {
+            assert_eq!(code, codes::E_CONFIG_INVALID_VALUE);
+        }
+    }
+
+    #[test]
+    fn test_tree_view_config_serialization() {
+        let config = TreeViewConfig {
+            enabled: true,
+            max_depth: 7,
+            default_expanded: true,
+            ascii_mode: true,
+        };
+
+        let toml_str = toml::to_string(&config).unwrap();
+        let deserialized: TreeViewConfig = toml::from_str(&toml_str).unwrap();
+        assert_eq!(config, deserialized);
+        assert!(deserialized.enabled);
+        assert_eq!(deserialized.max_depth, 7);
+        assert!(deserialized.default_expanded);
+        assert!(deserialized.ascii_mode);
     }
 
     #[test]
@@ -578,6 +732,7 @@ mod tests {
         // Create a custom config
         let config = UserConfig {
             color_scheme: "Test Theme".to_string(),
+            tree_view: TreeViewConfig::default(),
         };
 
         // Save it

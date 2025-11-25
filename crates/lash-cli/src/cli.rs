@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 /// Minimalist Markdown-native task tracker for devs and agents
 #[derive(Parser, Debug)]
+#[allow(clippy::struct_excessive_bools)] // CLI flags are inherently boolean
 #[command(
     name = "lash",
     version,
@@ -67,6 +68,33 @@ pub struct LashCli {
         help_heading = "Global Options"
     )]
     pub color_scheme: Option<String>,
+
+    /// Enable tree view display
+    #[arg(
+        long,
+        global = true,
+        conflicts_with = "no_tree_view",
+        help_heading = "Global Options"
+    )]
+    pub tree_view: bool,
+
+    /// Disable tree view display
+    #[arg(long, global = true, help_heading = "Global Options")]
+    pub no_tree_view: bool,
+
+    /// Maximum depth for tree view display (1-10)
+    #[arg(
+        short = 'd',
+        long,
+        global = true,
+        value_name = "DEPTH",
+        help_heading = "Global Options"
+    )]
+    pub max_depth: Option<usize>,
+
+    /// Force ASCII mode for tree characters instead of Unicode
+    #[arg(long, global = true, help_heading = "Global Options")]
+    pub ascii: bool,
 
     #[command(subcommand)]
     pub command: Commands,
@@ -546,5 +574,48 @@ mod tests {
         } else {
             panic!("Expected Playground Init command");
         }
+    }
+
+    #[test]
+    fn test_cli_parse_tree_view_flags() {
+        let cli = LashCli::try_parse_from(["lash", "--tree-view", "list"]).unwrap();
+        assert!(cli.tree_view);
+        assert!(!cli.no_tree_view);
+
+        let cli = LashCli::try_parse_from(["lash", "--no-tree-view", "list"]).unwrap();
+        assert!(!cli.tree_view);
+        assert!(cli.no_tree_view);
+
+        // Test conflict between --tree-view and --no-tree-view
+        let result = LashCli::try_parse_from(["lash", "--tree-view", "--no-tree-view", "list"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_max_depth() {
+        let cli = LashCli::try_parse_from(["lash", "--max-depth", "3", "list"]).unwrap();
+        assert_eq!(cli.max_depth, Some(3));
+
+        let cli = LashCli::try_parse_from(["lash", "-d", "10", "list"]).unwrap();
+        assert_eq!(cli.max_depth, Some(10));
+    }
+
+    #[test]
+    fn test_cli_parse_ascii_flag() {
+        let cli = LashCli::try_parse_from(["lash", "--ascii", "list"]).unwrap();
+        assert!(cli.ascii);
+
+        let cli = LashCli::try_parse_from(["lash", "list"]).unwrap();
+        assert!(!cli.ascii);
+    }
+
+    #[test]
+    fn test_cli_parse_combined_tree_flags() {
+        let cli =
+            LashCli::try_parse_from(["lash", "--tree-view", "--max-depth", "7", "--ascii", "list"])
+                .unwrap();
+        assert!(cli.tree_view);
+        assert_eq!(cli.max_depth, Some(7));
+        assert!(cli.ascii);
     }
 }

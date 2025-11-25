@@ -27,8 +27,9 @@ pub mod label;
 pub mod report;
 pub mod status;
 pub mod task;
+pub mod tree;
 
-pub use config::{ConfigBuilder, LashConfig, UserConfig};
+pub use config::{ConfigBuilder, LashConfig, TreeViewConfig, UserConfig};
 pub use dependency::{
     make_full_id, parse_dependency_ref, parse_full_id, Dependency, DependencyKind, DependencyRef,
 };
@@ -42,3 +43,4 @@ pub use label::{
 pub use report::{ErrorReport, GroupBy, ReportSummary};
 pub use status::TaskStatus;
 pub use task::{Task, TaskBuilder, TaskMetadata, TaskTree};
+pub use tree::{TreeChars, TreeNode};
