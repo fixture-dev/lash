@@ -6,6 +6,8 @@ use anyhow::{Context, Result};
 use owo_colors::OwoColorize;
 use std::io::{self, Write};
 
+use lash_cli::theme::CliTheme;
+
 use super::fuzzy_matcher::FuzzyCandidate;
 
 /// User's decision for a proposed fix
@@ -20,19 +22,19 @@ pub enum FixDecision {
 }
 
 /// Interactive prompter for confirming fixes
-pub struct InteractivePrompter {
-    /// Whether to disable colored output
-    no_color: bool,
+pub struct InteractivePrompter<'a> {
+    /// Optional theme for colored output
+    theme: Option<&'a CliTheme>,
 }
 
-impl InteractivePrompter {
+impl<'a> InteractivePrompter<'a> {
     /// Create a new interactive prompter
     ///
     /// # Arguments
     ///
-    /// * `no_color` - Disable colored output
-    pub fn new(no_color: bool) -> Self {
-        Self { no_color }
+    /// * `theme` - Optional theme for colored output
+    pub fn new(theme: Option<&'a CliTheme>) -> Self {
+        Self { theme }
     }
 
     /// Prompt the user to confirm or reject a fix
@@ -62,53 +64,57 @@ impl InteractivePrompter {
         self.print_separator();
 
         // Show context
-        if self.no_color {
+        if let Some(theme) = self.theme {
+            println!("{} {}", "File:".bold(), theme.style_info(file_path));
+            println!("{} {}", "Task:".bold(), theme.style_warning(from_task_id));
+            println!(
+                "{} {}",
+                "Broken reference:".bold(),
+                theme.style_error(broken_ref)
+            );
+        } else {
             println!("File: {file_path}");
             println!("Task: {from_task_id}");
             println!("Broken reference: {broken_ref}");
-        } else {
-            println!("{} {}", "File:".bold(), file_path.cyan());
-            println!("{} {}", "Task:".bold(), from_task_id.yellow());
-            println!("{} {}", "Broken reference:".bold(), broken_ref.red());
         }
         println!();
 
         // Show candidates if available
         if candidates.is_empty() {
-            if self.no_color {
-                println!("No similar tasks found.");
+            if let Some(theme) = self.theme {
+                println!("{}", theme.style_muted("No similar tasks found."));
             } else {
-                println!("{}", "No similar tasks found.".dimmed());
+                println!("No similar tasks found.");
             }
         } else {
-            if self.no_color {
-                println!("Suggested fixes:");
-            } else {
+            if let Some(_theme) = self.theme {
                 println!("{}", "Suggested fixes:".bold());
+            } else {
+                println!("Suggested fixes:");
             }
 
             for (idx, candidate) in candidates.iter().enumerate().take(5) {
                 let confidence = (candidate.score * 100.0) as u8;
-                if self.no_color {
+                if let Some(theme) = self.theme {
+                    let confidence_display = if confidence >= 85 {
+                        theme.style_success(&format!("{confidence}% match"))
+                    } else if confidence >= 70 {
+                        theme.style_warning(&format!("{confidence}% match"))
+                    } else {
+                        theme.style_muted(&format!("{confidence}% match"))
+                    };
+                    println!(
+                        "  {}. {} ({})",
+                        format!("{}", idx + 1).bold(),
+                        theme.style_info(&candidate.task_id),
+                        confidence_display
+                    );
+                } else {
                     println!(
                         "  {}. {} ({}% match)",
                         idx + 1,
                         candidate.task_id,
                         confidence
-                    );
-                } else {
-                    let confidence_display = if confidence >= 85 {
-                        format!("{confidence}% match").green().to_string()
-                    } else if confidence >= 70 {
-                        format!("{confidence}% match").yellow().to_string()
-                    } else {
-                        format!("{confidence}% match").dimmed().to_string()
-                    };
-                    println!(
-                        "  {}. {} ({})",
-                        format!("{}", idx + 1).bold(),
-                        candidate.task_id.cyan(),
-                        confidence_display
                     );
                 }
             }
@@ -119,33 +125,33 @@ impl InteractivePrompter {
         // Prompt for decision
         loop {
             if candidates.is_empty() {
-                if self.no_color {
-                    print!("Action: [s]kip, [m]anual fix, [q]uit: ");
-                } else {
+                if let Some(theme) = self.theme {
                     print!(
                         "{} {}kip, {}anual fix, {}uit: ",
                         "Action:".bold(),
-                        "[s]".green(),
-                        "[m]".cyan(),
-                        "[q]".red()
+                        theme.style_success("[s]"),
+                        theme.style_info("[m]"),
+                        theme.style_error("[q]")
                     );
+                } else {
+                    print!("Action: [s]kip, [m]anual fix, [q]uit: ");
                 }
-            } else if self.no_color {
-                print!(
-                    "Action: [y]es (accept #1), [n]o (skip), [1-{}] (choose), [m]anual, [q]uit: ",
-                    candidates.len().min(5)
-                );
-            } else {
+            } else if let Some(theme) = self.theme {
                 print!(
                     "{} {}es (accept #1), {}o (skip), {}1-{}{} (choose), {}anual, {}uit: ",
                     "Action:".bold(),
-                    "[y]".green(),
-                    "[n]".yellow(),
-                    "[".dimmed(),
+                    theme.style_success("[y]"),
+                    theme.style_warning("[n]"),
+                    theme.style_muted("["),
                     candidates.len().min(5),
-                    "]".dimmed(),
-                    "[m]".cyan(),
-                    "[q]".red()
+                    theme.style_muted("]"),
+                    theme.style_info("[m]"),
+                    theme.style_error("[q]")
+                );
+            } else {
+                print!(
+                    "Action: [y]es (accept #1), [n]o (skip), [1-{}] (choose), [m]anual, [q]uit: ",
+                    candidates.len().min(5)
                 );
             }
 
@@ -181,17 +187,17 @@ impl InteractivePrompter {
                         }
                     }
                     // Invalid input, loop continues
-                    if self.no_color {
-                        println!("Invalid choice. Please try again.");
+                    if let Some(theme) = self.theme {
+                        println!("{}", theme.style_error("Invalid choice. Please try again."));
                     } else {
-                        println!("{}", "Invalid choice. Please try again.".red());
+                        println!("Invalid choice. Please try again.");
                     }
                 }
                 _ => {
-                    if self.no_color {
-                        println!("Invalid input. Please try again.");
+                    if let Some(theme) = self.theme {
+                        println!("{}", theme.style_error("Invalid input. Please try again."));
                     } else {
-                        println!("{}", "Invalid input. Please try again.".red());
+                        println!("Invalid input. Please try again.");
                     }
                 }
             }
@@ -200,13 +206,13 @@ impl InteractivePrompter {
 
     /// Prompt for manual fix input
     fn prompt_manual_fix(&self) -> Result<Option<FixDecision>> {
-        if self.no_color {
-            print!("Enter the correct task reference (or 'cancel'): ");
-        } else {
+        if let Some(_theme) = self.theme {
             print!(
                 "{} ",
                 "Enter the correct task reference (or 'cancel'):".bold()
             );
+        } else {
+            print!("Enter the correct task reference (or 'cancel'): ");
         }
         io::stdout().flush()?;
 
@@ -226,10 +232,10 @@ impl InteractivePrompter {
 
     /// Print a visual separator
     fn print_separator(&self) {
-        if self.no_color {
-            println!("{}", "-".repeat(60));
+        if let Some(theme) = self.theme {
+            println!("{}", theme.style_muted(&"-".repeat(60)));
         } else {
-            println!("{}", "-".repeat(60).dimmed());
+            println!("{}", "-".repeat(60));
         }
     }
 
@@ -244,22 +250,34 @@ impl InteractivePrompter {
         println!();
         self.print_separator();
 
-        if self.no_color {
+        if let Some(theme) = self.theme {
+            println!("{}", "Fix Summary:".bold());
+            println!(
+                "  {}: {}",
+                theme.style_success("Accepted"),
+                accepted.to_string().bold()
+            );
+            println!(
+                "  {}: {}",
+                theme.style_info("Manual"),
+                manual.to_string().bold()
+            );
+            println!(
+                "  {}: {}",
+                theme.style_warning("Skipped"),
+                skipped.to_string().bold()
+            );
+            println!(
+                "  {}: {}",
+                "Total fixed".bold(),
+                theme.style_success(&(accepted + manual).to_string()).bold()
+            );
+        } else {
             println!("Fix Summary:");
             println!("  Accepted: {accepted}");
             println!("  Manual: {manual}");
             println!("  Skipped: {skipped}");
             println!("  Total fixed: {}", accepted + manual);
-        } else {
-            println!("{}", "Fix Summary:".bold());
-            println!("  {}: {}", "Accepted".green(), accepted.to_string().bold());
-            println!("  {}: {}", "Manual".cyan(), manual.to_string().bold());
-            println!("  {}: {}", "Skipped".yellow(), skipped.to_string().bold());
-            println!(
-                "  {}: {}",
-                "Total fixed".bold(),
-                (accepted + manual).to_string().green().bold()
-            );
         }
 
         self.print_separator();
@@ -286,11 +304,17 @@ mod tests {
 
     #[test]
     fn test_prompter_creation() {
-        let prompter = InteractivePrompter::new(false);
-        assert!(!prompter.no_color);
+        use lash_tui::colors::{Theme, REGISTRY};
 
-        let prompter = InteractivePrompter::new(true);
-        assert!(prompter.no_color);
+        let prompter = InteractivePrompter::new(None);
+        assert!(prompter.theme.is_none());
+
+        // With a theme
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let tui_theme = Theme::new(scheme.clone());
+        let cli_theme = CliTheme::new(tui_theme, true);
+        let prompter = InteractivePrompter::new(Some(&cli_theme));
+        assert!(prompter.theme.is_some());
     }
 
     // Note: Interactive tests would require mocking stdin/stdout,

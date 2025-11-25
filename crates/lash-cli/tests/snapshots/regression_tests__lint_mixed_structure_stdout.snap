@@ -14,4 +14,4 @@ expression: normalized_stdout
   help: Add './root-task-2.md' to ./lash.index.md or move to an archive directory
 ./root-task-3.md:0:0: warning[W_INDEX_ORPHAN]: File './root-task-3.md' is not referenced in the root index
   help: Add './root-task-3.md' to ./lash.index.md or move to an archive directory
-[32m✓ Linting passed (with warnings)[39m
+✓ Linting passed (with warnings)

@@ -8,6 +8,8 @@ use lash_db::{graph_builder::GraphBuilder, open_database};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use lash_cli::theme::CliTheme;
+
 use crate::utils::file_discovery::find_project_root;
 
 /// Output format for graph export
@@ -31,6 +33,8 @@ pub struct GraphArgs {
     pub output: Option<PathBuf>,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
+    /// Optional CLI theme for styling
+    pub theme: Option<CliTheme>,
 }
 
 /// Execute the graph command
@@ -63,8 +67,16 @@ pub fn execute(args: &GraphArgs) -> Result<i32> {
 
     // Check if database exists
     if !db_path.exists() {
-        eprintln!("Database not found at {}", db_path.display());
-        eprintln!("Run `lash index` to create the database.");
+        let error_msg = format!("Database not found at {}", db_path.display());
+        let suggestion_msg = "Run `lash index` to create the database.";
+
+        if let Some(theme) = &args.theme {
+            eprintln!("{}", theme.style_error(&error_msg));
+            eprintln!("{}", theme.style_info(suggestion_msg));
+        } else {
+            eprintln!("{error_msg}");
+            eprintln!("{suggestion_msg}");
+        }
         return Ok(3); // Exit code 3 for DB error
     }
 
@@ -259,6 +271,7 @@ mod tests {
             hide_completed: false,
             output: None,
             project_root: None,
+            theme: None,
         };
 
         let options = build_filter_options(&args);
@@ -274,6 +287,7 @@ mod tests {
             hide_completed: false,
             output: None,
             project_root: None,
+            theme: None,
         };
 
         let options = build_filter_options(&args);
@@ -289,6 +303,7 @@ mod tests {
             hide_completed: true,
             output: None,
             project_root: None,
+            theme: None,
         };
 
         let options = build_filter_options(&args);

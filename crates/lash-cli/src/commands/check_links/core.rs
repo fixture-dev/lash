@@ -7,6 +7,8 @@ use lash_db::open_database;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use lash_cli::theme::CliTheme;
+
 use crate::utils::file_discovery::find_project_root;
 
 /// Arguments for the check-links command (legacy, kept for potential future use)
@@ -19,6 +21,8 @@ pub struct CheckLinksArgs {
     pub no_color: bool,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
+    /// Optional CLI theme for styling
+    pub theme: Option<CliTheme>,
 }
 
 /// A broken link report entry
@@ -99,7 +103,7 @@ pub fn execute(args: &CheckLinksArgs) -> Result<i32> {
     if args.json {
         output_json_report(&report)?;
     } else {
-        output_text_report(&report, args.no_color);
+        output_text_report(&report, args.theme.as_ref());
     }
 
     // Return exit code based on findings
@@ -198,15 +202,13 @@ pub fn output_json_report(report: &BrokenLinksReport) -> Result<()> {
 }
 
 /// Output broken links report as human-readable text
-pub fn output_text_report(report: &BrokenLinksReport, no_color: bool) {
+pub fn output_text_report(report: &BrokenLinksReport, theme: Option<&CliTheme>) {
     use owo_colors::OwoColorize;
-
-    let use_color = !no_color;
 
     // Header
     if report.total_broken == 0 {
-        if use_color {
-            println!("{}", "No broken links found!".green().bold());
+        if let Some(theme) = theme {
+            println!("{}", theme.style_success("No broken links found!"));
         } else {
             println!("No broken links found!");
         }
@@ -214,12 +216,10 @@ pub fn output_text_report(report: &BrokenLinksReport, no_color: bool) {
     }
 
     // Issues found
-    if use_color {
+    if let Some(theme) = theme {
         println!(
             "{}",
-            format!("Found {} broken link(s)", report.total_broken)
-                .red()
-                .bold()
+            theme.style_error(&format!("Found {} broken link(s)", report.total_broken))
         );
     } else {
         println!("Found {} broken link(s)", report.total_broken);
@@ -228,29 +228,33 @@ pub fn output_text_report(report: &BrokenLinksReport, no_color: bool) {
 
     // Group by file
     for file_links in &report.by_file {
-        if use_color {
+        if let Some(theme) = theme {
             println!(
                 "{} ({})",
-                file_links.file_path.cyan().bold(),
-                format!("{} broken", file_links.count).red()
+                theme.style_info(&file_links.file_path).bold(),
+                theme.style_error(&format!("{} broken", file_links.count))
             );
         } else {
             println!("{} ({} broken)", file_links.file_path, file_links.count);
         }
 
         for link in &file_links.links {
-            if use_color {
+            if let Some(theme) = theme {
                 println!(
                     "  {} {}",
-                    "•".dimmed(),
-                    format!("Task: {}", link.from_task_full_id).yellow()
+                    theme.style_muted("•"),
+                    theme.style_warning(&format!("Task: {}", link.from_task_full_id))
                 );
                 println!(
                     "    {} {}",
-                    "Broken reference:".dimmed(),
-                    link.raw_ref.red()
+                    theme.style_muted("Broken reference:"),
+                    theme.style_error(&link.raw_ref)
                 );
-                println!("    {} {}", "Dependency kind:".dimmed(), link.kind.dimmed());
+                println!(
+                    "    {} {}",
+                    theme.style_muted("Dependency kind:"),
+                    theme.style_muted(&link.kind)
+                );
             } else {
                 println!("  • Task: {}", link.from_task_full_id);
                 println!("    Broken reference: {}", link.raw_ref);
@@ -262,14 +266,17 @@ pub fn output_text_report(report: &BrokenLinksReport, no_color: bool) {
 
     // Suggestion
     println!();
-    if use_color {
+    if let Some(theme) = theme {
         println!("{}", "What to do:".bold());
         println!("  1. Check that the referenced tasks exist in your Markdown files");
         println!(
             "  2. Fix the {} annotations in the files above",
-            "@depends-on".cyan()
+            theme.style_info("@depends-on")
         );
-        println!("  3. Run {} to rebuild the index", "lash index".cyan());
+        println!(
+            "  3. Run {} to rebuild the index",
+            theme.style_info("lash index")
+        );
     } else {
         println!("What to do:");
         println!("  1. Check that the referenced tasks exist in your Markdown files");

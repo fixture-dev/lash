@@ -6,9 +6,9 @@
 #![allow(clippy::format_push_string)]
 #![allow(clippy::trivially_copy_pass_by_ref)]
 
+use lash_cli::theme::CliTheme;
 use lash_core::linter::LintDiagnostic;
 use lash_types::Severity;
-use owo_colors::{OwoColorize, Stream};
 use std::fs;
 use std::io::{self, Write};
 
@@ -20,7 +20,7 @@ use std::io::{self, Write};
 ///
 /// * `diagnostic` - The diagnostic to format
 /// * `show_snippet` - Whether to show code snippet with error location
-/// * `use_color` - Whether to use colored output
+/// * `theme` - Optional CLI theme for styling (if None, no colors are used)
 ///
 /// # Returns
 ///
@@ -28,39 +28,48 @@ use std::io::{self, Write};
 pub fn format_diagnostic(
     diagnostic: &LintDiagnostic,
     show_snippet: bool,
-    use_color: bool,
+    theme: Option<&CliTheme>,
 ) -> String {
     let mut output = String::new();
 
     // Format the main diagnostic line
-    let severity_str = format_severity(&diagnostic.severity, use_color);
+    let severity_str = format_severity(&diagnostic.severity, theme);
     let location = &diagnostic.location;
 
-    if use_color {
-        output.push_str(&format!(
-            "{}:{}:{}: {}[{}]: {}\n",
-            location.file_path.display(),
-            location.line.unwrap_or(0),
-            location.column.unwrap_or(0),
-            severity_str,
-            diagnostic.code,
-            diagnostic.message
-        ));
+    // Format file path with muted color if theme is available
+    let file_path_str = if let Some(t) = theme {
+        t.style_muted(&location.file_path.display().to_string())
     } else {
-        output.push_str(&format!(
-            "{}:{}:{}: {}[{}]: {}\n",
-            location.file_path.display(),
-            location.line.unwrap_or(0),
-            location.column.unwrap_or(0),
-            severity_to_string(&diagnostic.severity),
-            diagnostic.code,
-            diagnostic.message
-        ));
-    }
+        location.file_path.display().to_string()
+    };
+
+    // Format line numbers with muted color if theme is available
+    let line_col_str = format!(
+        "{}:{}",
+        location.line.unwrap_or(0),
+        location.column.unwrap_or(0)
+    );
+    let line_col_display = if let Some(t) = theme {
+        t.style_muted(&line_col_str)
+    } else {
+        line_col_str
+    };
+
+    // Format the code with appropriate color
+    let code_str = if let Some(t) = theme {
+        t.style_label(diagnostic.code)
+    } else {
+        diagnostic.code.to_string()
+    };
+
+    output.push_str(&format!(
+        "{}:{}: {}[{}]: {}\n",
+        file_path_str, line_col_display, severity_str, code_str, diagnostic.message
+    ));
 
     // Show code snippet if requested and available
     if show_snippet {
-        if let Some(snippet) = get_code_snippet(diagnostic) {
+        if let Some(snippet) = get_code_snippet(diagnostic, theme) {
             output.push_str(&snippet);
             output.push('\n');
         }
@@ -68,38 +77,27 @@ pub fn format_diagnostic(
 
     // Show help text if available
     if let Some(help) = &diagnostic.help {
-        if use_color {
-            output.push_str(&format!(
-                "  {}: {}\n",
-                "help".if_supports_color(Stream::Stdout, |text| text.blue()),
-                help
-            ));
+        let help_label = if let Some(t) = theme {
+            t.style_info("help")
         } else {
-            output.push_str(&format!("  help: {help}\n"));
-        }
+            "help".to_string()
+        };
+        output.push_str(&format!("  {help_label}: {help}\n"));
     }
 
     output
 }
 
 /// Format severity level with color
-fn format_severity(severity: &Severity, use_color: bool) -> String {
+fn format_severity(severity: &Severity, theme: Option<&CliTheme>) -> String {
     let text = severity_to_string(severity);
 
-    if use_color {
+    if let Some(t) = theme {
         match severity {
-            Severity::Error => text
-                .if_supports_color(Stream::Stdout, |t| t.red())
-                .to_string(),
-            Severity::Warning => text
-                .if_supports_color(Stream::Stdout, |t| t.yellow())
-                .to_string(),
-            Severity::Info => text
-                .if_supports_color(Stream::Stdout, |t| t.blue())
-                .to_string(),
-            Severity::Hint => text
-                .if_supports_color(Stream::Stdout, |t| t.cyan())
-                .to_string(),
+            Severity::Error => t.style_error(&text),
+            Severity::Warning => t.style_warning(&text),
+            Severity::Info => t.style_info(&text),
+            Severity::Hint => t.style_label(&text), // Use label color for hints (cyan-ish)
         }
     } else {
         text
@@ -118,7 +116,7 @@ fn severity_to_string(severity: &Severity) -> String {
 }
 
 /// Get a code snippet showing the error location
-fn get_code_snippet(diagnostic: &LintDiagnostic) -> Option<String> {
+fn get_code_snippet(diagnostic: &LintDiagnostic, theme: Option<&CliTheme>) -> Option<String> {
     // If the diagnostic already has a snippet, use it
     if let Some(snippet) = &diagnostic.snippet {
         return Some(format!("  {snippet}"));
@@ -141,15 +139,29 @@ fn get_code_snippet(diagnostic: &LintDiagnostic) -> Option<String> {
 
     // Show the line with a pointer to the error location
     let mut snippet = String::new();
-    snippet.push_str(&format!("  {line} | {line_text}\n"));
 
-    // Add a pointer line
+    // Format line number with muted color
+    let line_num_str = format!("{line}");
+    let line_num_display = if let Some(t) = theme {
+        t.style_muted(&line_num_str)
+    } else {
+        line_num_str.clone()
+    };
+
+    snippet.push_str(&format!("  {line_num_display} | {line_text}\n"));
+
+    // Add a pointer line - use error color for the caret
     let pointer_offset = column.saturating_sub(1);
-    let pointer = format!(
-        "  {} | {}^\n",
-        " ".repeat(line.to_string().len()),
-        " ".repeat(pointer_offset)
-    );
+    let spaces = " ".repeat(line.to_string().len());
+    let indent = " ".repeat(pointer_offset);
+
+    let caret = if let Some(t) = theme {
+        t.style_error("^")
+    } else {
+        "^".to_string()
+    };
+
+    let pointer = format!("  {spaces} | {indent}{caret}\n");
     snippet.push_str(&pointer);
 
     Some(snippet)
@@ -161,8 +173,12 @@ fn get_code_snippet(diagnostic: &LintDiagnostic) -> Option<String> {
 ///
 /// * `diagnostics` - List of all diagnostics
 /// * `files_checked` - Number of files checked
-/// * `use_color` - Whether to use colored output
-pub fn print_summary(diagnostics: &[LintDiagnostic], files_checked: usize, use_color: bool) {
+/// * `theme` - Optional CLI theme for styling
+pub fn print_summary(
+    diagnostics: &[LintDiagnostic],
+    files_checked: usize,
+    theme: Option<&CliTheme>,
+) {
     let error_count = diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Error)
@@ -184,61 +200,48 @@ pub fn print_summary(diagnostics: &[LintDiagnostic], files_checked: usize, use_c
     if error_count == 0 {
         if warning_count == 0 && info_count == 0 && hint_count == 0 {
             // Perfect - no issues at all
-            if use_color {
-                println!("{}", "✓ All files passed linting".green());
+            let msg = "✓ All files passed linting";
+            if let Some(t) = theme {
+                println!("{}", t.style_success(msg));
             } else {
-                println!("✓ All files passed linting");
+                println!("{msg}");
             }
             return;
         }
         // No errors, but some warnings/info/hints
-        if use_color {
-            println!("{}", "✓ Linting passed (with warnings)".green());
+        let msg = "✓ Linting passed (with warnings)";
+        if let Some(t) = theme {
+            println!("{}", t.style_success(msg));
         } else {
-            println!("✓ Linting passed (with warnings)");
+            println!("{msg}");
         }
     }
 
     let mut summary = format!("\nChecked {files_checked} files: ");
 
-    if use_color {
+    if let Some(t) = theme {
         let error_str = if error_count > 0 {
-            format!(
-                "{}",
-                error_count.if_supports_color(Stream::Stdout, |n| n.red())
-            )
+            t.style_error(&error_count.to_string())
         } else {
-            format!(
-                "{}",
-                error_count.if_supports_color(Stream::Stdout, |n| n.green())
-            )
+            t.style_success(&error_count.to_string())
         };
 
         let warning_str = if warning_count > 0 {
-            format!(
-                "{}",
-                warning_count.if_supports_color(Stream::Stdout, |n| n.yellow())
-            )
+            t.style_warning(&warning_count.to_string())
         } else {
-            format!("{warning_count}")
+            warning_count.to_string()
         };
 
         let info_str = if info_count > 0 {
-            format!(
-                "{}",
-                info_count.if_supports_color(Stream::Stdout, |n| n.blue())
-            )
+            t.style_info(&info_count.to_string())
         } else {
-            format!("{info_count}")
+            info_count.to_string()
         };
 
         let hint_str = if hint_count > 0 {
-            format!(
-                "{}",
-                hint_count.if_supports_color(Stream::Stdout, |n| n.cyan())
-            )
+            t.style_label(&hint_count.to_string())
         } else {
-            format!("{hint_count}")
+            hint_count.to_string()
         };
 
         summary.push_str(&format!(
@@ -323,18 +326,18 @@ pub fn format_json_output(
 /// # Arguments
 ///
 /// * `diagnostics` - List of diagnostics to print
-/// * `use_color` - Whether to use colored output
+/// * `theme` - Optional CLI theme for styling
 /// * `show_snippets` - Whether to show code snippets
 pub fn print_diagnostics(
     diagnostics: &[LintDiagnostic],
-    use_color: bool,
+    theme: Option<&CliTheme>,
     show_snippets: bool,
 ) -> io::Result<()> {
     let stdout = io::stdout();
     let mut handle = stdout.lock();
 
     for diagnostic in diagnostics {
-        let formatted = format_diagnostic(diagnostic, show_snippets, use_color);
+        let formatted = format_diagnostic(diagnostic, show_snippets, theme);
         write!(handle, "{formatted}")?;
     }
 
@@ -365,7 +368,7 @@ mod tests {
             5,
         );
 
-        let output = format_diagnostic(&diag, false, false);
+        let output = format_diagnostic(&diag, false, None);
         assert!(output.contains("test.md:10:5"));
         assert!(output.contains("error[E_TEST]"));
         assert!(output.contains("Test error message"));
@@ -382,7 +385,7 @@ mod tests {
         );
         diag.help = Some("Try fixing this way".to_string());
 
-        let output = format_diagnostic(&diag, false, false);
+        let output = format_diagnostic(&diag, false, None);
         assert!(output.contains("help: Try fixing this way"));
     }
 

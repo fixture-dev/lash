@@ -527,7 +527,7 @@ Task 8 implemented the color scheme infrastructure and TUI integration. The `--c
   - [x] Blockers highlighted in red (theme's error color)
   - [x] Overall layout respects theme
 - [ ] Apply theming to other commands
-  - [ ] `graph`: dependency graph edges/nodes use theme colors
+  - [x] `graph`: error/info messages use theme colors (structured output formats remain plain)
   - [ ] `check-links`: errors/warnings use theme colors
   - [ ] `lint`: validation messages use theme colors
   - [ ] Error messages across all commands use theme's error color

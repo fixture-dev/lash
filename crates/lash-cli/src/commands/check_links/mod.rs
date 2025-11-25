@@ -10,8 +10,9 @@ mod interactive;
 
 use anyhow::{Context, Result};
 use lash_db::open_database;
-use owo_colors::OwoColorize;
 use std::path::{Path, PathBuf};
+
+use lash_cli::theme::CliTheme;
 
 use crate::utils::file_discovery::find_project_root;
 
@@ -27,8 +28,6 @@ use interactive::{FixDecision, InteractivePrompter};
 pub struct CheckLinksArgs {
     /// Output JSON diagnostics
     pub json: bool,
-    /// Disable colored output
-    pub no_color: bool,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
     /// Attempt to fix broken links with fuzzy matching
@@ -37,6 +36,8 @@ pub struct CheckLinksArgs {
     pub yes: bool,
     /// Show what would be fixed without applying changes (requires --fix)
     pub dry_run: bool,
+    /// Optional CLI theme for styling
+    pub theme: Option<CliTheme>,
 }
 
 /// Execute the check-links command
@@ -85,7 +86,7 @@ pub fn execute(args: &CheckLinksArgs) -> Result<i32> {
         if args.json {
             core::output_json_report(&report)?;
         } else {
-            core::output_text_report(&report, args.no_color);
+            core::output_text_report(&report, args.theme.as_ref());
         }
         tracing::info!("No broken links found");
         return Ok(0);
@@ -100,7 +101,7 @@ pub fn execute(args: &CheckLinksArgs) -> Result<i32> {
     if args.json {
         core::output_json_report(&report)?;
     } else {
-        core::output_text_report(&report, args.no_color);
+        core::output_text_report(&report, args.theme.as_ref());
     }
 
     tracing::warn!(broken_count = report.total_broken, "Found broken links");
@@ -122,7 +123,7 @@ fn execute_fix_mode(
     let matcher = FuzzyMatcher::default();
 
     // Initialize interactive prompter (for interactive mode)
-    let prompter = InteractivePrompter::new(args.no_color);
+    let prompter = InteractivePrompter::new(args.theme.as_ref());
 
     // Initialize annotation editor
     let editor = AnnotationEditor::new(project_root.to_path_buf(), !args.dry_run);
@@ -145,49 +146,49 @@ fn execute_fix_mode(
                 // Auto-accept mode: only apply high-confidence fixes
                 if let Some(best) = candidates.first() {
                     if best.score >= 0.85 {
-                        if args.no_color {
+                        if let Some(theme) = &args.theme {
+                            println!(
+                                "{} Auto-fixing {} -> {} ({}%)",
+                                theme.style_success("✓"),
+                                theme.style_error(&broken_link.raw_ref),
+                                theme.style_success(&best.task_id),
+                                (best.score * 100.0) as u8
+                            );
+                        } else {
                             println!(
                                 "Auto-fixing {} -> {} ({}%)",
                                 broken_link.raw_ref,
                                 best.task_id,
                                 (best.score * 100.0) as u8
                             );
-                        } else {
-                            println!(
-                                "{} Auto-fixing {} -> {} ({}%)",
-                                "✓".green(),
-                                broken_link.raw_ref.red(),
-                                best.task_id.green(),
-                                (best.score * 100.0) as u8
-                            );
                         }
                         Some(FixDecision::Accept(best.task_id.clone()))
                     } else {
-                        if args.no_color {
+                        if let Some(theme) = &args.theme {
                             println!(
-                                "Skipping {} (confidence too low: {}%)",
-                                broken_link.raw_ref,
+                                "{} Skipping {} (confidence too low: {}%)",
+                                theme.style_warning("⊘"),
+                                theme.style_error(&broken_link.raw_ref),
                                 (best.score * 100.0) as u8
                             );
                         } else {
                             println!(
-                                "{} Skipping {} (confidence too low: {}%)",
-                                "⊘".yellow(),
-                                broken_link.raw_ref.red(),
+                                "Skipping {} (confidence too low: {}%)",
+                                broken_link.raw_ref,
                                 (best.score * 100.0) as u8
                             );
                         }
                         Some(FixDecision::Skip)
                     }
                 } else {
-                    if args.no_color {
-                        println!("Skipping {} (no candidates)", broken_link.raw_ref);
-                    } else {
+                    if let Some(theme) = &args.theme {
                         println!(
                             "{} Skipping {} (no candidates)",
-                            "⊘".yellow(),
-                            broken_link.raw_ref.red()
+                            theme.style_warning("⊘"),
+                            theme.style_error(&broken_link.raw_ref)
                         );
+                    } else {
+                        println!("Skipping {} (no candidates)", broken_link.raw_ref);
                     }
                     Some(FixDecision::Skip)
                 }
@@ -212,17 +213,17 @@ fn execute_fix_mode(
                 match &decision {
                     FixDecision::Accept(new_ref) | FixDecision::Manual(new_ref) => {
                         if args.dry_run {
-                            if args.no_color {
+                            if let Some(theme) = &args.theme {
                                 println!(
-                                    "[DRY RUN] Would fix {} -> {}",
-                                    broken_link.raw_ref, new_ref
+                                    "{} Would fix {} -> {}",
+                                    theme.style_info("[DRY RUN]"),
+                                    theme.style_error(&broken_link.raw_ref),
+                                    theme.style_success(new_ref)
                                 );
                             } else {
                                 println!(
-                                    "{} Would fix {} -> {}",
-                                    "[DRY RUN]".cyan().bold(),
-                                    broken_link.raw_ref.red(),
-                                    new_ref.green()
+                                    "[DRY RUN] Would fix {} -> {}",
+                                    broken_link.raw_ref, new_ref
                                 );
                             }
                         } else {
@@ -241,24 +242,28 @@ fn execute_fix_mode(
                                 &broken_link.raw_ref,
                                 new_ref,
                             ) {
-                                if args.no_color {
-                                    eprintln!("Failed to apply fix: {e}");
+                                if let Some(theme) = &args.theme {
+                                    eprintln!(
+                                        "{} Failed to apply fix: {}",
+                                        theme.style_error("✗"),
+                                        e
+                                    );
                                 } else {
-                                    eprintln!("{} Failed to apply fix: {}", "✗".red().bold(), e);
+                                    eprintln!("Failed to apply fix: {e}");
                                 }
                                 skipped += 1;
                                 continue;
                             }
 
-                            if args.no_color {
-                                println!("Fixed {} -> {}", broken_link.raw_ref, new_ref);
-                            } else {
+                            if let Some(theme) = &args.theme {
                                 println!(
                                     "{} Fixed {} -> {}",
-                                    "✓".green().bold(),
-                                    broken_link.raw_ref.red(),
-                                    new_ref.green()
+                                    theme.style_success("✓"),
+                                    theme.style_error(&broken_link.raw_ref),
+                                    theme.style_success(new_ref)
                                 );
+                            } else {
+                                println!("Fixed {} -> {}", broken_link.raw_ref, new_ref);
                             }
                         }
 
@@ -292,38 +297,37 @@ fn execute_fix_mode(
 
     // Re-index if we made changes (and not in dry-run mode)
     if !args.dry_run && (accepted > 0 || manual > 0) {
-        if args.no_color {
-            println!();
-            println!("Re-indexing project...");
-        } else {
-            println!();
+        println!();
+        if args.theme.is_some() {
+            use owo_colors::OwoColorize;
             println!("{}", "Re-indexing project...".bold());
+        } else {
+            println!("Re-indexing project...");
         }
 
         // Run indexing
         if let Err(e) = reindex_project(project_root) {
-            if args.no_color {
+            if let Some(theme) = &args.theme {
+                eprintln!("{} Failed to re-index: {}", theme.style_error("✗"), e);
+                eprintln!("Please run {} manually.", theme.style_info("lash index"));
+            } else {
                 eprintln!("Failed to re-index: {e}");
                 eprintln!("Please run 'lash index' manually.");
-            } else {
-                eprintln!("{} Failed to re-index: {}", "✗".red().bold(), e);
-                eprintln!("Please run {} manually.", "lash index".cyan());
             }
-        } else if args.no_color {
-            println!("Re-indexing complete");
+        } else if let Some(theme) = &args.theme {
+            println!("{} Re-indexing complete", theme.style_success("✓"));
         } else {
-            println!("{} Re-indexing complete", "✓".green().bold());
+            println!("Re-indexing complete");
         }
     }
 
     // Determine exit code
     if user_quit {
-        if args.no_color {
-            println!();
-            println!("Exited by user.");
+        println!();
+        if let Some(theme) = &args.theme {
+            println!("{}", theme.style_warning("Exited by user."));
         } else {
-            println!();
-            println!("{}", "Exited by user.".yellow());
+            println!("Exited by user.");
         }
         Ok(1)
     } else if skipped == report.total_broken {
@@ -373,16 +377,17 @@ mod tests {
     fn test_args_structure() {
         let args = CheckLinksArgs {
             json: false,
-            no_color: false,
             project_root: None,
             fix: false,
             yes: false,
             dry_run: false,
+            theme: None,
         };
 
         assert!(!args.fix);
         assert!(!args.yes);
         assert!(!args.dry_run);
+        assert!(args.theme.is_none());
     }
 
     #[test]

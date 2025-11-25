@@ -18,4 +18,4 @@ expression: normalized_stdout
   help: Add './level1/level2/level3/level4/level5/middleware.md' to ./lash.index.md or move to an archive directory
 ./level1/level2/services.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/level2/services.md' is not referenced in the root index
   help: Add './level1/level2/services.md' to ./lash.index.md or move to an archive directory
-[32m✓ Linting passed (with warnings)[39m
+✓ Linting passed (with warnings)

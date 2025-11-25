@@ -18,4 +18,4 @@ expression: normalized_stdout
   help: Add './frontend/state.md' to ./lash.index.md or move to an archive directory
 ./frontend/tests.md:0:0: warning[W_INDEX_ORPHAN]: File './frontend/tests.md' is not referenced in the root index
   help: Add './frontend/tests.md' to ./lash.index.md or move to an archive directory
-[32m✓ Linting passed (with warnings)[39m
+✓ Linting passed (with warnings)
