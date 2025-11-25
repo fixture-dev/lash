@@ -64,6 +64,7 @@ pub fn render(frame: &mut Frame, area: Rect, _state: &AppState) {
             Style::default().add_modifier(Modifier::BOLD),
         )]),
         Line::from("  ?              Toggle this help"),
+        Line::from("  t              Open theme selector"),
         Line::from("  q or Ctrl-c    Quit"),
         Line::from(""),
         Line::from(vec![Span::styled(

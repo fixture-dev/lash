@@ -13,11 +13,12 @@ use crate::ui::themes;
 /// Render the navigation pane
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let is_focused = state.focused_pane == FocusedPane::Navigation;
+    let theme = &state.theme;
 
     let border_style = if is_focused {
-        themes::focused_border_style()
+        themes::focused_border_style(theme)
     } else {
-        themes::unfocused_border_style()
+        themes::unfocused_border_style(theme)
     };
 
     let block = Block::default()
@@ -39,9 +40,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             };
 
             let style = if i == state.selected_file_index {
-                themes::selected_style()
+                themes::selected_style(theme)
             } else {
-                themes::file_status_style(file.status)
+                themes::file_status_style(file.status, theme)
             };
 
             let line = Line::from(vec![
@@ -56,7 +57,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(themes::selected_style());
+        .highlight_style(themes::selected_style(theme));
 
     // Create list state with current selection
     let mut list_state = ListState::default();

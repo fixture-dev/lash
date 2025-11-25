@@ -13,11 +13,12 @@ use crate::ui::themes;
 /// Render the detail pane
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let is_focused = state.focused_pane == FocusedPane::Detail;
+    let theme = &state.theme;
 
     let border_style = if is_focused {
-        themes::focused_border_style()
+        themes::focused_border_style(theme)
     } else {
-        themes::unfocused_border_style()
+        themes::unfocused_border_style(theme)
     };
 
     // Get title from selected file
@@ -47,12 +48,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             .enumerate()
             .map(|(i, task)| {
                 let indent = "  ".repeat(task.depth as usize);
-                let checkbox = themes::checkbox_char(task.status);
+                let checkbox = themes::checkbox_char(task.status, theme);
 
                 let style = if i == state.selected_task_index {
-                    themes::selected_style()
+                    themes::selected_style(theme)
                 } else {
-                    themes::status_style(task.status)
+                    themes::status_style(task.status, theme)
                 };
 
                 let line = Line::from(vec![
@@ -68,7 +69,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
         let list = List::new(items)
             .block(block)
-            .highlight_style(themes::selected_style());
+            .highlight_style(themes::selected_style(theme));
 
         // Create list state with current selection
         let mut list_state = ListState::default();

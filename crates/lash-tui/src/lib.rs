@@ -7,6 +7,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 mod app;
+pub mod colors;
 mod error;
 mod event;
 mod state;
@@ -25,6 +26,19 @@ pub use error::{TuiError, TuiResult};
 /// - Terminal setup fails
 /// - TUI rendering encounters fatal error
 pub fn run(db_path: &std::path::Path) -> TuiResult<()> {
-    let mut app = TuiApp::new(db_path)?;
+    run_with_scheme(db_path, None)
+}
+
+/// Run the TUI application with a specific color scheme
+///
+/// # Errors
+///
+/// Returns error if:
+/// - Database connection fails
+/// - Terminal setup fails
+/// - TUI rendering encounters fatal error
+/// - Color scheme is invalid
+pub fn run_with_scheme(db_path: &std::path::Path, color_scheme: Option<&str>) -> TuiResult<()> {
+    let mut app = TuiApp::new_with_scheme(db_path, color_scheme)?;
     app.run()
 }
