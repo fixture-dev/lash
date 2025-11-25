@@ -2,4 +2,4 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized_stdout
 ---
-[1m[32mNo broken links found![39m[0m
+No broken links found!

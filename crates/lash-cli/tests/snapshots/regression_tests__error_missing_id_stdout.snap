@@ -4,4 +4,4 @@ expression: normalized_stdout
 ---
 ./no-id.md:0:0: warning[W_INDEX_ORPHAN]: File './no-id.md' is not referenced in the root index
   help: Add './no-id.md' to ./lash.index.md or move to an archive directory
-[32m✓ Linting passed (with warnings)[39m
+✓ Linting passed (with warnings)

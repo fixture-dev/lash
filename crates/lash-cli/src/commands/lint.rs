@@ -10,6 +10,7 @@
 use anyhow::Context;
 use lash_cli::command::Command;
 use lash_cli::context::Context as CliContext;
+use lash_cli::theme::CliTheme;
 use lash_core::linter::{register_default_rules, LintConfig, LintDiagnostic};
 use lash_core::parser::parse_file;
 use lash_types::{error::Result as LashResult, LashConfig, Severity, TaskFile};
@@ -87,6 +88,9 @@ impl Command for LintArgs {
 /// Exit code: 0 (no errors), 1 (general error), 2 (lint errors found)
 #[instrument(skip(args), fields(paths = ?args.paths, fix = args.fix, rules = ?args.rules))]
 pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
+    // Load theme based on no_color flag
+    let theme = CliTheme::load(None, !args.no_color)?;
+
     // Determine paths to lint
     let paths = if args.paths.is_empty() {
         // No paths specified - lint entire project
@@ -107,7 +111,12 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     tracing::info!(file_count = files.len(), "Discovered files to lint");
 
     if files.is_empty() {
-        eprintln!("No markdown files found to lint");
+        let msg = "No markdown files found to lint";
+        if let Some(t) = &theme {
+            eprintln!("{}", t.style_warning(msg));
+        } else {
+            eprintln!("{msg}");
+        }
         return Ok(0);
     }
 
@@ -118,7 +127,7 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     let lint_config = configure_linter(&args);
 
     // Parse all files first
-    let (parsed_files, parse_errors) = parse_files(&files, &project_config, &args)?;
+    let (parsed_files, parse_errors) = parse_files(&files, &project_config, &args, theme.as_ref())?;
 
     // Lint all files
     let mut diagnostics = lint_files(&parsed_files, &project_config, &lint_config, &args)?;
@@ -131,7 +140,7 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
 
     // Apply auto-fixes if requested
     if args.fix {
-        apply_fixes(&filtered_diagnostics, &parsed_files)?;
+        apply_fixes(&filtered_diagnostics, &parsed_files, theme.as_ref())?;
     }
 
     // Output results
@@ -140,11 +149,11 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
         println!("{json}");
     } else {
         // Print diagnostics in human-readable format
-        print_diagnostics(&filtered_diagnostics, !args.no_color, true)?;
+        print_diagnostics(&filtered_diagnostics, theme.as_ref(), true)?;
 
         // Print summary
         if !filtered_diagnostics.is_empty() || files.len() > 1 {
-            print_summary(&filtered_diagnostics, files.len(), !args.no_color);
+            print_summary(&filtered_diagnostics, files.len(), theme.as_ref());
         }
     }
 
@@ -198,11 +207,12 @@ fn configure_linter(args: &LintArgs) -> LintConfig {
 /// Parse all files with progress reporting
 ///
 /// Returns a tuple of (successfully parsed files, parse error diagnostics)
-#[instrument(skip(files, config, args), fields(file_count = files.len()))]
+#[instrument(skip(files, config, args, theme), fields(file_count = files.len()))]
 fn parse_files(
     files: &[PathBuf],
     config: &LashConfig,
     args: &LintArgs,
+    theme: Option<&CliTheme>,
 ) -> anyhow::Result<(HashMap<PathBuf, TaskFile>, Vec<LintDiagnostic>)> {
     let mut parsed_files = HashMap::new();
     let mut parse_errors = Vec::new();
@@ -227,7 +237,21 @@ fn parse_files(
                 if let Some(ref pb) = pb {
                     pb.finish_and_clear();
                 }
-                eprintln!("Error parsing {}: {}", file_path.display(), e);
+
+                // Format the error message with theme
+                let file_str = if let Some(t) = theme {
+                    t.style_muted(&file_path.display().to_string())
+                } else {
+                    file_path.display().to_string()
+                };
+
+                let error_label = if let Some(t) = theme {
+                    t.style_error("Error parsing")
+                } else {
+                    "Error parsing".to_string()
+                };
+
+                eprintln!("{error_label} {file_str}: {e}");
 
                 // Create a lint diagnostic for the parse error
                 parse_errors.push(LintDiagnostic::error(
@@ -344,10 +368,11 @@ fn meets_severity_threshold(severity: &Severity, min: &Severity) -> bool {
 }
 
 /// Apply auto-fixes to files
-#[instrument(skip(diagnostics, parsed_files), fields(diagnostic_count = diagnostics.len()))]
+#[instrument(skip(diagnostics, parsed_files, theme), fields(diagnostic_count = diagnostics.len()))]
 fn apply_fixes(
     diagnostics: &[LintDiagnostic],
     parsed_files: &HashMap<PathBuf, TaskFile>,
+    theme: Option<&CliTheme>,
 ) -> anyhow::Result<()> {
     // Group diagnostics by file
     let mut fixes_by_file: HashMap<&PathBuf, Vec<&LintDiagnostic>> = HashMap::new();
@@ -362,18 +387,30 @@ fn apply_fixes(
     }
 
     if fixes_by_file.is_empty() {
-        eprintln!("No auto-fixes available");
+        let msg = "No auto-fixes available";
+        if let Some(t) = theme {
+            eprintln!("{}", t.style_warning(msg));
+        } else {
+            eprintln!("{msg}");
+        }
         return Ok(());
     }
 
-    eprintln!("Applying fixes to {} file(s)...", fixes_by_file.len());
+    let info_msg = format!("Applying fixes to {} file(s)...", fixes_by_file.len());
+    if let Some(t) = theme {
+        eprintln!("{}", t.style_info(&info_msg));
+    } else {
+        eprintln!("{info_msg}");
+    }
 
     for (file_path, file_diagnostics) in fixes_by_file {
-        eprintln!(
-            "  Fixing {}: {} fixes",
-            file_path.display(),
-            file_diagnostics.len()
-        );
+        let file_str = if let Some(t) = theme {
+            t.style_muted(&file_path.display().to_string())
+        } else {
+            file_path.display().to_string()
+        };
+
+        eprintln!("  Fixing {file_str}: {} fixes", file_diagnostics.len());
 
         // For now, we'll use the formatter to apply fixes
         // A more sophisticated implementation would apply individual fixes
@@ -388,13 +425,23 @@ fn apply_fixes(
                         .with_context(|| format!("Failed to write {}", file_path.display()))?;
                 }
                 Err(e) => {
-                    eprintln!("  Warning: Failed to format {}: {}", file_path.display(), e);
+                    let warning_label = if let Some(t) = theme {
+                        t.style_warning("Warning")
+                    } else {
+                        "Warning".to_string()
+                    };
+                    eprintln!("  {warning_label}: Failed to format {file_str}: {e}");
                 }
             }
         }
     }
 
-    eprintln!("Fixes applied successfully");
+    let success_msg = "Fixes applied successfully";
+    if let Some(t) = theme {
+        eprintln!("{}", t.style_success(success_msg));
+    } else {
+        eprintln!("{success_msg}");
+    }
 
     Ok(())
 }

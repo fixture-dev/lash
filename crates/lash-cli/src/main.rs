@@ -314,6 +314,7 @@ fn run(cli: LashCli) -> Result<()> {
                 hide_completed,
                 output,
                 project_root,
+                theme: theme.clone(),
             };
             let exit_code = commands::graph::execute(&args)?;
             process::exit(exit_code);
@@ -322,11 +323,11 @@ fn run(cli: LashCli) -> Result<()> {
         Commands::CheckLinks { fix, yes, dry_run } => {
             let args = commands::check_links::CheckLinksArgs {
                 json: cli.json,
-                no_color: cli.no_color,
                 project_root,
                 fix,
                 yes,
                 dry_run,
+                theme: theme.clone(),
             };
             let exit_code = commands::check_links::execute(&args)?;
             process::exit(exit_code);
