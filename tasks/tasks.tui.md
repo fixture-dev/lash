@@ -405,6 +405,77 @@ Optimize TUI rendering and responsiveness for large projects.
 
 ---
 
+## Task 8: Gogh Color Scheme Support
+
+**Priority:** LOW
+**Effort:** 2-3 days
+**Depends on:** Task 1, Task 6
+
+### Description
+
+Add support for Gogh color schemes (https://github.com/Gogh-Co/Gogh) with selectable schemes for both CLI and TUI. Include a scheme selector in the TUI that displays a 2x8 swatch preview grid next to each scheme name.
+
+### Subtasks
+
+- [ ] Add color scheme infrastructure
+  - [ ] Fetch and parse Gogh themes.json (https://raw.githubusercontent.com/Gogh-Co/Gogh/master/data/themes.json)
+  - [ ] Define `ColorScheme` struct with ANSI color mappings
+  - [ ] Bundle themes data with binary (embed at compile time)
+  - [ ] Implement scheme lookup by name
+- [ ] Implement CLI integration
+  - [ ] Add `--color-scheme` / `-c` CLI argument
+  - [ ] Apply scheme to all terminal output
+  - [ ] Default to "Base2Tone Desert" scheme
+  - [ ] Handle invalid scheme names gracefully
+- [ ] Implement TUI scheme selector
+  - [ ] Add scheme selector overlay/modal (bound to key like `t` for theme)
+  - [ ] Display scrollable list of scheme names
+  - [ ] Render 2x8 swatch preview grid next to each scheme name
+    - [ ] Use Gogh palette format (background, foreground, 16 ANSI colors)
+    - [ ] Display as two rows of 8 colored blocks each
+  - [ ] Allow navigation with `j/k` and selection with `Enter`
+  - [ ] Apply selected scheme immediately
+  - [ ] Close selector with `Esc`
+- [ ] Implement scheme persistence
+  - [ ] Save selected scheme to config file
+  - [ ] Load saved scheme on startup
+  - [ ] Override with CLI arg if provided
+- [ ] Add scheme preview functionality
+  - [ ] Show current scheme name in status bar (optional)
+  - [ ] Preview scheme colors before applying (in selector)
+- [ ] Handle edge cases
+  - [ ] Terminal with limited color support (fall back gracefully)
+  - [ ] Missing or corrupted themes data
+  - [ ] Theme name conflicts or duplicates
+
+### Success Criteria
+
+- [ ] CLI accepts `--color-scheme` argument and applies it correctly
+- [ ] TUI displays scheme selector with visual previews
+- [ ] 2x8 swatch grid accurately represents each scheme's colors
+- [ ] Default scheme is "Base2Tone Desert"
+- [ ] Selected scheme persists across sessions
+- [ ] All terminal output respects the selected scheme
+
+### Tests
+
+- [ ] Unit: Test theme JSON parsing
+- [ ] Unit: Test scheme lookup and fallback behavior
+- [ ] Unit: Test color mapping from Gogh format to terminal codes
+- [ ] Integration: Launch with `--color-scheme` and verify colors
+- [ ] Integration: Verify default scheme is applied
+- [ ] Manual: Test TUI scheme selector interactively
+- [ ] Manual: Verify swatch preview accuracy for multiple schemes
+- [ ] Manual: Test persistence across TUI sessions
+
+### References
+
+- Gogh repository: https://github.com/Gogh-Co/Gogh
+- Gogh color schemes gallery: https://gogh-co.github.io/Gogh/
+- Themes JSON: https://raw.githubusercontent.com/Gogh-Co/Gogh/master/data/themes.json
+
+---
+
 ## Non-Goals (for v1)
 
 - Mouse support (keyboard-only is sufficient)
