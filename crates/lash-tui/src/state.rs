@@ -103,6 +103,25 @@ pub struct ThemeSelectorState {
     pub scheme_names: Vec<String>,
 }
 
+/// Information about a selected tree node
+#[derive(Debug, Clone)]
+pub struct SelectedTreeNode {
+    /// Whether this is a directory node
+    pub is_directory: bool,
+
+    /// Whether the node is currently expanded
+    pub is_expanded: bool,
+
+    /// Whether the node has children
+    pub has_children: bool,
+
+    /// The file record if this is a file node
+    pub file_record: Option<FileRecord>,
+
+    /// Path to this node in the tree (indices at each level)
+    pub path: Vec<usize>,
+}
+
 impl AppState {
     /// Create new application state with default theme
     ///
@@ -213,7 +232,8 @@ impl AppState {
     pub fn move_down(&mut self) {
         match self.focused_pane {
             FocusedPane::Navigation => {
-                if self.selected_file_index + 1 < self.files.len() {
+                let max_index = self.visible_tree_node_count();
+                if self.selected_file_index + 1 < max_index {
                     self.selected_file_index += 1;
                 }
             }
@@ -237,8 +257,9 @@ impl AppState {
     pub fn go_bottom(&mut self) {
         match self.focused_pane {
             FocusedPane::Navigation => {
-                if !self.files.is_empty() {
-                    self.selected_file_index = self.files.len() - 1;
+                let max_index = self.visible_tree_node_count();
+                if max_index > 0 {
+                    self.selected_file_index = max_index - 1;
                 }
             }
             FocusedPane::Detail => {
@@ -333,6 +354,130 @@ impl AppState {
     #[must_use]
     pub fn selected_file(&self) -> Option<&FileRecord> {
         self.files.get(self.selected_file_index)
+    }
+
+    /// Get the selected node from the file tree view
+    ///
+    /// Returns the node at the current `selected_file_index` position in the
+    /// flattened visible tree. This accounts for expand/collapse state.
+    #[must_use]
+    pub fn selected_tree_node(&self) -> Option<SelectedTreeNode> {
+        let trees = self.file_tree.as_ref()?;
+
+        let mut current_index = 0;
+        for (root_idx, tree) in trees.iter().enumerate() {
+            if let Some(result) = Self::find_node_at_index(
+                tree,
+                self.selected_file_index,
+                &mut current_index,
+                &[root_idx],
+            ) {
+                return Some(result);
+            }
+        }
+        None
+    }
+
+    /// Recursively find the node at a given visual index
+    fn find_node_at_index(
+        node: &TreeNode<DirectoryNode>,
+        target_index: usize,
+        current_index: &mut usize,
+        path: &[usize],
+    ) -> Option<SelectedTreeNode> {
+        if *current_index == target_index {
+            return Some(SelectedTreeNode {
+                is_directory: node.data.is_directory,
+                is_expanded: node.expanded,
+                has_children: node.has_children(),
+                file_record: node.data.file_record.clone(),
+                path: path.to_vec(),
+            });
+        }
+
+        *current_index += 1;
+
+        if node.expanded {
+            for (child_idx, child) in node.children.iter().enumerate() {
+                let mut child_path = path.to_vec();
+                child_path.push(child_idx);
+                if let Some(result) =
+                    Self::find_node_at_index(child, target_index, current_index, &child_path)
+                {
+                    return Some(result);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Toggle expand/collapse on the currently selected tree node
+    ///
+    /// Returns `true` if a node was toggled, `false` if nothing was done.
+    pub fn toggle_selected_node(&mut self) -> bool {
+        let Some(selected) = self.selected_tree_node() else {
+            return false;
+        };
+
+        if !selected.is_directory || !selected.has_children {
+            return false;
+        }
+
+        let Some(trees) = &mut self.file_tree else {
+            return false;
+        };
+
+        // Navigate to the node using the path
+        if selected.path.is_empty() {
+            return false;
+        }
+
+        let root_idx = selected.path[0];
+        if root_idx >= trees.len() {
+            return false;
+        }
+
+        let mut node = &mut trees[root_idx];
+
+        for &child_idx in &selected.path[1..] {
+            if child_idx >= node.children.len() {
+                return false;
+            }
+            node = &mut node.children[child_idx];
+        }
+
+        // Toggle
+        if node.expanded {
+            node.collapse();
+        } else {
+            node.expand();
+        }
+
+        true
+    }
+
+    /// Count total visible nodes in file tree
+    ///
+    /// Used for bounds checking in `move_up`/`move_down` when tree view is active.
+    #[must_use]
+    pub fn visible_tree_node_count(&self) -> usize {
+        let Some(trees) = &self.file_tree else {
+            return self.files.len();
+        };
+
+        trees.iter().map(Self::count_visible_nodes).sum()
+    }
+
+    /// Recursively count visible nodes in a tree
+    fn count_visible_nodes(node: &TreeNode<DirectoryNode>) -> usize {
+        let mut count = 1; // This node
+        if node.expanded {
+            for child in &node.children {
+                count += Self::count_visible_nodes(child);
+            }
+        }
+        count
     }
 
     /// Get currently selected task
