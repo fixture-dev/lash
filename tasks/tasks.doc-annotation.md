@@ -87,11 +87,11 @@ This enables lean task files that link to richer context on demand, supporting b
   - [x] Check: Referenced file exists on filesystem
   - [x] Check: Path is within project root (no escaping via `../../../`)
   - [x] Check: Reject absolute paths
-- [-] Create `BrokenDocFragment` rule (deferred - lower priority)
-  - [-] Code: `W_SEM_DOC_FRAGMENT`
-  - [-] Severity: Warning
-  - [-] Check: If fragment specified, file contains matching heading
-  - [-] Note: Requires parsing target file for headings
+- [x] Create `BrokenDocFragment` rule
+  - [x] Code: `W_SEM_DOC_FRAGMENT`
+  - [x] Severity: Warning
+  - [x] Check: If fragment specified, file contains matching heading
+  - [x] Parse target file for headings using pulldown-cmark
 - [x] Add rules to default registry
 
 **Priority:** HIGH
@@ -105,6 +105,10 @@ This enables lean task files that link to richer context on demand, supporting b
 - [x] Unit: Missing file fails with `E_SEM_INVALID_DOC`
 - [x] Unit: Path escaping project root fails
 - [x] Unit: Absolute path rejected
+- [x] Unit: Fragment validation passes when heading exists
+- [x] Unit: Fragment validation fails with `W_SEM_DOC_FRAGMENT` for missing heading
+- [x] Unit: Case-insensitive fragment matching
+- [x] Unit: All heading levels (H1-H6) are detected
 
 ---
 
@@ -176,7 +180,7 @@ This enables lean task files that link to richer context on demand, supporting b
 ### Non-Goals (v1)
 
 - Automatic doc content fetching/embedding
-- Fragment validation for non-Markdown files
+- ~~Fragment validation for non-Markdown files~~ (Now implemented for Markdown files)
 - Bidirectional doc-to-task linking UI
 
 ## References

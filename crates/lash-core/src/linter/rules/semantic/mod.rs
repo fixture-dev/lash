@@ -15,8 +15,10 @@
 //! - **Estimate format** - Time estimates follow the required pattern
 //! - **Owner format** - Owner names are reasonable
 //! - **Empty titles** - Tasks have non-empty titles
+//! - **Doc fragment validation** - Fragment references point to existing headings
 
 pub mod auto_waive;
+pub mod broken_doc_fragment;
 pub mod duplicate_id;
 pub mod empty_title;
 pub mod status_consistency;
@@ -27,6 +29,7 @@ pub mod valid_label;
 pub mod valid_owner;
 
 pub use auto_waive::AutoWaiveRule;
+pub use broken_doc_fragment::BrokenDocFragmentRule;
 pub use duplicate_id::DuplicateIdRule;
 pub use empty_title::EmptyTitleRule;
 pub use status_consistency::StatusConsistencyRule;
