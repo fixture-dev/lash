@@ -4,6 +4,7 @@
 **Priority:** MEDIUM
 **Estimated Duration:** 2-3 days
 **Dependencies:** tasks.markdown-parser.md, tasks.linter.md
+**Status:** COMPLETE ✅
 
 ## Overview
 
@@ -28,17 +29,16 @@ This enables lean task files that link to richer context on demand, supporting b
 
 ### 1. Add @doc to Built-in Annotation Keys
 
-- [ ] Update annotation key whitelist
-  - [ ] Add "doc" to built-in keys in parser
-  - [ ] Update `is_annotation_allowed()` in `LintContext`
-- [ ] Define `DocRef` struct
-  - [ ] `path: PathBuf` - relative path to document
-  - [ ] `fragment: Option<String>` - optional `#section` fragment
-  - [ ] `line_num: usize` - source location for error reporting
-- [ ] Implement `DocRef::parse(value: &str) -> Result<DocRef>`
-  - [ ] Split on `#` to extract path and fragment
-  - [ ] Validate path format (no absolute paths, no `..` escaping project root)
-  - [ ] Store fragment if present
+- [x] Update annotation key whitelist
+  - [x] Add "doc" to built-in keys in parser
+  - [x] Update `is_annotation_allowed()` in `LintContext`
+- [x] Define `DocRef` struct
+  - [x] `path: String` - relative path to document
+  - [x] `fragment: Option<String>` - optional `#section` fragment
+- [x] Implement `DocRef::parse(value: &str) -> Result<DocRef>`
+  - [x] Split on `#` to extract path and fragment
+  - [x] Validate path format (no empty paths)
+  - [x] Store fragment if present
 
 **Priority:** HIGH
 **Estimate:** 0.5 days
@@ -47,24 +47,24 @@ This enables lean task files that link to richer context on demand, supporting b
 
 ### Tests
 
-- [ ] Unit: Parse `@doc: path/to/file.md`
-- [ ] Unit: Parse `@doc: path/to/file.md#section`
-- [ ] Unit: Reject absolute paths
-- [ ] Unit: Multiple `@doc` annotations accumulate
+- [x] Unit: Parse `@doc: path/to/file.md`
+- [x] Unit: Parse `@doc: path/to/file.md#section`
+- [x] Unit: Reject empty paths
+- [x] Unit: Multiple `@doc` annotations accumulate
 
 ---
 
 ### 2. Add DocRef to Data Model
 
-- [ ] Add `docs: Vec<DocRef>` field to `TaskFile` struct
-  - [ ] Populated from file-level `@doc` annotations
-- [ ] Add `docs: Vec<DocRef>` field to `Task` struct
-  - [ ] Populated from task-level inline `@doc` annotations
-- [ ] Update `AnnotationBlock` helper methods
-  - [ ] Add `get_docs() -> Vec<DocRef>` method
-- [ ] Update parser to populate doc refs
-  - [ ] Extract from header annotations
-  - [ ] Extract from task metadata blocks
+- [x] Add `docs: Vec<DocRef>` field to `FileMetadata` struct
+  - [x] Populated from file-level `@doc` annotations
+- [x] Add `docs: Vec<DocRef>` field to `TaskMetadata` struct
+  - [x] Populated from task-level `@doc` annotations
+- [x] Update `AnnotationBlock` helper methods
+  - [x] Add `get_docs() -> Vec<DocRef>` method
+- [x] Update parser to populate doc refs
+  - [x] Extract from header annotations
+  - [x] Extract from task metadata blocks
 
 **Priority:** HIGH
 **Estimate:** 0.5 days
@@ -73,25 +73,26 @@ This enables lean task files that link to richer context on demand, supporting b
 
 ### Tests
 
-- [ ] Unit: File-level `@doc` populates `TaskFile.docs`
-- [ ] Unit: Task-level `@doc` populates `Task.docs`
-- [ ] Unit: Multiple docs at both levels
+- [x] Unit: File-level `@doc` populates `FileMetadata.docs`
+- [x] Unit: Task-level `@doc` populates `TaskMetadata.docs`
+- [x] Unit: Multiple docs at both levels
 
 ---
 
 ### 3. Implement Linter Rule for Doc References
 
-- [ ] Create `ValidDocReference` rule
-  - [ ] Code: `E_SEM_INVALID_DOC`
-  - [ ] Severity: Error
-  - [ ] Check: Referenced file exists on filesystem
-  - [ ] Check: Path is within project root (no escaping via `../../../`)
-- [ ] Create `BrokenDocFragment` rule (optional, lower priority)
-  - [ ] Code: `W_SEM_DOC_FRAGMENT`
-  - [ ] Severity: Warning
-  - [ ] Check: If fragment specified, file contains matching heading
-  - [ ] Note: Requires parsing target file for headings
-- [ ] Add rules to default registry
+- [x] Create `ValidDocReferenceRule`
+  - [x] Code: `E_SEM_INVALID_DOC`
+  - [x] Severity: Error
+  - [x] Check: Referenced file exists on filesystem
+  - [x] Check: Path is within project root (no escaping via `../../../`)
+  - [x] Check: Reject absolute paths
+- [-] Create `BrokenDocFragment` rule (deferred - lower priority)
+  - [-] Code: `W_SEM_DOC_FRAGMENT`
+  - [-] Severity: Warning
+  - [-] Check: If fragment specified, file contains matching heading
+  - [-] Note: Requires parsing target file for headings
+- [x] Add rules to default registry
 
 **Priority:** HIGH
 **Estimate:** 1 day
@@ -100,27 +101,28 @@ This enables lean task files that link to richer context on demand, supporting b
 
 ### Tests
 
-- [ ] Unit: Valid doc reference passes
-- [ ] Unit: Missing file fails with `E_SEM_INVALID_DOC`
-- [ ] Unit: Path escaping project root fails
-- [ ] Unit: Broken fragment warns (if implemented)
+- [x] Unit: Valid doc reference passes
+- [x] Unit: Missing file fails with `E_SEM_INVALID_DOC`
+- [x] Unit: Path escaping project root fails
+- [x] Unit: Absolute path rejected
 
 ---
 
 ### 4. Add SQLite Storage for Doc References
 
-- [ ] Add `doc_refs` table to schema
-  - [ ] `id: INTEGER PRIMARY KEY`
-  - [ ] `source_file_id: INTEGER` - FK to files table
-  - [ ] `source_task_id: INTEGER NULL` - FK to tasks table (NULL for file-level)
-  - [ ] `target_path: TEXT` - relative path to document
-  - [ ] `fragment: TEXT NULL` - optional section fragment
-- [ ] Create `DocRefRepository`
-  - [ ] `insert(doc_ref: &DocRef, file_id: i64, task_id: Option<i64>)`
-  - [ ] `find_by_file(file_id: i64) -> Vec<DocRef>`
-  - [ ] `find_by_task(task_id: i64) -> Vec<DocRef>`
-  - [ ] `find_by_target(path: &Path) -> Vec<(FileId, Option<TaskId>)>` - reverse lookup
-- [ ] Update indexing engine to persist doc refs
+- [x] Add `doc_refs` table to schema (migration v3)
+  - [x] `id: INTEGER PRIMARY KEY`
+  - [x] `source_file_id: INTEGER` - FK to files table
+  - [x] `source_task_id: INTEGER NULL` - FK to tasks table (NULL for file-level)
+  - [x] `target_path: TEXT` - relative path to document
+  - [x] `fragment: TEXT NULL` - optional section fragment
+- [x] Create `DocRefRepository`
+  - [x] `insert(doc_ref: &DocRef, file_id: i64, task_id: Option<i64>)`
+  - [x] `find_by_file(file_id: i64) -> Vec<DocRefRow>`
+  - [x] `find_by_task(task_id: i64) -> Vec<DocRefRow>`
+  - [x] `find_by_target(path: &str) -> Vec<(i64, Option<i64>)>` - reverse lookup
+  - [x] `find_by_target_prefix(prefix: &str)` - prefix matching
+- [x] Update indexing engine to persist doc refs
 
 **Priority:** MEDIUM
 **Estimate:** 0.5 days
@@ -129,9 +131,9 @@ This enables lean task files that link to richer context on demand, supporting b
 
 ### Tests
 
-- [ ] Unit: Insert and retrieve doc refs
-- [ ] Unit: Reverse lookup by target path
-- [ ] Integration: Index file with docs, query back
+- [x] Unit: Insert and retrieve doc refs
+- [x] Unit: Reverse lookup by target path
+- [x] Integration: Index file with docs, query back
 
 ---
 
@@ -142,10 +144,10 @@ This enables lean task files that link to richer context on demand, supporting b
   - [x] Format: `Docs: ../docs/design.md#section-7`
 - [x] Add `--docs` filter to `lash list`
   - [x] `lash list --docs design.md` - find tasks referencing this doc
-- [ ] Update `lash agent-prompt` output
-  - [ ] Include doc refs in sparse context
-  - [ ] Enable agents to request doc content on demand
-  - Note: Deferred as low priority - doc refs are available in DB for future enhancement
+- [-] Update `lash agent-prompt` output (deferred - low priority)
+  - [-] Include doc refs in sparse context
+  - [-] Enable agents to request doc content on demand
+  - Note: Doc refs are available in DB for future enhancement
 
 **Priority:** LOW
 **Estimate:** 0.5 days
@@ -166,10 +168,10 @@ This enables lean task files that link to richer context on demand, supporting b
 
 ### Completion Criteria
 
-- [ ] `@doc` accepted as valid annotation
-- [ ] Doc refs stored in data model and database
-- [ ] Linter validates doc references exist
-- [ ] CLI displays doc references
+- [x] `@doc` accepted as valid annotation
+- [x] Doc refs stored in data model and database
+- [x] Linter validates doc references exist
+- [x] CLI displays doc references
 
 ### Non-Goals (v1)
 
@@ -182,3 +184,10 @@ This enables lean task files that link to richer context on demand, supporting b
 - Design doc section 4.3 (annotation types)
 - `lash-core/src/parser/annotations.rs` - existing annotation parsing
 - `lash-core/src/linter/rules/` - existing linter rules
+
+## Implementation Notes
+
+Completed in commits:
+- `56ade71` - Add @doc annotation task for semantic documentation links (Tasks 1-2)
+- `3dad6df` - Add CLI support for @doc annotation references (Tasks 3-5)
+- `730f164` - Fix database initialization to include all migrations
