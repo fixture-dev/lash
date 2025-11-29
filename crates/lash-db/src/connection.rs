@@ -8,7 +8,8 @@ use crate::error::{DbError, DbResult};
 /// Initialize a new database at the given path
 ///
 /// Creates the database file if it doesn't exist, sets up PRAGMAs for optimal
-/// performance, and runs the schema DDL to create all tables and indexes.
+/// performance, runs the schema DDL to create all tables and indexes, and applies
+/// all pending migrations to bring the database to the current schema version.
 ///
 /// # Example
 ///
@@ -25,6 +26,7 @@ use crate::error::{DbError, DbResult};
 /// - Database file cannot be created
 /// - Schema DDL execution fails
 /// - PRAGMA settings fail
+/// - Migrations fail to apply
 pub fn init_database(path: &Path) -> DbResult<Connection> {
     let conn = Connection::open(path)?;
 
@@ -33,6 +35,9 @@ pub fn init_database(path: &Path) -> DbResult<Connection> {
 
     // Create schema if it doesn't exist
     create_schema(&conn)?;
+
+    // Run any pending migrations to bring schema to current version
+    crate::migrations::run_migrations(&conn)?;
 
     Ok(conn)
 }

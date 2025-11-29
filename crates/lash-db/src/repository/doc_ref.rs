@@ -317,7 +317,6 @@ impl<'conn> DocRefRepository<'conn> {
 mod tests {
     use super::*;
     use crate::connection::init_database;
-    use crate::migrations::run_migrations;
     use crate::repository::{FileRepository, TaskRepository};
     use lash_types::{FileMetadata, Task, TaskFile, TaskMetadata, TaskStatus, TaskTree};
     use std::path::PathBuf;
@@ -327,7 +326,6 @@ mod tests {
     fn setup_test_db() -> (NamedTempFile, rusqlite::Connection) {
         let temp_db = NamedTempFile::new().unwrap();
         let conn = init_database(temp_db.path()).unwrap();
-        run_migrations(&conn).unwrap();
         (temp_db, conn)
     }
 
