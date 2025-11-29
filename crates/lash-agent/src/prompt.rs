@@ -3,8 +3,144 @@
 //! This module provides the core prompt building functionality that combines
 //! schema, examples, and task context into agent-friendly prompts.
 
-use crate::schema::{generate_dependency_example, generate_minimal_example, generate_schema_text};
+use crate::schema::{
+    generate_dependency_example, generate_doc_reference_example, generate_minimal_example,
+    generate_schema_text,
+};
 use crate::tokens::{distribute_budget, estimate_tokens, truncate_to_budget};
+
+/// A documentation reference for inclusion in agent prompts
+///
+/// Represents a link to documentation with optional validity status.
+#[derive(Debug, Clone)]
+pub struct DocRefInfo {
+    /// Relative path to the document
+    pub path: String,
+    /// Optional fragment identifier (section anchor)
+    pub fragment: Option<String>,
+    /// Whether the referenced file exists (None if not checked)
+    pub valid: Option<bool>,
+}
+
+impl DocRefInfo {
+    /// Create a new doc ref info
+    #[must_use]
+    pub fn new(path: impl Into<String>, fragment: Option<String>) -> Self {
+        Self {
+            path: path.into(),
+            fragment,
+            valid: None,
+        }
+    }
+
+    /// Mark this doc ref as valid or invalid
+    #[must_use]
+    pub fn with_validity(mut self, valid: bool) -> Self {
+        self.valid = Some(valid);
+        self
+    }
+
+    /// Format the doc ref for display
+    ///
+    /// Includes a `[missing]` marker if the ref is known to be invalid.
+    #[must_use]
+    pub fn display(&self) -> String {
+        let mut result = self.path.clone();
+        if let Some(ref frag) = self.fragment {
+            result.push('#');
+            result.push_str(frag);
+        }
+        if self.valid == Some(false) {
+            result.push_str(" [missing]");
+        }
+        result
+    }
+}
+
+/// A task file summary with associated documentation references
+#[derive(Debug, Clone)]
+pub struct TaskFileSummary {
+    /// Path to the task file
+    pub path: String,
+    /// Total number of tasks
+    pub total: usize,
+    /// Number of completed tasks
+    pub completed: usize,
+    /// Number of open tasks
+    pub open: usize,
+    /// Number of blocked tasks
+    pub blocked: usize,
+    /// Documentation references associated with this file
+    pub doc_refs: Vec<DocRefInfo>,
+}
+
+impl TaskFileSummary {
+    /// Create a new task file summary
+    #[must_use]
+    pub fn new(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            total: 0,
+            completed: 0,
+            open: 0,
+            blocked: 0,
+            doc_refs: Vec::new(),
+        }
+    }
+
+    /// Set task counts
+    #[must_use]
+    pub fn with_counts(
+        mut self,
+        total: usize,
+        completed: usize,
+        open: usize,
+        blocked: usize,
+    ) -> Self {
+        self.total = total;
+        self.completed = completed;
+        self.open = open;
+        self.blocked = blocked;
+        self
+    }
+
+    /// Add documentation references
+    #[must_use]
+    pub fn with_doc_refs(mut self, doc_refs: Vec<DocRefInfo>) -> Self {
+        self.doc_refs = doc_refs;
+        self
+    }
+
+    /// Format as a compact summary string
+    #[must_use]
+    pub fn to_summary_string(&self) -> String {
+        let percent = if self.total > 0 {
+            (self.completed as f64 / self.total as f64 * 100.0) as usize
+        } else {
+            0
+        };
+
+        let mut summary = format!("{}: {} tasks, {}% complete", self.path, self.total, percent);
+
+        if self.blocked > 0 {
+            summary.push_str(&format!(", {} blocked", self.blocked));
+        }
+
+        summary
+    }
+
+    /// Format with inline doc refs for agent prompt output
+    #[must_use]
+    pub fn format_with_docs(&self) -> String {
+        let mut output = format!("- {}\n", self.to_summary_string());
+
+        for doc_ref in &self.doc_refs {
+            output.push_str(&format!("  - Doc: {}\n", doc_ref.display()));
+        }
+
+        output
+    }
+}
 
 /// Output format for agent prompts
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +200,7 @@ pub struct AgentPrompt {
 pub struct PromptBuilder {
     config: PromptConfig,
     task_summaries: Vec<String>,
+    task_file_summaries: Vec<TaskFileSummary>,
     sparse_context: Option<String>,
 }
 
@@ -82,6 +219,7 @@ impl PromptBuilder {
         Self {
             config,
             task_summaries: Vec::new(),
+            task_file_summaries: Vec::new(),
             sparse_context: None,
         }
     }
@@ -99,6 +237,31 @@ impl PromptBuilder {
     /// ```
     pub fn add_task_summary(&mut self, summary: String) {
         self.task_summaries.push(summary);
+    }
+
+    /// Add a task file summary with documentation references
+    ///
+    /// Use this method instead of `add_task_summary` when you have
+    /// documentation references to include inline with the task summary.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_agent::prompt::{PromptBuilder, PromptConfig, TaskFileSummary, DocRefInfo};
+    ///
+    /// let config = PromptConfig::default();
+    /// let mut builder = PromptBuilder::new(config);
+    ///
+    /// let summary = TaskFileSummary::new("features/auth.md")
+    ///     .with_counts(10, 7, 2, 1)
+    ///     .with_doc_refs(vec![
+    ///         DocRefInfo::new("../docs/auth-spec.md", Some("oauth".to_string())),
+    ///     ]);
+    ///
+    /// builder.add_task_file_summary(summary);
+    /// ```
+    pub fn add_task_file_summary(&mut self, summary: TaskFileSummary) {
+        self.task_file_summaries.push(summary);
     }
 
     /// Add sparse context to include in the prompt
@@ -198,6 +361,10 @@ Lash is a minimalist, Markdown-native task tracker where:
             examples_text.push_str("```markdown\n");
             examples_text.push_str(&generate_dependency_example());
             examples_text.push_str("```\n\n");
+            examples_text.push_str("### File with Documentation References\n\n");
+            examples_text.push_str("```markdown\n");
+            examples_text.push_str(&generate_doc_reference_example());
+            examples_text.push_str("```\n\n");
             sections.push(("examples", examples_text, 8));
         }
 
@@ -207,7 +374,9 @@ Lash is a minimalist, Markdown-native task tracker where:
             context_text.push_str(context);
             context_text.push('\n');
             sections.push(("sparse_context", context_text, 7));
-        } else if self.config.include_tasks && !self.task_summaries.is_empty() {
+        } else if self.config.include_tasks
+            && (!self.task_summaries.is_empty() || !self.task_file_summaries.is_empty())
+        {
             // Task summaries (only if no sparse context)
             let mut tasks_text = String::from("## Current Project Tasks\n\n");
             if !self.config.label_filter.is_empty() {
@@ -219,8 +388,15 @@ Lash is a minimalist, Markdown-native task tracker where:
             if let Some(ref path) = self.config.path_filter {
                 tasks_text.push_str(&format!("Filtered by path: {path}\n\n"));
             }
-            for summary in &self.task_summaries {
-                tasks_text.push_str(&format!("- {summary}\n"));
+            // Prefer task file summaries with doc refs if available
+            if self.task_file_summaries.is_empty() {
+                for summary in &self.task_summaries {
+                    tasks_text.push_str(&format!("- {summary}\n"));
+                }
+            } else {
+                for summary in &self.task_file_summaries {
+                    tasks_text.push_str(&summary.format_with_docs());
+                }
             }
             tasks_text.push('\n');
             sections.push(("tasks", tasks_text, 5));
@@ -237,6 +413,7 @@ When working with Lash files:
 4. **Maintain status consistency** - parent tasks complete only when children are done/waived
 5. **Use unique IDs** within each file
 6. **Run `lash index`** after making changes to update the search index
+7. **Keep `@doc` references valid** - ensure referenced documentation files exist
 
 "
         .to_string();
@@ -274,17 +451,57 @@ When working with Lash files:
                 "name": "with_dependencies",
                 "content": generate_dependency_example(),
             }));
+            examples.push(serde_json::json!({
+                "name": "with_doc_references",
+                "content": generate_doc_reference_example(),
+            }));
         }
+
+        // Build task file summaries with doc refs for JSON output
+        let task_files_json: Vec<serde_json::Value> =
+            if self.config.include_tasks && !self.task_file_summaries.is_empty() {
+                self.task_file_summaries
+                    .iter()
+                    .map(|s| {
+                        serde_json::json!({
+                            "path": s.path,
+                            "total": s.total,
+                            "completed": s.completed,
+                            "open": s.open,
+                            "blocked": s.blocked,
+                            "doc_refs": s.doc_refs.iter().map(|d| {
+                                let mut obj = serde_json::json!({
+                                    "path": d.path,
+                                });
+                                if let Some(ref frag) = d.fragment {
+                                    obj["fragment"] = serde_json::json!(frag);
+                                }
+                                if let Some(valid) = d.valid {
+                                    obj["valid"] = serde_json::json!(valid);
+                                }
+                                obj
+                            }).collect::<Vec<_>>(),
+                        })
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
         let json_output = serde_json::json!({
             "format": "lash-agent-prompt",
             "version": "1.0",
             "schema": schema,
             "examples": examples,
-            "tasks": if self.config.include_tasks {
-                self.task_summaries
+            "tasks": if self.config.include_tasks && task_files_json.is_empty() {
+                serde_json::json!(self.task_summaries)
             } else {
-                Vec::<String>::new()
+                serde_json::json!(null)
+            },
+            "task_files": if task_files_json.is_empty() {
+                serde_json::json!(null)
+            } else {
+                serde_json::json!(task_files_json)
             },
             "filters": {
                 "labels": self.config.label_filter,
@@ -297,6 +514,7 @@ When working with Lash files:
                 "Maintain status consistency",
                 "Use unique IDs within each file",
                 "Run `lash index` after changes",
+                "Keep @doc references valid",
             ],
         });
 
@@ -390,6 +608,7 @@ When working with Lash files:
         content.push_str("- Maximum nesting depth: 3-4 levels\n");
         content.push_str("- Always run `lash lint` after editing\n");
         content.push_str("- Use `@depends-on` for cross-file dependencies\n");
+        content.push_str("- Use `@doc` to link to documentation resources\n");
 
         let token_count = estimate_tokens(&content);
 
@@ -593,5 +812,125 @@ mod tests {
 
         builder.add_task_summary("test2.md: 3 tasks".to_string());
         assert_eq!(builder.task_summaries.len(), 2);
+    }
+
+    #[test]
+    fn test_doc_ref_info_display() {
+        let doc = DocRefInfo::new("../docs/design.md", None);
+        assert_eq!(doc.display(), "../docs/design.md");
+
+        let doc_with_frag = DocRefInfo::new("../docs/design.md", Some("section-7".to_string()));
+        assert_eq!(doc_with_frag.display(), "../docs/design.md#section-7");
+
+        let invalid_doc = DocRefInfo::new("../docs/missing.md", None).with_validity(false);
+        assert_eq!(invalid_doc.display(), "../docs/missing.md [missing]");
+
+        let valid_doc = DocRefInfo::new("../docs/exists.md", None).with_validity(true);
+        assert_eq!(valid_doc.display(), "../docs/exists.md");
+    }
+
+    #[test]
+    fn test_task_file_summary_format() {
+        let summary = TaskFileSummary::new("features/auth.md").with_counts(10, 7, 2, 1);
+
+        assert_eq!(
+            summary.to_summary_string(),
+            "features/auth.md: 10 tasks, 70% complete, 1 blocked"
+        );
+
+        let summary_no_blocked = TaskFileSummary::new("features/api.md").with_counts(5, 5, 0, 0);
+
+        assert_eq!(
+            summary_no_blocked.to_summary_string(),
+            "features/api.md: 5 tasks, 100% complete"
+        );
+    }
+
+    #[test]
+    fn test_task_file_summary_with_docs() {
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_doc_refs(vec![
+                DocRefInfo::new("../docs/auth-spec.md", Some("oauth".to_string()))
+                    .with_validity(true),
+                DocRefInfo::new("../docs/missing.md", None).with_validity(false),
+            ]);
+
+        let formatted = summary.format_with_docs();
+
+        assert!(formatted.contains("features/auth.md: 10 tasks"));
+        assert!(formatted.contains("../docs/auth-spec.md#oauth"));
+        assert!(formatted.contains("../docs/missing.md [missing]"));
+    }
+
+    #[test]
+    fn test_prompt_builder_with_task_file_summaries() {
+        let config = PromptConfig::default();
+        let mut builder = PromptBuilder::new(config);
+
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_doc_refs(vec![DocRefInfo::new(
+                "../docs/auth-spec.md",
+                Some("oauth".to_string()),
+            )]);
+
+        builder.add_task_file_summary(summary);
+
+        let prompt = builder.build();
+
+        assert!(prompt.content.contains("features/auth.md"));
+        assert!(prompt.content.contains("../docs/auth-spec.md#oauth"));
+    }
+
+    #[test]
+    fn test_prompt_builder_json_with_doc_refs() {
+        let config = PromptConfig {
+            format: PromptFormat::Json,
+            ..Default::default()
+        };
+        let mut builder = PromptBuilder::new(config);
+
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_doc_refs(vec![DocRefInfo::new(
+                "../docs/auth-spec.md",
+                Some("oauth".to_string()),
+            )
+            .with_validity(true)]);
+
+        builder.add_task_file_summary(summary);
+
+        let prompt = builder.build();
+
+        // Verify it's valid JSON and contains doc refs
+        let parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
+        assert!(parsed["task_files"].is_array());
+        let task_files = parsed["task_files"].as_array().unwrap();
+        assert_eq!(task_files.len(), 1);
+        assert_eq!(task_files[0]["path"], "features/auth.md");
+        assert!(task_files[0]["doc_refs"].is_array());
+    }
+
+    #[test]
+    fn test_plain_prompt_includes_doc_example() {
+        let config = PromptConfig::default();
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        // Should include the doc reference example
+        assert!(prompt
+            .content
+            .contains("### File with Documentation References"));
+        assert!(prompt.content.contains("@doc:"));
+    }
+
+    #[test]
+    fn test_safety_guidelines_include_doc_refs() {
+        let config = PromptConfig::default();
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        assert!(prompt.content.contains("Keep `@doc` references valid"));
     }
 }

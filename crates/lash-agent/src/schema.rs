@@ -137,6 +137,13 @@ pub fn generate_schema() -> LashSchema {
                 example: "@agent-note: Use existing auth patterns".to_string(),
                 required: false,
             },
+            AnnotationSpec {
+                key: "doc".to_string(),
+                description: "Link to documentation resource (informational, non-blocking)"
+                    .to_string(),
+                example: "@doc: ../docs/design.md#section-7".to_string(),
+                required: false,
+            },
         ],
         status_values: vec![
             StatusSpec {
@@ -213,6 +220,11 @@ pub fn generate_schema() -> LashSchema {
                 name: "waive_task".to_string(),
                 description: "Mark a task as not applicable".to_string(),
                 example: "- [-] Task no longer needed".to_string(),
+            },
+            OperationSpec {
+                name: "add_doc_reference".to_string(),
+                description: "Link to documentation resource for context".to_string(),
+                example: "@doc: docs/design.md#section-name".to_string(),
             },
         ],
     }
@@ -351,6 +363,40 @@ pub fn generate_dependency_example() -> String {
     .to_string()
 }
 
+/// Generate an example with documentation references
+///
+/// Returns a string showing how to use `@doc` annotations
+/// for linking to documentation resources.
+///
+/// # Examples
+///
+/// ```
+/// use lash_agent::schema::generate_doc_reference_example;
+///
+/// let example = generate_doc_reference_example();
+/// assert!(example.contains("@doc:"));
+/// ```
+pub fn generate_doc_reference_example() -> String {
+    r"# Feature: Payment Processing
+
+@id: feature-payments
+@labels: backend, billing
+@doc: ../docs/design-doc.md#payment-flow
+@doc: ../docs/pci-compliance.md
+
+## Tasks
+
+- [ ] Implement payment gateway integration
+  @doc: ../docs/stripe-api.md#webhooks
+  - [ ] Set up webhook handlers
+  - [ ] Implement payment intent creation
+- [ ] Add invoice generation
+  @doc: ../docs/invoice-template.md
+- [x] Set up billing database schema
+"
+    .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,6 +418,7 @@ mod tests {
         assert!(keys.contains(&"id".to_string()));
         assert!(keys.contains(&"labels".to_string()));
         assert!(keys.contains(&"depends-on".to_string()));
+        assert!(keys.contains(&"doc".to_string()));
     }
 
     #[test]
@@ -412,6 +459,16 @@ mod tests {
         let example = generate_dependency_example();
         assert!(example.contains("@depends-on:"));
         assert!(example.contains("#task:"));
+    }
+
+    #[test]
+    fn test_generate_doc_reference_example() {
+        let example = generate_doc_reference_example();
+        assert!(example.contains("@doc:"));
+        assert!(example.contains("../docs/design-doc.md#payment-flow"));
+        // Has both file-level and task-level doc refs
+        assert!(example.contains("@doc: ../docs/pci-compliance.md"));
+        assert!(example.contains("@doc: ../docs/stripe-api.md#webhooks"));
     }
 
     #[test]
