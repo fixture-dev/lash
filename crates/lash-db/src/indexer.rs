@@ -1235,7 +1235,6 @@ mod tests {
 
     #[test]
     fn test_doc_refs_indexed() {
-        use crate::migrations::run_migrations;
         use crate::repository::DocRefRepository;
 
         let temp_dir = TempDir::new().unwrap();
@@ -1250,7 +1249,6 @@ mod tests {
 
         let db_path = temp_dir.path().join("test.db");
         let conn = init_database(&db_path).unwrap();
-        run_migrations(&conn).unwrap();
 
         let config = IndexerConfig::new(root.to_path_buf());
         let parser_config = LashConfig::default();
@@ -1328,7 +1326,6 @@ mod tests {
 
     #[test]
     fn test_doc_refs_updated_on_reindex() {
-        use crate::migrations::run_migrations;
         use crate::repository::DocRefRepository;
 
         let temp_dir = TempDir::new().unwrap();
@@ -1343,7 +1340,6 @@ mod tests {
 
         let db_path = temp_dir.path().join("test.db");
         let conn = init_database(&db_path).unwrap();
-        run_migrations(&conn).unwrap();
 
         let config = IndexerConfig::new(root.to_path_buf());
         let parser_config = LashConfig::default();
