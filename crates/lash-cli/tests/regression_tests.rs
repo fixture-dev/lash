@@ -20,6 +20,7 @@ fn run_lash(args: &[&str], cwd: &Path) -> (String, String, i32) {
         .unwrap()
         .args(args)
         .current_dir(cwd)
+        .env("LASH_FORCE_UNICODE", "1") // Force Unicode for consistent snapshots
         .output()
         .expect("Failed to execute lash");
 

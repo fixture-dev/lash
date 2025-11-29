@@ -428,7 +428,8 @@ impl TreeChars {
 
     /// Auto-detect the appropriate character set based on environment
     ///
-    /// Checks the LANG environment variable for UTF-8 support.
+    /// Checks the `LASH_FORCE_UNICODE` environment variable first, then
+    /// the `LANG` environment variable for UTF-8 support.
     /// Falls back to ASCII if UTF-8 is not detected.
     ///
     /// # Examples
@@ -441,6 +442,13 @@ impl TreeChars {
     /// ```
     #[must_use]
     pub fn detect() -> Self {
+        // Check for explicit override (useful for tests and user preference)
+        if let Ok(force) = env::var("LASH_FORCE_UNICODE") {
+            if force == "1" || force.to_lowercase() == "true" {
+                return Self::Unicode;
+            }
+        }
+
         // Check LANG environment variable for UTF-8 support
         if let Ok(lang) = env::var("LANG") {
             if lang.to_lowercase().contains("utf-8") || lang.to_lowercase().contains("utf8") {
