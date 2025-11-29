@@ -40,6 +40,8 @@ Task files support the following metadata annotations:
   - Example: `@depends-on: path/to/file.md#task:id`
 - `@agent-note`: Hints or instructions for AI agents
   - Example: `@agent-note: Use existing auth patterns`
+- `@doc`: Link to documentation resource (informational, non-blocking)
+  - Example: `@doc: ../docs/design.md#section-7`
 
 ## Task Status Values
 
@@ -105,6 +107,14 @@ Mark a task as not applicable
 - [-] Task no longer needed
 ```
 
+### add_doc_reference
+
+Link to documentation resource for context
+
+```markdown
+@doc: docs/design.md#section-name
+```
+
 
 ## Examples
 
@@ -147,11 +157,32 @@ Mark a task as not applicable
 - [ ] Add edit functionality
 ```
 
+### File with Documentation References
+
+```markdown
+# Feature: Payment Processing
+
+@id: feature-payments
+@labels: backend, billing
+@doc: ../docs/design-doc.md#payment-flow
+@doc: ../docs/pci-compliance.md
+
+## Tasks
+
+- [ ] Implement payment gateway integration
+  @doc: ../docs/stripe-api.md#webhooks
+  - [ ] Set up webhook handlers
+  - [ ] Implement payment intent creation
+- [ ] Add invoice generation
+  @doc: ../docs/invoice-template.md
+- [x] Set up billing database schema
+```
+
 ## Current Project Tasks
 
-- bugs.md, 3 tasks, 33% complete, 2 open
-- lash.index.md, 5 tasks, 40% complete, 3 open
-- tasks.md, 7 tasks, 14% complete, 6 open
+- bugs.md: 3 tasks, 33% complete
+- lash.index.md: 5 tasks, 40% complete
+- tasks.md: 7 tasks, 14% complete
 
 ## Safety Guidelines
 
@@ -163,3 +194,4 @@ When working with Lash files:
 4. **Maintain status consistency** - parent tasks complete only when children are done/waived
 5. **Use unique IDs** within each file
 6. **Run `lash index`** after making changes to update the search index
+7. **Keep `@doc` references valid** - ensure referenced documentation files exist

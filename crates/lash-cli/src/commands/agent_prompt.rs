@@ -5,9 +5,11 @@
 //! filtered task lists in various output formats.
 
 use anyhow::{Context, Result};
-use lash_agent::{PromptBuilder, PromptConfig, PromptFormat as AgentPromptFormat};
+use lash_agent::{
+    DocRefInfo, PromptBuilder, PromptConfig, PromptFormat as AgentPromptFormat, TaskFileSummary,
+};
 use lash_cli::cli::AgentFormat;
-use lash_db::{open_database, FileRepository, TaskRepository};
+use lash_db::{open_database, DocRefRepository, FileRepository, TaskRepository};
 use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
@@ -82,21 +84,17 @@ pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
         path_filter: args.path.as_ref().map(|p| p.display().to_string()),
     };
 
-    // Load task summaries if we have filters or want to include tasks
-    let task_summaries = if config.include_tasks && (!args.labels.is_empty() || args.path.is_some())
-    {
-        load_task_summaries(&project_root, &args.labels, args.path.as_deref())?
-    } else if config.include_tasks {
-        // Load all task summaries
-        load_task_summaries(&project_root, &[], None)?
+    // Load task file summaries with doc refs
+    let task_file_summaries = if config.include_tasks {
+        load_task_file_summaries(&project_root, &args.labels, args.path.as_deref())?
     } else {
         Vec::new()
     };
 
     // Build prompt
     let mut builder = PromptBuilder::new(config);
-    for summary in task_summaries {
-        builder.add_task_summary(summary);
+    for summary in task_file_summaries {
+        builder.add_task_file_summary(summary);
     }
 
     let prompt = builder.build();
@@ -121,12 +119,12 @@ pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
     Ok(0)
 }
 
-/// Load task summaries from the database
-fn load_task_summaries(
+/// Load task file summaries with documentation references from the database
+fn load_task_file_summaries(
     project_root: &Path,
     label_filter: &[String],
     path_filter: Option<&Path>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<TaskFileSummary>> {
     let db_path = get_database_path(project_root);
 
     // If database doesn't exist, return empty summaries
@@ -139,6 +137,7 @@ fn load_task_summaries(
     let conn = open_database(&db_path).context("Failed to open database")?;
     let file_repo = FileRepository::new(&conn);
     let task_repo = TaskRepository::new(&conn);
+    let doc_ref_repo = DocRefRepository::new(&conn);
 
     // Get all files
     let files = file_repo.list_all().context("Failed to list files")?;
@@ -181,14 +180,25 @@ fn load_task_summaries(
             .filter(|t| t.status.as_str() == "blocked")
             .count();
 
-        // Generate summary using token utilities
-        let summary = lash_agent::tokens::summarize_task_file(
-            &file.path.display().to_string(),
-            total,
-            completed,
-            open,
-            blocked,
-        );
+        // Load doc refs for this file (both file-level and task-level)
+        let doc_ref_rows = doc_ref_repo.find_by_file(file.id).unwrap_or_default();
+
+        // Convert to DocRefInfo with validity check
+        let doc_refs: Vec<DocRefInfo> = doc_ref_rows
+            .into_iter()
+            .map(|row| {
+                // Check if the referenced file exists
+                let doc_path = project_root.join(&row.target_path);
+                let valid = doc_path.exists();
+                DocRefInfo::new(row.target_path, row.fragment).with_validity(valid)
+            })
+            .collect();
+
+        // Build task file summary
+        let summary = TaskFileSummary::new(file.path.display().to_string())
+            .with_counts(total, completed, open, blocked)
+            .with_doc_refs(doc_refs);
+
         summaries.push(summary);
     }
 

@@ -20,6 +20,8 @@ pub mod tokens;
 
 // Re-export commonly used types
 pub use context::{ContextBuilder, ContextFormat, InclusionRules, SparseContext};
-pub use prompt::{AgentPrompt, PromptBuilder, PromptConfig, PromptFormat};
+pub use prompt::{
+    AgentPrompt, DocRefInfo, PromptBuilder, PromptConfig, PromptFormat, TaskFileSummary,
+};
 pub use schema::{generate_schema, generate_schema_text};
 pub use tokens::{estimate_tokens, truncate_to_budget};
