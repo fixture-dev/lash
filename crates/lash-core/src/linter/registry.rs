@@ -122,7 +122,7 @@ impl Default for RuleRegistry {
 ///
 /// Creates a registry with all built-in linting rules:
 /// - 7 syntax rules (Task #2 - Complete)
-/// - 8 semantic rules (Task #3 - Complete)
+/// - 9 semantic rules (Task #3 - Complete)
 /// - 5 cross-file rules (Task #4 - Complete)
 ///
 /// # Syntax Rules
@@ -145,6 +145,7 @@ impl Default for RuleRegistry {
 /// 6. Valid Estimate Format (`E_SEM_INVALID_ESTIMATE`)
 /// 7. Valid Owner Format (`W_SEM_OWNER_FORMAT`)
 /// 8. Empty Task Title (`E_SEM_EMPTY_TITLE`)
+/// 9. Valid Documentation Reference (`E_SEM_INVALID_DOC`)
 ///
 /// # Cross-File Rules
 ///
@@ -218,6 +219,10 @@ pub fn register_default_rules() -> RuleRegistry {
     registry.register(
         RuleCategory::Semantic,
         Arc::new(rules::EmptyTitleRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::ValidDocReferenceRule::new()),
     );
 
     // Register cross-file rules (Task #4)
@@ -350,10 +355,10 @@ mod tests {
     #[test]
     fn test_default_registry() {
         let registry = register_default_rules();
-        // Should have 7 syntax rules (Task #2) + 8 semantic rules (Task #3) + 5 cross-file rules (Task #4)
-        assert_eq!(registry.rule_count(), 20);
+        // Should have 7 syntax rules (Task #2) + 9 semantic rules (Task #3) + 5 cross-file rules (Task #4)
+        assert_eq!(registry.rule_count(), 21);
         assert_eq!(registry.category_count(RuleCategory::Syntax), 7);
-        assert_eq!(registry.category_count(RuleCategory::Semantic), 8);
+        assert_eq!(registry.category_count(RuleCategory::Semantic), 9);
         assert_eq!(registry.category_count(RuleCategory::CrossFile), 5);
     }
 }

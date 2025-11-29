@@ -20,7 +20,7 @@ pub use syntax::{
 // Re-export all semantic rules for convenience
 pub use semantic::{
     AutoWaiveRule, DuplicateIdRule, EmptyTitleRule, StatusConsistencyRule, ValidDateRule,
-    ValidEstimateRule, ValidLabelRule, ValidOwnerRule,
+    ValidDocReferenceRule, ValidEstimateRule, ValidLabelRule, ValidOwnerRule,
 };
 
 // Re-export all cross-file rules for convenience

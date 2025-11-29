@@ -392,6 +392,7 @@ fn find_tasks_section_line(content: &str) -> Option<usize> {
 }
 
 /// Parse the task section and build the task tree
+#[allow(clippy::too_many_lines)]
 fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseResult<TaskTree> {
     // Find where the Tasks section starts and ends
     let tasks_start = find_tasks_section_line(content);
@@ -435,16 +436,82 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
 
     // Parse checkbox lines in the task section
     let mut checkbox_lines = Vec::new();
-    for (idx, line) in lines
-        .iter()
-        .enumerate()
-        .skip(start_line)
-        .take(end_line - start_line)
-    {
+    let mut i = start_line;
+
+    while i < end_line {
+        let idx = i;
+        let line = lines[idx];
         let line_num = idx + 1; // 1-indexed
 
         // Try to parse as checkbox line
-        if let Some(cb_line) = checkbox::CheckboxLine::parse(line, line_num) {
+        if let Some(mut cb_line) = checkbox::CheckboxLine::parse(line, line_num) {
+            // Look ahead for annotation block following this checkbox
+            // An annotation block starts with @key: value on the next line
+            // and continues until we hit a non-annotation line
+            let mut annotation_lines = Vec::new();
+            let mut j = i + 1;
+            let mut seen_blank_line = false;
+
+            while j < end_line {
+                let next_line = lines[j];
+                let trimmed = next_line.trim();
+
+                // Handle blank lines
+                if trimmed.is_empty() {
+                    // Allow one blank line before annotations start
+                    if annotation_lines.is_empty() && !seen_blank_line {
+                        seen_blank_line = true;
+                        j += 1;
+                        continue;
+                    } else if !annotation_lines.is_empty() {
+                        // Blank line after annotations have started - end of block
+                        break;
+                    }
+                    // Multiple blank lines - stop
+                    break;
+                }
+
+                // Stop if we hit another checkbox or H2 heading
+                if checkbox::CheckboxLine::parse(next_line, j + 1).is_some()
+                    || trimmed.starts_with("## ")
+                {
+                    break;
+                }
+
+                // Check if this looks like an annotation line
+                if trimmed.starts_with('@') {
+                    annotation_lines.push(next_line);
+                    j += 1;
+                } else if !annotation_lines.is_empty() && trimmed.starts_with(' ') {
+                    // Continuation line (indented) - part of previous annotation
+                    annotation_lines.push(next_line);
+                    j += 1;
+                } else {
+                    // Some other content - stop looking for annotations
+                    break;
+                }
+            }
+
+            // Parse the annotation block if we found any annotation lines
+            if annotation_lines.is_empty() {
+                i += 1;
+            } else {
+                match annotations::parse_annotation_block(
+                    annotation_lines.into_iter(),
+                    Some(ctx.config),
+                ) {
+                    Ok(block) => {
+                        cb_line.annotations = Some(block);
+                        i = j; // Skip past the annotation lines we consumed
+                    }
+                    Err(e) => {
+                        // Add error but continue parsing
+                        ctx.add_error(&e);
+                        i += 1;
+                    }
+                }
+            }
+
             checkbox_lines.push(cb_line);
         } else if let Some(error_msg) = checkbox::CheckboxLine::detect_malformed(line) {
             // Line looks like a checkbox but has invalid syntax
@@ -457,8 +524,11 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
                 help: Some("Valid checkbox formats: - [ ], - [x], - [X], - [-], - [!]".to_string()),
                 labels: None,
             });
+            i += 1;
+        } else {
+            // Other non-checkbox lines are silently ignored (comments, blank lines, etc.)
+            i += 1;
         }
-        // Other non-checkbox lines are silently ignored (comments, blank lines, etc.)
     }
 
     // Build task tree from checkbox lines
@@ -502,7 +572,7 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
 
 /// Extract file metadata from annotation block
 fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMetadata {
-    use lash_types::parse_dependency_ref;
+    use lash_types::{parse_dependency_ref, parse_doc_ref};
 
     // Extract labels
     let labels = annotations
@@ -527,13 +597,20 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
         .filter_map(|s| parse_dependency_ref(s).ok())
         .collect();
 
+    // Extract doc references
+    let docs = annotations
+        .get_list("doc")
+        .iter()
+        .filter_map(|s| parse_doc_ref(s).ok())
+        .collect();
+
     // Extract custom annotations (all others)
     let mut custom = std::collections::HashMap::new();
     for (key, values) in annotations.iter() {
         // Skip known annotations
         if matches!(
             key.as_str(),
-            "id" | "labels" | "status" | "owner" | "created" | "depends-on"
+            "id" | "labels" | "status" | "owner" | "created" | "depends-on" | "doc"
         ) {
             continue;
         }
@@ -550,6 +627,7 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
         owner,
         created,
         depends_on,
+        docs,
         custom,
     }
 }
@@ -1312,6 +1390,17 @@ More text
         assert!(metadata.labels.contains(&"tag3".to_string()));
     }
 
+    #[test]
+    fn test_extract_file_metadata_docs() {
+        let mut annotations = annotations::AnnotationBlock::new();
+        annotations.add("doc".to_string(), "../docs/design.md".to_string());
+        annotations.add("doc".to_string(), "../docs/api.md#section-3".to_string());
+
+        let metadata = extract_file_metadata(&annotations);
+
+        assert_eq!(metadata.docs.len(), 2);
+    }
+
     // ==================== Edge Cases and Integration ====================
 
     #[test]
@@ -1411,5 +1500,93 @@ More text
         assert!(result.is_ok());
         let file = result.unwrap();
         assert_eq!(file.tasks.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_file_task_level_doc_annotations() {
+        let content = r"# Test File
+
+@id: test-file
+
+## Tasks
+
+- [ ] Task with docs
+
+@doc: ../docs/design.md
+@doc: ../docs/api.md#section-3
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+        assert_eq!(file.tasks.len(), 1);
+
+        let task = file.tasks.tasks().first().unwrap();
+        assert_eq!(task.metadata.docs.len(), 2);
+
+        // Verify the doc refs are correct
+        let doc_paths: Vec<_> = task
+            .metadata
+            .docs
+            .iter()
+            .map(|d| d.path.to_string())
+            .collect();
+        assert!(doc_paths.contains(&"../docs/design.md".to_string()));
+        assert!(doc_paths.contains(&"../docs/api.md".to_string()));
+    }
+
+    #[test]
+    fn test_parse_file_task_level_multiple_annotations() {
+        let content = r"# Test File
+
+## Tasks
+
+- [ ] Task with multiple annotations
+
+@owner: alice
+@estimate: 2h
+@doc: ../docs/design.md
+@depends-on: other-file.md#task:other-task
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+        assert_eq!(file.tasks.len(), 1);
+
+        let task = file.tasks.tasks().first().unwrap();
+        assert_eq!(task.metadata.owner, Some("alice".to_string()));
+        assert_eq!(task.metadata.estimate, Some("2h".to_string()));
+        assert_eq!(task.metadata.docs.len(), 1);
+        assert_eq!(task.metadata.depends_on.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_file_mixed_inline_and_block_annotations() {
+        let content = r"# Test File
+
+## Tasks
+
+- [ ] Task with inline labels #backend #api
+
+@owner: bob
+@doc: ../docs/design.md
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+        assert_eq!(file.tasks.len(), 1);
+
+        let task = file.tasks.tasks().first().unwrap();
+        // Should have inline labels
+        assert!(task.metadata.labels.contains(&"backend".to_string()));
+        assert!(task.metadata.labels.contains(&"api".to_string()));
+        // Should have annotation metadata
+        assert_eq!(task.metadata.owner, Some("bob".to_string()));
+        assert_eq!(task.metadata.docs.len(), 1);
     }
 }

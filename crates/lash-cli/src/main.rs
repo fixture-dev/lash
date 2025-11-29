@@ -203,6 +203,7 @@ fn run(cli: LashCli) -> Result<()> {
             path,
             blocked,
             owner,
+            docs,
             format,
         } => {
             // Convert status to lash_types::TaskStatus
@@ -242,6 +243,7 @@ fn run(cli: LashCli) -> Result<()> {
                 path,
                 blocked,
                 owner,
+                docs,
                 format: output_format,
                 project_root,
                 theme: theme.clone(),

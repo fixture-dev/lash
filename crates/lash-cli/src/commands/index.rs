@@ -3,7 +3,7 @@
 //! The `lash index` command rebuilds the `SQLite` database from Markdown files.
 
 use anyhow::{Context, Result};
-use lash_db::{init_database, open_database, Indexer, IndexerConfig};
+use lash_db::{init_database, open_database, run_migrations, Indexer, IndexerConfig};
 use lash_types::LashConfig;
 use std::path::{Path, PathBuf};
 
@@ -65,6 +65,9 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
         // Open existing database for incremental indexing
         open_database(&db_path).context("Failed to open database")?
     };
+
+    // Run migrations to ensure schema is up to date
+    run_migrations(&conn).context("Failed to run database migrations")?;
 
     // Load project configuration
     let parser_config = LashConfig::from_root(&project_root).unwrap_or_else(|_| {

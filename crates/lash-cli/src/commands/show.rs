@@ -7,7 +7,9 @@ use lash_cli::theme::CliTheme;
 use lash_cli::tree_formatter::TreeFormatter;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::tasks::TaskRecord;
-use lash_db::{open_database, DependencyRepository, FileRepository, TaskRepository};
+use lash_db::{
+    open_database, DependencyRepository, DocRefRepository, FileRepository, TaskRepository,
+};
 use lash_types::tree::TreeNode;
 use std::path::{Path, PathBuf};
 
@@ -85,6 +87,7 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
     let task_repo = TaskRepository::new(&conn);
     let file_repo = FileRepository::new(&conn);
     let dep_repo = DependencyRepository::new(&conn);
+    let doc_repo = DocRefRepository::new(&conn);
 
     // Determine if target is a task ID or file path
     // Check for path separators (both forward and back slashes) or .md extension
@@ -97,10 +100,24 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
     // Show file or task information and return appropriate exit code
     let exit_code = if is_file_path {
         // Show file information
-        show_file(&file_repo, &task_repo, args, &project_root, theme.as_ref())?
+        show_file(
+            &file_repo,
+            &task_repo,
+            &doc_repo,
+            args,
+            &project_root,
+            theme.as_ref(),
+        )?
     } else {
         // Show task information
-        show_task(&task_repo, &file_repo, &dep_repo, args, theme.as_ref())?
+        show_task(
+            &task_repo,
+            &file_repo,
+            &dep_repo,
+            &doc_repo,
+            args,
+            theme.as_ref(),
+        )?
     };
 
     Ok(exit_code)
@@ -110,6 +127,7 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
 fn show_file(
     file_repo: &FileRepository,
     task_repo: &TaskRepository,
+    doc_repo: &DocRefRepository,
     args: &ShowArgs,
     project_root: &Path,
     theme: Option<&CliTheme>,
@@ -146,13 +164,16 @@ fn show_file(
     // Get tasks in this file
     let tasks = task_repo.get_by_file(file.id)?;
 
+    // Get file-level doc references
+    let doc_refs = doc_repo.find_file_level(file.id)?;
+
     // Output results
     if args.json {
-        output_json_file(&file, &tasks)?;
+        output_json_file(&file, &tasks, &doc_refs)?;
     } else {
         // Determine if tree view is enabled
         let use_tree_view = determine_tree_view_enabled(args);
-        output_text_file(&file, &tasks, theme, use_tree_view, args);
+        output_text_file(&file, &tasks, &doc_refs, theme, use_tree_view, args);
     }
 
     Ok(0)
@@ -179,6 +200,7 @@ fn show_task(
     task_repo: &TaskRepository,
     file_repo: &FileRepository,
     dep_repo: &DependencyRepository,
+    doc_repo: &DocRefRepository,
     args: &ShowArgs,
     theme: Option<&CliTheme>,
 ) -> Result<i32> {
@@ -251,15 +273,19 @@ fn show_task(
         None
     };
 
+    // Get task-level doc references
+    let doc_refs = doc_repo.find_by_task(task.id)?;
+
     // Output results
     if args.json {
-        output_json_task(&task, &file, dependencies, dependents)?;
+        output_json_task(&task, &file, dependencies, dependents, &doc_refs)?;
     } else {
         output_text_task(
             &task,
             &file,
             dependencies.as_ref(),
             dependents.as_ref(),
+            &doc_refs,
             theme,
         );
     }
@@ -300,7 +326,11 @@ fn output_json_not_found(target: &str) -> Result<()> {
 }
 
 /// Output file as JSON
-fn output_json_file(file: &FileRecord, tasks: &[TaskRecord]) -> Result<()> {
+fn output_json_file(
+    file: &FileRecord,
+    tasks: &[TaskRecord],
+    doc_refs: &[lash_db::repository::DocRefRow],
+) -> Result<()> {
     use serde_json::json;
 
     let output = json!({
@@ -308,6 +338,7 @@ fn output_json_file(file: &FileRecord, tasks: &[TaskRecord]) -> Result<()> {
         "file": file,
         "task_count": tasks.len(),
         "tasks": tasks,
+        "doc_refs": doc_refs,
     });
 
     println!("{}", serde_json::to_string_pretty(&output)?);
@@ -320,6 +351,7 @@ fn output_json_task(
     file: &FileRecord,
     dependencies: Option<Vec<TaskRecord>>,
     dependents: Option<Vec<TaskRecord>>,
+    doc_refs: &[lash_db::repository::DocRefRow],
 ) -> Result<()> {
     use serde_json::json;
 
@@ -330,6 +362,7 @@ fn output_json_task(
             "path": file.path,
             "title": file.title,
         },
+        "doc_refs": doc_refs,
     });
 
     if let Some(deps) = dependencies {
@@ -348,6 +381,7 @@ fn output_json_task(
 fn output_text_file(
     file: &FileRecord,
     tasks: &[TaskRecord],
+    doc_refs: &[lash_db::repository::DocRefRow],
     theme: Option<&CliTheme>,
     use_tree_view: bool,
     args: &ShowArgs,
@@ -371,6 +405,27 @@ fn output_text_file(
         println!("  Title:    {}", file.title);
         println!("  ID:       {}", file.file_id);
         println!("  Status:   {}", format_file_status(file.status, None));
+    }
+
+    // Doc references
+    if !doc_refs.is_empty() {
+        let doc_str = doc_refs
+            .iter()
+            .map(|d| {
+                if let Some(ref frag) = d.fragment {
+                    format!("{}#{}", d.target_path, frag)
+                } else {
+                    d.target_path.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        if let Some(theme) = theme {
+            println!("  Docs:     {}", theme.style_muted(&doc_str));
+        } else {
+            println!("  Docs:     {doc_str}");
+        }
     }
 
     // Task summary
@@ -500,6 +555,7 @@ fn output_text_task(
     file: &FileRecord,
     dependencies: Option<&Vec<TaskRecord>>,
     dependents: Option<&Vec<TaskRecord>>,
+    doc_refs: &[lash_db::repository::DocRefRow],
     theme: Option<&CliTheme>,
 ) {
     // Task header
@@ -552,6 +608,27 @@ fn output_text_task(
             println!("  Labels:   {labels}");
         } else {
             println!("  Labels:   {}", task.metadata.labels.join(", "));
+        }
+    }
+
+    // Doc references
+    if !doc_refs.is_empty() {
+        let doc_str = doc_refs
+            .iter()
+            .map(|d| {
+                if let Some(ref frag) = d.fragment {
+                    format!("{}#{}", d.target_path, frag)
+                } else {
+                    d.target_path.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        if let Some(theme) = theme {
+            println!("  Docs:     {}", theme.style_muted(&doc_str));
+        } else {
+            println!("  Docs:     {doc_str}");
         }
     }
 

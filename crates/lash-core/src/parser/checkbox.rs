@@ -12,6 +12,8 @@
 
 use lash_types::{Label, TaskStatus};
 
+use super::annotations::AnnotationBlock;
+
 /// Intermediate representation of a parsed checkbox line
 ///
 /// This structure represents a single checkbox line before it's incorporated
@@ -39,6 +41,9 @@ pub struct CheckboxLine {
 
     /// Column number where checkbox starts (1-indexed)
     pub column: usize,
+
+    /// Annotation block following the task line (if any)
+    pub annotations: Option<AnnotationBlock>,
 }
 
 impl CheckboxLine {
@@ -71,6 +76,7 @@ impl CheckboxLine {
             labels,
             line_num,
             column,
+            annotations: None,
         }
     }
 
