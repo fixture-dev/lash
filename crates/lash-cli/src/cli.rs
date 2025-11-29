@@ -184,6 +184,10 @@ pub enum Commands {
         #[arg(long, value_name = "NAME")]
         owner: Option<String>,
 
+        /// Filter by files/tasks that reference a specific document
+        #[arg(long, value_name = "DOC_PATH")]
+        docs: Option<String>,
+
         /// Output format
         #[arg(long, value_name = "FORMAT", value_enum, default_value = "text")]
         format: OutputFormat,

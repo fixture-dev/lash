@@ -6,10 +6,13 @@ use crate::connection::{get_schema_version, set_schema_version};
 use crate::error::{DbError, DbResult};
 
 mod v2_enhanced_fts;
+mod v3_doc_refs;
+
 use v2_enhanced_fts::MigrationV2EnhancedFts;
+use v3_doc_refs::MigrationV3DocRefs;
 
 /// Current schema version
-pub const CURRENT_SCHEMA_VERSION: i32 = 2;
+pub const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 /// A database migration
 pub trait Migration {
@@ -115,7 +118,10 @@ fn apply_migration(conn: &Connection, migration: &dyn Migration) -> DbResult<()>
 
 /// Get all available migrations in order
 fn get_migrations() -> Vec<Box<dyn Migration>> {
-    vec![Box::new(MigrationV2EnhancedFts)]
+    vec![
+        Box::new(MigrationV2EnhancedFts),
+        Box::new(MigrationV3DocRefs),
+    ]
 }
 
 #[cfg(test)]

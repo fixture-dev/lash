@@ -168,6 +168,21 @@ impl AnnotationBlock {
         Ok(deps)
     }
 
+    /// Get documentation references from annotations
+    ///
+    /// Parses all values for the `doc` key as documentation references.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if any doc reference has invalid syntax
+    pub fn get_docs(&self) -> Result<Vec<lash_types::DocRef>> {
+        let mut docs = Vec::new();
+        for value in self.get_list(known_keys::DOC) {
+            docs.push(lash_types::parse_doc_ref(value)?);
+        }
+        Ok(docs)
+    }
+
     /// Get status from an annotation
     ///
     /// Parses the annotation value as a task status.
@@ -627,9 +642,12 @@ pub mod known_keys {
     /// Note for LLM agents
     pub const AGENT_NOTE: &str = "agent-note";
 
+    /// Documentation reference
+    pub const DOC: &str = "doc";
+
     /// All known annotation keys
     pub const ALL: &[&str] = &[
-        ID, LABELS, STATUS, OWNER, CREATED, ESTIMATE, DEPENDS_ON, AGENT_NOTE,
+        ID, LABELS, STATUS, OWNER, CREATED, ESTIMATE, DEPENDS_ON, AGENT_NOTE, DOC,
     ];
 }
 
@@ -1076,10 +1094,12 @@ mod tests {
         assert_eq!(known_keys::ESTIMATE, "estimate");
         assert_eq!(known_keys::DEPENDS_ON, "depends-on");
         assert_eq!(known_keys::AGENT_NOTE, "agent-note");
+        assert_eq!(known_keys::DOC, "doc");
 
-        assert_eq!(known_keys::ALL.len(), 8);
+        assert_eq!(known_keys::ALL.len(), 9);
         assert!(known_keys::ALL.contains(&"id"));
         assert!(known_keys::ALL.contains(&"depends-on"));
+        assert!(known_keys::ALL.contains(&"doc"));
     }
 
     // ==================== Integration Tests ====================

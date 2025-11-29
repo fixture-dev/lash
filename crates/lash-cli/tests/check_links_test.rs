@@ -5,7 +5,7 @@ mod common;
 use clap::CommandFactory;
 use common::temp_test_dir;
 use lash_cli::cli::LashCli;
-use lash_db::{init_database, Indexer, IndexerConfig};
+use lash_db::{init_database, run_migrations, Indexer, IndexerConfig};
 use lash_types::LashConfig;
 use std::fs;
 
@@ -71,6 +71,9 @@ fn create_test_project_clean(project_root: &std::path::Path) {
 fn index_project(project_root: &std::path::Path) {
     let db_path = project_root.join(".lash/db.sqlite");
     let conn = init_database(&db_path).expect("Failed to create database");
+
+    // Run migrations to ensure schema is up to date
+    run_migrations(&conn).expect("Failed to run migrations");
 
     let indexer_config = IndexerConfig::new(project_root.to_path_buf());
     let parser_config = LashConfig::default();

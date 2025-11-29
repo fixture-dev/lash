@@ -153,6 +153,10 @@ pub struct TaskMetadata {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub depends_on: Vec<DependencyRef>,
 
+    /// Documentation references
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub docs: Vec<crate::dependency::DocRef>,
+
     /// Note for AI agents
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_note: Option<String>,

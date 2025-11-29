@@ -30,6 +30,7 @@
 
 use super::checkbox::CheckboxLine;
 use lash_types::{Task, TaskTree};
+use std::collections::HashMap;
 
 /// Builder for constructing task trees from checkbox lines
 ///
@@ -158,6 +159,47 @@ impl TaskTreeBuilder {
         // Mark ID as used
         self.mark_id_used(task_id.clone());
 
+        // Extract metadata from annotation block (if present)
+        let metadata = if let Some(ref annotations) = line.annotations {
+            // Start with labels from both inline and annotation block
+            let mut labels: Vec<String> = line.labels.iter().map(|l| l.name.clone()).collect();
+
+            // Add labels from annotation block
+            let annotation_labels = annotations.get_labels("labels");
+            for label in annotation_labels {
+                if !labels.contains(&label.name) {
+                    labels.push(label.name);
+                }
+            }
+
+            // Extract other metadata
+            let owner = annotations.get_single("owner").map(String::from);
+            let estimate = annotations.get_single("estimate").map(String::from);
+            let agent_note = annotations.get_single("agent-note").map(String::from);
+
+            // Extract dependencies
+            let depends_on = annotations.get_dependencies().unwrap_or_default();
+
+            // Extract doc references
+            let docs = annotations.get_docs().unwrap_or_default();
+
+            lash_types::TaskMetadata {
+                labels,
+                owner,
+                estimate,
+                depends_on,
+                docs,
+                agent_note,
+                custom: HashMap::default(),
+            }
+        } else {
+            // No annotation block - just use inline labels
+            lash_types::TaskMetadata {
+                labels: line.labels.iter().map(|l| l.name.clone()).collect(),
+                ..Default::default()
+            }
+        };
+
         // Create the task
         let task = Task {
             id: task_id,
@@ -166,10 +208,7 @@ impl TaskTreeBuilder {
             depth,
             parent_id,
             order_index,
-            metadata: lash_types::TaskMetadata {
-                labels: line.labels.iter().map(|l| l.name.clone()).collect(),
-                ..Default::default()
-            },
+            metadata,
             body: None,
         };
 

@@ -31,7 +31,8 @@ pub mod tree;
 
 pub use config::{ConfigBuilder, LashConfig, TreeViewConfig, UserConfig};
 pub use dependency::{
-    make_full_id, parse_dependency_ref, parse_full_id, Dependency, DependencyKind, DependencyRef,
+    make_full_id, parse_dependency_ref, parse_doc_ref, parse_full_id, Dependency, DependencyKind,
+    DependencyRef, DocRef,
 };
 pub use error::{Diagnostic, LashError, Location, Result, Severity};
 pub use file::{compute_hash, synthesize_file_id, FileMetadata, FileStatus, TaskFile};

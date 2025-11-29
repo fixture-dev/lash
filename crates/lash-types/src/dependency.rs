@@ -301,6 +301,118 @@ pub fn parse_full_id(full_id: &str) -> Result<(String, String)> {
     }
 }
 
+/// Reference to a documentation resource
+///
+/// Represents a link to documentation with an optional fragment identifier.
+/// Used by the `@doc` annotation to link tasks to their documentation.
+///
+/// # Examples
+///
+/// ```
+/// use lash_types::dependency::DocRef;
+///
+/// let doc1 = DocRef::parse("../docs/design.md").unwrap();
+/// assert_eq!(doc1.path, "../docs/design.md");
+/// assert_eq!(doc1.fragment, None);
+///
+/// let doc2 = DocRef::parse("../docs/design.md#section-7.2").unwrap();
+/// assert_eq!(doc2.path, "../docs/design.md");
+/// assert_eq!(doc2.fragment, Some("section-7.2".to_string()));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocRef {
+    /// Relative path to the document (e.g., "../docs/design.md")
+    pub path: String,
+    /// Optional fragment identifier (e.g., "section-7.2")
+    pub fragment: Option<String>,
+}
+
+impl DocRef {
+    /// Create a new documentation reference
+    #[must_use]
+    pub fn new(path: impl Into<String>, fragment: Option<String>) -> Self {
+        Self {
+            path: path.into(),
+            fragment,
+        }
+    }
+
+    /// Parse a documentation reference string
+    ///
+    /// Splits on `#` to extract path and optional fragment.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_types::dependency::DocRef;
+    ///
+    /// let doc = DocRef::parse("path/to/file.md#section").unwrap();
+    /// assert_eq!(doc.path, "path/to/file.md");
+    /// assert_eq!(doc.fragment, Some("section".to_string()));
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the path is empty
+    pub fn parse(value: &str) -> Result<Self> {
+        let trimmed = value.trim();
+
+        // Split on # to separate path and fragment
+        let (path, fragment) = if let Some((p, f)) = trimmed.split_once('#') {
+            (p, Some(f.to_string()))
+        } else {
+            (trimmed, None)
+        };
+
+        // Reject empty paths
+        if path.is_empty() {
+            return Err(LashError::Dependency {
+                code: codes::E_DEP_INVALID_REF,
+                message: "Documentation reference path cannot be empty".to_string(),
+                location: None,
+                chain: None,
+                help: Some("doc references must have a path (e.g., ../docs/design.md)".to_string()),
+            });
+        }
+
+        Ok(Self {
+            path: path.to_string(),
+            fragment,
+        })
+    }
+}
+
+impl fmt::Display for DocRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.path)?;
+        if let Some(ref frag) = self.fragment {
+            write!(f, "#{frag}")?;
+        }
+        Ok(())
+    }
+}
+
+/// Parse a documentation reference string
+///
+/// Convenience function that delegates to `DocRef::parse`.
+///
+/// # Examples
+///
+/// ```
+/// use lash_types::dependency::parse_doc_ref;
+///
+/// let doc = parse_doc_ref("../docs/api.md#authentication").unwrap();
+/// assert_eq!(doc.path, "../docs/api.md");
+/// assert_eq!(doc.fragment, Some("authentication".to_string()));
+/// ```
+///
+/// # Errors
+///
+/// Returns error if the reference is invalid (empty path)
+pub fn parse_doc_ref(s: &str) -> Result<DocRef> {
+    DocRef::parse(s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,5 +562,60 @@ mod tests {
             assert!(dep_ref.validate().is_ok());
             // Display might not match exactly (e.g., dir: prefix), but should be valid
         }
+    }
+
+    // ==================== DocRef Tests ====================
+
+    #[test]
+    fn test_doc_ref_parse_path_only() {
+        let doc = DocRef::parse("path/to/file.md").unwrap();
+        assert_eq!(doc.path, "path/to/file.md");
+        assert_eq!(doc.fragment, None);
+    }
+
+    #[test]
+    fn test_doc_ref_parse_with_fragment() {
+        let doc = DocRef::parse("path/to/file.md#section").unwrap();
+        assert_eq!(doc.path, "path/to/file.md");
+        assert_eq!(doc.fragment, Some("section".to_string()));
+    }
+
+    #[test]
+    fn test_doc_ref_parse_empty_path() {
+        let result = DocRef::parse("#section");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_doc_ref_parse_empty() {
+        let result = DocRef::parse("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_doc_ref_new() {
+        let doc = DocRef::new("docs/api.md", Some("auth".to_string()));
+        assert_eq!(doc.path, "docs/api.md");
+        assert_eq!(doc.fragment, Some("auth".to_string()));
+
+        let doc2 = DocRef::new("docs/api.md", None);
+        assert_eq!(doc2.path, "docs/api.md");
+        assert_eq!(doc2.fragment, None);
+    }
+
+    #[test]
+    fn test_doc_ref_display() {
+        let doc1 = DocRef::new("docs/api.md", None);
+        assert_eq!(format!("{doc1}"), "docs/api.md");
+
+        let doc2 = DocRef::new("docs/api.md", Some("section".to_string()));
+        assert_eq!(format!("{doc2}"), "docs/api.md#section");
+    }
+
+    #[test]
+    fn test_parse_doc_ref() {
+        let doc = parse_doc_ref("../docs/design.md#overview").unwrap();
+        assert_eq!(doc.path, "../docs/design.md");
+        assert_eq!(doc.fragment, Some("overview".to_string()));
     }
 }

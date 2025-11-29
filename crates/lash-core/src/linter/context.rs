@@ -116,6 +116,7 @@ impl<'a> LintContext<'a> {
             "estimate",
             "depends-on",
             "agent-note",
+            "doc",
         ];
 
         BUILTIN.contains(&key)

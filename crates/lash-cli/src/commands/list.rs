@@ -6,9 +6,9 @@ use anyhow::{Context, Result};
 use lash_cli::theme::CliTheme;
 use lash_cli::tree_formatter::TreeFormatter;
 use lash_db::repository::files::FileRecord;
-use lash_db::{open_database, FileRepository};
+use lash_db::{open_database, DocRefRepository, FileRepository};
 use lash_types::tree::TreeNode;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
@@ -35,6 +35,8 @@ pub struct ListArgs {
     pub blocked: bool,
     /// Filter by owner - currently unused in file view
     pub owner: Option<String>,
+    /// Filter by files/tasks that reference a specific document
+    pub docs: Option<String>,
     /// Output format
     pub format: OutputFormat,
     /// Project root (detected automatically if None)
@@ -94,6 +96,7 @@ pub fn execute(args: ListArgs) -> Result<i32> {
 
     // Create repositories
     let file_repo = FileRepository::new(&conn);
+    let doc_repo = DocRefRepository::new(&conn);
 
     // Check if tree view is enabled
     let use_tree_view = determine_tree_view_enabled(&args);
@@ -104,7 +107,26 @@ pub fn execute(args: ListArgs) -> Result<i32> {
     );
 
     // Get files
-    let files = file_repo.list_all()?;
+    let mut files = file_repo.list_all()?;
+
+    // Filter by doc references if requested
+    if let Some(ref doc_path) = args.docs {
+        tracing::debug!(doc_path = %doc_path, "Filtering by doc references");
+
+        // Find all files that reference this document
+        let doc_sources = doc_repo.find_by_target_prefix(doc_path)?;
+
+        // Collect unique file IDs
+        let file_ids: HashSet<i64> = doc_sources.iter().map(|row| row.source_file_id).collect();
+
+        // Filter files to only those that reference the doc
+        files.retain(|f| file_ids.contains(&f.id));
+
+        tracing::debug!(
+            filtered_count = files.len(),
+            "Filtered files by doc references"
+        );
+    }
 
     tracing::debug!(file_count = files.len(), "Retrieved files");
 
@@ -443,6 +465,7 @@ mod tests {
             path: None,
             blocked: false,
             owner: None,
+            docs: None,
             format: OutputFormat::Text,
             project_root: None,
             theme: None,
@@ -464,6 +487,7 @@ mod tests {
             path: None,
             blocked: false,
             owner: None,
+            docs: None,
             format: OutputFormat::Text,
             project_root: None,
             theme: None,

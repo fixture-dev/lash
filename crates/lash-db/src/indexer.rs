@@ -612,11 +612,20 @@ impl<'conn> Indexer<'conn> {
         let task_repo = TaskRepository::new(self.conn);
         let dep_updater = DependencyUpdater::new(self.conn);
         let label_repo = crate::repository::LabelRepository::new(self.conn);
+        let doc_ref_repo = crate::repository::DocRefRepository::new(self.conn);
 
         for task_file in normalized_files {
             let file_db_id = path_to_id
                 .get(&task_file.path)
                 .ok_or_else(|| DbError::Other("File ID not found after upsert".to_string()))?;
+
+            // Delete existing tasks and doc refs for this file (ensures clean re-index)
+            // Note: Deleting tasks will cascade delete task-level doc refs via foreign key
+            self.conn
+                .execute("DELETE FROM tasks WHERE file_id = ?1", [file_db_id])?;
+
+            // Delete file-level doc refs (not cascaded by task deletion)
+            doc_ref_repo.delete_by_file(*file_db_id)?;
 
             // Index file-level labels
             let start = Instant::now();
@@ -630,9 +639,16 @@ impl<'conn> Indexer<'conn> {
                 start.elapsed(),
             );
 
-            // Delete existing tasks for this file (ensures clean re-index)
-            self.conn
-                .execute("DELETE FROM tasks WHERE file_id = ?1", [file_db_id])?;
+            // Index file-level doc refs
+            let start = Instant::now();
+            for doc_ref in &task_file.metadata.docs {
+                doc_ref_repo.insert(doc_ref, *file_db_id, None)?;
+            }
+            profiler.record_db_operation(
+                "index_file_docs",
+                task_file.metadata.docs.len(),
+                start.elapsed(),
+            );
 
             // Insert tasks for this file
             let tasks: Vec<_> = task_file
@@ -647,7 +663,7 @@ impl<'conn> Indexer<'conn> {
                 task_repo.insert_batch(&tasks)?;
                 profiler.record_db_operation("insert_tasks", tasks.len(), start.elapsed());
 
-                // Index labels for each task
+                // Index labels and doc refs for each task
                 let start = Instant::now();
                 for (task, _file_db_id, file_id) in &tasks {
                     // Get the database ID for this task
@@ -662,8 +678,13 @@ impl<'conn> Indexer<'conn> {
                         let label_id = label_repo.get_or_create(label)?;
                         label_repo.add_task_label(task_db_id, label_id)?;
                     }
+
+                    // Index doc refs for this task
+                    for doc_ref in &task.metadata.docs {
+                        doc_ref_repo.insert(doc_ref, *file_db_id, Some(task_db_id))?;
+                    }
                 }
-                profiler.record_db_operation("index_labels", tasks.len(), start.elapsed());
+                profiler.record_db_operation("index_task_metadata", tasks.len(), start.elapsed());
 
                 // Insert hierarchy dependencies for parent-child relationships
                 let start = Instant::now();
@@ -1209,6 +1230,161 @@ mod tests {
         assert!(
             p_all_deps.contains(&gp_task.id),
             "Parent should depend on grandparent"
+        );
+    }
+
+    #[test]
+    fn test_doc_refs_indexed() {
+        use crate::migrations::run_migrations;
+        use crate::repository::DocRefRepository;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create a markdown file with both file-level and task-level @doc annotations
+        fs::write(
+            root.join("features.md"),
+            "# Features\n\n@id: features\n@doc: ../docs/architecture.md#features-overview\n\n## Tasks\n\n- [ ] Implement authentication\n  @id: auth\n  @doc: ../docs/auth-spec.md\n  @doc: ../docs/security.md#authentication\n- [ ] Add user management\n  @id: users\n  @doc: ../docs/user-guide.md#admin\n",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.path().join("test.db");
+        let conn = init_database(&db_path).unwrap();
+        run_migrations(&conn).unwrap();
+
+        let config = IndexerConfig::new(root.to_path_buf());
+        let parser_config = LashConfig::default();
+
+        // Index the project
+        let mut indexer = Indexer::new(&conn, config, &parser_config);
+        let report = indexer.index_project().unwrap();
+
+        assert_eq!(report.files_processed, 1);
+        assert_eq!(report.files_added, 1);
+        assert_eq!(report.errors.len(), 0);
+
+        // Verify doc refs were indexed
+        let doc_repo = DocRefRepository::new(&conn);
+        let (total, file_level, task_level) = doc_repo.get_stats().unwrap();
+
+        // Should have 1 file-level doc ref and 3 task-level doc refs (2 for auth, 1 for users)
+        assert_eq!(total, 4, "Should have 4 total doc refs");
+        assert_eq!(file_level, 1, "Should have 1 file-level doc ref");
+        assert_eq!(task_level, 3, "Should have 3 task-level doc refs");
+
+        // Get file database ID
+        let file_repo = FileRepository::new(&conn);
+        let files = file_repo.list_all().unwrap();
+        assert_eq!(files.len(), 1);
+        let file_db_id = files[0].id;
+
+        // Verify file-level doc refs
+        let file_docs = doc_repo.find_file_level(file_db_id).unwrap();
+        assert_eq!(file_docs.len(), 1);
+        assert_eq!(file_docs[0].target_path, "../docs/architecture.md");
+        assert_eq!(file_docs[0].fragment, Some("features-overview".to_string()));
+
+        // Verify task-level doc refs
+        let task_repo = TaskRepository::new(&conn);
+        let all_tasks = task_repo.get_by_file(file_db_id).unwrap();
+        assert_eq!(all_tasks.len(), 2, "Should have 2 tasks");
+
+        // Find the auth task
+        let auth_task = all_tasks
+            .iter()
+            .find(|t| t.title == "Implement authentication")
+            .expect("Should find auth task");
+
+        let auth_docs = doc_repo.find_by_task(auth_task.id).unwrap();
+        assert_eq!(auth_docs.len(), 2, "Auth task should have 2 doc refs");
+
+        // Check the doc paths and fragments
+        let auth_doc_paths: Vec<_> = auth_docs.iter().map(|d| d.target_path.as_str()).collect();
+        assert!(auth_doc_paths.contains(&"../docs/auth-spec.md"));
+        assert!(auth_doc_paths.contains(&"../docs/security.md"));
+
+        // Verify the security doc has fragment
+        let security_doc = auth_docs
+            .iter()
+            .find(|d| d.target_path == "../docs/security.md")
+            .expect("Should find security doc ref");
+        assert_eq!(
+            security_doc.fragment,
+            Some("authentication".to_string()),
+            "Security doc should have authentication fragment"
+        );
+
+        // Find the users task
+        let users_task = all_tasks
+            .iter()
+            .find(|t| t.title == "Add user management")
+            .expect("Should find users task");
+
+        let users_docs = doc_repo.find_by_task(users_task.id).unwrap();
+        assert_eq!(users_docs.len(), 1, "Users task should have 1 doc ref");
+        assert_eq!(users_docs[0].target_path, "../docs/user-guide.md");
+        assert_eq!(users_docs[0].fragment, Some("admin".to_string()));
+    }
+
+    #[test]
+    fn test_doc_refs_updated_on_reindex() {
+        use crate::migrations::run_migrations;
+        use crate::repository::DocRefRepository;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create initial file with one doc ref
+        fs::write(
+            root.join("test.md"),
+            "# Test\n\n@id: test\n@doc: ../docs/old.md\n\n## Tasks\n\n- [ ] Task\n  @id: task\n",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.path().join("test.db");
+        let conn = init_database(&db_path).unwrap();
+        run_migrations(&conn).unwrap();
+
+        let config = IndexerConfig::new(root.to_path_buf());
+        let parser_config = LashConfig::default();
+
+        // Initial index
+        let mut indexer = Indexer::new(&conn, config.clone(), &parser_config);
+        indexer.index_project().unwrap();
+
+        let doc_repo = DocRefRepository::new(&conn);
+        let (total, _, _) = doc_repo.get_stats().unwrap();
+        assert_eq!(total, 1, "Should have 1 doc ref initially");
+
+        // Modify file: change doc ref and add task-level doc ref
+        fs::write(
+            root.join("test.md"),
+            "# Test\n\n@id: test\n@doc: ../docs/new.md\n\n## Tasks\n\n- [ ] Task\n  @id: task\n  @doc: ../docs/task-spec.md\n",
+        )
+        .unwrap();
+
+        // Re-index
+        let mut indexer2 = Indexer::new(&conn, config, &parser_config);
+        let report2 = indexer2.index_project().unwrap();
+        assert_eq!(report2.files_processed, 1);
+        assert_eq!(report2.files_updated, 1);
+
+        // Verify updated doc refs
+        let (total, file_level, task_level) = doc_repo.get_stats().unwrap();
+        assert_eq!(total, 2, "Should have 2 doc refs after update");
+        assert_eq!(file_level, 1, "Should have 1 file-level doc ref");
+        assert_eq!(task_level, 1, "Should have 1 task-level doc ref");
+
+        // Verify old doc ref is gone and new one exists
+        let file_repo = FileRepository::new(&conn);
+        let files = file_repo.list_all().unwrap();
+        let file_db_id = files[0].id;
+
+        let file_docs = doc_repo.find_file_level(file_db_id).unwrap();
+        assert_eq!(file_docs.len(), 1);
+        assert_eq!(
+            file_docs[0].target_path, "../docs/new.md",
+            "Doc ref should be updated to new.md"
         );
     }
 }

@@ -137,14 +137,15 @@ This enables lean task files that link to richer context on demand, supporting b
 
 ### 5. Add CLI Support for Doc References
 
-- [ ] Update `lash show` command
-  - [ ] Display doc references in output
-  - [ ] Format: `Docs: ../docs/design.md#section-7`
-- [ ] Add `--docs` filter to `lash list`
-  - [ ] `lash list --docs design.md` - find tasks referencing this doc
+- [x] Update `lash show` command
+  - [x] Display doc references in output
+  - [x] Format: `Docs: ../docs/design.md#section-7`
+- [x] Add `--docs` filter to `lash list`
+  - [x] `lash list --docs design.md` - find tasks referencing this doc
 - [ ] Update `lash agent-prompt` output
   - [ ] Include doc refs in sparse context
   - [ ] Enable agents to request doc content on demand
+  - Note: Deferred as low priority - doc refs are available in DB for future enhancement
 
 **Priority:** LOW
 **Estimate:** 0.5 days
@@ -153,8 +154,8 @@ This enables lean task files that link to richer context on demand, supporting b
 
 ### Tests
 
-- [ ] Integration: `lash show` displays docs
-- [ ] Integration: `lash list --docs` filters correctly
+- [x] Integration: `lash show` displays docs
+- [x] Integration: `lash list --docs` filters correctly
 
 ---
 

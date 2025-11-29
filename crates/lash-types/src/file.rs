@@ -133,6 +133,10 @@ pub struct FileMetadata {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub depends_on: Vec<DependencyRef>,
 
+    /// Documentation references
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub docs: Vec<crate::dependency::DocRef>,
+
     /// Other annotations
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub custom: HashMap<String, String>,
@@ -444,6 +448,7 @@ mod tests {
             owner: Some("alice".to_string()),
             created: Some("2024-01-01".to_string()),
             depends_on: vec![],
+            docs: vec![],
             custom: HashMap::new(),
         };
 
