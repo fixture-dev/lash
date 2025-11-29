@@ -28,6 +28,7 @@ Tasks are organized by major module/component. Each task file contains:
 ### Parsing & Validation
 - [x] [tasks.markdown-parser.md](tasks.markdown-parser.md) - Markdown parsing implementation ✅
 - [x] [tasks.linter.md](tasks.linter.md) - Linting rules, validation, auto-formatting ✅
+- [ ] [tasks.doc-annotation.md](tasks.doc-annotation.md) - @doc annotation for semantic documentation links
 
 ### Database Layer
 - [x] [tasks.sqlite-schema.md](tasks.sqlite-schema.md) - SQLite schema, repositories, queries ✅
