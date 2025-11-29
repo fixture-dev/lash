@@ -195,3 +195,4 @@ Completed in commits:
 - `56ade71` - Add @doc annotation task for semantic documentation links (Tasks 1-2)
 - `3dad6df` - Add CLI support for @doc annotation references (Tasks 3-5)
 - `730f164` - Fix database initialization to include all migrations
+- `2c0f9de` - Add BrokenDocFragmentRule for validating @doc fragment references
