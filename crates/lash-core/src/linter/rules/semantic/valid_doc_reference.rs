@@ -266,7 +266,16 @@ mod tests {
         let ctx = make_context_with_config(&config, PathBuf::from("test.md"), &files);
 
         let rule = ValidDocReferenceRule::new();
-        let doc = DocRef::new("/absolute/path/file.md", None);
+
+        // Use a path that's guaranteed to be absolute on the current platform
+        // On Unix: /absolute/path/file.md
+        // On Windows: C:\absolute\path\file.md
+        #[cfg(unix)]
+        let absolute_path = "/absolute/path/file.md";
+        #[cfg(windows)]
+        let absolute_path = "C:\\absolute\\path\\file.md";
+
+        let doc = DocRef::new(absolute_path, None);
 
         let result = rule.validate_doc_ref(&doc, &ctx);
         assert!(result.is_some());
@@ -412,7 +421,15 @@ mod tests {
             .unwrap();
 
         task.metadata.docs.push(DocRef::new("guide.md", None)); // Valid
-        task.metadata.docs.push(DocRef::new("/absolute.md", None)); // Invalid
+
+        // Use platform-specific absolute path
+        #[cfg(unix)]
+        let absolute_doc_path = "/absolute.md";
+        #[cfg(windows)]
+        let absolute_doc_path = "C:\\absolute.md";
+        task.metadata
+            .docs
+            .push(DocRef::new(absolute_doc_path, None)); // Invalid
 
         let diagnostics = rule.check_task(&task, &ctx);
         assert_eq!(
