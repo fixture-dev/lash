@@ -1530,7 +1530,7 @@ More text
             .metadata
             .docs
             .iter()
-            .map(|d| d.path.to_string())
+            .map(|d| d.path.clone())
             .collect();
         assert!(doc_paths.contains(&"../docs/design.md".to_string()));
         assert!(doc_paths.contains(&"../docs/api.md".to_string()));
