@@ -1526,12 +1526,7 @@ More text
         assert_eq!(task.metadata.docs.len(), 2);
 
         // Verify the doc refs are correct
-        let doc_paths: Vec<_> = task
-            .metadata
-            .docs
-            .iter()
-            .map(|d| d.path.clone())
-            .collect();
+        let doc_paths: Vec<_> = task.metadata.docs.iter().map(|d| d.path.clone()).collect();
         assert!(doc_paths.contains(&"../docs/design.md".to_string()));
         assert!(doc_paths.contains(&"../docs/api.md".to_string()));
     }
