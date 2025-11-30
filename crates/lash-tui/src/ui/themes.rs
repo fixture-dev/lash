@@ -63,3 +63,21 @@ pub fn focused_border_style(theme: &Theme) -> Style {
 pub fn unfocused_border_style(theme: &Theme) -> Style {
     theme.unfocused_border_style()
 }
+
+/// Style for labels/tags
+///
+/// # Arguments
+///
+/// * `theme` - Color theme to use
+pub fn label_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.label_color())
+}
+
+/// Style for muted/secondary text
+///
+/// # Arguments
+///
+/// * `theme` - Color theme to use
+pub fn muted_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.muted_color())
+}
