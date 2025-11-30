@@ -4,6 +4,7 @@ mod detail_pane;
 mod help;
 mod nav_pane;
 mod status_bar;
+mod task_detail;
 mod theme_selector;
 mod themes;
 
@@ -47,5 +48,10 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     // Render theme selector overlay if active
     if state.theme_selector_state.is_some() {
         theme_selector::render(frame, frame.area(), state);
+    }
+
+    // Render task detail overlay if active
+    if state.task_detail_state.is_some() {
+        task_detail::render(frame, frame.area(), state);
     }
 }

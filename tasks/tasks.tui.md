@@ -156,17 +156,17 @@ Implement the right detail pane showing task list and metadata for the selected 
   - [x] Highlight selected task
 - [x] Implement task navigation
   - [x] `j/k` or arrows: move selection
-  - [-] `Enter`: show task details or expand/collapse (deferred - basic Enter works)
+  - [x] `Enter`: show task details modal
   - [x] `gg/G`: go to top/bottom
   - [-] `{/}`: jump to previous/next top-level task (deferred to future)
-- [-] Implement task detail view (deferred to future version)
-  - [-] Show full task metadata:
-    - [-] Title, status, labels
-    - [-] Owner, estimate, created date
-    - [-] File path and line number
-    - [-] Dependencies list
-    - [-] Blockers (if any)
-  - [-] Toggle between list and detail view
+- [x] Implement task detail view
+  - [x] Show full task metadata:
+    - [x] Title, status, labels
+    - [x] Owner, estimate (if present)
+    - [x] File path
+    - [x] Dependencies list
+    - [-] Blockers (if any) - deferred to future, requires dependency graph building
+  - [x] Toggle between list and detail view (Enter to open, Escape to close)
 - [x] Add file metadata header
   - [x] Show file path
   - [x] Show overall progress (X/Y tasks done)
@@ -179,7 +179,7 @@ Implement the right detail pane showing task list and metadata for the selected 
 
 - [x] Task list displays correctly with hierarchy
 - [x] Navigation is smooth
-- [-] Task details show comprehensive information (deferred - basic view works)
+- [x] Task details show comprehensive information (modal view implemented)
 - [x] Scrolling works for long lists
 
 ### Tests

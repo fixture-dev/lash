@@ -19,6 +19,9 @@ pub struct DependencyRecord {
     /// Task that is depended upon (can be None for unresolved refs)
     pub to_task_id: Option<i64>,
 
+    /// Full ID of the target task (if resolved)
+    pub to_full_id: Option<String>,
+
     /// Kind of dependency
     pub kind: DependencyKind,
 
@@ -90,8 +93,10 @@ impl<'conn> DependencyRepository<'conn> {
     /// Returns error if query fails
     pub fn get_dependencies(&self, task_id: i64) -> DbResult<Vec<DependencyRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, from_task_id, to_task_id, kind, raw_ref
-             FROM dependencies WHERE from_task_id = ?1",
+            "SELECT d.id, d.from_task_id, d.to_task_id, d.kind, d.raw_ref, t.full_id
+             FROM dependencies d
+             LEFT JOIN tasks t ON d.to_task_id = t.id
+             WHERE d.from_task_id = ?1",
         )?;
 
         let deps = stmt
@@ -101,6 +106,7 @@ impl<'conn> DependencyRepository<'conn> {
                     id: row.get(0)?,
                     from_task_id: row.get(1)?,
                     to_task_id: row.get(2)?,
+                    to_full_id: row.get(5)?,
                     kind: DependencyKind::from_str_lossy(&kind_str),
                     raw_ref: row.get(4)?,
                 })
@@ -117,8 +123,10 @@ impl<'conn> DependencyRepository<'conn> {
     /// Returns error if query fails
     pub fn get_dependents(&self, task_id: i64) -> DbResult<Vec<DependencyRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, from_task_id, to_task_id, kind, raw_ref
-             FROM dependencies WHERE to_task_id = ?1",
+            "SELECT d.id, d.from_task_id, d.to_task_id, d.kind, d.raw_ref, t.full_id
+             FROM dependencies d
+             LEFT JOIN tasks t ON d.to_task_id = t.id
+             WHERE d.to_task_id = ?1",
         )?;
 
         let deps = stmt
@@ -128,6 +136,7 @@ impl<'conn> DependencyRepository<'conn> {
                     id: row.get(0)?,
                     from_task_id: row.get(1)?,
                     to_task_id: row.get(2)?,
+                    to_full_id: row.get(5)?,
                     kind: DependencyKind::from_str_lossy(&kind_str),
                     raw_ref: row.get(4)?,
                 })

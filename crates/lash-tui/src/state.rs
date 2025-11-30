@@ -3,6 +3,7 @@
 #![allow(dead_code)] // Some fields/variants reserved for future features
 
 use crate::colors::Theme;
+use lash_db::repository::dependencies::DependencyRecord;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::labels::LabelStats;
 use lash_db::repository::tasks::TaskRecord;
@@ -81,6 +82,9 @@ pub struct AppState {
     /// Theme selector state (None = closed, Some = open with selection index)
     pub theme_selector_state: Option<ThemeSelectorState>,
 
+    /// Task detail state (None = closed, Some = open with task details)
+    pub task_detail_state: Option<TaskDetailState>,
+
     /// File tree (hierarchical directory structure)
     pub file_tree: Option<Vec<TreeNode<DirectoryNode>>>,
 
@@ -111,6 +115,28 @@ pub struct ThemeSelectorState {
 
     /// All available scheme names (cached)
     pub scheme_names: Vec<String>,
+}
+
+/// State for the task detail modal
+#[derive(Debug)]
+pub struct TaskDetailState {
+    /// The task being displayed
+    pub task: TaskRecord,
+
+    /// File path containing this task
+    pub file_path: PathBuf,
+
+    /// Scroll offset for content
+    pub scroll_offset: usize,
+
+    /// Task labels
+    pub labels: Vec<String>,
+
+    /// Dependencies (tasks this task depends on)
+    pub dependencies: Vec<DependencyRecord>,
+
+    /// Total content height for scroll bounds
+    pub content_height: usize,
 }
 
 /// Information about a selected tree node
@@ -157,6 +183,7 @@ impl AppState {
             should_quit: false,
             theme,
             theme_selector_state: None,
+            task_detail_state: None,
             file_tree: None,
             task_tree: None,
             tree_chars: TreeChars::detect(),
@@ -384,6 +411,60 @@ impl AppState {
             Ok(())
         } else {
             Err("Theme selector not open".to_string())
+        }
+    }
+
+    /// Open task detail view
+    ///
+    /// Opens a modal overlay displaying comprehensive details for a task.
+    pub fn open_task_detail(
+        &mut self,
+        task: TaskRecord,
+        file_path: PathBuf,
+        labels: Vec<String>,
+        dependencies: Vec<DependencyRecord>,
+    ) {
+        self.task_detail_state = Some(TaskDetailState {
+            task,
+            file_path,
+            scroll_offset: 0,
+            labels,
+            dependencies,
+            content_height: 0, // Will be calculated during rendering
+        });
+    }
+
+    /// Close task detail view
+    pub fn close_task_detail(&mut self) {
+        self.task_detail_state = None;
+    }
+
+    /// Check if task detail view is open
+    #[must_use]
+    pub fn is_task_detail_open(&self) -> bool {
+        self.task_detail_state.is_some()
+    }
+
+    /// Scroll up in task detail view
+    pub fn task_detail_scroll_up(&mut self) {
+        if let Some(detail) = &mut self.task_detail_state {
+            if detail.scroll_offset > 0 {
+                detail.scroll_offset -= 1;
+            }
+        }
+    }
+
+    /// Scroll down in task detail view
+    ///
+    /// # Arguments
+    ///
+    /// * `visible_height` - The height of the visible area in lines
+    pub fn task_detail_scroll_down(&mut self, visible_height: usize) {
+        if let Some(detail) = &mut self.task_detail_state {
+            let max_scroll = detail.content_height.saturating_sub(visible_height);
+            if detail.scroll_offset < max_scroll {
+                detail.scroll_offset += 1;
+            }
         }
     }
 
