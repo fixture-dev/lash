@@ -114,6 +114,7 @@ fn handle_key_event(key: KeyEvent) -> AppEvent {
         (KeyCode::Char(' '), KeyModifiers::NONE) => AppEvent::Select,
         (KeyCode::Char('e'), KeyModifiers::NONE) => AppEvent::OpenEditor,
         (KeyCode::Char('/'), KeyModifiers::NONE) => AppEvent::Search,
+        (KeyCode::Char('F'), KeyModifiers::SHIFT) => AppEvent::LabelFilter,
         (KeyCode::Char('c'), KeyModifiers::NONE) => AppEvent::ClearFilters,
         (KeyCode::Char('g'), KeyModifiers::CONTROL) => AppEvent::DependencyGraph,
         (KeyCode::Char('?'), KeyModifiers::SHIFT) => AppEvent::Help,

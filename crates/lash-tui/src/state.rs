@@ -4,6 +4,7 @@
 
 use crate::colors::Theme;
 use lash_db::repository::files::FileRecord;
+use lash_db::repository::labels::LabelStats;
 use lash_db::repository::tasks::TaskRecord;
 use lash_types::tree::{TreeChars, TreeNode};
 use std::path::PathBuf;
@@ -88,6 +89,15 @@ pub struct AppState {
 
     /// Tree rendering characters (Unicode or ASCII)
     pub tree_chars: TreeChars,
+
+    /// Available labels with task counts (for label view)
+    pub labels: Vec<LabelStats>,
+
+    /// Currently selected label (index into labels vec)
+    pub selected_label_index: usize,
+
+    /// Current label filter (if any)
+    pub current_label_filter: Option<String>,
 }
 
 /// State for the theme selector modal
@@ -150,6 +160,9 @@ impl AppState {
             file_tree: None,
             task_tree: None,
             tree_chars: TreeChars::detect(),
+            labels: Vec::new(),
+            selected_label_index: 0,
+            current_label_filter: None,
         }
     }
 
@@ -215,11 +228,18 @@ impl AppState {
     /// Move selection up
     pub fn move_up(&mut self) {
         match self.focused_pane {
-            FocusedPane::Navigation => {
-                if self.selected_file_index > 0 {
-                    self.selected_file_index -= 1;
+            FocusedPane::Navigation => match self.nav_mode {
+                NavMode::Files | NavMode::SearchResults => {
+                    if self.selected_file_index > 0 {
+                        self.selected_file_index -= 1;
+                    }
                 }
-            }
+                NavMode::Labels => {
+                    if self.selected_label_index > 0 {
+                        self.selected_label_index -= 1;
+                    }
+                }
+            },
             FocusedPane::Detail => {
                 if self.selected_task_index > 0 {
                     self.selected_task_index -= 1;
@@ -231,12 +251,19 @@ impl AppState {
     /// Move selection down
     pub fn move_down(&mut self) {
         match self.focused_pane {
-            FocusedPane::Navigation => {
-                let max_index = self.visible_tree_node_count();
-                if self.selected_file_index + 1 < max_index {
-                    self.selected_file_index += 1;
+            FocusedPane::Navigation => match self.nav_mode {
+                NavMode::Files | NavMode::SearchResults => {
+                    let max_index = self.visible_tree_node_count();
+                    if self.selected_file_index + 1 < max_index {
+                        self.selected_file_index += 1;
+                    }
                 }
-            }
+                NavMode::Labels => {
+                    if self.selected_label_index + 1 < self.labels.len() {
+                        self.selected_label_index += 1;
+                    }
+                }
+            },
             FocusedPane::Detail => {
                 if self.selected_task_index + 1 < self.tasks.len() {
                     self.selected_task_index += 1;
@@ -248,7 +275,10 @@ impl AppState {
     /// Go to top of current list
     pub fn go_top(&mut self) {
         match self.focused_pane {
-            FocusedPane::Navigation => self.selected_file_index = 0,
+            FocusedPane::Navigation => match self.nav_mode {
+                NavMode::Files | NavMode::SearchResults => self.selected_file_index = 0,
+                NavMode::Labels => self.selected_label_index = 0,
+            },
             FocusedPane::Detail => self.selected_task_index = 0,
         }
     }
@@ -256,12 +286,19 @@ impl AppState {
     /// Go to bottom of current list
     pub fn go_bottom(&mut self) {
         match self.focused_pane {
-            FocusedPane::Navigation => {
-                let max_index = self.visible_tree_node_count();
-                if max_index > 0 {
-                    self.selected_file_index = max_index - 1;
+            FocusedPane::Navigation => match self.nav_mode {
+                NavMode::Files | NavMode::SearchResults => {
+                    let max_index = self.visible_tree_node_count();
+                    if max_index > 0 {
+                        self.selected_file_index = max_index - 1;
+                    }
                 }
-            }
+                NavMode::Labels => {
+                    if !self.labels.is_empty() {
+                        self.selected_label_index = self.labels.len() - 1;
+                    }
+                }
+            },
             FocusedPane::Detail => {
                 if !self.tasks.is_empty() {
                     self.selected_task_index = self.tasks.len() - 1;
@@ -484,6 +521,38 @@ impl AppState {
     #[must_use]
     pub fn selected_task(&self) -> Option<&TaskRecord> {
         self.tasks.get(self.selected_task_index)
+    }
+
+    /// Get currently selected label
+    #[must_use]
+    pub fn selected_label(&self) -> Option<&LabelStats> {
+        self.labels.get(self.selected_label_index)
+    }
+
+    /// Switch to labels view mode
+    pub fn switch_to_labels(&mut self) {
+        self.nav_mode = NavMode::Labels;
+        self.selected_label_index = 0;
+    }
+
+    /// Switch to files view mode
+    pub fn switch_to_files(&mut self) {
+        self.nav_mode = NavMode::Files;
+        self.current_label_filter = None;
+    }
+
+    /// Toggle between files and labels view
+    pub fn toggle_nav_mode(&mut self) {
+        match self.nav_mode {
+            NavMode::Files => self.switch_to_labels(),
+            NavMode::Labels | NavMode::SearchResults => self.switch_to_files(),
+        }
+    }
+
+    /// Clear label filter and return to file view
+    pub fn clear_label_filter(&mut self) {
+        self.current_label_filter = None;
+        self.nav_mode = NavMode::Files;
     }
 
     /// Build file tree from flat file list
