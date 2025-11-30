@@ -7,7 +7,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::{AppState, DirectoryNode, FocusedPane};
+use crate::state::{AppState, DirectoryNode, FocusedPane, NavMode};
 use crate::ui::themes;
 use lash_types::tree::TreeNode;
 
@@ -22,17 +22,26 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         themes::unfocused_border_style(theme)
     };
 
+    // Choose title and content based on nav mode
+    let (title, items, selected_index) = match state.nav_mode {
+        NavMode::Files | NavMode::SearchResults => {
+            let items = if let Some(file_trees) = &state.file_tree {
+                render_file_tree(file_trees, state, theme)
+            } else {
+                render_flat_file_list(state, theme)
+            };
+            (" Files ", items, state.selected_file_index)
+        }
+        NavMode::Labels => {
+            let items = render_label_list(state, theme);
+            (" Labels ", items, state.selected_label_index)
+        }
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Files ")
+        .title(title)
         .border_style(border_style);
-
-    // Check if tree view is available
-    let items: Vec<ListItem> = if let Some(file_trees) = &state.file_tree {
-        render_file_tree(file_trees, state, theme)
-    } else {
-        render_flat_file_list(state, theme)
-    };
 
     let list = List::new(items)
         .block(block)
@@ -40,7 +49,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     // Create list state with current selection
     let mut list_state = ListState::default();
-    list_state.select(Some(state.selected_file_index));
+    list_state.select(Some(selected_index));
 
     frame.render_stateful_widget(list, area, &mut list_state);
 }
@@ -203,4 +212,46 @@ fn build_tree_prefix(
     }
 
     prefix
+}
+
+/// Render label list view
+fn render_label_list(state: &AppState, theme: &crate::colors::Theme) -> Vec<ListItem<'static>> {
+    if state.labels.is_empty() {
+        return vec![ListItem::new(Line::from(vec![Span::styled(
+            "No labels in project",
+            themes::muted_style(theme),
+        )]))];
+    }
+
+    state
+        .labels
+        .iter()
+        .enumerate()
+        .map(|(i, label)| {
+            let is_selected = i == state.selected_label_index;
+
+            // Format: #label-name (N tasks)
+            let label_text = format!("#{}", label.name);
+            let count_text = format!(" ({} tasks)", label.task_count);
+
+            let style = if is_selected {
+                themes::selected_style(theme)
+            } else {
+                themes::label_style(theme)
+            };
+
+            let count_style = if is_selected {
+                themes::selected_style(theme)
+            } else {
+                themes::muted_style(theme)
+            };
+
+            let line = Line::from(vec![
+                Span::styled(label_text, style),
+                Span::styled(count_text, count_style),
+            ]);
+
+            ListItem::new(line)
+        })
+        .collect()
 }

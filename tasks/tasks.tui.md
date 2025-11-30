@@ -101,10 +101,10 @@ Implement the left navigation pane showing directory tree, files, and label filt
   - [x] `Enter` or `l`: expand directory or open file
   - [-] `h`: collapse directory or go to parent (deferred - no tree yet)
   - [x] `gg/G`: go to top/bottom
-- [-] Implement label view (deferred to future version)
-  - [-] List all labels with task counts
-  - [-] Navigate with `j/k`
-  - [-] Select label to filter
+- [x] Implement label view
+  - [x] List all labels with task counts
+  - [x] Navigate with `j/k`
+  - [x] Select label to filter
 - [x] Add visual styling
   - [x] Highlight selected item
   - [x] Color-code by status (done=green, blocked=red)
@@ -120,7 +120,7 @@ Implement the left navigation pane showing directory tree, files, and label filt
 - [x] File tree displays correctly
 - [x] Navigation is smooth and intuitive
 - [-] Tree expand/collapse works (deferred - flat list for v1)
-- [-] Label view shows all labels (deferred to future version)
+- [x] Label view shows all labels
 
 ### Tests
 

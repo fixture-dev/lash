@@ -56,7 +56,8 @@ pub fn render(frame: &mut Frame, area: Rect, _state: &AppState) {
         Line::from("  Space          Toggle task status"),
         Line::from("  e              Open file in $EDITOR"),
         Line::from("  /              Search"),
-        Line::from("  c              Clear filters"),
+        Line::from("  F              Toggle Files/Labels view"),
+        Line::from("  c              Clear label filter"),
         Line::from("  Ctrl-g         Show dependency graph"),
         Line::from(""),
         Line::from(vec![Span::styled(

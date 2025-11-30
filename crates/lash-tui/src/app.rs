@@ -6,7 +6,7 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 
-use lash_db::repository::{FileRepository, TaskRepository};
+use lash_db::repository::{FileRepository, LabelRepository, TaskRepository};
 
 use crate::error::{TuiError, TuiResult};
 use crate::event::{poll_event, AppEvent};
@@ -73,6 +73,12 @@ impl TuiApp {
                 .map_err(|e| TuiError::App(format!("Failed to load tasks: {e}")))?;
         }
 
+        // Load labels with stats
+        let label_repo = LabelRepository::new(&conn);
+        state.labels = label_repo
+            .get_label_stats()
+            .map_err(|e| TuiError::App(format!("Failed to load labels: {e}")))?;
+
         Ok(Self {
             terminal,
             conn,
@@ -138,12 +144,13 @@ impl TuiApp {
                     AppEvent::ExpandAll => self.handle_expand_all(),
                     AppEvent::CollapseAll => self.handle_collapse_all(),
 
+                    AppEvent::LabelFilter => self.handle_label_toggle()?,
+                    AppEvent::ClearFilters => self.state.clear_label_filter(),
+
                     // TODO: implement these features
                     AppEvent::ExpandNode
                     | AppEvent::CollapseNode
-                    | AppEvent::ClearFilters
                     | AppEvent::Search
-                    | AppEvent::LabelFilter
                     | AppEvent::DependencyGraph
                     | AppEvent::PrevTask
                     | AppEvent::NextTask
@@ -163,35 +170,51 @@ impl TuiApp {
 
     /// Handle selection/enter in current pane
     fn handle_select(&mut self) -> TuiResult<()> {
+        use crate::state::{FocusedPane, NavMode};
+
         match self.state.focused_pane {
-            crate::state::FocusedPane::Navigation => {
-                // Check if tree view is active and get selected node info
-                if let Some(selected) = self.state.selected_tree_node() {
-                    if selected.is_directory {
-                        // Toggle expand/collapse for directories
-                        self.state.toggle_selected_node();
-                    } else if let Some(file) = selected.file_record {
-                        // Load tasks for file and switch to detail pane
-                        let task_repo = TaskRepository::new(&self.conn);
-                        self.state.tasks = task_repo
-                            .get_by_file(file.id)
-                            .map_err(|e| TuiError::App(format!("Failed to load tasks: {e}")))?;
-                        self.state.selected_task_index = 0;
-                        self.state.switch_pane();
+            FocusedPane::Navigation => {
+                match self.state.nav_mode {
+                    NavMode::Files | NavMode::SearchResults => {
+                        // Check if tree view is active and get selected node info
+                        if let Some(selected) = self.state.selected_tree_node() {
+                            if selected.is_directory {
+                                // Toggle expand/collapse for directories
+                                self.state.toggle_selected_node();
+                            } else if let Some(file) = selected.file_record {
+                                // Load tasks for file and switch to detail pane
+                                let task_repo = TaskRepository::new(&self.conn);
+                                self.state.tasks = task_repo
+                                    .get_by_file(file.id)
+                                    .map_err(|e| {
+                                        TuiError::App(format!("Failed to load tasks: {e}"))
+                                    })?;
+                                self.state.selected_task_index = 0;
+                                self.state.build_task_tree();
+                                self.state.switch_pane();
+                            }
+                        } else {
+                            // Fallback for flat view: load tasks for selected file
+                            if let Some(file) = self.state.selected_file() {
+                                let task_repo = TaskRepository::new(&self.conn);
+                                self.state.tasks = task_repo
+                                    .get_by_file(file.id)
+                                    .map_err(|e| {
+                                        TuiError::App(format!("Failed to load tasks: {e}"))
+                                    })?;
+                                self.state.selected_task_index = 0;
+                                self.state.build_task_tree();
+                                self.state.switch_pane();
+                            }
+                        }
                     }
-                } else {
-                    // Fallback for flat view: load tasks for selected file
-                    if let Some(file) = self.state.selected_file() {
-                        let task_repo = TaskRepository::new(&self.conn);
-                        self.state.tasks = task_repo
-                            .get_by_file(file.id)
-                            .map_err(|e| TuiError::App(format!("Failed to load tasks: {e}")))?;
-                        self.state.selected_task_index = 0;
-                        self.state.switch_pane();
+                    NavMode::Labels => {
+                        // Select a label and filter tasks
+                        self.handle_label_select()?;
                     }
                 }
             }
-            crate::state::FocusedPane::Detail => {
+            FocusedPane::Detail => {
                 // Enter on detail pane shows task details
                 // TODO: Implement task detail view
             }
@@ -328,6 +351,43 @@ impl TuiApp {
                 }
             }
         }
+    }
+
+    /// Handle toggling between files and labels view
+    fn handle_label_toggle(&mut self) -> TuiResult<()> {
+        // Reload labels to ensure we have latest stats
+        let label_repo = LabelRepository::new(&self.conn);
+        self.state.labels = label_repo
+            .get_label_stats()
+            .map_err(|e| TuiError::App(format!("Failed to load labels: {e}")))?;
+
+        self.state.toggle_nav_mode();
+        Ok(())
+    }
+
+    /// Handle selecting a label to filter tasks
+    fn handle_label_select(&mut self) -> TuiResult<()> {
+        let Some(label) = self.state.selected_label() else {
+            return Ok(());
+        };
+
+        let label_name = label.name.clone();
+
+        // Load tasks with this label
+        let task_repo = TaskRepository::new(&self.conn);
+        self.state.tasks = task_repo
+            .find_by_label(&label_name)
+            .map_err(|e| TuiError::App(format!("Failed to load tasks for label: {e}")))?;
+
+        // Set current filter and reset selection
+        self.state.current_label_filter = Some(label_name);
+        self.state.selected_task_index = 0;
+        self.state.build_task_tree();
+
+        // Switch to detail pane to show filtered tasks
+        self.state.focused_pane = crate::state::FocusedPane::Detail;
+
+        Ok(())
     }
 }
 
