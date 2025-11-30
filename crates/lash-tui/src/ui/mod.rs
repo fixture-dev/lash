@@ -3,6 +3,7 @@
 mod detail_pane;
 mod help;
 mod nav_pane;
+mod search_modal;
 mod status_bar;
 mod task_detail;
 mod theme_selector;
@@ -53,5 +54,10 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     // Render task detail overlay if active
     if state.task_detail_state.is_some() {
         task_detail::render(frame, frame.area(), state);
+    }
+
+    // Render search modal overlay if active
+    if state.search_modal_state.is_some() {
+        search_modal::render(frame, frame.area(), state);
     }
 }

@@ -8,7 +8,7 @@ use std::time::Duration;
 use crate::error::TuiResult;
 
 /// Application events
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppEvent {
     /// Quit the application
     Quit,
@@ -60,6 +60,20 @@ pub enum AppEvent {
     Resize(u16, u16),
     /// No event (timeout)
     None,
+    /// Character input (for search)
+    CharInput(char),
+    /// Backspace key
+    Backspace,
+    /// Delete key
+    Delete,
+    /// Home key
+    Home,
+    /// End key
+    End,
+    /// Execute search (Enter in search mode)
+    ExecuteSearch,
+    /// Close search modal
+    CloseSearch,
 }
 
 /// Poll for the next event with timeout
@@ -74,6 +88,58 @@ pub fn poll_event(timeout: Duration) -> TuiResult<AppEvent> {
         }
     } else {
         Ok(AppEvent::None)
+    }
+}
+
+/// Poll for search input events
+///
+/// When in search input mode, key events are handled differently:
+/// - Most keys are passed as character input
+/// - Enter executes the search
+/// - Escape closes the search modal
+/// - Navigation keys for result list
+pub fn poll_search_event(timeout: Duration) -> TuiResult<AppEvent> {
+    if event::poll(timeout)? {
+        match event::read()? {
+            Event::Key(key) => Ok(handle_search_key_event(key)),
+            Event::Resize(width, height) => Ok(AppEvent::Resize(width, height)),
+            _ => Ok(AppEvent::None),
+        }
+    } else {
+        Ok(AppEvent::None)
+    }
+}
+
+/// Convert key event to application event for search mode
+fn handle_search_key_event(key: KeyEvent) -> AppEvent {
+    match (key.code, key.modifiers) {
+        // Close search (Esc or Ctrl-C)
+        (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => AppEvent::CloseSearch,
+
+        // Execute search
+        (KeyCode::Enter, KeyModifiers::NONE) => AppEvent::ExecuteSearch,
+
+        // Navigate results
+        (KeyCode::Up, _) | (KeyCode::Char('p'), KeyModifiers::CONTROL) => AppEvent::Up,
+        (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => AppEvent::Down,
+
+        // Cursor movement
+        (KeyCode::Left, _) => AppEvent::Left,
+        (KeyCode::Right, _) => AppEvent::Right,
+        (KeyCode::Home, _) | (KeyCode::Char('a'), KeyModifiers::CONTROL) => AppEvent::Home,
+        (KeyCode::End, _) | (KeyCode::Char('e'), KeyModifiers::CONTROL) => AppEvent::End,
+
+        // Text editing
+        (KeyCode::Backspace, _) => AppEvent::Backspace,
+        (KeyCode::Delete, _) => AppEvent::Delete,
+
+        // Clear input (Ctrl-U)
+        (KeyCode::Char('u'), KeyModifiers::CONTROL) => AppEvent::ClearFilters,
+
+        // Character input
+        (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => AppEvent::CharInput(c),
+
+        _ => AppEvent::None,
     }
 }
 

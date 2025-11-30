@@ -102,6 +102,9 @@ pub struct AppState {
 
     /// Current label filter (if any)
     pub current_label_filter: Option<String>,
+
+    /// Search modal state (None = closed, Some = open)
+    pub search_modal_state: Option<SearchModalState>,
 }
 
 /// State for the theme selector modal
@@ -137,6 +140,31 @@ pub struct TaskDetailState {
 
     /// Total content height for scroll bounds
     pub content_height: usize,
+}
+
+/// State for the search modal
+#[derive(Debug)]
+pub struct SearchModalState {
+    /// Current search input text
+    pub input: String,
+
+    /// Cursor position in the input
+    pub cursor_position: usize,
+
+    /// Search results from the database
+    pub results: Vec<lash_db::search::SearchResult>,
+
+    /// Index of the currently selected result
+    pub selected_result_index: usize,
+
+    /// Total number of results (before pagination)
+    pub total_count: usize,
+
+    /// Whether a search has been executed
+    pub has_searched: bool,
+
+    /// Error message if search failed
+    pub error: Option<String>,
 }
 
 /// Information about a selected tree node
@@ -190,6 +218,7 @@ impl AppState {
             labels: Vec::new(),
             selected_label_index: 0,
             current_label_filter: None,
+            search_modal_state: None,
         }
     }
 
@@ -634,6 +663,160 @@ impl AppState {
     pub fn clear_label_filter(&mut self) {
         self.current_label_filter = None;
         self.nav_mode = NavMode::Files;
+    }
+
+    /// Open search modal
+    pub fn open_search_modal(&mut self) {
+        self.search_modal_state = Some(SearchModalState {
+            input: String::new(),
+            cursor_position: 0,
+            results: Vec::new(),
+            selected_result_index: 0,
+            total_count: 0,
+            has_searched: false,
+            error: None,
+        });
+    }
+
+    /// Close search modal without navigating
+    pub fn close_search_modal(&mut self) {
+        self.search_modal_state = None;
+    }
+
+    /// Check if search modal is open
+    #[must_use]
+    pub fn is_search_modal_open(&self) -> bool {
+        self.search_modal_state.is_some()
+    }
+
+    /// Handle text input for search modal
+    ///
+    /// Returns `true` if the input was handled.
+    pub fn search_modal_input(&mut self, ch: char) {
+        if let Some(modal) = &mut self.search_modal_state {
+            modal.input.insert(modal.cursor_position, ch);
+            modal.cursor_position += 1;
+        }
+    }
+
+    /// Handle backspace in search modal
+    pub fn search_modal_backspace(&mut self) {
+        if let Some(modal) = &mut self.search_modal_state {
+            if modal.cursor_position > 0 {
+                modal.cursor_position -= 1;
+                modal.input.remove(modal.cursor_position);
+            }
+        }
+    }
+
+    /// Handle delete key in search modal
+    pub fn search_modal_delete(&mut self) {
+        if let Some(modal) = &mut self.search_modal_state {
+            if modal.cursor_position < modal.input.len() {
+                modal.input.remove(modal.cursor_position);
+            }
+        }
+    }
+
+    /// Move cursor left in search modal
+    pub fn search_modal_cursor_left(&mut self) {
+        if let Some(modal) = &mut self.search_modal_state {
+            if modal.cursor_position > 0 {
+                modal.cursor_position -= 1;
+            }
+        }
+    }
+
+    /// Move cursor right in search modal
+    pub fn search_modal_cursor_right(&mut self) {
+        if let Some(modal) = &mut self.search_modal_state {
+            if modal.cursor_position < modal.input.len() {
+                modal.cursor_position += 1;
+            }
+        }
+    }
+
+    /// Move cursor to start of input
+    pub fn search_modal_cursor_home(&mut self) {
+        if let Some(modal) = &mut self.search_modal_state {
+            modal.cursor_position = 0;
+        }
+    }
+
+    /// Move cursor to end of input
+    pub fn search_modal_cursor_end(&mut self) {
+        if let Some(modal) = &mut self.search_modal_state {
+            modal.cursor_position = modal.input.len();
+        }
+    }
+
+    /// Clear search input
+    pub fn search_modal_clear(&mut self) {
+        if let Some(modal) = &mut self.search_modal_state {
+            modal.input.clear();
+            modal.cursor_position = 0;
+            modal.results.clear();
+            modal.total_count = 0;
+            modal.has_searched = false;
+            modal.error = None;
+        }
+    }
+
+    /// Move selection up in search results
+    pub fn search_modal_up(&mut self) {
+        if let Some(modal) = &mut self.search_modal_state {
+            if modal.selected_result_index > 0 {
+                modal.selected_result_index -= 1;
+            }
+        }
+    }
+
+    /// Move selection down in search results
+    pub fn search_modal_down(&mut self) {
+        if let Some(modal) = &mut self.search_modal_state {
+            if modal.selected_result_index + 1 < modal.results.len() {
+                modal.selected_result_index += 1;
+            }
+        }
+    }
+
+    /// Update search results
+    pub fn search_modal_set_results(
+        &mut self,
+        results: Vec<lash_db::search::SearchResult>,
+        total_count: usize,
+    ) {
+        if let Some(modal) = &mut self.search_modal_state {
+            modal.results = results;
+            modal.total_count = total_count;
+            modal.selected_result_index = 0;
+            modal.has_searched = true;
+            modal.error = None;
+        }
+    }
+
+    /// Set search error
+    pub fn search_modal_set_error(&mut self, error: String) {
+        if let Some(modal) = &mut self.search_modal_state {
+            modal.error = Some(error);
+            modal.has_searched = true;
+        }
+    }
+
+    /// Get currently selected search result
+    #[must_use]
+    pub fn selected_search_result(&self) -> Option<&lash_db::search::SearchResult> {
+        self.search_modal_state
+            .as_ref()
+            .and_then(|modal| modal.results.get(modal.selected_result_index))
+    }
+
+    /// Get the search input query
+    #[must_use]
+    pub fn search_query(&self) -> Option<&str> {
+        self.search_modal_state
+            .as_ref()
+            .map(|modal| modal.input.as_str())
     }
 
     /// Build file tree from flat file list

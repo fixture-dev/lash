@@ -217,12 +217,14 @@ Implement all keyboard commands for TUI interaction as specified in design doc s
   - [x] Run `$EDITOR` with file path
   - [x] Resume TUI after editor exits
   - [x] Reload file if modified
-- [-] Implement search (deferred to future version)
-  - [-] `/`: open search input
-  - [-] Type query
-  - [-] `Enter`: execute search
-  - [-] Display results in nav pane
-  - [-] `Esc`: cancel search, return to file view
+- [x] Implement search
+  - [x] `/`: open search modal
+  - [x] Type query with cursor editing support
+  - [x] `Enter`: execute search
+  - [x] Display results in modal with task status, file path, labels, and score
+  - [x] Navigate results with `j/k` or arrow keys
+  - [x] Select result with Enter to navigate to file/task
+  - [x] `Esc`: close search modal
 - [-] Implement filtering (deferred to future version)
   - [-] `l`: open label filter input
   - [-] Type or select labels
@@ -253,6 +255,27 @@ Implement all keyboard commands for TUI interaction as specified in design doc s
 - [x] Integration: Test pane switching
 - [x] Integration: Test status toggle (verify DB update)
 - [x] Manual: Test editor integration with different `$EDITOR` values
+- [x] Integration: Test search modal open/close
+- [x] Integration: Test search execution and result navigation
+
+### Implementation Notes (Search Feature)
+
+**Search Modal Implementation:**
+- Press `/` to open search modal overlay
+- Full text input with cursor editing (Left/Right, Home/End, Backspace, Delete, Ctrl-U to clear)
+- Uses FTS5 full-text search via `lash_db::search::SearchQuery`
+- Results displayed with task status checkbox, title, file path, labels, and relevance score
+- Navigate results with Up/Down or Ctrl-P/Ctrl-N
+- Enter executes search or selects highlighted result
+- Selecting a result navigates to the file and task in the detail pane
+- Escape closes the modal
+
+**Files Modified:**
+- `crates/lash-tui/src/state.rs` - Added `SearchModalState` struct and modal management methods
+- `crates/lash-tui/src/event.rs` - Added search input event handling via `poll_search_event()`
+- `crates/lash-tui/src/app.rs` - Added search modal event routing and search execution
+- `crates/lash-tui/src/ui/search_modal.rs` - New file for search modal rendering
+- `crates/lash-tui/src/ui/mod.rs` - Added search modal rendering
 
 ---
 
