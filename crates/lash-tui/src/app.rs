@@ -12,7 +12,7 @@ use lash_db::repository::labels::LabelRepository;
 use lash_db::repository::tasks::TaskRepository;
 
 use crate::error::{TuiError, TuiResult};
-use crate::event::{poll_event, AppEvent};
+use crate::event::{poll_event, poll_search_event, AppEvent};
 use crate::state::AppState;
 use crate::terminal;
 use crate::ui;
@@ -94,17 +94,47 @@ impl TuiApp {
     /// # Errors
     ///
     /// Returns error if rendering or event handling fails
+    #[allow(clippy::too_many_lines)]
     pub fn run(&mut self) -> TuiResult<()> {
         loop {
             // Render
             self.terminal.draw(|frame| ui::render(frame, &self.state))?;
 
-            // Handle events
-            let event = poll_event(Duration::from_millis(100))?;
+            // Handle events - use different polling depending on modal state
+            let event = if self.state.is_search_modal_open() {
+                poll_search_event(Duration::from_millis(100))?
+            } else {
+                poll_event(Duration::from_millis(100))?
+            };
 
             // Route events based on active modal
             #[allow(clippy::match_same_arms)] // Placeholder arms for future features
-            if self.state.is_task_detail_open() {
+            if self.state.is_search_modal_open() {
+                // Search modal is open - route events to it
+                match event {
+                    AppEvent::CloseSearch => {
+                        self.state.close_search_modal();
+                    }
+                    AppEvent::ExecuteSearch => {
+                        self.handle_execute_search();
+                    }
+                    AppEvent::Up => self.state.search_modal_up(),
+                    AppEvent::Down => self.state.search_modal_down(),
+                    AppEvent::Left => self.state.search_modal_cursor_left(),
+                    AppEvent::Right => self.state.search_modal_cursor_right(),
+                    AppEvent::Home => self.state.search_modal_cursor_home(),
+                    AppEvent::End => self.state.search_modal_cursor_end(),
+                    AppEvent::Backspace => self.state.search_modal_backspace(),
+                    AppEvent::Delete => self.state.search_modal_delete(),
+                    AppEvent::ClearFilters => self.state.search_modal_clear(),
+                    AppEvent::CharInput(c) => self.state.search_modal_input(c),
+                    AppEvent::Select => {
+                        // Select current result and navigate to it
+                        self.handle_search_result_select()?;
+                    }
+                    _ => {} // Ignore other events when search is open
+                }
+            } else if self.state.is_task_detail_open() {
                 // Task detail is open - route events to it
                 match event {
                     AppEvent::Quit | AppEvent::CloseThemeSelector => {
@@ -167,14 +197,22 @@ impl TuiApp {
                     AppEvent::LabelFilter => self.handle_label_toggle()?,
                     AppEvent::ClearFilters => self.state.clear_label_filter(),
 
+                    AppEvent::Search => self.state.open_search_modal(),
+
                     // TODO: implement these features
                     AppEvent::ExpandNode
                     | AppEvent::CollapseNode
-                    | AppEvent::Search
                     | AppEvent::DependencyGraph
                     | AppEvent::PrevTask
                     | AppEvent::NextTask
                     | AppEvent::CloseThemeSelector
+                    | AppEvent::CloseSearch
+                    | AppEvent::ExecuteSearch
+                    | AppEvent::CharInput(_)
+                    | AppEvent::Backspace
+                    | AppEvent::Delete
+                    | AppEvent::Home
+                    | AppEvent::End
                     | AppEvent::Resize(_, _)
                     | AppEvent::None => {}
                 }
@@ -438,6 +476,97 @@ impl TuiApp {
 
         // Switch to detail pane to show filtered tasks
         self.state.focused_pane = crate::state::FocusedPane::Detail;
+
+        Ok(())
+    }
+
+    /// Execute search with the current query
+    fn handle_execute_search(&mut self) {
+        use lash_db::search::{search, SearchQuery};
+
+        let Some(query_str) = self.state.search_query() else {
+            return;
+        };
+
+        // Skip if query is empty
+        if query_str.trim().is_empty() {
+            self.state.search_modal_set_results(Vec::new(), 0);
+            return;
+        }
+
+        // Build search query with reasonable defaults
+        let query = SearchQuery::new(query_str).with_limit(50);
+
+        // Execute search
+        match search(&self.conn, &query) {
+            Ok(results) => {
+                self.state
+                    .search_modal_set_results(results.results, results.total_count);
+            }
+            Err(e) => {
+                self.state
+                    .search_modal_set_error(format!("Search failed: {e}"));
+            }
+        }
+    }
+
+    /// Handle selecting a search result
+    fn handle_search_result_select(&mut self) -> TuiResult<()> {
+        // Get selected result info before closing modal
+        let Some(result) = self.state.selected_search_result() else {
+            return Ok(());
+        };
+
+        let task_id = result.task_id;
+        let file_path = result.file_path.clone();
+
+        // Close search modal
+        self.state.close_search_modal();
+
+        // Find the file in our files list
+        let file_record = self
+            .state
+            .files
+            .iter()
+            .find(|f| f.path.to_string_lossy() == file_path);
+
+        let Some(file_record) = file_record else {
+            // File not found - might need to refresh file list
+            return Err(TuiError::App(format!(
+                "File not found: {file_path}. Try refreshing the file list."
+            )));
+        };
+
+        let file_id = file_record.id;
+
+        // Find file index for selection
+        if let Some(file_index) = self
+            .state
+            .files
+            .iter()
+            .position(|f| f.path.to_string_lossy() == file_path)
+        {
+            self.state.selected_file_index = file_index;
+        }
+
+        // Load tasks for this file
+        let task_repo = TaskRepository::new(&self.conn);
+        self.state.tasks = task_repo
+            .get_by_file(file_id)
+            .map_err(|e| TuiError::App(format!("Failed to load tasks: {e}")))?;
+
+        // Build task tree
+        self.state.build_task_tree();
+
+        // Find and select the task
+        if let Some(task_index) = self.state.tasks.iter().position(|t| t.id == task_id) {
+            self.state.selected_task_index = task_index;
+        }
+
+        // Switch to detail pane and file view
+        self.state.focused_pane = crate::state::FocusedPane::Detail;
+        self.state.nav_mode = crate::state::NavMode::Files;
+        self.state.current_label_filter = None;
 
         Ok(())
     }
