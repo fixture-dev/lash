@@ -6,7 +6,10 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 
-use lash_db::repository::{FileRepository, LabelRepository, TaskRepository};
+use lash_db::repository::dependencies::DependencyRepository;
+use lash_db::repository::files::FileRepository;
+use lash_db::repository::labels::LabelRepository;
+use lash_db::repository::tasks::TaskRepository;
 
 use crate::error::{TuiError, TuiResult};
 use crate::event::{poll_event, AppEvent};
@@ -101,7 +104,24 @@ impl TuiApp {
 
             // Route events based on active modal
             #[allow(clippy::match_same_arms)] // Placeholder arms for future features
-            if self.state.theme_selector_state.is_some() {
+            if self.state.is_task_detail_open() {
+                // Task detail is open - route events to it
+                match event {
+                    AppEvent::Quit | AppEvent::CloseThemeSelector => {
+                        self.state.close_task_detail();
+                    }
+                    AppEvent::Up => self.state.task_detail_scroll_up(),
+                    AppEvent::Down => {
+                        // Calculate visible height (popup height - borders and padding)
+                        // Popup is 85% of screen height, minus 2 for borders, minus 2 for padding
+                        let screen_height = self.terminal.size()?.height as usize;
+                        let popup_height = (screen_height * 85) / 100;
+                        let visible_height = popup_height.saturating_sub(4);
+                        self.state.task_detail_scroll_down(visible_height);
+                    }
+                    _ => {} // Ignore other events when detail is open
+                }
+            } else if self.state.theme_selector_state.is_some() {
                 // Theme selector is open - route events to it
                 match event {
                     AppEvent::CloseThemeSelector | AppEvent::Quit => {
@@ -168,6 +188,42 @@ impl TuiApp {
         Ok(())
     }
 
+    /// Open task detail view for the currently selected task
+    fn open_task_detail_for_selected(&mut self) -> TuiResult<()> {
+        // Get the currently selected task
+        let Some(task) = self.state.selected_task() else {
+            return Ok(()); // No task selected
+        };
+
+        // Get the file path for this task
+        let file_record = FileRepository::new(&self.conn)
+            .get_by_db_id(task.file_id)
+            .map_err(|e| TuiError::App(format!("Failed to get file for task: {e}")))?;
+
+        let Some(file_record) = file_record else {
+            return Err(TuiError::App(format!(
+                "File not found for task: {}",
+                task.id
+            )));
+        };
+
+        // Get labels for this task
+        let labels = LabelRepository::new(&self.conn)
+            .get_task_labels(task.id)
+            .map_err(|e| TuiError::App(format!("Failed to get labels for task: {e}")))?;
+
+        // Get dependencies for this task
+        let dependencies = DependencyRepository::new(&self.conn)
+            .get_dependencies(task.id)
+            .map_err(|e| TuiError::App(format!("Failed to get dependencies: {e}")))?;
+
+        // Open the task detail view
+        self.state
+            .open_task_detail(task.clone(), file_record.path, labels, dependencies);
+
+        Ok(())
+    }
+
     /// Handle selection/enter in current pane
     fn handle_select(&mut self) -> TuiResult<()> {
         use crate::state::{FocusedPane, NavMode};
@@ -212,7 +268,7 @@ impl TuiApp {
             }
             FocusedPane::Detail => {
                 // Enter on detail pane shows task details
-                // TODO: Implement task detail view
+                self.open_task_detail_for_selected()?;
             }
         }
         Ok(())
