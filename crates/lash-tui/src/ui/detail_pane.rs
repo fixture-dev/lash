@@ -23,10 +23,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         themes::unfocused_border_style(theme)
     };
 
-    // Get title from selected file
-    let title = state
-        .selected_file()
-        .map_or_else(|| " Tasks ".to_string(), |f| format!(" {} ", f.title));
+    // Get title - show label filter if active, otherwise selected file
+    let title = if let Some(label) = &state.current_label_filter {
+        format!(" Tasks [#{label}] ")
+    } else {
+        state
+            .selected_file()
+            .map_or_else(|| " Tasks ".to_string(), |f| format!(" {} ", f.title))
+    };
 
     let block = Block::default()
         .borders(Borders::ALL)
