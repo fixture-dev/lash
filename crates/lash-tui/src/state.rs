@@ -228,20 +228,18 @@ impl AppState {
     /// Move selection up
     pub fn move_up(&mut self) {
         match self.focused_pane {
-            FocusedPane::Navigation => {
-                match self.nav_mode {
-                    NavMode::Files | NavMode::SearchResults => {
-                        if self.selected_file_index > 0 {
-                            self.selected_file_index -= 1;
-                        }
-                    }
-                    NavMode::Labels => {
-                        if self.selected_label_index > 0 {
-                            self.selected_label_index -= 1;
-                        }
+            FocusedPane::Navigation => match self.nav_mode {
+                NavMode::Files | NavMode::SearchResults => {
+                    if self.selected_file_index > 0 {
+                        self.selected_file_index -= 1;
                     }
                 }
-            }
+                NavMode::Labels => {
+                    if self.selected_label_index > 0 {
+                        self.selected_label_index -= 1;
+                    }
+                }
+            },
             FocusedPane::Detail => {
                 if self.selected_task_index > 0 {
                     self.selected_task_index -= 1;
@@ -253,21 +251,19 @@ impl AppState {
     /// Move selection down
     pub fn move_down(&mut self) {
         match self.focused_pane {
-            FocusedPane::Navigation => {
-                match self.nav_mode {
-                    NavMode::Files | NavMode::SearchResults => {
-                        let max_index = self.visible_tree_node_count();
-                        if self.selected_file_index + 1 < max_index {
-                            self.selected_file_index += 1;
-                        }
-                    }
-                    NavMode::Labels => {
-                        if self.selected_label_index + 1 < self.labels.len() {
-                            self.selected_label_index += 1;
-                        }
+            FocusedPane::Navigation => match self.nav_mode {
+                NavMode::Files | NavMode::SearchResults => {
+                    let max_index = self.visible_tree_node_count();
+                    if self.selected_file_index + 1 < max_index {
+                        self.selected_file_index += 1;
                     }
                 }
-            }
+                NavMode::Labels => {
+                    if self.selected_label_index + 1 < self.labels.len() {
+                        self.selected_label_index += 1;
+                    }
+                }
+            },
             FocusedPane::Detail => {
                 if self.selected_task_index + 1 < self.tasks.len() {
                     self.selected_task_index += 1;
@@ -279,12 +275,10 @@ impl AppState {
     /// Go to top of current list
     pub fn go_top(&mut self) {
         match self.focused_pane {
-            FocusedPane::Navigation => {
-                match self.nav_mode {
-                    NavMode::Files | NavMode::SearchResults => self.selected_file_index = 0,
-                    NavMode::Labels => self.selected_label_index = 0,
-                }
-            }
+            FocusedPane::Navigation => match self.nav_mode {
+                NavMode::Files | NavMode::SearchResults => self.selected_file_index = 0,
+                NavMode::Labels => self.selected_label_index = 0,
+            },
             FocusedPane::Detail => self.selected_task_index = 0,
         }
     }
@@ -292,21 +286,19 @@ impl AppState {
     /// Go to bottom of current list
     pub fn go_bottom(&mut self) {
         match self.focused_pane {
-            FocusedPane::Navigation => {
-                match self.nav_mode {
-                    NavMode::Files | NavMode::SearchResults => {
-                        let max_index = self.visible_tree_node_count();
-                        if max_index > 0 {
-                            self.selected_file_index = max_index - 1;
-                        }
-                    }
-                    NavMode::Labels => {
-                        if !self.labels.is_empty() {
-                            self.selected_label_index = self.labels.len() - 1;
-                        }
+            FocusedPane::Navigation => match self.nav_mode {
+                NavMode::Files | NavMode::SearchResults => {
+                    let max_index = self.visible_tree_node_count();
+                    if max_index > 0 {
+                        self.selected_file_index = max_index - 1;
                     }
                 }
-            }
+                NavMode::Labels => {
+                    if !self.labels.is_empty() {
+                        self.selected_label_index = self.labels.len() - 1;
+                    }
+                }
+            },
             FocusedPane::Detail => {
                 if !self.tasks.is_empty() {
                     self.selected_task_index = self.tasks.len() - 1;

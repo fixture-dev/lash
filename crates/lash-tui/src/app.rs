@@ -184,11 +184,9 @@ impl TuiApp {
                             } else if let Some(file) = selected.file_record {
                                 // Load tasks for file and switch to detail pane
                                 let task_repo = TaskRepository::new(&self.conn);
-                                self.state.tasks = task_repo
-                                    .get_by_file(file.id)
-                                    .map_err(|e| {
-                                        TuiError::App(format!("Failed to load tasks: {e}"))
-                                    })?;
+                                self.state.tasks = task_repo.get_by_file(file.id).map_err(|e| {
+                                    TuiError::App(format!("Failed to load tasks: {e}"))
+                                })?;
                                 self.state.selected_task_index = 0;
                                 self.state.build_task_tree();
                                 self.state.switch_pane();
@@ -197,11 +195,9 @@ impl TuiApp {
                             // Fallback for flat view: load tasks for selected file
                             if let Some(file) = self.state.selected_file() {
                                 let task_repo = TaskRepository::new(&self.conn);
-                                self.state.tasks = task_repo
-                                    .get_by_file(file.id)
-                                    .map_err(|e| {
-                                        TuiError::App(format!("Failed to load tasks: {e}"))
-                                    })?;
+                                self.state.tasks = task_repo.get_by_file(file.id).map_err(|e| {
+                                    TuiError::App(format!("Failed to load tasks: {e}"))
+                                })?;
                                 self.state.selected_task_index = 0;
                                 self.state.build_task_tree();
                                 self.state.switch_pane();
