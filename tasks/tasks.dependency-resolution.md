@@ -144,16 +144,17 @@ Parse dependency references from tasks and build the complete dependency graph.
     - [x] Relative path: `../core/cli.md#task:parse-args`
     - [x] Absolute path: `core/cli.md#task:parse-args`
     - [x] ID-only: `#task:parse-args` (within-file)
-    - [-] File-level: `../core/cli.md` (depends on all tasks in file) - deferred
+    - [x] File-level: `../core/cli.md` (depends on all top-level tasks in file)
+    - [x] Bare file ID: `file-id` (file-level dependency via ID)
   - [x] Resolve paths relative to source file
   - [x] Look up target task in DB/graph
   - [x] Create edge `(source_id, target_id, type=explicit)`
   - [x] Handle missing targets (broken links)
-- [-] Implement directory-level dependencies
-  - [-] Parse directory metadata (if any)
-  - [-] Infer dependencies from directory structure
-  - [-] Add edges for directory relationships
-  - Note: Directory dependencies deferred to future implementation
+- [x] Implement directory-level dependencies
+  - [x] Parse directory references (format: `path/to/dir/`)
+  - [x] Find all files in the target directory (immediate children only)
+  - [x] Create dependencies to top-level tasks in each file
+  - [x] Report error if directory contains no task files
 - [x] Handle broken dependencies
   - [x] Collect all broken references
   - [x] Return structured errors with source location
@@ -161,7 +162,7 @@ Parse dependency references from tasks and build the complete dependency graph.
 
 ### Success Criteria
 
-- [x] Correctly resolves all three dependency types (explicit ID, explicit path, within-file)
+- [x] Correctly resolves all dependency types (explicit ID, explicit path, within-file, file-level, directory)
 - [x] Handles all supported reference formats
 - [x] Detects and reports broken links with precise locations
 - [x] Produces complete, accurate dependency graph
@@ -172,6 +173,8 @@ Parse dependency references from tasks and build the complete dependency graph.
 - [x] Unit: Resolve explicit cross-file dependencies
 - [x] Unit: Resolve various path formats
 - [x] Unit: Handle broken links gracefully
+- [x] Unit: File-level dependencies (path and bare ID formats)
+- [x] Unit: Directory dependencies (basic, top-level only, not recursive, not found)
 - [-] Integration: Build graph from fixture project - deferred
 - [-] Integration: Verify graph structure matches expectations - deferred
 
@@ -183,13 +186,31 @@ Parse dependency references from tasks and build the complete dependency graph.
 - Handles relative path resolution with `normalize_path()` helper
 - Collects all resolution errors without failing fast
 - Provides detailed error messages with source locations
-- All unit tests passing (8 tests)
+- All unit tests passing (15 tests)
 - All doctests passing (3 tests)
 
-**Deferred:**
-- File-level dependencies (no task fragment) - marked as unsupported
-- Directory dependencies - marked as unsupported
-- Integration tests with fixture projects - to be added later
+**File-Level Dependencies (December 2024):**
+- Implemented file-level dependencies: `../path/file.md` (without `#task` fragment)
+- Implemented bare file ID dependencies: `file-id` (without `#task-id`)
+- Both formats create dependencies to all top-level tasks (depth == 0) in the target file
+- Nested tasks are excluded to avoid bloating the dependency graph
+
+**Directory-Level Dependencies (December 2024):**
+- Implemented directory reference resolution: `path/to/dir/` (must end with `/`)
+- Creates dependencies to top-level tasks in all files directly in the directory
+- Does NOT recurse into subdirectories (immediate children only)
+- Reports `DirectoryNotFound` error if directory contains no task files
+- Added `ResolutionErrorKind::DirectoryNotFound` variant for error handling
+- Changed `resolve_reference()` to return `Vec<ResolvedDependency>` to support multiple targets
+
+**Test Coverage (7 new tests):**
+- `test_file_level_dependency_path_reference` - verifies top-level task filtering
+- `test_file_level_dependency_bare_file_id` - bare file ID format
+- `test_directory_dependency_basic` - multiple files in directory
+- `test_directory_dependency_top_level_only` - excludes nested tasks
+- `test_directory_dependency_not_recursive` - excludes subdirectories
+- `test_directory_dependency_not_found` - error handling
+- `test_directory_dependency_kind` - verifies `DependencyKind::Directory`
 
 **Changes to lash-types:**
 - Fixed `parse_dependency_ref()` to correctly detect path references with `#` fragments

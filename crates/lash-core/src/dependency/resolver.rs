@@ -169,6 +169,14 @@ impl ResolutionError {
                     location, self.dependency_ref, reason
                 )
             }
+            ResolutionErrorKind::DirectoryNotFound { path } => {
+                format!(
+                    "In {}: dependency reference '{}' points to directory '{}' which contains no task files",
+                    location,
+                    self.dependency_ref,
+                    path.display()
+                )
+            }
         }
     }
 }
@@ -184,6 +192,9 @@ pub enum ResolutionErrorKind {
 
     /// Reference has invalid syntax or format
     InvalidReference { reason: String },
+
+    /// Referenced directory does not exist or contains no task files
+    DirectoryNotFound { path: PathBuf },
 }
 
 /// Result of dependency resolution
@@ -358,7 +369,7 @@ impl<'a> DependencyResolver<'a> {
                 // Resolve explicit @depends-on annotations
                 for dep_ref in &task.metadata.depends_on {
                     match self.resolve_reference(file_path, &task_file.id, task, dep_ref) {
-                        Ok(resolved_dep) => resolved.push(resolved_dep),
+                        Ok(resolved_deps) => resolved.extend(resolved_deps),
                         Err(error) => self.errors.push(error),
                     }
                 }
@@ -373,15 +384,15 @@ impl<'a> DependencyResolver<'a> {
 
     /// Resolve a single dependency reference
     ///
-    /// Handles all supported reference formats and returns either a resolved
-    /// dependency or a detailed error.
+    /// Handles all supported reference formats and returns either resolved
+    /// dependencies (may be multiple for file/directory refs) or a detailed error.
     fn resolve_reference(
         &self,
         source_file: &Path,
         source_file_id: &str,
         source_task: &Task,
         dep_ref: &DependencyRef,
-    ) -> std::result::Result<ResolvedDependency, ResolutionError> {
+    ) -> std::result::Result<Vec<ResolvedDependency>, ResolutionError> {
         let source_full_id = make_full_id(source_file_id, &source_task.id);
         let source_location = Some(format!("{}#{}", source_file.display(), source_task.id));
 
@@ -415,17 +426,13 @@ impl<'a> DependencyResolver<'a> {
                     },
                 ))
             }
-            DependencyKind::Directory => {
-                // Directory dependencies are not yet implemented
-                Err(ResolutionError::new(
-                    source_file.to_path_buf(),
-                    source_task.id.clone(),
-                    dep_ref.target.clone(),
-                    ResolutionErrorKind::InvalidReference {
-                        reason: "Directory-level dependencies are not yet supported".to_string(),
-                    },
-                ))
-            }
+            DependencyKind::Directory => self.resolve_directory_reference(
+                source_file,
+                &source_full_id,
+                &source_task.id,
+                dep_ref,
+                source_location,
+            ),
         }
     }
 
@@ -433,7 +440,7 @@ impl<'a> DependencyResolver<'a> {
     ///
     /// Handles references like:
     /// - `../core/cli.md#task:parse-args` (with task ID)
-    /// - `../core/cli.md` (file-level, depends on all tasks)
+    /// - `../core/cli.md` (file-level, depends on all top-level tasks)
     fn resolve_path_reference(
         &self,
         source_file: &Path,
@@ -441,7 +448,7 @@ impl<'a> DependencyResolver<'a> {
         source_task_id: &str,
         dep_ref: &DependencyRef,
         source_location: Option<String>,
-    ) -> std::result::Result<ResolvedDependency, ResolutionError> {
+    ) -> std::result::Result<Vec<ResolvedDependency>, ResolutionError> {
         // Split reference into path and optional task fragment
         let (path_str, task_fragment) = if let Some(pos) = dep_ref.target.find('#') {
             let (path, fragment) = dep_ref.target.split_at(pos);
@@ -465,7 +472,7 @@ impl<'a> DependencyResolver<'a> {
             )
         })?;
 
-        // If there's a task fragment, resolve it
+        // If there's a task fragment, resolve to a specific task
         if let Some(fragment) = task_fragment {
             // Strip "task:" prefix if present
             let task_id = fragment.strip_prefix("task:").unwrap_or(fragment);
@@ -485,23 +492,19 @@ impl<'a> DependencyResolver<'a> {
 
             let target_full_id = make_full_id(&target_file.id, task_id);
 
-            Ok(ResolvedDependency::new(
+            Ok(vec![ResolvedDependency::new(
                 source_full_id.to_string(),
                 target_full_id,
                 dep_ref.kind.clone(),
                 source_location,
-            ))
+            )])
         } else {
-            // File-level dependency - for now, we'll return an error
-            // In a full implementation, this would create dependencies to all tasks in the file
-            Err(ResolutionError::new(
-                source_file.to_path_buf(),
-                source_task_id.to_string(),
-                dep_ref.target.clone(),
-                ResolutionErrorKind::InvalidReference {
-                    reason: "File-level dependencies (without task ID) are not yet supported"
-                        .to_string(),
-                },
+            // File-level dependency - depends on all top-level tasks in the file
+            Ok(self.create_file_level_dependencies(
+                source_full_id,
+                target_file,
+                &dep_ref.kind,
+                source_location,
             ))
         }
     }
@@ -511,6 +514,8 @@ impl<'a> DependencyResolver<'a> {
     /// Handles references like:
     /// - `file-id#task-id` (explicit file and task IDs)
     /// - `#task-id` (within-file reference)
+    /// - `file-id` (file-level, depends on all top-level tasks)
+    #[allow(clippy::too_many_lines)]
     fn resolve_id_reference(
         &self,
         source_file: &Path,
@@ -519,7 +524,7 @@ impl<'a> DependencyResolver<'a> {
         source_task_id: &str,
         dep_ref: &DependencyRef,
         source_location: Option<String>,
-    ) -> std::result::Result<ResolvedDependency, ResolutionError> {
+    ) -> std::result::Result<Vec<ResolvedDependency>, ResolutionError> {
         // Check if it's a within-file reference (starts with #)
         if dep_ref.target.starts_with('#') {
             // Within-file reference
@@ -555,12 +560,12 @@ impl<'a> DependencyResolver<'a> {
 
             let target_full_id = make_full_id(source_file_id, task_id);
 
-            Ok(ResolvedDependency::new(
+            Ok(vec![ResolvedDependency::new(
                 source_full_id.to_string(),
                 target_full_id,
                 dep_ref.kind.clone(),
                 source_location,
-            ))
+            )])
         } else if dep_ref.target.contains('#') {
             // Full ID reference: file-id#task-id
             let (file_id, task_id) = parse_full_id(&dep_ref.target).map_err(|_| {
@@ -613,23 +618,140 @@ impl<'a> DependencyResolver<'a> {
                 )
             })?;
 
-            Ok(ResolvedDependency::new(
+            Ok(vec![ResolvedDependency::new(
                 source_full_id.to_string(),
                 dep_ref.target.clone(),
                 dep_ref.kind.clone(),
                 source_location,
-            ))
+            )])
         } else {
-            // Bare file ID - treat as file-level dependency (not yet supported)
-            Err(ResolutionError::new(
+            // Bare file ID - file-level dependency on all top-level tasks
+            let target_path = self.file_id_to_path.get(&dep_ref.target).ok_or_else(|| {
+                ResolutionError::new(
+                    source_file.to_path_buf(),
+                    source_task_id.to_string(),
+                    dep_ref.target.clone(),
+                    ResolutionErrorKind::InvalidReference {
+                        reason: format!("Unknown file ID: '{}'", dep_ref.target),
+                    },
+                )
+            })?;
+
+            let target_file = self.files.get(target_path).ok_or_else(|| {
+                ResolutionError::new(
+                    source_file.to_path_buf(),
+                    source_task_id.to_string(),
+                    dep_ref.target.clone(),
+                    ResolutionErrorKind::FileNotFound {
+                        path: target_path.clone(),
+                    },
+                )
+            })?;
+
+            Ok(self.create_file_level_dependencies(
+                source_full_id,
+                target_file,
+                &dep_ref.kind,
+                source_location,
+            ))
+        }
+    }
+
+    /// Resolve a directory-level dependency reference
+    ///
+    /// Creates dependencies from the source task to all top-level tasks in files
+    /// within the referenced directory. Directory references must end with `/`.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_file` - Path of the file containing the dependency reference
+    /// * `source_full_id` - Full ID of the source task (file-id#task-id)
+    /// * `source_task_id` - ID of the source task (for error reporting)
+    /// * `dep_ref` - The directory dependency reference (e.g., "core/")
+    /// * `source_location` - Location string for error messages (passed by value as it's cloned in loop)
+    #[allow(clippy::needless_pass_by_value)]
+    fn resolve_directory_reference(
+        &self,
+        source_file: &Path,
+        source_full_id: &str,
+        source_task_id: &str,
+        dep_ref: &DependencyRef,
+        source_location: Option<String>,
+    ) -> std::result::Result<Vec<ResolvedDependency>, ResolutionError> {
+        // Remove trailing / from directory path
+        let dir_path_str = dep_ref.target.trim_end_matches('/');
+
+        // Resolve the directory path (relative to source file or project root)
+        let target_dir = self.resolve_path(source_file, dir_path_str);
+
+        // Find all files in this directory (not recursive - only immediate children)
+        let files_in_dir: Vec<_> = self
+            .files
+            .iter()
+            .filter(|(path, _)| {
+                // Check if file is directly in target_dir (not in subdirectory)
+                if let Some(parent) = path.parent() {
+                    parent == target_dir
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        if files_in_dir.is_empty() {
+            return Err(ResolutionError::new(
                 source_file.to_path_buf(),
                 source_task_id.to_string(),
                 dep_ref.target.clone(),
-                ResolutionErrorKind::InvalidReference {
-                    reason: "Bare file IDs (without task ID) are not yet supported".to_string(),
-                },
-            ))
+                ResolutionErrorKind::DirectoryNotFound { path: target_dir },
+            ));
         }
+
+        // Create dependencies to all top-level tasks in all files in the directory
+        let mut resolved = Vec::new();
+        for (_path, target_file) in files_in_dir {
+            let deps = self.create_file_level_dependencies(
+                source_full_id,
+                target_file,
+                &dep_ref.kind,
+                source_location.clone(),
+            );
+            resolved.extend(deps);
+        }
+
+        Ok(resolved)
+    }
+
+    /// Create dependencies from a source task to all top-level tasks in a target file
+    ///
+    /// This is used for both file-level dependencies (e.g., `../core/api.md`) and
+    /// directory-level dependencies (creates deps to top-level tasks in each file).
+    ///
+    /// Only top-level tasks (depth == 0) are included as targets to avoid bloating
+    /// the dependency graph.
+    #[allow(clippy::unused_self, clippy::needless_pass_by_value)]
+    fn create_file_level_dependencies(
+        &self,
+        source_full_id: &str,
+        target_file: &TaskFile,
+        kind: &DependencyKind,
+        source_location: Option<String>,
+    ) -> Vec<ResolvedDependency> {
+        target_file
+            .tasks
+            .tasks()
+            .iter()
+            .filter(|task| task.depth == 0) // Only top-level tasks
+            .map(|task| {
+                let target_full_id = make_full_id(&target_file.id, &task.id);
+                ResolvedDependency::new(
+                    source_full_id.to_string(),
+                    target_full_id,
+                    kind.clone(),
+                    source_location.clone(),
+                )
+            })
+            .collect()
     }
 
     /// Resolve a path relative to the source file or project root
@@ -941,5 +1063,395 @@ mod tests {
         assert!(msg.contains("source.md#task-1"));
         assert!(msg.contains("../missing.md#task-a"));
         assert!(msg.contains("missing.md"));
+    }
+
+    // ==================== File-Level Dependency Tests ====================
+
+    #[test]
+    fn test_file_level_dependency_path_reference() {
+        // Create a target file with multiple top-level tasks
+        let mut target_tasks = TaskTree::new();
+        target_tasks
+            .add_task(TaskBuilder::new("Top Task A").id("top-a").build().unwrap())
+            .unwrap();
+        target_tasks
+            .add_task(TaskBuilder::new("Top Task B").id("top-b").build().unwrap())
+            .unwrap();
+        // Add a nested task (depth > 0) - should NOT be included
+        target_tasks
+            .add_task(
+                TaskBuilder::new("Nested Task")
+                    .id("nested-task")
+                    .depth(1)
+                    .parent("top-a".to_string())
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+
+        // Create a source file with a task that depends on the entire target file
+        let mut source_tasks = TaskTree::new();
+        source_tasks
+            .add_task(
+                TaskBuilder::new("Source Task")
+                    .id("source")
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+
+        let (target_path, target_file) =
+            create_test_file("core/api.md", "core.api", "Core API", target_tasks);
+        let (source_path, mut source_file) = create_test_file(
+            "features/feature.md",
+            "features.feature",
+            "Feature",
+            source_tasks,
+        );
+
+        // Add file-level dependency (no #task fragment)
+        if let Some(source_task) = source_file.tasks.get_task_mut("source") {
+            source_task
+                .metadata
+                .depends_on
+                .push(parse_dependency_ref("../core/api.md").unwrap());
+        }
+
+        let mut files = HashMap::new();
+        files.insert(target_path, target_file);
+        files.insert(source_path, source_file);
+
+        let mut resolver = DependencyResolver::new(&files, PathBuf::from("/project"));
+        let result = resolver.resolve_dependencies();
+
+        // Should have 2 dependencies (one for each top-level task, NOT the nested task)
+        assert_eq!(result.errors.len(), 0, "Expected no errors");
+        assert_eq!(
+            result.resolved.len(),
+            2,
+            "Expected 2 dependencies (top-level tasks only)"
+        );
+
+        // Verify the dependencies are to top-level tasks
+        let target_ids: Vec<_> = result.resolved.iter().map(|d| &d.to_full_id).collect();
+        assert!(target_ids.contains(&&"core.api#top-a".to_string()));
+        assert!(target_ids.contains(&&"core.api#top-b".to_string()));
+        // nested-task should NOT be included
+        assert!(!target_ids.contains(&&"core.api#nested-task".to_string()));
+    }
+
+    #[test]
+    fn test_file_level_dependency_bare_file_id() {
+        // Test bare file ID (no # or path) as file-level dependency
+        let mut target_tasks = TaskTree::new();
+        target_tasks
+            .add_task(TaskBuilder::new("Task 1").id("task-1").build().unwrap())
+            .unwrap();
+        target_tasks
+            .add_task(TaskBuilder::new("Task 2").id("task-2").build().unwrap())
+            .unwrap();
+
+        let mut source_tasks = TaskTree::new();
+        source_tasks
+            .add_task(TaskBuilder::new("Source").id("source").build().unwrap())
+            .unwrap();
+
+        let (target_path, target_file) =
+            create_test_file("target.md", "target-file", "Target", target_tasks);
+        let (source_path, mut source_file) =
+            create_test_file("source.md", "source-file", "Source", source_tasks);
+
+        // Add bare file ID dependency
+        if let Some(source_task) = source_file.tasks.get_task_mut("source") {
+            source_task.metadata.depends_on.push(DependencyRef::new(
+                "target-file".to_string(),
+                DependencyKind::ExplicitId,
+            ));
+        }
+
+        let mut files = HashMap::new();
+        files.insert(target_path, target_file);
+        files.insert(source_path, source_file);
+
+        let mut resolver = DependencyResolver::new(&files, PathBuf::from("/project"));
+        let result = resolver.resolve_dependencies();
+
+        assert_eq!(result.errors.len(), 0);
+        assert_eq!(result.resolved.len(), 2);
+
+        let target_ids: Vec<_> = result.resolved.iter().map(|d| &d.to_full_id).collect();
+        assert!(target_ids.contains(&&"target-file#task-1".to_string()));
+        assert!(target_ids.contains(&&"target-file#task-2".to_string()));
+    }
+
+    // ==================== Directory-Level Dependency Tests ====================
+
+    #[test]
+    fn test_directory_dependency_basic() {
+        // Create files in a "core" directory
+        let mut core_api_tasks = TaskTree::new();
+        core_api_tasks
+            .add_task(TaskBuilder::new("API Task").id("api-task").build().unwrap())
+            .unwrap();
+
+        let mut core_db_tasks = TaskTree::new();
+        core_db_tasks
+            .add_task(TaskBuilder::new("DB Task").id("db-task").build().unwrap())
+            .unwrap();
+
+        // Create source file that depends on the entire "core" directory
+        let mut source_tasks = TaskTree::new();
+        source_tasks
+            .add_task(TaskBuilder::new("Feature").id("feature").build().unwrap())
+            .unwrap();
+
+        let (api_path, api_file) =
+            create_test_file("core/api.md", "core.api", "Core API", core_api_tasks);
+        let (db_path, db_file) =
+            create_test_file("core/db.md", "core.db", "Core DB", core_db_tasks);
+        let (source_path, mut source_file) = create_test_file(
+            "features/feature.md",
+            "features.feature",
+            "Feature",
+            source_tasks,
+        );
+
+        // Add directory dependency
+        if let Some(feature_task) = source_file.tasks.get_task_mut("feature") {
+            feature_task
+                .metadata
+                .depends_on
+                .push(parse_dependency_ref("../core/").unwrap());
+        }
+
+        let mut files = HashMap::new();
+        files.insert(api_path, api_file);
+        files.insert(db_path, db_file);
+        files.insert(source_path, source_file);
+
+        let mut resolver = DependencyResolver::new(&files, PathBuf::from("/project"));
+        let result = resolver.resolve_dependencies();
+
+        // Debug output
+        if !result.errors.is_empty() {
+            for error in &result.errors {
+                eprintln!("Error: {}", error.to_error_message());
+            }
+        }
+
+        assert_eq!(result.errors.len(), 0, "Expected no errors");
+        assert_eq!(
+            result.resolved.len(),
+            2,
+            "Expected 2 dependencies (one for each file in core/)"
+        );
+
+        let target_ids: Vec<_> = result.resolved.iter().map(|d| &d.to_full_id).collect();
+        assert!(target_ids.contains(&&"core.api#api-task".to_string()));
+        assert!(target_ids.contains(&&"core.db#db-task".to_string()));
+    }
+
+    #[test]
+    fn test_directory_dependency_top_level_only() {
+        // Verify that directory dependencies only include top-level tasks
+        let mut core_tasks = TaskTree::new();
+        core_tasks
+            .add_task(TaskBuilder::new("Top Task").id("top").build().unwrap())
+            .unwrap();
+        core_tasks
+            .add_task(
+                TaskBuilder::new("Nested Task")
+                    .id("nested")
+                    .depth(1)
+                    .parent("top".to_string())
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+
+        let mut source_tasks = TaskTree::new();
+        source_tasks
+            .add_task(TaskBuilder::new("Feature").id("feature").build().unwrap())
+            .unwrap();
+
+        let (core_path, core_file) =
+            create_test_file("core/tasks.md", "core.tasks", "Core Tasks", core_tasks);
+        let (source_path, mut source_file) = create_test_file(
+            "features/feature.md",
+            "features.feature",
+            "Feature",
+            source_tasks,
+        );
+
+        if let Some(feature_task) = source_file.tasks.get_task_mut("feature") {
+            feature_task
+                .metadata
+                .depends_on
+                .push(parse_dependency_ref("../core/").unwrap());
+        }
+
+        let mut files = HashMap::new();
+        files.insert(core_path, core_file);
+        files.insert(source_path, source_file);
+
+        let mut resolver = DependencyResolver::new(&files, PathBuf::from("/project"));
+        let result = resolver.resolve_dependencies();
+
+        assert_eq!(result.errors.len(), 0);
+        // Only 1 dependency (the top-level task, not the nested one)
+        assert_eq!(
+            result.resolved.len(),
+            1,
+            "Should only depend on top-level tasks"
+        );
+        assert_eq!(result.resolved[0].to_full_id, "core.tasks#top");
+    }
+
+    #[test]
+    fn test_directory_dependency_not_recursive() {
+        // Verify that directory dependencies only include immediate children, not nested dirs
+        let mut immediate_tasks = TaskTree::new();
+        immediate_tasks
+            .add_task(
+                TaskBuilder::new("Immediate")
+                    .id("immediate")
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+
+        let mut nested_tasks = TaskTree::new();
+        nested_tasks
+            .add_task(TaskBuilder::new("Nested Dir").id("nested").build().unwrap())
+            .unwrap();
+
+        let mut source_tasks = TaskTree::new();
+        source_tasks
+            .add_task(TaskBuilder::new("Source").id("source").build().unwrap())
+            .unwrap();
+
+        // immediate is in core/, nested is in core/subdir/
+        let (immediate_path, immediate_file) = create_test_file(
+            "core/immediate.md",
+            "core.immediate",
+            "Immediate",
+            immediate_tasks,
+        );
+        let (nested_path, nested_file) = create_test_file(
+            "core/subdir/nested.md",
+            "core.subdir.nested",
+            "Nested",
+            nested_tasks,
+        );
+        let (source_path, mut source_file) = create_test_file(
+            "features/feature.md",
+            "features.feature",
+            "Feature",
+            source_tasks,
+        );
+
+        if let Some(source_task) = source_file.tasks.get_task_mut("source") {
+            source_task
+                .metadata
+                .depends_on
+                .push(parse_dependency_ref("../core/").unwrap());
+        }
+
+        let mut files = HashMap::new();
+        files.insert(immediate_path, immediate_file);
+        files.insert(nested_path, nested_file);
+        files.insert(source_path, source_file);
+
+        let mut resolver = DependencyResolver::new(&files, PathBuf::from("/project"));
+        let result = resolver.resolve_dependencies();
+
+        assert_eq!(result.errors.len(), 0);
+        // Only 1 dependency (immediate child, not nested directory)
+        assert_eq!(
+            result.resolved.len(),
+            1,
+            "Should only depend on immediate children"
+        );
+        assert_eq!(result.resolved[0].to_full_id, "core.immediate#immediate");
+    }
+
+    #[test]
+    fn test_directory_dependency_not_found() {
+        let mut source_tasks = TaskTree::new();
+        source_tasks
+            .add_task(TaskBuilder::new("Source").id("source").build().unwrap())
+            .unwrap();
+
+        let (source_path, mut source_file) = create_test_file(
+            "features/feature.md",
+            "features.feature",
+            "Feature",
+            source_tasks,
+        );
+
+        if let Some(source_task) = source_file.tasks.get_task_mut("source") {
+            source_task
+                .metadata
+                .depends_on
+                .push(parse_dependency_ref("../nonexistent/").unwrap());
+        }
+
+        let mut files = HashMap::new();
+        files.insert(source_path, source_file);
+
+        let mut resolver = DependencyResolver::new(&files, PathBuf::from("/project"));
+        let result = resolver.resolve_dependencies();
+
+        assert_eq!(result.resolved.len(), 0);
+        assert_eq!(result.errors.len(), 1);
+        assert!(matches!(
+            result.errors[0].error_kind,
+            ResolutionErrorKind::DirectoryNotFound { .. }
+        ));
+    }
+
+    #[test]
+    fn test_directory_dependency_kind() {
+        // Verify that directory deps have DependencyKind::Directory
+        let mut core_tasks = TaskTree::new();
+        core_tasks
+            .add_task(
+                TaskBuilder::new("Core Task")
+                    .id("core-task")
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+
+        let mut source_tasks = TaskTree::new();
+        source_tasks
+            .add_task(TaskBuilder::new("Source").id("source").build().unwrap())
+            .unwrap();
+
+        let (core_path, core_file) =
+            create_test_file("core/tasks.md", "core.tasks", "Core", core_tasks);
+        let (source_path, mut source_file) = create_test_file(
+            "features/feature.md",
+            "features.feature",
+            "Feature",
+            source_tasks,
+        );
+
+        if let Some(source_task) = source_file.tasks.get_task_mut("source") {
+            source_task
+                .metadata
+                .depends_on
+                .push(parse_dependency_ref("../core/").unwrap());
+        }
+
+        let mut files = HashMap::new();
+        files.insert(core_path, core_file);
+        files.insert(source_path, source_file);
+
+        let mut resolver = DependencyResolver::new(&files, PathBuf::from("/project"));
+        let result = resolver.resolve_dependencies();
+
+        assert_eq!(result.resolved.len(), 1);
+        assert_eq!(result.resolved[0].kind, DependencyKind::Directory);
     }
 }
