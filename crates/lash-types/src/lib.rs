@@ -17,9 +17,11 @@
 // Allow uninlined format args for now - can be cleaned up later
 #![allow(clippy::uninlined_format_args)]
 
+pub mod agent_context;
 pub mod config;
 pub mod dependency;
 pub mod error;
+pub mod error_explanations;
 pub mod file;
 pub mod formatter;
 pub mod index;

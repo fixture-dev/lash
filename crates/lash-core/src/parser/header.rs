@@ -135,6 +135,10 @@ fn find_h1_title(
                         snippet: None,
                         help: Some("Lash files should have exactly one H1 heading".to_string()),
                         labels: None,
+                        recovery_command: None,
+                        fix_steps: None,
+                        explanation: None,
+                        docs_url: None,
                     });
                 }
             }
@@ -161,6 +165,10 @@ fn find_h1_title(
                 "Add an H1 heading at the start: # {synthesized_title}"
             )),
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         });
         (synthesized_title, None)
     } else {
@@ -211,6 +219,10 @@ fn find_tasks_section(content: &str, ctx: &mut ParseContext) -> Option<usize> {
         snippet: None,
         help: Some("Add a '## Tasks' section to separate metadata from tasks".to_string()),
         labels: None,
+        recovery_command: None,
+        fix_steps: None,
+        explanation: None,
+        docs_url: None,
     });
 
     None

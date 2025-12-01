@@ -523,6 +523,10 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
                 snippet: Some((*line).to_string()),
                 help: Some("Valid checkbox formats: - [ ], - [x], - [X], - [-], - [!]".to_string()),
                 labels: None,
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             });
             i += 1;
         } else {
@@ -549,6 +553,10 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
                 snippet: None,
                 help: None,
                 labels: None,
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             });
         }
     }
@@ -696,6 +704,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         ctx.add_diagnostic(diag);
@@ -730,6 +742,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         });
 
         // Should not have errors yet
@@ -746,6 +762,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         });
 
         // Now we have errors

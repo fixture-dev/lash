@@ -316,6 +316,18 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+
+    /// Explain a specific error code in detail
+    #[command()]
+    Explain {
+        /// The error code to explain (e.g., `E_PARSE_INVALID_CHECKBOX`)
+        #[arg(required_unless_present = "list")]
+        code: Option<String>,
+
+        /// List all available error codes
+        #[arg(long)]
+        list: bool,
+    },
 }
 
 /// Playground subcommands

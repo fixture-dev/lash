@@ -451,5 +451,16 @@ fn run(cli: LashCli) -> Result<()> {
             clap_complete::generate(shell_type, &mut cmd, bin_name, &mut std::io::stdout());
             Ok(())
         }
+
+        Commands::Explain { code, list } => {
+            let args = commands::explain::ExplainArgs {
+                code: code.unwrap_or_default(),
+                list,
+                json: cli.json,
+                no_color: cli.no_color,
+            };
+            let exit_code = commands::explain::execute(&args)?;
+            process::exit(exit_code);
+        }
     }
 }
