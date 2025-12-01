@@ -2,6 +2,9 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized
 ---
+┓    ┓
+┃ ┏┓┏┣┓
+┗┛┗┻┛┛┗
 └── backend/
 └── docs/
 └── frontend/

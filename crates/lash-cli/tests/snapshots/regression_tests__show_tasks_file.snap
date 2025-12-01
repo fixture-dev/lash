@@ -2,6 +2,9 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized
 ---
+┓    ┓
+┃ ┏┓┏┣┓
+┗┛┗┻┛┛┗
 File:
   Path:     tasks.md
   Title:    Development Tasks

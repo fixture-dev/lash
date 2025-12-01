@@ -20,3 +20,6 @@ pub mod formatter;
 
 // Dependency resolution module
 pub mod dependency;
+
+// Logo and branding utilities
+pub mod logo;
