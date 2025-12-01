@@ -1,5 +1,5 @@
 ---
-description: Use clean-commit skill for git commit with passing checks
+description: Use clean-commit command for git commit with passing checks
 ---
 
 # Clean Commit Command
