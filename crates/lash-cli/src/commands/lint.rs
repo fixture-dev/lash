@@ -10,6 +10,7 @@
 use anyhow::Context;
 use lash_cli::command::Command;
 use lash_cli::context::Context as CliContext;
+use lash_cli::diff_display::DiffDisplay;
 use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
 use lash_cli::error_validator::ErrorValidator;
 use lash_cli::formatter::{OutputFormat, Verbosity};
@@ -19,11 +20,59 @@ use lash_core::parser::parse_file;
 use lash_types::error::Diagnostic;
 use lash_types::{error::Result as LashResult, LashConfig, Severity, TaskFile};
 use std::collections::HashMap;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use tracing::instrument;
 
 use crate::utils::file_discovery::{discover_markdown_files, find_project_root};
 use crate::utils::output::create_progress_bar;
+
+/// User's choice when prompted in interactive mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InteractiveChoice {
+    /// Apply fixes to this file
+    Yes,
+    /// Skip this file
+    No,
+    /// Apply all remaining fixes without prompting
+    All,
+    /// Quit without applying more fixes
+    Quit,
+}
+
+/// Prompt the user for a decision in interactive mode
+///
+/// Returns `None` if stdin is not a TTY or reading fails.
+fn prompt_user(file_path: &PathBuf, fix_count: usize) -> Option<InteractiveChoice> {
+    // Check if stdin is a TTY
+    if !atty::is(atty::Stream::Stdin) {
+        return None;
+    }
+
+    // Display the prompt
+    eprint!(
+        "\nApply {} fix(es) to {}? [y]es, [n]o, [a]ll, [q]uit: ",
+        fix_count,
+        file_path.display()
+    );
+    io::stderr().flush().ok()?;
+
+    // Read user input
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).ok()?;
+
+    // Parse the response
+    match input.trim().to_lowercase().as_str() {
+        "y" | "yes" | "" => Some(InteractiveChoice::Yes), // Default to yes if user just presses Enter
+        "n" | "no" => Some(InteractiveChoice::No),
+        "a" | "all" => Some(InteractiveChoice::All),
+        "q" | "quit" => Some(InteractiveChoice::Quit),
+        _ => {
+            eprintln!("Invalid choice. Please enter y, n, a, or q.");
+            prompt_user(file_path, fix_count) // Retry
+        }
+    }
+}
 
 /// Arguments for the lint command
 #[derive(Debug, Clone)]
@@ -35,6 +84,8 @@ pub struct LintArgs {
     pub json: bool,
     /// Apply auto-fixes
     pub fix: bool,
+    /// Confirm each fix before applying (requires fix)
+    pub interactive: bool,
     /// Show fix suggestions without applying them
     pub suggest: bool,
     /// Run only specific rule(s)
@@ -162,6 +213,16 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     // Filter diagnostics by severity if requested
     let filtered_diagnostics = filter_by_severity(all_diagnostics, args.min_severity);
 
+    // Warn if --interactive is used without --fix
+    if args.interactive && !args.fix {
+        let warning_msg = "Warning: --interactive flag has no effect without --fix";
+        if let Some(t) = &theme {
+            eprintln!("{}", t.style_warning(warning_msg));
+        } else {
+            eprintln!("{warning_msg}");
+        }
+    }
+
     // Apply auto-fixes if requested
     if args.fix {
         apply_fixes(
@@ -169,6 +230,7 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
             &parsed_files,
             theme.as_ref(),
             &project_config,
+            args.interactive,
         )?;
     }
 
@@ -772,12 +834,17 @@ fn apply_fixes_to_file(
 /// This function uses the FixApplicator to apply per-rule fixes and the
 /// ErrorValidator to verify that fixes were successful. It iterates up to
 /// MAX_FIX_ITERATIONS times to handle cascading fixes.
+///
+/// When `interactive` is true and stdin is a TTY, prompts the user before
+/// applying fixes to each file.
+#[allow(clippy::too_many_lines)] // Interactive flow naturally creates longer function
 #[instrument(skip(diagnostics, _parsed_files, theme, project_config), fields(diagnostic_count = diagnostics.len()))]
 fn apply_fixes(
     diagnostics: &[LintDiagnostic],
     _parsed_files: &HashMap<PathBuf, TaskFile>,
     theme: Option<&CliTheme>,
     project_config: &LashConfig,
+    interactive: bool,
 ) -> anyhow::Result<()> {
     // Group diagnostics by file
     let mut fixes_by_file: HashMap<&PathBuf, Vec<&LintDiagnostic>> = HashMap::new();
@@ -811,6 +878,7 @@ fn apply_fixes(
     let mut total_fixes_applied = 0;
     let mut total_files_fixed = 0;
     let mut files_with_errors = Vec::new();
+    let mut apply_all = false; // Track if user selected "all"
 
     // Process each file with iteration support
     for (file_path, initial_diagnostics) in fixes_by_file {
@@ -820,7 +888,67 @@ fn apply_fixes(
             file_path.display().to_string()
         };
 
-        eprintln!("\n  Processing {file_str}:");
+        // Show file header
+        eprintln!("\n  File: {file_str}");
+
+        // In interactive mode, show diagnostics and prompt for confirmation
+        if interactive && !apply_all {
+            // Show each diagnostic and its fix preview
+            eprintln!("  Fixes to apply:");
+
+            // Read file content for diff display
+            let content = std::fs::read_to_string(file_path)
+                .with_context(|| format!("Failed to read {}", file_path.display()))?;
+
+            let diff_display = if let Some(t) = theme {
+                DiffDisplay::with_theme(t.clone())
+            } else {
+                DiffDisplay::new()
+            };
+
+            for diagnostic in &initial_diagnostics {
+                eprintln!("\n    - {} ({})", diagnostic.message, diagnostic.code);
+                let line_num = diagnostic.location.line.unwrap_or(0);
+                let col_num = diagnostic.location.column.unwrap_or(0);
+                eprintln!("      Location: line {line_num}, column {col_num}");
+
+                // Show diff if available
+                if let Some(diff) = diff_display.format_fix_diff(&content, diagnostic) {
+                    // Indent each line of the diff
+                    for line in diff.lines() {
+                        eprintln!("      {line}");
+                    }
+                }
+            }
+
+            // Prompt the user
+            match prompt_user(file_path, initial_diagnostics.len()) {
+                Some(InteractiveChoice::Yes) => {
+                    eprintln!("  Applying fixes...");
+                    // Continue to apply fixes
+                }
+                Some(InteractiveChoice::No) => {
+                    eprintln!("  Skipping file");
+                    continue; // Skip this file
+                }
+                Some(InteractiveChoice::All) => {
+                    eprintln!("  Applying fixes to all remaining files...");
+                    apply_all = true;
+                    // Continue to apply fixes
+                }
+                Some(InteractiveChoice::Quit) => {
+                    eprintln!("\nStopping (user requested quit)");
+                    break; // Exit the loop
+                }
+                None => {
+                    // Not a TTY or read failed, fall back to non-interactive
+                    eprintln!("  (non-interactive mode - applying fixes)");
+                    // Continue to apply fixes
+                }
+            }
+        } else {
+            eprintln!("  Processing...");
+        }
 
         // Apply fixes to this file with iteration
         let result = apply_fixes_to_file(file_path, initial_diagnostics, project_config, theme)?;
