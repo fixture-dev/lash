@@ -3,6 +3,7 @@
 //! The `lash check-index` command verifies `SQLite` database consistency with Markdown files.
 
 use anyhow::{Context, Result};
+use lash_cli::formatter::Verbosity;
 use lash_db::{open_database, IndexVerifier, VerifierConfig};
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,9 @@ pub struct CheckIndexArgs {
     pub no_color: bool,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
+    /// Verbosity level for output (reserved for future use)
+    #[allow(dead_code)]
+    pub verbosity: Verbosity,
 }
 
 /// Execute the check-index command

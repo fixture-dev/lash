@@ -5,9 +5,11 @@
 
 use anyhow::Result;
 use lash_core::logo::LOGO;
+use lash_types::error::{Diagnostic, LashError, Severity};
 use lash_types::TaskStatus;
 use serde::Serialize;
 
+use crate::error_reporter::ErrorSummary;
 use crate::theme::CliTheme;
 
 /// Output format mode
@@ -84,6 +86,29 @@ pub trait OutputFormatter {
 
     /// Format tabular data
     fn format_table(&self, headers: &[String], rows: &[Vec<String>]) -> Result<String>;
+
+    /// Format a `LashError` based on verbosity level
+    ///
+    /// # Arguments
+    ///
+    /// * `error` - The error to format
+    /// * `verbosity` - Verbosity level controlling detail
+    fn format_lash_error(&self, error: &LashError, verbosity: Verbosity) -> Result<String>;
+
+    /// Format a Diagnostic based on verbosity level
+    ///
+    /// # Arguments
+    ///
+    /// * `diagnostic` - The diagnostic to format
+    /// * `verbosity` - Verbosity level controlling detail
+    fn format_diagnostic(&self, diagnostic: &Diagnostic, verbosity: Verbosity) -> Result<String>;
+
+    /// Format an error summary (count by severity)
+    ///
+    /// # Arguments
+    ///
+    /// * `summary` - The error summary to format
+    fn format_error_summary(&self, summary: &ErrorSummary) -> Result<String>;
 }
 
 /// Text-based formatter with optional colors
@@ -253,6 +278,65 @@ impl OutputFormatter for TextFormatter {
 
         Ok(output)
     }
+
+    fn format_lash_error(&self, error: &LashError, verbosity: Verbosity) -> Result<String> {
+        let diagnostic = error.to_diagnostic();
+        self.format_diagnostic(&diagnostic, verbosity)
+    }
+
+    fn format_diagnostic(&self, diagnostic: &Diagnostic, verbosity: Verbosity) -> Result<String> {
+        match verbosity {
+            Verbosity::Quiet => Ok(Self::format_diagnostic_quiet(diagnostic)),
+            Verbosity::Normal => Ok(self.format_diagnostic_normal(diagnostic)),
+            Verbosity::Verbose | Verbosity::Debug | Verbosity::Trace => {
+                Ok(self.format_diagnostic_verbose(diagnostic, verbosity))
+            }
+        }
+    }
+
+    fn format_error_summary(&self, summary: &ErrorSummary) -> Result<String> {
+        if summary.total_count() == 0 {
+            return Ok(String::new());
+        }
+
+        let mut output = String::new();
+        output.push_str("\nSummary:\n");
+
+        // Format counts with appropriate styling
+        let error_str = if summary.error_count > 0 {
+            if let Some(ref theme) = self.theme {
+                theme.style_error(&summary.error_count.to_string())
+            } else {
+                summary.error_count.to_string()
+            }
+        } else {
+            summary.error_count.to_string()
+        };
+
+        let warning_str = if summary.warning_count > 0 {
+            if let Some(ref theme) = self.theme {
+                theme.style_warning(&summary.warning_count.to_string())
+            } else {
+                summary.warning_count.to_string()
+            }
+        } else {
+            summary.warning_count.to_string()
+        };
+
+        output.push_str(&format!(
+            "  {} errors, {} warnings, {} info, {} hints\n",
+            error_str, warning_str, summary.info_count, summary.hint_count
+        ));
+
+        if !summary.files_affected.is_empty() {
+            output.push_str(&format!(
+                "  {} files affected\n",
+                summary.files_affected.len()
+            ));
+        }
+
+        Ok(output)
+    }
 }
 
 impl TextFormatter {
@@ -329,6 +413,147 @@ impl TextFormatter {
         } else {
             text.to_string()
         }
+    }
+
+    // Private helper methods for diagnostic formatting
+
+    fn format_diagnostic_quiet(diagnostic: &Diagnostic) -> String {
+        // In quiet mode, only show severity and message (minimal output)
+        format!("{}: {}", diagnostic.severity, diagnostic.message)
+    }
+
+    fn format_diagnostic_normal(&self, diagnostic: &Diagnostic) -> String {
+        let mut output = String::new();
+
+        // Format: error[CODE]: message
+        let severity_str =
+            self.style_severity(diagnostic.severity, &diagnostic.severity.to_string());
+        let code_str = self.style_code(diagnostic.code);
+
+        output.push_str(&format!(
+            "{}[{}]: {}",
+            severity_str, code_str, diagnostic.message
+        ));
+
+        // Add location if available (file:line:col format)
+        if let Some(location) = &diagnostic.location {
+            let location_str = Self::format_location(location);
+            let styled_location = self.style_location(&location_str);
+            output.push_str(&format!("\n  at {styled_location}"));
+        }
+
+        output
+    }
+
+    fn format_diagnostic_verbose(&self, diagnostic: &Diagnostic, verbosity: Verbosity) -> String {
+        let mut output = self.format_diagnostic_normal(diagnostic);
+
+        // Add code snippet if available and verbosity >= Verbose
+        if let Some(snippet) = &diagnostic.snippet {
+            output.push_str("\n\n");
+            output.push_str(&self.style_snippet(snippet));
+        }
+
+        // Add help text if available
+        if let Some(help) = &diagnostic.help {
+            output.push_str("\n\n");
+            let help_label = self.style_help_label("help");
+            output.push_str(&format!("  {help_label}: {help}"));
+        }
+
+        // In debug/trace mode, add all extra context
+        if verbosity >= Verbosity::Debug {
+            if let Some(labels) = &diagnostic.labels {
+                for (key, value) in labels {
+                    output.push_str(&format!("\n  {key}: {value}"));
+                }
+            }
+
+            if let Some(recovery) = &diagnostic.recovery_command {
+                output.push_str(&format!("\n  recovery: {recovery}"));
+            }
+
+            if let Some(steps) = &diagnostic.fix_steps {
+                output.push_str("\n  fix steps:");
+                for (i, step) in steps.iter().enumerate() {
+                    let step_num = i + 1;
+                    output.push_str(&format!("\n    {step_num}. {step}"));
+                }
+            }
+
+            if let Some(explanation) = &diagnostic.explanation {
+                output.push_str(&format!("\n  explanation: {explanation}"));
+            }
+
+            if let Some(url) = &diagnostic.docs_url {
+                output.push_str(&format!("\n  docs: {url}"));
+            }
+        }
+
+        output
+    }
+
+    // Styling helper methods
+
+    fn style_severity(&self, severity: Severity, text: &str) -> String {
+        if let Some(ref theme) = self.theme {
+            match severity {
+                Severity::Error => theme.style_error(text),
+                Severity::Warning => theme.style_warning(text),
+                Severity::Info => theme.style_info(text),
+                Severity::Hint => theme.style_label(text),
+            }
+        } else {
+            text.to_string()
+        }
+    }
+
+    fn style_code(&self, code: &str) -> String {
+        if let Some(ref theme) = self.theme {
+            theme.style_label(code)
+        } else {
+            code.to_string()
+        }
+    }
+
+    fn style_location(&self, location: &str) -> String {
+        if let Some(ref theme) = self.theme {
+            theme.style_muted(location)
+        } else {
+            location.to_string()
+        }
+    }
+
+    fn style_snippet(&self, snippet: &str) -> String {
+        if let Some(ref theme) = self.theme {
+            theme.style_muted(snippet)
+        } else {
+            snippet.to_string()
+        }
+    }
+
+    fn style_help_label(&self, label: &str) -> String {
+        if let Some(ref theme) = self.theme {
+            theme.style_info(label)
+        } else {
+            label.to_string()
+        }
+    }
+
+    fn format_location(location: &lash_types::error::Location) -> String {
+        let mut result = location.file_path.display().to_string();
+
+        if let Some(line) = location.line {
+            result.push(':');
+            result.push_str(&line.to_string());
+
+            if let Some(column) = location.column {
+                result.push(':');
+                result.push_str(&column.to_string());
+            }
+        }
+
+        result
     }
 }
 
@@ -407,6 +632,29 @@ impl OutputFormatter for JsonFormatter {
             "rows": rows
         }))
     }
+
+    fn format_lash_error(&self, error: &LashError, _: Verbosity) -> Result<String> {
+        let diagnostic = error.to_diagnostic();
+        // For JSON, verbosity doesn't matter - output complete diagnostic as JSON
+        self.to_json(&diagnostic)
+    }
+
+    fn format_diagnostic(&self, diagnostic: &Diagnostic, _: Verbosity) -> Result<String> {
+        // For JSON, verbosity doesn't matter - output complete diagnostic as JSON
+        self.to_json(diagnostic)
+    }
+
+    fn format_error_summary(&self, summary: &ErrorSummary) -> Result<String> {
+        // Convert to structured JSON with counts
+        self.to_json(&serde_json::json!({
+            "error_count": summary.error_count,
+            "warning_count": summary.warning_count,
+            "info_count": summary.info_count,
+            "hint_count": summary.hint_count,
+            "total_count": summary.total_count(),
+            "files_affected": summary.files_affected.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+        }))
+    }
 }
 
 /// Quiet formatter (suppresses most output)
@@ -457,6 +705,25 @@ impl OutputFormatter for QuietFormatter {
 
     fn format_table(&self, _headers: &[String], _rows: &[Vec<String>]) -> Result<String> {
         Ok(String::new())
+    }
+
+    fn format_lash_error(&self, error: &LashError, _: Verbosity) -> Result<String> {
+        // In quiet mode, just show error code and message
+        Ok(format!("{}: {}", error.code(), error))
+    }
+
+    fn format_diagnostic(&self, diagnostic: &Diagnostic, _: Verbosity) -> Result<String> {
+        // In quiet mode, just show severity and message
+        Ok(format!("{}: {}", diagnostic.severity, diagnostic.message))
+    }
+
+    fn format_error_summary(&self, summary: &ErrorSummary) -> Result<String> {
+        // In quiet mode, only show counts if there are errors
+        if summary.error_count > 0 {
+            Ok(format!("{} errors\n", summary.error_count))
+        } else {
+            Ok(String::new())
+        }
     }
 }
 
@@ -678,5 +945,217 @@ mod tests {
 
         let muted = formatter.format_muted("(optional)");
         assert_eq!(muted, "(optional)");
+    }
+}
+
+#[cfg(test)]
+mod error_formatting_tests {
+    use super::*;
+    use lash_types::error::{Diagnostic, LashError, Location, Severity};
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_text_formatter_format_lash_error() {
+        let formatter = TextFormatter::new(false, Verbosity::Normal);
+        let error =
+            LashError::parse_invalid_checkbox(PathBuf::from("test.md"), 5, 3, "[*] invalid");
+
+        let result = formatter
+            .format_lash_error(&error, Verbosity::Normal)
+            .unwrap();
+        assert!(result.contains("error"));
+        assert!(result.contains("E_PARSE_INVALID_CHECKBOX"));
+        assert!(result.contains("test.md:5:3"));
+    }
+
+    #[test]
+    fn test_text_formatter_format_diagnostic_quiet() {
+        let formatter = TextFormatter::new(false, Verbosity::Normal);
+        let diagnostic = Diagnostic {
+            code: "E_TEST",
+            severity: Severity::Error,
+            message: "Test error".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
+        };
+
+        let result = formatter
+            .format_diagnostic(&diagnostic, Verbosity::Quiet)
+            .unwrap();
+        assert_eq!(result, "error: Test error");
+    }
+
+    #[test]
+    fn test_text_formatter_format_diagnostic_normal() {
+        let formatter = TextFormatter::new(false, Verbosity::Normal);
+        let diagnostic = Diagnostic {
+            code: "E_TEST",
+            severity: Severity::Error,
+            message: "Test error".to_string(),
+            location: Some(Location::new(PathBuf::from("test.md"), 10, 5)),
+            snippet: None,
+            help: None,
+            labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
+        };
+
+        let result = formatter
+            .format_diagnostic(&diagnostic, Verbosity::Normal)
+            .unwrap();
+        assert!(result.contains("error[E_TEST]"));
+        assert!(result.contains("Test error"));
+        assert!(result.contains("test.md:10:5"));
+    }
+
+    #[test]
+    fn test_text_formatter_format_diagnostic_verbose() {
+        let formatter = TextFormatter::new(false, Verbosity::Normal);
+        let diagnostic = Diagnostic {
+            code: "E_TEST",
+            severity: Severity::Error,
+            message: "Test error".to_string(),
+            location: Some(Location::new(PathBuf::from("test.md"), 10, 5)),
+            snippet: Some("- [*] invalid".to_string()),
+            help: Some("Use valid syntax".to_string()),
+            labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
+        };
+
+        let result = formatter
+            .format_diagnostic(&diagnostic, Verbosity::Verbose)
+            .unwrap();
+        assert!(result.contains("error[E_TEST]"));
+        assert!(result.contains("Test error"));
+        assert!(result.contains("- [*] invalid"));
+        assert!(result.contains("help: Use valid syntax"));
+    }
+
+    #[test]
+    fn test_text_formatter_format_error_summary() {
+        let formatter = TextFormatter::new(false, Verbosity::Normal);
+        let summary = ErrorSummary {
+            error_count: 5,
+            warning_count: 3,
+            info_count: 1,
+            files_affected: [PathBuf::from("test1.md"), PathBuf::from("test2.md")]
+                .into_iter()
+                .collect(),
+            ..Default::default()
+        };
+
+        let result = formatter.format_error_summary(&summary).unwrap();
+        assert!(result.contains("5 errors"));
+        assert!(result.contains("3 warnings"));
+        assert!(result.contains("1 info"));
+        assert!(result.contains("2 files affected"));
+    }
+
+    #[test]
+    fn test_text_formatter_format_error_summary_empty() {
+        let formatter = TextFormatter::new(false, Verbosity::Normal);
+        let summary = ErrorSummary::default();
+
+        let result = formatter.format_error_summary(&summary).unwrap();
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_json_formatter_format_diagnostic() {
+        let formatter = JsonFormatter::new(false);
+        let diagnostic = Diagnostic {
+            code: "E_TEST",
+            severity: Severity::Error,
+            message: "Test error".to_string(),
+            location: Some(Location::new(PathBuf::from("test.md"), 5, 3)),
+            snippet: None,
+            help: None,
+            labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
+        };
+
+        let result = formatter
+            .format_diagnostic(&diagnostic, Verbosity::Normal)
+            .unwrap();
+        assert!(result.contains("\"code\":\"E_TEST\""));
+        assert!(result.contains("\"severity\":\"error\""));
+        assert!(result.contains("\"message\":\"Test error\""));
+    }
+
+    #[test]
+    fn test_json_formatter_format_error_summary() {
+        let formatter = JsonFormatter::new(false);
+        let summary = ErrorSummary {
+            error_count: 5,
+            warning_count: 3,
+            ..Default::default()
+        };
+
+        let result = formatter.format_error_summary(&summary).unwrap();
+        assert!(result.contains("\"error_count\":5"));
+        assert!(result.contains("\"warning_count\":3"));
+        assert!(result.contains("\"total_count\":8"));
+    }
+
+    #[test]
+    fn test_quiet_formatter_format_diagnostic() {
+        let formatter = QuietFormatter::new();
+        let diagnostic = Diagnostic {
+            code: "E_TEST",
+            severity: Severity::Warning,
+            message: "Test warning".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
+        };
+
+        let result = formatter
+            .format_diagnostic(&diagnostic, Verbosity::Normal)
+            .unwrap();
+        assert_eq!(result, "warning: Test warning");
+    }
+
+    #[test]
+    fn test_quiet_formatter_format_error_summary() {
+        let formatter = QuietFormatter::new();
+        let summary = ErrorSummary {
+            error_count: 5,
+            warning_count: 3,
+            ..Default::default()
+        };
+
+        let result = formatter.format_error_summary(&summary).unwrap();
+        assert_eq!(result, "5 errors\n");
+    }
+
+    #[test]
+    fn test_quiet_formatter_format_error_summary_no_errors() {
+        let formatter = QuietFormatter::new();
+        let summary = ErrorSummary {
+            warning_count: 3,
+            ..Default::default()
+        };
+
+        let result = formatter.format_error_summary(&summary).unwrap();
+        assert_eq!(result, "");
     }
 }

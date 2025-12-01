@@ -108,6 +108,10 @@ pub struct LashCli {
     #[arg(long, global = true, help_heading = "Global Options")]
     pub no_logo: bool,
 
+    /// Show errors as they occur (streaming) vs at end (batch)
+    #[arg(long, global = true, help_heading = "Global Options")]
+    pub errors_streaming: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }

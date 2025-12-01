@@ -5,20 +5,24 @@ expression: normalized_stdout
 ┓    ┓
 ┃ ┏┓┏┣┓
 ┗┛┗┻┛┛┗
-./level1/core.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/core.md' is not referenced in the root index
-  help: Add './level1/core.md' to ./lash.index.md or move to an archive directory
-./level1/level2/level3/api.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/level2/level3/api.md' is not referenced in the root index
-  help: Add './level1/level2/level3/api.md' to ./lash.index.md or move to an archive directory
-./level1/level2/level3/level4/handlers.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/handlers.md' is not referenced in the root index
-  help: Add './level1/level2/level3/level4/handlers.md' to ./lash.index.md or move to an archive directory
-./level1/level2/level3/level4/level5/level6/level7/level8/utilities.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/level5/level6/level7/level8/utilities.md' is not referenced in the root index
-  help: Add './level1/level2/level3/level4/level5/level6/level7/level8/utilities.md' to ./lash.index.md or move to an archive directory
-./level1/level2/level3/level4/level5/level6/level7/transformers.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/level5/level6/level7/transformers.md' is not referenced in the root index
-  help: Add './level1/level2/level3/level4/level5/level6/level7/transformers.md' to ./lash.index.md or move to an archive directory
-./level1/level2/level3/level4/level5/level6/validators.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/level5/level6/validators.md' is not referenced in the root index
-  help: Add './level1/level2/level3/level4/level5/level6/validators.md' to ./lash.index.md or move to an archive directory
-./level1/level2/level3/level4/level5/middleware.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/level5/middleware.md' is not referenced in the root index
-  help: Add './level1/level2/level3/level4/level5/middleware.md' to ./lash.index.md or move to an archive directory
-./level1/level2/services.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/level2/services.md' is not referenced in the root index
-  help: Add './level1/level2/services.md' to ./lash.index.md or move to an archive directory
+warning[W_INDEX_ORPHAN]: File './level1/core.md' is not referenced in the root index
+  at ./level1/core.md:0:0
+warning[W_INDEX_ORPHAN]: File './level1/level2/level3/api.md' is not referenced in the root index
+  at ./level1/level2/level3/api.md:0:0
+warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/handlers.md' is not referenced in the root index
+  at ./level1/level2/level3/level4/handlers.md:0:0
+warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/level5/level6/level7/level8/utilities.md' is not referenced in the root index
+  at ./level1/level2/level3/level4/level5/level6/level7/level8/utilities.md:0:0
+warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/level5/level6/level7/transformers.md' is not referenced in the root index
+  at ./level1/level2/level3/level4/level5/level6/level7/transformers.md:0:0
+warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/level5/level6/validators.md' is not referenced in the root index
+  at ./level1/level2/level3/level4/level5/level6/validators.md:0:0
+warning[W_INDEX_ORPHAN]: File './level1/level2/level3/level4/level5/middleware.md' is not referenced in the root index
+  at ./level1/level2/level3/level4/level5/middleware.md:0:0
+warning[W_INDEX_ORPHAN]: File './level1/level2/services.md' is not referenced in the root index
+  at ./level1/level2/services.md:0:0
 ✓ Linting passed (with warnings)
+
+Summary:
+  0 errors, 8 warnings, 0 info, 0 hints
+  8 files affected

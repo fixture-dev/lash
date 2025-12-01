@@ -63,30 +63,30 @@ fn test_parse_error_text_output() {
         "Expected lint error exit code 2"
     );
 
-    // Convert stderr to string for easier assertions
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Lint output goes to stdout
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Verify error contains:
     // 1. File path
     assert!(
-        stderr.contains("lash.index.md") || stderr.contains("index"),
-        "Error should mention the file path. Got: {stderr}"
+        stdout.contains("lash.index.md") || stdout.contains("index"),
+        "Error should mention the file path. Got: {stdout}"
     );
 
     // 2. Error type/description (invalid checkbox or similar)
     assert!(
-        stderr.contains("invalid")
-            || stderr.contains("checkbox")
-            || stderr.contains("status")
-            || stderr.contains("error"),
-        "Error should describe the problem. Got: {stderr}"
+        stdout.contains("invalid")
+            || stdout.contains("checkbox")
+            || stdout.contains("status")
+            || stdout.contains("error"),
+        "Error should describe the problem. Got: {stdout}"
     );
 
     // 3. Location information (line number or context)
     // The invalid checkbox is on line 11
     assert!(
-        stderr.contains("11") || stderr.contains("Invalid checkbox") || stderr.contains("[?]"),
-        "Error should provide location or context. Got: {stderr}"
+        stdout.contains("11") || stdout.contains("Invalid checkbox") || stdout.contains("[?]"),
+        "Error should provide location or context. Got: {stdout}"
     );
 }
 
@@ -220,24 +220,25 @@ fn test_lint_error_aggregation() {
     // Should fail with lint errors
     assert_eq!(output.status.code(), Some(2));
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Lint output goes to stdout
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Verify multiple errors are reported
     // We should see errors for multiple files
-    let error_count = stderr.matches("error").count() + stderr.matches("Error").count();
+    let error_count = stdout.matches("error").count() + stdout.matches("Error").count();
     assert!(
         error_count >= 2,
-        "Should report multiple errors. Found {error_count} error mentions in: {stderr}"
+        "Should report multiple errors. Found {error_count} error mentions in: {stdout}"
     );
 
     // Verify errors mention different files
-    let mentions_index = stderr.contains("lash.index.md") || stderr.contains("index");
-    let mentions_bugs = stderr.contains("bugs.md") || stderr.contains("bugs");
-    let mentions_nested = stderr.contains("nested.md") || stderr.contains("nested");
+    let mentions_index = stdout.contains("lash.index.md") || stdout.contains("index");
+    let mentions_bugs = stdout.contains("bugs.md") || stdout.contains("bugs");
+    let mentions_nested = stdout.contains("nested.md") || stdout.contains("nested");
 
     assert!(
         mentions_index || mentions_bugs || mentions_nested,
-        "Should report errors from multiple files. Got: {stderr}"
+        "Should report errors from multiple files. Got: {stdout}"
     );
 }
 
@@ -373,22 +374,23 @@ fn test_multiple_error_types_collection() {
         "Lint should report errors"
     );
 
-    let stderr = String::from_utf8_lossy(&lint_output.stderr);
+    // Lint output goes to stdout
+    let stdout = String::from_utf8_lossy(&lint_output.stdout);
 
     // Verify we see multiple types of errors mentioned
-    let has_parse_error = stderr.contains("invalid")
-        || stderr.contains("checkbox")
-        || stderr.contains("[*]")
-        || stderr.contains("parse");
+    let has_parse_error = stdout.contains("invalid")
+        || stdout.contains("checkbox")
+        || stdout.contains("[*]")
+        || stdout.contains("parse");
 
-    let has_lint_error = stderr.contains("missing")
-        || stderr.contains("@id")
-        || stderr.contains("required")
-        || stderr.contains("lint");
+    let has_lint_error = stdout.contains("missing")
+        || stdout.contains("@id")
+        || stdout.contains("required")
+        || stdout.contains("lint");
 
     assert!(
         has_parse_error || has_lint_error,
-        "Should report multiple error types. Got: {stderr}"
+        "Should report multiple error types. Got: {stdout}"
     );
 
     // Run index command (should handle errors gracefully)
@@ -451,13 +453,14 @@ fn test_multiple_parse_errors_single_file() {
 
     assert_eq!(output.status.code(), Some(2));
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Lint output goes to stdout
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Should report multiple errors (at least 2: the invalid checkboxes)
-    let error_count = stderr.matches("error").count() + stderr.matches("invalid").count();
+    let error_count = stdout.matches("error").count() + stdout.matches("invalid").count();
     assert!(
         error_count >= 2,
-        "Should report multiple errors. Got: {stderr}"
+        "Should report multiple errors. Got: {stdout}"
     );
 }
 
@@ -651,20 +654,21 @@ fn test_error_messages_include_suggestions() {
         .output()
         .expect("Failed to execute command");
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Lint output goes to stdout
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Error should provide helpful context
     // Look for any of: suggestion, help, valid, expected, should
-    let has_helpful_text = stderr.contains("suggestion")
-        || stderr.contains("help")
-        || stderr.contains("valid")
-        || stderr.contains("expected")
-        || stderr.contains("should")
-        || stderr.contains("use")
-        || stderr.contains("must");
+    let has_helpful_text = stdout.contains("suggestion")
+        || stdout.contains("help")
+        || stdout.contains("valid")
+        || stdout.contains("expected")
+        || stdout.contains("should")
+        || stdout.contains("use")
+        || stdout.contains("must");
 
     assert!(
         has_helpful_text,
-        "Error message should include helpful suggestions. Got: {stderr}"
+        "Error message should include helpful suggestions. Got: {stdout}"
     );
 }

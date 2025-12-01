@@ -10,18 +10,19 @@
 use anyhow::Context;
 use lash_cli::command::Command;
 use lash_cli::context::Context as CliContext;
+use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash_cli::formatter::{OutputFormat, Verbosity};
 use lash_cli::theme::CliTheme;
 use lash_core::linter::{register_default_rules, LintConfig, LintDiagnostic};
 use lash_core::parser::parse_file;
+use lash_types::error::Diagnostic;
 use lash_types::{error::Result as LashResult, LashConfig, Severity, TaskFile};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::instrument;
 
 use crate::utils::file_discovery::{discover_markdown_files, find_project_root};
-use crate::utils::output::{
-    create_progress_bar, format_json_output, print_diagnostics, print_summary,
-};
+use crate::utils::output::create_progress_bar;
 
 /// Arguments for the lint command
 #[derive(Debug, Clone)]
@@ -40,6 +41,8 @@ pub struct LintArgs {
     pub no_color: bool,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
+    /// Verbosity level for output
+    pub verbosity: Verbosity,
 }
 
 impl Command for LintArgs {
@@ -74,6 +77,23 @@ impl Command for LintArgs {
                 None,
             )),
         }
+    }
+}
+
+/// Convert a `LintDiagnostic` from lash-core to a `Diagnostic` from lash-types
+fn lint_diagnostic_to_diagnostic(lint_diag: &LintDiagnostic) -> Diagnostic {
+    Diagnostic {
+        code: lint_diag.code,
+        severity: lint_diag.severity,
+        message: lint_diag.message.clone(),
+        location: Some(lint_diag.location.clone()),
+        snippet: lint_diag.snippet.clone(),
+        help: lint_diag.help.clone(),
+        labels: lint_diag.labels.clone(),
+        recovery_command: lint_diag.recovery_command.clone(),
+        fix_steps: lint_diag.fix_steps.clone(),
+        explanation: lint_diag.explanation.clone(),
+        docs_url: None, // LintDiagnostic doesn't have docs_url field
     }
 }
 
@@ -130,39 +150,184 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     let (parsed_files, parse_errors) = parse_files(&files, &project_config, &args, theme.as_ref())?;
 
     // Lint all files
-    let mut diagnostics = lint_files(&parsed_files, &project_config, &lint_config, &args)?;
+    let mut all_diagnostics = lint_files(&parsed_files, &project_config, &lint_config, &args)?;
 
     // Add parse errors to diagnostics
-    diagnostics.extend(parse_errors);
+    all_diagnostics.extend(parse_errors);
 
     // Filter diagnostics by severity if requested
-    let filtered_diagnostics = filter_by_severity(diagnostics, args.min_severity);
+    let filtered_diagnostics = filter_by_severity(all_diagnostics, args.min_severity);
 
     // Apply auto-fixes if requested
     if args.fix {
         apply_fixes(&filtered_diagnostics, &parsed_files, theme.as_ref())?;
     }
 
+    // Convert LintDiagnostic to Diagnostic for output
+    let diagnostics: Vec<Diagnostic> = filtered_diagnostics
+        .iter()
+        .map(lint_diagnostic_to_diagnostic)
+        .collect();
+
     // Output results
     if args.json {
-        let json = format_json_output(&filtered_diagnostics, files.len())?;
-        println!("{json}");
+        // JSON output to stdout
+        output_json_diagnostics(&diagnostics, files.len())?;
     } else {
-        // Print diagnostics in human-readable format
-        print_diagnostics(&filtered_diagnostics, theme.as_ref(), true)?;
+        // Text output to stdout
+        output_text_diagnostics(&diagnostics, files.len(), theme.as_ref(), args.verbosity)?;
+    }
 
-        // Print summary
-        if !filtered_diagnostics.is_empty() || files.len() > 1 {
-            print_summary(&filtered_diagnostics, files.len(), theme.as_ref());
+    // Determine exit code based on errors
+    let has_errors = diagnostics.iter().any(|d| d.severity == Severity::Error);
+
+    Ok(if has_errors { 2 } else { 0 })
+}
+
+/// Output diagnostics in JSON format to stdout
+fn output_json_diagnostics(diagnostics: &[Diagnostic], files_checked: usize) -> anyhow::Result<()> {
+    let error_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
+    let warning_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warning)
+        .count();
+    let info_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Info)
+        .count();
+    let hint_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Hint)
+        .count();
+
+    let output = serde_json::json!({
+        "diagnostics": diagnostics,
+        "summary": {
+            "files_checked": files_checked,
+            "errors": error_count,
+            "warnings": warning_count,
+            "info": info_count,
+            "hints": hint_count,
+        }
+    });
+
+    let json_str = serde_json::to_string_pretty(&output)?;
+    println!("{json_str}");
+
+    Ok(())
+}
+
+/// Output diagnostics in human-readable text format to stdout
+fn output_text_diagnostics(
+    diagnostics: &[Diagnostic],
+    files_checked: usize,
+    theme: Option<&CliTheme>,
+    verbosity: Verbosity,
+) -> anyhow::Result<()> {
+    // Create an ErrorReporter to format the diagnostics
+    let reporter_config = ErrorReporterConfig {
+        verbosity,
+        output_format: OutputFormat::Text,
+        display_mode: ErrorDisplayMode::Batch,
+        theme: theme.cloned(),
+        show_summary: false, // We'll print our own summary
+    };
+
+    let mut reporter = ErrorReporter::new(reporter_config);
+
+    // Collect all diagnostics
+    for diagnostic in diagnostics {
+        reporter.report_diagnostic(diagnostic);
+    }
+
+    // Print diagnostics to stdout instead of stderr
+    for diagnostic in diagnostics {
+        let formatted = reporter.format_diagnostic(diagnostic);
+        println!("{formatted}");
+    }
+
+    // Print summary
+    print_summary(diagnostics, files_checked, theme);
+
+    Ok(())
+}
+
+/// Print a summary of linting results to stdout
+fn print_summary(diagnostics: &[Diagnostic], _files_checked: usize, theme: Option<&CliTheme>) {
+    let error_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
+    let warning_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warning)
+        .count();
+    let info_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Info)
+        .count();
+    let hint_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Hint)
+        .count();
+
+    // If no errors, print success message
+    if error_count == 0 {
+        if warning_count == 0 && info_count == 0 && hint_count == 0 {
+            // Perfect - no issues at all
+            let msg = "✓ All files passed linting";
+            if let Some(t) = theme {
+                println!("{}", t.style_success(msg));
+            } else {
+                println!("{msg}");
+            }
+            return;
+        }
+        // No errors, but some warnings/info/hints
+        let msg = "✓ Linting passed (with warnings)";
+        if let Some(t) = theme {
+            println!("{}", t.style_success(msg));
+        } else {
+            println!("{msg}");
         }
     }
 
-    // Determine exit code
-    let has_errors = filtered_diagnostics
-        .iter()
-        .any(|d| d.severity == Severity::Error);
+    // Print detailed summary
+    println!("\nSummary:");
 
-    Ok(if has_errors { 2 } else { 0 })
+    if let Some(t) = theme {
+        let error_str = if error_count > 0 {
+            t.style_error(&error_count.to_string())
+        } else {
+            t.style_success(&error_count.to_string())
+        };
+
+        let warning_str = if warning_count > 0 {
+            t.style_warning(&warning_count.to_string())
+        } else {
+            warning_count.to_string()
+        };
+
+        println!(
+            "  {error_str} errors, {warning_str} warnings, {info_count} info, {hint_count} hints"
+        );
+    } else {
+        println!("  {error_count} errors, {warning_count} warnings, {info_count} info, {hint_count} hints");
+    }
+
+    // Count unique files affected
+    let files_affected: std::collections::HashSet<_> = diagnostics
+        .iter()
+        .filter_map(|d| d.location.as_ref())
+        .map(|loc| &loc.file_path)
+        .collect();
+
+    if !files_affected.is_empty() {
+        println!("  {} files affected", files_affected.len());
+    }
 }
 
 /// Load project configuration
@@ -207,12 +372,12 @@ fn configure_linter(args: &LintArgs) -> LintConfig {
 /// Parse all files with progress reporting
 ///
 /// Returns a tuple of (successfully parsed files, parse error diagnostics)
-#[instrument(skip(files, config, args, theme), fields(file_count = files.len()))]
+#[instrument(skip(files, config, args, _theme), fields(file_count = files.len()))]
 fn parse_files(
     files: &[PathBuf],
     config: &LashConfig,
     args: &LintArgs,
-    theme: Option<&CliTheme>,
+    _theme: Option<&CliTheme>,
 ) -> anyhow::Result<(HashMap<PathBuf, TaskFile>, Vec<LintDiagnostic>)> {
     let mut parsed_files = HashMap::new();
     let mut parse_errors = Vec::new();
@@ -238,22 +403,8 @@ fn parse_files(
                     pb.finish_and_clear();
                 }
 
-                // Format the error message with theme
-                let file_str = if let Some(t) = theme {
-                    t.style_muted(&file_path.display().to_string())
-                } else {
-                    file_path.display().to_string()
-                };
-
-                let error_label = if let Some(t) = theme {
-                    t.style_error("Error parsing")
-                } else {
-                    "Error parsing".to_string()
-                };
-
-                eprintln!("{error_label} {file_str}: {e}");
-
                 // Create a lint diagnostic for the parse error
+                // (will be reported later with other diagnostics)
                 parse_errors.push(LintDiagnostic::error(
                     "E_PARSE",
                     format!("Failed to parse file: {e}"),

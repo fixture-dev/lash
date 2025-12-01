@@ -9,10 +9,10 @@ pub mod fuzzy_matcher;
 mod interactive;
 
 use anyhow::{Context, Result};
+use lash_cli::formatter::Verbosity;
+use lash_cli::theme::CliTheme;
 use lash_db::open_database;
 use std::path::{Path, PathBuf};
-
-use lash_cli::theme::CliTheme;
 
 use crate::utils::file_discovery::find_project_root;
 
@@ -38,6 +38,9 @@ pub struct CheckLinksArgs {
     pub dry_run: bool,
     /// Optional CLI theme for styling
     pub theme: Option<CliTheme>,
+    /// Verbosity level for output (reserved for future use)
+    #[allow(dead_code)]
+    pub verbosity: Verbosity,
 }
 
 /// Execute the check-links command
@@ -361,7 +364,9 @@ fn reindex_project(project_root: &Path) -> Result<()> {
         show_files: false,
         json: false,
         no_color: false,
+        errors_streaming: false,
         project_root: Some(project_root.to_path_buf()),
+        verbosity: Verbosity::Normal,
     };
 
     index_execute(index_args)?;
@@ -382,6 +387,7 @@ mod tests {
             yes: false,
             dry_run: false,
             theme: None,
+            verbosity: Verbosity::Normal,
         };
 
         assert!(!args.fix);

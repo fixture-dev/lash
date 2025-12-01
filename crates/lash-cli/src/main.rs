@@ -11,8 +11,9 @@ mod utils;
 use anyhow::{Context, Result};
 use clap::Parser;
 use lash_cli::cli::{Commands, LashCli};
+use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
 use lash_cli::formatter::{
-    JsonFormatter, OutputFormatter, QuietFormatter, TextFormatter, Verbosity,
+    JsonFormatter, OutputFormat, OutputFormatter, QuietFormatter, TextFormatter, Verbosity,
 };
 use lash_cli::logging::{init_logging, install_panic_hook, LogConfig};
 use lash_cli::project_root::ProjectRootFinder;
@@ -50,6 +51,32 @@ fn main() {
         "Lash CLI started"
     );
 
+    // Determine output format for error reporting
+    let output_format = if cli.json {
+        OutputFormat::Json
+    } else if cli.quiet {
+        OutputFormat::Quiet
+    } else {
+        OutputFormat::Text
+    };
+
+    // Create verbosity for error reporter
+    let verbosity = if cli.quiet {
+        Verbosity::Quiet
+    } else {
+        Verbosity::from(cli.verbose)
+    };
+
+    // Load theme for error formatting (only if colors are enabled)
+    let colors_enabled = !cli.no_color && !cli.json && supports_color();
+    let theme = if colors_enabled {
+        CliTheme::load(cli.color_scheme.as_deref(), true)
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
     // Execute the command and get exit code
     let exit_code = match run(cli) {
         Ok(()) => {
@@ -58,16 +85,41 @@ fn main() {
         }
         Err(e) => {
             tracing::error!(error = %e, "Command failed");
-            eprintln!("Error: {e:#}");
 
-            // Convert LashError to appropriate exit code
-            // Note: anyhow::Error might wrap a LashError, so we need to downcast
-            if let Some(lash_err) = e.downcast_ref::<lash_types::error::LashError>() {
+            // Create ErrorReporter for batch mode (collect and display at once)
+            let config = ErrorReporterConfig {
+                verbosity,
+                output_format,
+                display_mode: ErrorDisplayMode::Batch,
+                theme,
+                show_summary: false, // Don't show summary for single errors
+            };
+            let mut reporter = ErrorReporter::new(config);
+
+            // Check if this is a LashError, otherwise treat as general error
+            let exit_code = if let Some(lash_err) = e.downcast_ref::<lash_types::error::LashError>()
+            {
+                // Report the LashError using the error reporter
+                reporter.report_error(lash_err);
+                reporter.flush();
                 ExitCode::from(lash_err)
             } else {
                 // Non-LashError (e.g., anyhow errors from other sources)
+                // Format as a general error message
+                let formatted = if output_format.is_json() {
+                    serde_json::json!({
+                        "status": "error",
+                        "message": format!("{:#}", e)
+                    })
+                    .to_string()
+                } else {
+                    format!("Error: {e:#}")
+                };
+                eprintln!("{formatted}");
                 ExitCode::GeneralError
-            }
+            };
+
+            exit_code
         }
     };
 
@@ -164,6 +216,7 @@ fn run(cli: LashCli) -> Result<()> {
                 min_severity: severity,
                 no_color: cli.no_color,
                 project_root,
+                verbosity,
             };
             let exit_code = commands::lint::execute(args)?;
             process::exit(exit_code);
@@ -180,7 +233,10 @@ fn run(cli: LashCli) -> Result<()> {
                 check,
                 diff,
                 no_fix,
+                json: cli.json,
+                no_color: cli.no_color,
                 project_root,
+                verbosity,
             };
             let exit_code = commands::format::execute(args)?;
             process::exit(exit_code);
@@ -192,7 +248,9 @@ fn run(cli: LashCli) -> Result<()> {
                 show_files,
                 json: cli.json,
                 no_color: cli.no_color,
+                errors_streaming: cli.errors_streaming,
                 project_root,
+                verbosity,
             };
             let exit_code = commands::index::execute(args)?;
             process::exit(exit_code);
@@ -204,6 +262,7 @@ fn run(cli: LashCli) -> Result<()> {
                 json: cli.json,
                 no_color: cli.no_color,
                 project_root,
+                verbosity,
             };
             let exit_code = commands::check_index::execute(args)?;
             process::exit(exit_code);
@@ -262,6 +321,7 @@ fn run(cli: LashCli) -> Result<()> {
                 tree_view,
                 max_depth: cli.max_depth,
                 ascii: cli.ascii,
+                verbosity,
             };
             let exit_code = commands::list::execute(args)?;
             process::exit(exit_code);
@@ -306,6 +366,7 @@ fn run(cli: LashCli) -> Result<()> {
                 tree_view,
                 max_depth: cli.max_depth,
                 ascii: cli.ascii,
+                verbosity,
             };
             let exit_code = commands::search::execute(&args)?;
             process::exit(exit_code);
@@ -335,6 +396,7 @@ fn run(cli: LashCli) -> Result<()> {
                 tree_view,
                 max_depth: cli.max_depth,
                 ascii: cli.ascii,
+                verbosity,
             };
             let exit_code = commands::show::execute(&args)?;
             process::exit(exit_code);
@@ -365,6 +427,7 @@ fn run(cli: LashCli) -> Result<()> {
                 output,
                 project_root,
                 theme: theme.clone(),
+                verbosity,
             };
             let exit_code = commands::graph::execute(&args)?;
             process::exit(exit_code);
@@ -378,6 +441,7 @@ fn run(cli: LashCli) -> Result<()> {
                 yes,
                 dry_run,
                 theme: theme.clone(),
+                verbosity,
             };
             let exit_code = commands::check_links::execute(&args)?;
             process::exit(exit_code);

@@ -9,8 +9,12 @@
 use anyhow::{Context, Result};
 use lash_cli::command::Command;
 use lash_cli::context::Context as CliContext;
+use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash_cli::formatter::{OutputFormat, Verbosity};
+use lash_cli::theme::CliTheme;
 use lash_core::formatter::{FormatOptions, Formatter};
 use lash_core::parser::parse_file;
+use lash_types::error::{Diagnostic, LashError, Severity};
 use lash_types::{error::Result as LashResult, LashConfig};
 use similar::{ChangeTag, TextDiff};
 use std::path::{Path, PathBuf};
@@ -21,6 +25,7 @@ use crate::utils::output::create_progress_bar;
 
 /// Arguments for the format command
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)] // CLI args naturally contain many boolean flags
 pub struct FormatArgs {
     /// Paths to format (files or directories)
     pub paths: Vec<PathBuf>,
@@ -30,8 +35,14 @@ pub struct FormatArgs {
     pub diff: bool,
     /// Only normalize formatting, don't apply lint fixes
     pub no_fix: bool,
+    /// Output JSON diagnostics
+    pub json: bool,
+    /// Disable colored output
+    pub no_color: bool,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
+    /// Verbosity level for output
+    pub verbosity: Verbosity,
 }
 
 impl Command for FormatArgs {
@@ -80,6 +91,13 @@ impl Command for FormatArgs {
 /// Exit code: 0 (all files properly formatted), 1 (general error), 2 (files need formatting with --check)
 #[instrument(skip(args), fields(paths = ?args.paths, check = args.check, diff = args.diff))]
 pub fn execute(args: FormatArgs) -> Result<i32> {
+    // Load theme based on no_color flag and output format
+    let theme = if args.json {
+        None
+    } else {
+        CliTheme::load(None, !args.no_color)?
+    };
+
     // Determine paths to format
     let paths = if args.paths.is_empty() {
         // No paths specified - format entire project
@@ -99,7 +117,14 @@ pub fn execute(args: FormatArgs) -> Result<i32> {
     tracing::info!(file_count = files.len(), "Discovered files to format");
 
     if files.is_empty() {
-        eprintln!("No markdown files found to format");
+        let msg = "No markdown files found to format";
+        if !args.json {
+            if let Some(t) = &theme {
+                eprintln!("{}", t.style_warning(msg));
+            } else {
+                eprintln!("{msg}");
+            }
+        }
         return Ok(0);
     }
 
@@ -110,19 +135,27 @@ pub fn execute(args: FormatArgs) -> Result<i32> {
     let format_options = configure_formatter(&args);
 
     // Format files
-    let result = format_files(&files, &project_config, &format_options, &args)?;
+    let result = format_files(
+        &files,
+        &project_config,
+        &format_options,
+        &args,
+        theme.as_ref(),
+    )?;
+
+    // Output results
+    if args.json {
+        output_json_results(&result, files.len())?;
+    } else {
+        output_text_results(&result, &args, theme.as_ref())?;
+    }
 
     // Determine exit code
     if args.check && result.needs_formatting > 0 {
-        eprintln!("\n{} file(s) need formatting", result.needs_formatting);
         Ok(2)
-    } else if result.formatted > 0 {
-        eprintln!("\nFormatted {} file(s) successfully", result.formatted);
-        Ok(0)
+    } else if result.failed > 0 {
+        Ok(1)
     } else {
-        if !args.check {
-            eprintln!("All files already formatted");
-        }
         Ok(0)
     }
 }
@@ -136,6 +169,10 @@ struct FormatResult {
     needs_formatting: usize,
     /// Number of files that failed to format
     failed: usize,
+    /// Diagnostics for files that need formatting (in check mode)
+    needs_formatting_diagnostics: Vec<Diagnostic>,
+    /// Diagnostics for files that failed to format
+    error_diagnostics: Vec<Diagnostic>,
 }
 
 /// Load project configuration
@@ -173,16 +210,32 @@ fn configure_formatter(args: &FormatArgs) -> FormatOptions {
 }
 
 /// Format all files with progress reporting
-#[instrument(skip(files, config, options, args), fields(file_count = files.len()))]
+#[instrument(skip(files, config, options, args, theme), fields(file_count = files.len()))]
 fn format_files(
     files: &[PathBuf],
     config: &LashConfig,
     options: &FormatOptions,
     args: &FormatArgs,
+    theme: Option<&CliTheme>,
 ) -> anyhow::Result<FormatResult> {
     let mut result = FormatResult::default();
 
-    let show_progress = files.len() > 1 && !args.check && !args.diff;
+    // Create error reporter for streaming errors (in non-JSON mode)
+    let reporter_config = ErrorReporterConfig {
+        verbosity: args.verbosity,
+        output_format: if args.json {
+            OutputFormat::Json
+        } else {
+            OutputFormat::Text
+        },
+        display_mode: ErrorDisplayMode::Streaming,
+        theme: theme.cloned(),
+        show_summary: false, // We'll print our own summary
+    };
+
+    let mut reporter = ErrorReporter::new(reporter_config);
+
+    let show_progress = files.len() > 1 && !args.check && !args.diff && !args.json;
     let pb = if show_progress {
         Some(create_progress_bar(files.len()))
     } else {
@@ -199,7 +252,30 @@ fn format_files(
                 if args.check {
                     if changed {
                         result.needs_formatting += 1;
-                        println!("{}", file_path.display());
+
+                        // Create diagnostic for unformatted file
+                        let diagnostic = Diagnostic {
+                            code: "F_NEEDS_FORMATTING",
+                            severity: Severity::Warning,
+                            message: "File needs formatting".to_string(),
+                            location: Some(lash_types::error::Location::file_only(
+                                file_path.clone(),
+                            )),
+                            snippet: None,
+                            help: Some("Run 'lash format' to format this file".to_string()),
+                            labels: None,
+                            recovery_command: Some(format!("lash format {}", file_path.display())),
+                            fix_steps: None,
+                            explanation: None,
+                            docs_url: None,
+                        };
+
+                        result.needs_formatting_diagnostics.push(diagnostic.clone());
+
+                        // Only show in text mode (not check mode with JSON)
+                        if !args.json {
+                            reporter.report_diagnostic(&diagnostic);
+                        }
                     }
                 } else if changed {
                     result.formatted += 1;
@@ -209,8 +285,33 @@ fn format_files(
                 if let Some(ref pb) = pb {
                     pb.finish_and_clear();
                 }
-                eprintln!("Error formatting {}: {}", file_path.display(), e);
+
                 result.failed += 1;
+
+                // Create diagnostic for formatting error
+                // Check if it's a parse error, write error, or general format error
+                let error = if e.to_string().contains("Failed to parse") {
+                    // Parse error
+                    LashError::internal(
+                        format!("Failed to format {}: {}", file_path.display(), e),
+                        Some("The file may have syntax errors that prevent formatting".to_string()),
+                    )
+                } else if e.to_string().contains("Failed to write") {
+                    // Write error
+                    LashError::io_write_error(file_path.clone(), e.to_string())
+                } else {
+                    // General formatting error
+                    LashError::internal(
+                        format!("Failed to format {}: {}", file_path.display(), e),
+                        None,
+                    )
+                };
+
+                let diagnostic = error.to_diagnostic();
+                result.error_diagnostics.push(diagnostic.clone());
+
+                // Report error immediately (streaming)
+                reporter.report_error(&error);
             }
         }
 
@@ -297,6 +398,85 @@ fn show_diff(file_path: &Path, original: &str, formatted: &str) {
     println!();
 }
 
+/// Output formatting results in JSON format to stdout
+fn output_json_results(result: &FormatResult, files_checked: usize) -> anyhow::Result<()> {
+    // Combine all diagnostics
+    let mut all_diagnostics = result.needs_formatting_diagnostics.clone();
+    all_diagnostics.extend(result.error_diagnostics.clone());
+
+    let output = serde_json::json!({
+        "diagnostics": all_diagnostics,
+        "summary": {
+            "files_checked": files_checked,
+            "formatted": result.formatted,
+            "needs_formatting": result.needs_formatting,
+            "failed": result.failed,
+        }
+    });
+
+    let json_str = serde_json::to_string_pretty(&output)?;
+    println!("{json_str}");
+
+    Ok(())
+}
+
+/// Output formatting results in human-readable text format
+fn output_text_results(
+    result: &FormatResult,
+    args: &FormatArgs,
+    theme: Option<&CliTheme>,
+) -> anyhow::Result<()> {
+    // In check mode, the diagnostics have already been printed by the reporter
+    // Just print the summary
+
+    if args.check {
+        if result.needs_formatting > 0 {
+            let msg = format!("{} file(s) need formatting", result.needs_formatting);
+            if let Some(t) = theme {
+                eprintln!("\n{}", t.style_warning(&msg));
+            } else {
+                eprintln!("\n{msg}");
+            }
+        } else if result.failed == 0 {
+            let msg = "All files are properly formatted";
+            if let Some(t) = theme {
+                eprintln!("{}", t.style_success(msg));
+            } else {
+                eprintln!("{msg}");
+            }
+        }
+    } else {
+        // Format mode (not check)
+        if result.formatted > 0 {
+            let msg = format!("Formatted {} file(s) successfully", result.formatted);
+            if let Some(t) = theme {
+                eprintln!("\n{}", t.style_success(&msg));
+            } else {
+                eprintln!("\n{msg}");
+            }
+        } else if result.failed == 0 {
+            let msg = "All files already formatted";
+            if let Some(t) = theme {
+                eprintln!("{}", t.style_info(msg));
+            } else {
+                eprintln!("{msg}");
+            }
+        }
+    }
+
+    // Always report failures
+    if result.failed > 0 {
+        let msg = format!("{} file(s) failed to format", result.failed);
+        if let Some(t) = theme {
+            eprintln!("{}", t.style_error(&msg));
+        } else {
+            eprintln!("{msg}");
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,7 +488,10 @@ mod tests {
             check: false,
             diff: false,
             no_fix: false,
+            json: false,
+            no_color: false,
             project_root: None,
+            verbosity: Verbosity::Normal,
         };
 
         let options = configure_formatter(&args);
@@ -322,7 +505,10 @@ mod tests {
             check: false,
             diff: false,
             no_fix: true,
+            json: false,
+            no_color: false,
             project_root: None,
+            verbosity: Verbosity::Normal,
         };
 
         let options = configure_formatter(&args);

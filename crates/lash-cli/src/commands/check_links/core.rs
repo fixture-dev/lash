@@ -3,11 +3,13 @@
 //! The `lash check-links` command finds broken dependency references in task files.
 
 use anyhow::{Context, Result};
+use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash_cli::formatter::{OutputFormat, Verbosity};
+use lash_cli::theme::CliTheme;
 use lash_db::open_database;
+use lash_types::error::LashError;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-
-use lash_cli::theme::CliTheme;
 
 use crate::utils::file_discovery::find_project_root;
 
@@ -201,10 +203,8 @@ pub fn output_json_report(report: &BrokenLinksReport) -> Result<()> {
     Ok(())
 }
 
-/// Output broken links report as human-readable text
+/// Output broken links report as human-readable text using `ErrorReporter`
 pub fn output_text_report(report: &BrokenLinksReport, theme: Option<&CliTheme>) {
-    use owo_colors::OwoColorize;
-
     // Header
     if report.total_broken == 0 {
         if let Some(theme) = theme {
@@ -215,58 +215,58 @@ pub fn output_text_report(report: &BrokenLinksReport, theme: Option<&CliTheme>) 
         return;
     }
 
-    // Issues found
+    // Create error reporter for consistent formatting
+    let reporter_config = ErrorReporterConfig {
+        verbosity: Verbosity::Normal,
+        output_format: OutputFormat::Text,
+        display_mode: ErrorDisplayMode::Batch,
+        theme: theme.cloned(),
+        show_summary: false,
+    };
+    let mut reporter = ErrorReporter::new(reporter_config);
+
+    // Convert broken links to LashError::Dependency variants and collect
+    for file_links in &report.by_file {
+        for link in &file_links.links {
+            // Extract location from the from_task_full_id
+            // Format is typically: "file_path#task_id"
+            let (file_path, _task_id) = link
+                .from_task_full_id
+                .split_once('#')
+                .unwrap_or((&file_links.file_path, ""));
+
+            let error = LashError::dep_not_found(
+                PathBuf::from(file_path),
+                0, // We don't have line info from the DB
+                0, // We don't have column info from the DB
+                &link.raw_ref,
+            )
+            .to_diagnostic()
+            .with_help(format!(
+                "Task '{}' references '{}' but the target could not be found",
+                link.from_task_full_id, link.raw_ref
+            ))
+            .with_labels(vec![
+                ("from_task".to_string(), link.from_task_full_id.clone()),
+                ("dependency_kind".to_string(), link.kind.clone()),
+            ]);
+
+            reporter.report_diagnostic(&error);
+        }
+    }
+
+    // Print all collected errors
+    reporter.flush();
+
+    // Print summary
+    println!();
     if let Some(theme) = theme {
+        use owo_colors::OwoColorize;
         println!(
             "{}",
             theme.style_error(&format!("Found {} broken link(s)", report.total_broken))
         );
-    } else {
-        println!("Found {} broken link(s)", report.total_broken);
-    }
-    println!();
-
-    // Group by file
-    for file_links in &report.by_file {
-        if let Some(theme) = theme {
-            println!(
-                "{} ({})",
-                theme.style_info(&file_links.file_path).bold(),
-                theme.style_error(&format!("{} broken", file_links.count))
-            );
-        } else {
-            println!("{} ({} broken)", file_links.file_path, file_links.count);
-        }
-
-        for link in &file_links.links {
-            if let Some(theme) = theme {
-                println!(
-                    "  {} {}",
-                    theme.style_muted("•"),
-                    theme.style_warning(&format!("Task: {}", link.from_task_full_id))
-                );
-                println!(
-                    "    {} {}",
-                    theme.style_muted("Broken reference:"),
-                    theme.style_error(&link.raw_ref)
-                );
-                println!(
-                    "    {} {}",
-                    theme.style_muted("Dependency kind:"),
-                    theme.style_muted(&link.kind)
-                );
-            } else {
-                println!("  • Task: {}", link.from_task_full_id);
-                println!("    Broken reference: {}", link.raw_ref);
-                println!("    Dependency kind: {}", link.kind);
-            }
-            println!();
-        }
-    }
-
-    // Suggestion
-    println!();
-    if let Some(theme) = theme {
+        println!();
         println!("{}", "What to do:".bold());
         println!("  1. Check that the referenced tasks exist in your Markdown files");
         println!(
@@ -278,6 +278,8 @@ pub fn output_text_report(report: &BrokenLinksReport, theme: Option<&CliTheme>) 
             theme.style_info("lash index")
         );
     } else {
+        println!("Found {} broken link(s)", report.total_broken);
+        println!();
         println!("What to do:");
         println!("  1. Check that the referenced tasks exist in your Markdown files");
         println!("  2. Fix the @depends-on annotations in the files above");

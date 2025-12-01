@@ -3,12 +3,14 @@
 //! The `lash graph` command exports dependency graphs in various formats.
 
 use anyhow::{Context, Result};
+use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash_cli::formatter::{OutputFormat, Verbosity};
+use lash_cli::theme::CliTheme;
 use lash_core::dependency::{FilterOptions, GraphExporter};
 use lash_db::{graph_builder::GraphBuilder, open_database};
+use lash_types::error::LashError;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-use lash_cli::theme::CliTheme;
 
 use crate::utils::file_discovery::find_project_root;
 
@@ -35,6 +37,8 @@ pub struct GraphArgs {
     pub project_root: Option<PathBuf>,
     /// Optional CLI theme for styling
     pub theme: Option<CliTheme>,
+    /// Verbosity level for output
+    pub verbosity: Verbosity,
 }
 
 /// Execute the graph command
@@ -65,29 +69,48 @@ pub fn execute(args: &GraphArgs) -> Result<i32> {
     // Determine database path
     let db_path = get_database_path(&project_root);
 
+    // Create error reporter for consistent error reporting
+    let reporter_config = ErrorReporterConfig {
+        verbosity: args.verbosity,
+        output_format: OutputFormat::Text,
+        display_mode: ErrorDisplayMode::Streaming,
+        theme: args.theme.clone(),
+        show_summary: false,
+    };
+    let mut reporter = ErrorReporter::new(reporter_config);
+
     // Check if database exists
     if !db_path.exists() {
-        let error_msg = format!("Database not found at {}", db_path.display());
-        let suggestion_msg = "Run `lash index` to create the database.";
-
-        if let Some(theme) = &args.theme {
-            eprintln!("{}", theme.style_error(&error_msg));
-            eprintln!("{}", theme.style_info(suggestion_msg));
-        } else {
-            eprintln!("{error_msg}");
-            eprintln!("{suggestion_msg}");
-        }
+        let error = LashError::index_out_of_sync(0)
+            .to_diagnostic()
+            .with_help(format!(
+                "Database not found at {}. Run `lash index` to create the database.",
+                db_path.display()
+            ));
+        reporter.report_diagnostic(&error);
         return Ok(3); // Exit code 3 for DB error
     }
 
     // Open database
-    let conn = open_database(&db_path).context("Failed to open database")?;
+    let conn = match open_database(&db_path) {
+        Ok(conn) => conn,
+        Err(e) => {
+            let error = LashError::index_corrupted(format!("Failed to open database: {e}"));
+            reporter.report_error(&error);
+            return Ok(3);
+        }
+    };
 
     // Build dependency graph from database
     let builder = GraphBuilder::new(&conn);
-    let graph = builder
-        .build()
-        .context("Failed to build dependency graph")?;
+    let graph = match builder.build() {
+        Ok(graph) => graph,
+        Err(e) => {
+            let error = LashError::internal(format!("Failed to build dependency graph: {e}"), None);
+            reporter.report_error(&error);
+            return Ok(1);
+        }
+    };
 
     tracing::debug!(
         node_count = graph.node_count(),
@@ -108,8 +131,14 @@ pub fn execute(args: &GraphArgs) -> Result<i32> {
 
     // Write output to file or stdout
     if let Some(output_path) = &args.output {
-        fs::write(output_path, &output_text)
-            .with_context(|| format!("Failed to write to {}", output_path.display()))?;
+        if let Err(e) = fs::write(output_path, &output_text) {
+            let error = LashError::io_write_error(
+                output_path.clone(),
+                format!("Failed to write graph: {e}"),
+            );
+            reporter.report_error(&error);
+            return Ok(1);
+        }
         tracing::info!(path = %output_path.display(), "Graph exported to file");
     } else {
         print!("{output_text}");
@@ -272,6 +301,7 @@ mod tests {
             output: None,
             project_root: None,
             theme: None,
+            verbosity: Verbosity::Normal,
         };
 
         let options = build_filter_options(&args);
@@ -288,6 +318,7 @@ mod tests {
             output: None,
             project_root: None,
             theme: None,
+            verbosity: Verbosity::Normal,
         };
 
         let options = build_filter_options(&args);
@@ -304,6 +335,7 @@ mod tests {
             output: None,
             project_root: None,
             theme: None,
+            verbosity: Verbosity::Normal,
         };
 
         let options = build_filter_options(&args);

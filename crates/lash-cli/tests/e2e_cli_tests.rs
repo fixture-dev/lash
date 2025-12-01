@@ -169,7 +169,7 @@ fn test_lint_invalid_project() {
         .arg("lint")
         .assert()
         .code(2) // Lint error exit code
-        .stderr(predicate::str::contains("error").or(predicate::str::contains("invalid")));
+        .stdout(predicate::str::contains("error").or(predicate::str::contains("invalid")));
 }
 
 #[test]

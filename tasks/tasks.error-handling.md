@@ -273,29 +273,29 @@ Integrate error formatting and reporting into all CLI commands.
 
 ### Subtasks
 
-- [ ] Implement top-level error handler
-  - [ ] Catch `LashError` from commands
-  - [ ] Format based on output mode (text/JSON)
-  - [ ] Display to user
-  - [ ] Set exit code
-- [ ] Add error reporting to each command
-  - [ ] `lint`: collect all errors, show report
-  - [ ] `format`: report formatting failures
-  - [ ] `index`: report parse and DB errors
-  - [ ] `list`: report query errors
-  - [ ] `show`: report not found errors
-  - [ ] `search`: report search errors
-  - [ ] `graph`: report dependency errors
-  - [ ] `check-links`: report broken links
-- [ ] Implement progress-aware error display
-  - [ ] Show errors as they occur (streaming)
-  - [ ] Or collect and show at end (batch)
-  - [ ] Configurable via flag
-- [ ] Add error verbosity control
-  - [ ] Quiet: only error count
-  - [ ] Normal: error messages (default)
-  - [ ] Verbose: error messages + context
-  - [ ] Debug: full error details + backtrace
+- [x] Implement top-level error handler
+  - [x] Catch `LashError` from commands
+  - [x] Format based on output mode (text/JSON)
+  - [x] Display to user
+  - [x] Set exit code
+- [x] Add error reporting to each command
+  - [x] `lint`: collect all errors, show report
+  - [x] `format`: report formatting failures
+  - [x] `index`: report parse and DB errors
+  - [x] `list`: report query errors
+  - [x] `show`: report not found errors
+  - [x] `search`: report search errors
+  - [x] `graph`: report dependency errors
+  - [x] `check-links`: report broken links
+- [x] Implement progress-aware error display
+  - [x] Show errors as they occur (streaming)
+  - [x] Or collect and show at end (batch)
+  - [x] Configurable via flag
+- [x] Add error verbosity control
+  - [x] Quiet: only error count
+  - [x] Normal: error messages (default)
+  - [x] Verbose: error messages + context
+  - [x] Debug: full error details + backtrace
 
 ### Success Criteria
 
