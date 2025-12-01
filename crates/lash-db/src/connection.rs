@@ -44,7 +44,8 @@ pub fn init_database(path: &Path) -> DbResult<Connection> {
 
 /// Open an existing database at the given path
 ///
-/// Opens the database and sets PRAGMAs. Does not create schema if missing.
+/// Opens the database, sets PRAGMAs, and runs any pending migrations.
+/// Does not create schema if missing.
 ///
 /// # Example
 ///
@@ -61,9 +62,14 @@ pub fn init_database(path: &Path) -> DbResult<Connection> {
 /// - Database file doesn't exist
 /// - Connection cannot be established
 /// - PRAGMA settings fail
+/// - Migrations fail to apply
 pub fn open_database(path: &Path) -> DbResult<Connection> {
     let conn = Connection::open(path)?;
     configure_pragmas(&conn)?;
+
+    // Run any pending migrations to bring schema to current version
+    crate::migrations::run_migrations(&conn)?;
+
     Ok(conn)
 }
 
