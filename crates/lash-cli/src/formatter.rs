@@ -4,6 +4,7 @@
 //! JSON, and quiet modes. It respects terminal capabilities and environment variables.
 
 use anyhow::Result;
+use lash_core::logo::LOGO;
 use lash_types::TaskStatus;
 use serde::Serialize;
 
@@ -255,6 +256,18 @@ impl OutputFormatter for TextFormatter {
 }
 
 impl TextFormatter {
+    /// Returns the Lash logo banner for CLI output.
+    ///
+    /// This is displayed at the start of text-mode CLI output when not suppressed.
+    ///
+    /// # Returns
+    ///
+    /// A string containing the logo with a trailing newline for separation.
+    #[must_use]
+    pub fn logo_banner() -> String {
+        format!("{LOGO}\n")
+    }
+
     /// Format text based on task status with theme-aware colors
     ///
     /// # Arguments

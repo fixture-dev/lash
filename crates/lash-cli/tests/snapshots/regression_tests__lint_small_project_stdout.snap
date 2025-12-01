@@ -2,6 +2,9 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized_stdout
 ---
+┓    ┓
+┃ ┏┓┏┣┓
+┗┛┗┻┛┛┗
 ./bugs.md:0:0: warning[W_INDEX_ORPHAN]: File './bugs.md' is not referenced in the root index
   help: Add './bugs.md' to ./lash.index.md or move to an archive directory
 ./tasks.md:0:0: warning[W_INDEX_ORPHAN]: File './tasks.md' is not referenced in the root index

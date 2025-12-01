@@ -3,6 +3,7 @@
 mod detail_pane;
 mod filter_modal;
 mod help;
+mod logo;
 mod nav_pane;
 mod search_modal;
 mod status_bar;
@@ -15,7 +16,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::AppState;
+use crate::state::{AppState, FocusedPane};
 
 /// Main render function
 pub fn render(frame: &mut Frame, state: &AppState) {
@@ -30,13 +31,28 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(30), // Navigation pane
+            Constraint::Percentage(30), // Left pane (logo + navigation)
             Constraint::Percentage(70), // Detail pane
         ])
         .split(chunks[0]);
 
-    // Render panes
-    nav_pane::render(frame, main_chunks[0], state);
+    // Split the left pane into logo and navigation
+    let left_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(logo::LOGO_HEIGHT), // Logo area
+            Constraint::Min(1),                    // Navigation pane
+        ])
+        .split(main_chunks[0]);
+
+    // Render logo in upper-left
+    let is_nav_focused = state.focused_pane == FocusedPane::Navigation;
+    logo::render(frame, left_chunks[0], &state.theme, is_nav_focused);
+
+    // Render navigation pane below logo
+    nav_pane::render(frame, left_chunks[1], state);
+
+    // Render detail pane
     detail_pane::render(frame, main_chunks[1], state);
 
     // Render status bar

@@ -2,6 +2,9 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized_stdout
 ---
+┓    ┓
+┃ ┏┓┏┣┓
+┗┛┗┻┛┛┗
 ./api.md:0:0: warning[W_INDEX_ORPHAN]: File './api.md' is not referenced in the root index
   help: Add './api.md' to ./lash.index.md or move to an archive directory
 ./authentication.md:0:0: warning[W_INDEX_ORPHAN]: File './authentication.md' is not referenced in the root index

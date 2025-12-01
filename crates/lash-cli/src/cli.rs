@@ -6,6 +6,13 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
+/// The Lash logo for display in help output
+const LOGO_FOR_HELP: &str = "\
+┓    ┓
+┃ ┏┓┏┣┓
+┗┛┗┻┛┛┗
+";
+
 /// Minimalist Markdown-native task tracker for devs and agents
 #[derive(Parser, Debug)]
 #[allow(clippy::struct_excessive_bools)] // CLI flags are inherently boolean
@@ -25,6 +32,7 @@ use std::path::PathBuf;
                   6 - Circular dependency detected",
     propagate_version = true,
     arg_required_else_help = true,
+    before_help = LOGO_FOR_HELP,
     after_long_help = "For more information and documentation, visit: https://github.com/your-org/lash"
 )]
 pub struct LashCli {
@@ -95,6 +103,10 @@ pub struct LashCli {
     /// Force ASCII mode for tree characters instead of Unicode
     #[arg(long, global = true, help_heading = "Global Options")]
     pub ascii: bool,
+
+    /// Suppress the Lash logo in CLI output
+    #[arg(long, global = true, help_heading = "Global Options")]
+    pub no_logo: bool,
 
     #[command(subcommand)]
     pub command: Commands,

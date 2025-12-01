@@ -2,6 +2,9 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: normalized_stdout
 ---
+┓    ┓
+┃ ┏┓┏┣┓
+┗┛┗┻┛┛┗
 ./level1/core.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/core.md' is not referenced in the root index
   help: Add './level1/core.md' to ./lash.index.md or move to an archive directory
 ./level1/level2/level3/api.md:0:0: warning[W_INDEX_ORPHAN]: File './level1/level2/level3/api.md' is not referenced in the root index

@@ -113,6 +113,18 @@ fn run(cli: LashCli) -> Result<()> {
         Box::new(TextFormatter::with_theme(theme.clone(), verbosity))
     };
 
+    // Print logo banner for text output (unless suppressed or using structured formats)
+    // Logo is shown when:
+    // - Not using JSON output
+    // - Not in quiet mode
+    // - Not suppressed with --no-logo
+    // - Not launching TUI (TUI has its own logo display)
+    let show_logo =
+        !cli.json && !cli.quiet && !cli.no_logo && !matches!(cli.command, Commands::Tui);
+    if show_logo {
+        print!("{}", TextFormatter::logo_banner());
+    }
+
     // Find project root if needed
     let project_root = if let Some(root) = cli.root {
         // Explicit root provided
