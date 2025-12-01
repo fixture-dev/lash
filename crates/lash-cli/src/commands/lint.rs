@@ -11,9 +11,10 @@ use anyhow::Context;
 use lash_cli::command::Command;
 use lash_cli::context::Context as CliContext;
 use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash_cli::error_validator::ErrorValidator;
 use lash_cli::formatter::{OutputFormat, Verbosity};
 use lash_cli::theme::CliTheme;
-use lash_core::linter::{register_default_rules, LintConfig, LintDiagnostic};
+use lash_core::linter::{register_default_rules, FixApplicator, LintConfig, LintDiagnostic};
 use lash_core::parser::parse_file;
 use lash_types::error::Diagnostic;
 use lash_types::{error::Result as LashResult, LashConfig, Severity, TaskFile};
@@ -26,6 +27,7 @@ use crate::utils::output::create_progress_bar;
 
 /// Arguments for the lint command
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct LintArgs {
     /// Paths to lint (files or directories)
     pub paths: Vec<PathBuf>,
@@ -33,6 +35,8 @@ pub struct LintArgs {
     pub json: bool,
     /// Apply auto-fixes
     pub fix: bool,
+    /// Show fix suggestions without applying them
+    pub suggest: bool,
     /// Run only specific rule(s)
     pub rules: Vec<String>,
     /// Only show errors of this severity or higher
@@ -160,7 +164,12 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
 
     // Apply auto-fixes if requested
     if args.fix {
-        apply_fixes(&filtered_diagnostics, &parsed_files, theme.as_ref())?;
+        apply_fixes(
+            &filtered_diagnostics,
+            &parsed_files,
+            theme.as_ref(),
+            &project_config,
+        )?;
     }
 
     // Convert LintDiagnostic to Diagnostic for output
@@ -172,10 +181,16 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     // Output results
     if args.json {
         // JSON output to stdout
-        output_json_diagnostics(&diagnostics, files.len())?;
+        output_json_diagnostics(&diagnostics, files.len(), args.suggest)?;
     } else {
         // Text output to stdout
-        output_text_diagnostics(&diagnostics, files.len(), theme.as_ref(), args.verbosity)?;
+        output_text_diagnostics(
+            &diagnostics,
+            files.len(),
+            theme.as_ref(),
+            args.verbosity,
+            args.suggest,
+        )?;
     }
 
     // Determine exit code based on errors
@@ -185,7 +200,11 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
 }
 
 /// Output diagnostics in JSON format to stdout
-fn output_json_diagnostics(diagnostics: &[Diagnostic], files_checked: usize) -> anyhow::Result<()> {
+fn output_json_diagnostics(
+    diagnostics: &[Diagnostic],
+    files_checked: usize,
+    _suggest: bool,
+) -> anyhow::Result<()> {
     let error_count = diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Error)
@@ -203,6 +222,12 @@ fn output_json_diagnostics(diagnostics: &[Diagnostic], files_checked: usize) -> 
         .filter(|d| d.severity == Severity::Hint)
         .count();
 
+    // Count fixable diagnostics
+    let fixable_count = diagnostics
+        .iter()
+        .filter(|d| d.fix_steps.is_some() || d.recovery_command.is_some())
+        .count();
+
     let output = serde_json::json!({
         "diagnostics": diagnostics,
         "summary": {
@@ -211,6 +236,7 @@ fn output_json_diagnostics(diagnostics: &[Diagnostic], files_checked: usize) -> 
             "warnings": warning_count,
             "info": info_count,
             "hints": hint_count,
+            "fixable": fixable_count,
         }
     });
 
@@ -226,6 +252,7 @@ fn output_text_diagnostics(
     files_checked: usize,
     theme: Option<&CliTheme>,
     verbosity: Verbosity,
+    suggest: bool,
 ) -> anyhow::Result<()> {
     // Create an ErrorReporter to format the diagnostics
     let reporter_config = ErrorReporterConfig {
@@ -247,16 +274,76 @@ fn output_text_diagnostics(
     for diagnostic in diagnostics {
         let formatted = reporter.format_diagnostic(diagnostic);
         println!("{formatted}");
+
+        // If --suggest is set, show fix suggestions
+        if suggest {
+            print_suggestion(diagnostic, theme);
+        }
     }
 
     // Print summary
-    print_summary(diagnostics, files_checked, theme);
+    print_summary(diagnostics, files_checked, theme, suggest);
 
     Ok(())
 }
 
+/// Print fix suggestion for a diagnostic
+fn print_suggestion(diagnostic: &Diagnostic, theme: Option<&CliTheme>) {
+    // Only show suggestions if there are fix steps or recovery commands
+    if diagnostic.fix_steps.is_none() && diagnostic.recovery_command.is_none() {
+        return;
+    }
+
+    println!();
+
+    let suggest_label = if let Some(t) = theme {
+        t.style_info("  Suggestion:")
+    } else {
+        "  Suggestion:".to_string()
+    };
+    println!("{suggest_label}");
+
+    // Show recovery command if available
+    if let Some(recovery) = &diagnostic.recovery_command {
+        let cmd_label = if let Some(t) = theme {
+            t.style_label("    Command:")
+        } else {
+            "    Command:".to_string()
+        };
+        println!("  {cmd_label} {recovery}");
+    }
+
+    // Show fix steps if available
+    if let Some(steps) = &diagnostic.fix_steps {
+        let steps_label = if let Some(t) = theme {
+            t.style_label("    Steps:")
+        } else {
+            "    Steps:".to_string()
+        };
+        println!("  {steps_label}");
+        for (i, step) in steps.iter().enumerate() {
+            println!("      {}. {step}", i + 1);
+        }
+    }
+
+    // Show explanation if available
+    if let Some(explanation) = &diagnostic.explanation {
+        let explanation_label = if let Some(t) = theme {
+            t.style_label("    Why:")
+        } else {
+            "    Why:".to_string()
+        };
+        println!("  {explanation_label} {explanation}");
+    }
+}
+
 /// Print a summary of linting results to stdout
-fn print_summary(diagnostics: &[Diagnostic], _files_checked: usize, theme: Option<&CliTheme>) {
+fn print_summary(
+    diagnostics: &[Diagnostic],
+    _files_checked: usize,
+    theme: Option<&CliTheme>,
+    suggest: bool,
+) {
     let error_count = diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Error)
@@ -316,6 +403,23 @@ fn print_summary(diagnostics: &[Diagnostic], _files_checked: usize, theme: Optio
         );
     } else {
         println!("  {error_count} errors, {warning_count} warnings, {info_count} info, {hint_count} hints");
+    }
+
+    // If suggest mode is enabled, show fixable count
+    if suggest {
+        let fixable_count = diagnostics
+            .iter()
+            .filter(|d| d.fix_steps.is_some() || d.recovery_command.is_some())
+            .count();
+
+        if fixable_count > 0 {
+            let fixable_str = if let Some(t) = theme {
+                t.style_info(&fixable_count.to_string())
+            } else {
+                fixable_count.to_string()
+            };
+            println!("  {fixable_str} fixable");
+        }
     }
 
     // Count unique files affected
@@ -518,12 +622,162 @@ fn meets_severity_threshold(severity: &Severity, min: &Severity) -> bool {
     }
 }
 
+/// Result of applying fixes to a single file
+struct FileFixResult {
+    /// Number of fixes applied
+    fixes_applied: usize,
+    /// Whether the file still has errors
+    has_errors: bool,
+    /// Number of new errors introduced (if any)
+    new_error_count: usize,
+}
+
+/// Apply fixes to a single file with iteration
+///
+/// This function iterates up to `MAX_FIX_ITERATIONS` times, applying fixes
+/// and validating after each iteration.
+fn apply_fixes_to_file(
+    file_path: &PathBuf,
+    initial_diagnostics: Vec<&LintDiagnostic>,
+    project_config: &LashConfig,
+    theme: Option<&CliTheme>,
+) -> anyhow::Result<FileFixResult> {
+    const MAX_FIX_ITERATIONS: usize = 3;
+
+    let mut file_fixes_applied = 0;
+    let mut current_diagnostics: Vec<LintDiagnostic> =
+        initial_diagnostics.iter().copied().cloned().collect();
+    let mut iteration = 0;
+    let mut final_has_errors = false;
+    let mut final_new_error_count = 0;
+
+    // Iterate fix application
+    while iteration < MAX_FIX_ITERATIONS {
+        iteration += 1;
+
+        // Filter to diagnostics with fixes
+        let fixable: Vec<LintDiagnostic> = current_diagnostics
+            .iter()
+            .filter(|d| d.fix.is_some())
+            .cloned()
+            .collect();
+
+        if fixable.is_empty() {
+            if iteration == 1 {
+                eprintln!("    No fixable errors");
+            }
+            break;
+        }
+
+        // Read current file content
+        let content = std::fs::read_to_string(file_path)
+            .with_context(|| format!("Failed to read {}", file_path.display()))?;
+
+        // Apply fixes using FixApplicator
+        let applicator = FixApplicator::new(&content);
+        let result = applicator.apply_fixes(&fixable);
+
+        if result.applied_count == 0 && result.skipped_fixes.is_empty() {
+            eprintln!("    Iteration {iteration}: No fixes could be applied");
+            break;
+        }
+
+        // Report what was applied and skipped
+        if result.applied_count > 0 {
+            eprintln!(
+                "    Iteration {iteration}: Applied {} fix(es)",
+                result.applied_count
+            );
+            file_fixes_applied += result.applied_count;
+        }
+
+        for skipped in &result.skipped_fixes {
+            eprintln!("    Skipped: {} ({})", skipped.description, skipped.reason);
+        }
+
+        // Write fixed content back to file
+        std::fs::write(file_path, &result.fixed_content)
+            .with_context(|| format!("Failed to write {}", file_path.display()))?;
+
+        // Validate the fixed content
+        let validator = ErrorValidator::with_config(project_config.clone());
+        let validation_result = validator
+            .validate_content(file_path, &result.fixed_content, &current_diagnostics)
+            .with_context(|| format!("Failed to validate {}", file_path.display()))?;
+
+        // Report validation results
+        if validation_result.fixed_count() > 0 {
+            eprintln!("    Fixed {} error(s)", validation_result.fixed_count());
+        }
+
+        if !validation_result.remaining_errors.is_empty() {
+            eprintln!(
+                "    {} error(s) remaining",
+                validation_result.remaining_errors.len()
+            );
+        }
+
+        if !validation_result.new_errors.is_empty() {
+            let warning_label = if let Some(t) = theme {
+                t.style_warning("Warning")
+            } else {
+                "Warning".to_string()
+            };
+            eprintln!(
+                "    {}: {} new error(s) introduced",
+                warning_label,
+                validation_result.new_errors.len()
+            );
+        }
+
+        // Check if we're done or should continue
+        if validation_result.is_fully_fixed() {
+            eprintln!("    All errors fixed!");
+            break;
+        }
+
+        // If no improvement, stop iterating
+        if !validation_result.is_improved() {
+            let warning_label = if let Some(t) = theme {
+                t.style_warning("Warning")
+            } else {
+                "Warning".to_string()
+            };
+            eprintln!("    {warning_label}: Fixes did not improve the file");
+            final_has_errors = true;
+            final_new_error_count = validation_result.new_errors.len();
+            break;
+        }
+
+        // Prepare for next iteration with remaining errors
+        let mut next_diagnostics = validation_result.remaining_errors;
+        next_diagnostics.extend(validation_result.new_errors);
+
+        if next_diagnostics.is_empty() {
+            break;
+        }
+
+        current_diagnostics = next_diagnostics;
+    }
+
+    Ok(FileFixResult {
+        fixes_applied: file_fixes_applied,
+        has_errors: final_has_errors,
+        new_error_count: final_new_error_count,
+    })
+}
+
 /// Apply auto-fixes to files
-#[instrument(skip(diagnostics, parsed_files, theme), fields(diagnostic_count = diagnostics.len()))]
+///
+/// This function uses the FixApplicator to apply per-rule fixes and the
+/// ErrorValidator to verify that fixes were successful. It iterates up to
+/// MAX_FIX_ITERATIONS times to handle cascading fixes.
+#[instrument(skip(diagnostics, _parsed_files, theme, project_config), fields(diagnostic_count = diagnostics.len()))]
 fn apply_fixes(
     diagnostics: &[LintDiagnostic],
-    parsed_files: &HashMap<PathBuf, TaskFile>,
+    _parsed_files: &HashMap<PathBuf, TaskFile>,
     theme: Option<&CliTheme>,
+    project_config: &LashConfig,
 ) -> anyhow::Result<()> {
     // Group diagnostics by file
     let mut fixes_by_file: HashMap<&PathBuf, Vec<&LintDiagnostic>> = HashMap::new();
@@ -554,44 +808,54 @@ fn apply_fixes(
         eprintln!("{info_msg}");
     }
 
-    for (file_path, file_diagnostics) in fixes_by_file {
+    let mut total_fixes_applied = 0;
+    let mut total_files_fixed = 0;
+    let mut files_with_errors = Vec::new();
+
+    // Process each file with iteration support
+    for (file_path, initial_diagnostics) in fixes_by_file {
         let file_str = if let Some(t) = theme {
             t.style_muted(&file_path.display().to_string())
         } else {
             file_path.display().to_string()
         };
 
-        eprintln!("  Fixing {file_str}: {} fixes", file_diagnostics.len());
+        eprintln!("\n  Processing {file_str}:");
 
-        // For now, we'll use the formatter to apply fixes
-        // A more sophisticated implementation would apply individual fixes
-        if let Some(task_file) = parsed_files.get(file_path) {
-            let config = LashConfig::default();
-            let options = lash_core::formatter::FormatOptions::default();
-            let formatter = lash_core::formatter::Formatter::new(config, options);
+        // Apply fixes to this file with iteration
+        let result = apply_fixes_to_file(file_path, initial_diagnostics, project_config, theme)?;
 
-            match formatter.format_file(task_file) {
-                Ok(formatted) => {
-                    std::fs::write(file_path, formatted)
-                        .with_context(|| format!("Failed to write {}", file_path.display()))?;
-                }
-                Err(e) => {
-                    let warning_label = if let Some(t) = theme {
-                        t.style_warning("Warning")
-                    } else {
-                        "Warning".to_string()
-                    };
-                    eprintln!("  {warning_label}: Failed to format {file_str}: {e}");
-                }
-            }
+        if result.fixes_applied > 0 {
+            total_fixes_applied += result.fixes_applied;
+            total_files_fixed += 1;
+        }
+
+        if result.has_errors {
+            files_with_errors.push((file_path.clone(), result.new_error_count));
         }
     }
 
-    let success_msg = "Fixes applied successfully";
+    // Print summary
+    eprintln!();
+    let summary_msg =
+        format!("Applied {total_fixes_applied} fix(es) across {total_files_fixed} file(s)");
     if let Some(t) = theme {
-        eprintln!("{}", t.style_success(success_msg));
+        eprintln!("{}", t.style_success(&summary_msg));
     } else {
-        eprintln!("{success_msg}");
+        eprintln!("{summary_msg}");
+    }
+
+    if !files_with_errors.is_empty() {
+        let warning_label = if let Some(t) = theme {
+            t.style_warning("Note")
+        } else {
+            "Note".to_string()
+        };
+        eprintln!(
+            "\n{}: {} file(s) still have errors after fixes",
+            warning_label,
+            files_with_errors.len()
+        );
     }
 
     Ok(())

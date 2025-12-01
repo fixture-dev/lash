@@ -6,7 +6,7 @@
 
 use lash_types::{Severity, Task, TaskFile};
 
-use crate::linter::{LintContext, LintDiagnostic, LintRule};
+use crate::linter::{Fix, LintContext, LintDiagnostic, LintRule};
 
 /// Rule that validates annotation keys are known
 ///
@@ -128,9 +128,11 @@ impl LintRule for UnknownAnnotationRule {
         for key in file.metadata.custom.keys() {
             if !ctx.is_annotation_allowed(key) {
                 let suggestions = Self::suggest_corrections(key);
+
+                // Build base diagnostic with help text
                 let help = if suggestions.is_empty() {
                     format!(
-                        "Unknown annotation '@{key}'. Add to .lash/config.toml [annotations.custom_keys] or fix typo"
+                        "Unknown annotation '@{key}'. Add to .lash/config.toml [annotations.custom_keys] or remove it"
                     )
                 } else {
                     format!(
@@ -143,16 +145,39 @@ impl LintRule for UnknownAnnotationRule {
                     )
                 };
 
-                diagnostics.push(
-                    LintDiagnostic::error(
-                        self.code(),
-                        format!("Unknown annotation key: @{key}"),
-                        ctx.file_path.clone(),
-                        0, // Line number not available in parsed structure
-                        0,
-                    )
-                    .with_help(help),
-                );
+                let mut diag = LintDiagnostic::error(
+                    self.code(),
+                    format!("Unknown annotation key: @{key}"),
+                    ctx.file_path.clone(),
+                    0, // Line number not available in parsed structure
+                    0,
+                )
+                .with_help(help);
+
+                // Add fix: prefer correction if available, otherwise deletion
+                if let Some(best_match) = suggestions.first() {
+                    // Fix: replace with best matching suggestion
+                    diag = diag.with_fix(Fix::replace(
+                        format!("Replace '@{key}' with '@{best_match}'"),
+                        format!("@{key}:"),
+                        format!("@{best_match}:"),
+                    ));
+                } else {
+                    // Fix: remove the unknown annotation line
+                    // Note: This requires the full line to be matched, including the value
+                    // Since we don't have access to the value here, we can only suggest
+                    // removing the key part
+                    diag = diag.with_fix(Fix::replace(
+                        format!("Remove unknown annotation '@{key}'"),
+                        format!(
+                            "@{key}: {}",
+                            file.metadata.custom.get(key).unwrap_or(&String::new())
+                        ),
+                        String::new(),
+                    ));
+                }
+
+                diagnostics.push(diag);
             }
         }
 
@@ -326,5 +351,59 @@ mod tests {
         assert_eq!(rule.code(), "E_SYNTAX_UNKNOWN_KEY");
         assert_eq!(rule.severity(), Severity::Error);
         assert!(!rule.description().is_empty());
+    }
+
+    #[test]
+    fn test_fix_generation_with_suggestion() {
+        let rule = UnknownAnnotationRule::new();
+        let config = make_config(vec![]);
+
+        let mut custom = HashMap::new();
+        custom.insert("lables".to_string(), "typo".to_string()); // Typo of "labels"
+        let file = make_file(custom);
+
+        let files = HashMap::new();
+        let ctx = LintContext::new(&config, PathBuf::from("test.md"), &files);
+
+        let diagnostics = rule.check_file(&file, &ctx);
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].has_fix());
+
+        // Verify the fix suggests the correct replacement
+        let fix = diagnostics[0].fix.as_ref().unwrap();
+        assert!(fix.description.contains("labels"));
+        if let crate::linter::Replacement::TextReplace { old, new } = &fix.replacement {
+            assert_eq!(old, "@lables:");
+            assert_eq!(new, "@labels:");
+        } else {
+            panic!("Expected TextReplace fix");
+        }
+    }
+
+    #[test]
+    fn test_fix_generation_without_suggestion() {
+        let rule = UnknownAnnotationRule::new();
+        let config = make_config(vec![]);
+
+        let mut custom = HashMap::new();
+        custom.insert("xyz123".to_string(), "value".to_string()); // No similar built-in
+        let file = make_file(custom);
+
+        let files = HashMap::new();
+        let ctx = LintContext::new(&config, PathBuf::from("test.md"), &files);
+
+        let diagnostics = rule.check_file(&file, &ctx);
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].has_fix());
+
+        // Verify the fix suggests removal
+        let fix = diagnostics[0].fix.as_ref().unwrap();
+        assert!(fix.description.contains("Remove"));
+        if let crate::linter::Replacement::TextReplace { old, new } = &fix.replacement {
+            assert_eq!(old, "@xyz123: value");
+            assert_eq!(new, "");
+        } else {
+            panic!("Expected TextReplace fix for removal");
+        }
     }
 }
