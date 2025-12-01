@@ -2,4 +2,4 @@
 source: crates/lash-cli/tests/regression_tests.rs
 expression: "normalize_output(&stderr, project.path())"
 ---
-Checked 10 files: 0 errors, 10 warnings, 0 info, 0 hints
+

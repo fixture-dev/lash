@@ -5,20 +5,24 @@ expression: normalized_stdout
 ┓    ┓
 ┃ ┏┓┏┣┓
 ┗┛┗┻┛┛┗
-./backend/api.md:0:0: warning[W_INDEX_ORPHAN]: File './backend/api.md' is not referenced in the root index
-  help: Add './backend/api.md' to ./lash.index.md or move to an archive directory
-./backend/database.md:0:0: warning[W_INDEX_ORPHAN]: File './backend/database.md' is not referenced in the root index
-  help: Add './backend/database.md' to ./lash.index.md or move to an archive directory
-./backend/tests.md:0:0: warning[W_INDEX_ORPHAN]: File './backend/tests.md' is not referenced in the root index
-  help: Add './backend/tests.md' to ./lash.index.md or move to an archive directory
-./docs/api-docs.md:0:0: warning[W_INDEX_ORPHAN]: File './docs/api-docs.md' is not referenced in the root index
-  help: Add './docs/api-docs.md' to ./lash.index.md or move to an archive directory
-./docs/user-guide.md:0:0: warning[W_INDEX_ORPHAN]: File './docs/user-guide.md' is not referenced in the root index
-  help: Add './docs/user-guide.md' to ./lash.index.md or move to an archive directory
-./frontend/components.md:0:0: warning[W_INDEX_ORPHAN]: File './frontend/components.md' is not referenced in the root index
-  help: Add './frontend/components.md' to ./lash.index.md or move to an archive directory
-./frontend/state.md:0:0: warning[W_INDEX_ORPHAN]: File './frontend/state.md' is not referenced in the root index
-  help: Add './frontend/state.md' to ./lash.index.md or move to an archive directory
-./frontend/tests.md:0:0: warning[W_INDEX_ORPHAN]: File './frontend/tests.md' is not referenced in the root index
-  help: Add './frontend/tests.md' to ./lash.index.md or move to an archive directory
+warning[W_INDEX_ORPHAN]: File './backend/api.md' is not referenced in the root index
+  at ./backend/api.md:0:0
+warning[W_INDEX_ORPHAN]: File './backend/database.md' is not referenced in the root index
+  at ./backend/database.md:0:0
+warning[W_INDEX_ORPHAN]: File './backend/tests.md' is not referenced in the root index
+  at ./backend/tests.md:0:0
+warning[W_INDEX_ORPHAN]: File './docs/api-docs.md' is not referenced in the root index
+  at ./docs/api-docs.md:0:0
+warning[W_INDEX_ORPHAN]: File './docs/user-guide.md' is not referenced in the root index
+  at ./docs/user-guide.md:0:0
+warning[W_INDEX_ORPHAN]: File './frontend/components.md' is not referenced in the root index
+  at ./frontend/components.md:0:0
+warning[W_INDEX_ORPHAN]: File './frontend/state.md' is not referenced in the root index
+  at ./frontend/state.md:0:0
+warning[W_INDEX_ORPHAN]: File './frontend/tests.md' is not referenced in the root index
+  at ./frontend/tests.md:0:0
 ✓ Linting passed (with warnings)
+
+Summary:
+  0 errors, 8 warnings, 0 info, 0 hints
+  8 files affected

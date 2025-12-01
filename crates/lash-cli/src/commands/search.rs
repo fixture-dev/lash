@@ -13,10 +13,12 @@
 //! The search uses `SQLite`'s FTS5 virtual table for efficient full-text indexing and retrieval.
 
 use anyhow::{Context, Result};
-use lash_cli::formatter::{TextFormatter, Verbosity};
+use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash_cli::formatter::{OutputFormat, TextFormatter, Verbosity};
 use lash_cli::theme::{self, CliTheme};
 use lash_cli::tree_formatter::TreeFormatter;
 use lash_db::{open_database, search, SearchQuery};
+use lash_types::error::LashError;
 use lash_types::tree::TreeNode;
 use serde_json::json;
 use std::collections::HashMap;
@@ -56,6 +58,8 @@ pub struct SearchArgs {
     pub max_depth: Option<usize>,
     /// Use ASCII characters for tree
     pub ascii: bool,
+    /// Verbosity level for output
+    pub verbosity: Verbosity,
 }
 
 // SearchResult is re-exported from lash_db above
@@ -76,6 +80,7 @@ pub struct SearchArgs {
 /// - Project root cannot be found
 /// - Database does not exist or cannot be opened
 /// - Search query execution fails
+#[allow(clippy::too_many_lines)]
 pub fn execute(args: &SearchArgs) -> Result<i32> {
     // Determine project root
     let project_root = if let Some(ref root) = args.project_root {
@@ -95,22 +100,56 @@ pub fn execute(args: &SearchArgs) -> Result<i32> {
     // Determine database path
     let db_path = get_database_path(&project_root);
 
+    // Load theme for colored output
+    let colors_enabled = !args.no_color && theme::supports_color();
+    let theme = CliTheme::load(args.color_scheme.as_deref(), colors_enabled)?;
+
     // Check if database exists
     if !db_path.exists() {
+        let error = LashError::io_file_not_found(db_path);
+        let mut diag = error.to_diagnostic();
+        diag.help = Some("Run `lash index` to create the database".to_string());
+
         if args.json {
-            output_json_error(
-                "Database not found",
-                "Run `lash index` to create the database.",
-            )?;
+            output_json_diagnostic(&diag)?;
         } else {
-            eprintln!("Database not found at {}", db_path.display());
-            eprintln!("Run `lash index` to create the database.");
+            let reporter_config = ErrorReporterConfig {
+                verbosity: args.verbosity,
+                output_format: OutputFormat::Text,
+                display_mode: ErrorDisplayMode::Streaming,
+                theme: theme.clone(),
+                show_summary: false,
+            };
+            let mut reporter = ErrorReporter::new(reporter_config);
+            reporter.report_diagnostic(&diag);
         }
         return Ok(3); // Exit code 3 for DB error
     }
 
     // Open database
-    let conn = open_database(&db_path).context("Failed to open database")?;
+    let conn = match open_database(&db_path) {
+        Ok(conn) => conn,
+        Err(e) => {
+            let error = LashError::index_corrupted(format!("Failed to open database: {e}"));
+            let mut diag = error.to_diagnostic();
+            diag.help = Some("Try running `lash index` to rebuild the database".to_string());
+
+            if args.json {
+                output_json_diagnostic(&diag)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.clone(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_diagnostic(&diag);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
+    };
 
     // Build search query with filters
     let mut query = SearchQuery::new(&args.query)
@@ -138,7 +177,29 @@ pub fn execute(args: &SearchArgs) -> Result<i32> {
     }
 
     // Execute search
-    let results = search(&conn, &query).context("Search query failed")?;
+    let results = match search(&conn, &query) {
+        Ok(results) => results,
+        Err(e) => {
+            let error = LashError::internal(
+                format!("Search query failed: {e}"),
+                Some("search".to_string()),
+            );
+            if args.json {
+                output_json_error_structured(&error)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.clone(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_error(&error);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
+    };
 
     tracing::debug!(
         result_count = results.results.len(),
@@ -150,10 +211,7 @@ pub fn execute(args: &SearchArgs) -> Result<i32> {
     if args.json {
         output_json(&results.results, &args.query)?;
     } else {
-        // Load theme for colored output
-        let colors_enabled = !args.no_color && theme::supports_color();
-        let theme = CliTheme::load(args.color_scheme.as_deref(), colors_enabled)?;
-        let formatter = TextFormatter::with_theme(theme.clone(), Verbosity::Normal);
+        let formatter = TextFormatter::with_theme(theme.clone(), args.verbosity);
 
         // Determine if tree view is enabled
         let use_tree_view = determine_tree_view_enabled(args);
@@ -451,11 +509,18 @@ fn output_text_tree(
     }
 }
 
-/// Output error message as JSON
-fn output_json_error(error: &str, suggestion: &str) -> Result<()> {
+/// Output error as JSON using `LashError`
+fn output_json_error_structured(error: &LashError) -> Result<()> {
+    let diagnostic = error.to_diagnostic();
+    output_json_diagnostic(&diagnostic)
+}
+
+/// Output diagnostic as JSON
+fn output_json_diagnostic(diagnostic: &lash_types::error::Diagnostic) -> Result<()> {
     let output = json!({
-        "error": error,
-        "suggestion": suggestion,
+        "error": diagnostic.message,
+        "code": diagnostic.code,
+        "suggestion": diagnostic.help.clone().unwrap_or_else(|| "Run `lash index` to create the database".to_string()),
         "results": []
     });
 

@@ -3,6 +3,8 @@
 //! The `lash show` command displays detailed information about a specific task or file.
 
 use anyhow::{Context, Result};
+use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash_cli::formatter::{OutputFormat, Verbosity};
 use lash_cli::theme::CliTheme;
 use lash_cli::tree_formatter::TreeFormatter;
 use lash_db::repository::files::FileRecord;
@@ -10,6 +12,7 @@ use lash_db::repository::tasks::TaskRecord;
 use lash_db::{
     open_database, DependencyRepository, DocRefRepository, FileRepository, TaskRepository,
 };
+use lash_types::error::LashError;
 use lash_types::tree::TreeNode;
 use std::path::{Path, PathBuf};
 
@@ -37,6 +40,8 @@ pub struct ShowArgs {
     pub max_depth: Option<usize>,
     /// Use ASCII characters for tree
     pub ascii: bool,
+    /// Verbosity level for output
+    pub verbosity: Verbosity,
 }
 
 /// Execute the show command
@@ -71,17 +76,50 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
 
     // Check if database exists
     if !db_path.exists() {
+        let error = LashError::io_file_not_found(db_path);
+        let mut diag = error.to_diagnostic();
+        diag.help = Some("Run `lash index` to create the database".to_string());
+
         if args.json {
-            output_json_no_db()?;
+            output_json_diagnostic(&diag)?;
         } else {
-            eprintln!("Database not found at {}", db_path.display());
-            eprintln!("Run `lash index` to create the database.");
+            let reporter_config = ErrorReporterConfig {
+                verbosity: args.verbosity,
+                output_format: OutputFormat::Text,
+                display_mode: ErrorDisplayMode::Streaming,
+                theme: theme.clone(),
+                show_summary: false,
+            };
+            let mut reporter = ErrorReporter::new(reporter_config);
+            reporter.report_diagnostic(&diag);
         }
         return Ok(3); // Exit code 3 for DB error
     }
 
     // Open database
-    let conn = open_database(&db_path).context("Failed to open database")?;
+    let conn = match open_database(&db_path) {
+        Ok(conn) => conn,
+        Err(e) => {
+            let error = LashError::index_corrupted(format!("Failed to open database: {e}"));
+            let mut diag = error.to_diagnostic();
+            diag.help = Some("Try running `lash index` to rebuild the database".to_string());
+
+            if args.json {
+                output_json_diagnostic(&diag)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.clone(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_diagnostic(&diag);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
+    };
 
     // Create repositories
     let task_repo = TaskRepository::new(&conn);
@@ -124,6 +162,7 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
 }
 
 /// Show detailed information about a file
+#[allow(clippy::too_many_lines)]
 fn show_file(
     file_repo: &FileRepository,
     task_repo: &TaskRepository,
@@ -151,21 +190,99 @@ fn show_file(
     };
 
     // Get file record
-    let Some(file) = file_repo.get_by_path(&target_path)? else {
-        if args.json {
-            output_json_not_found(&args.target)?;
-        } else {
-            eprintln!("File not found: {}", args.target);
-            eprintln!("Make sure the file has been indexed with `lash index`");
+    let file = match file_repo.get_by_path(&target_path) {
+        Ok(Some(file)) => file,
+        Ok(None) => {
+            let error = LashError::io_file_not_found(target_path);
+            let mut diag = error.to_diagnostic();
+            diag.help = Some("Make sure the file has been indexed with `lash index`".to_string());
+
+            if args.json {
+                output_json_diagnostic(&diag)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.cloned(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_diagnostic(&diag);
+            }
+            return Ok(5); // Exit code 5 for not found
         }
-        return Ok(5); // Exit code 5 for not found
+        Err(e) => {
+            let error = LashError::internal(
+                format!("Database query failed: {e}"),
+                Some("get_by_path".to_string()),
+            );
+            if args.json {
+                output_json_error(&error)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.cloned(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_error(&error);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
     };
 
     // Get tasks in this file
-    let tasks = task_repo.get_by_file(file.id)?;
+    let tasks = match task_repo.get_by_file(file.id) {
+        Ok(tasks) => tasks,
+        Err(e) => {
+            let error = LashError::internal(
+                format!("Database query failed: {e}"),
+                Some("get_by_file".to_string()),
+            );
+            if args.json {
+                output_json_error(&error)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.cloned(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_error(&error);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
+    };
 
     // Get file-level doc references
-    let doc_refs = doc_repo.find_file_level(file.id)?;
+    let doc_refs = match doc_repo.find_file_level(file.id) {
+        Ok(refs) => refs,
+        Err(e) => {
+            let error = LashError::internal(
+                format!("Database query failed: {e}"),
+                Some("find_file_level".to_string()),
+            );
+            if args.json {
+                output_json_error(&error)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.cloned(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_error(&error);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
+    };
 
     // Output results
     if args.json {
@@ -196,6 +313,7 @@ fn determine_tree_view_enabled(args: &ShowArgs) -> bool {
 }
 
 /// Show detailed information about a task
+#[allow(clippy::too_many_lines)]
 fn show_task(
     task_repo: &TaskRepository,
     file_repo: &FileRepository,
@@ -205,14 +323,53 @@ fn show_task(
     theme: Option<&CliTheme>,
 ) -> Result<i32> {
     // Get task record
-    let Some(task) = task_repo.get_by_full_id(&args.target)? else {
-        if args.json {
-            output_json_not_found(&args.target)?;
-        } else {
-            eprintln!("Task not found: {}", args.target);
-            eprintln!("Make sure the task exists and has been indexed with `lash index`");
+    let task = match task_repo.get_by_full_id(&args.target) {
+        Ok(Some(task)) => task,
+        Ok(None) => {
+            let error = LashError::internal(
+                format!("Task not found: {}", args.target),
+                Some("Task may not exist or hasn't been indexed".to_string()),
+            );
+            let mut diag = error.to_diagnostic();
+            diag.help = Some(
+                "Make sure the task exists and has been indexed with `lash index`".to_string(),
+            );
+
+            if args.json {
+                output_json_diagnostic(&diag)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.cloned(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_diagnostic(&diag);
+            }
+            return Ok(5); // Exit code 5 for not found
         }
-        return Ok(5); // Exit code 5 for not found
+        Err(e) => {
+            let error = LashError::internal(
+                format!("Database query failed: {e}"),
+                Some("get_by_full_id".to_string()),
+            );
+            if args.json {
+                output_json_error(&error)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.cloned(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_error(&error);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
     };
 
     // Get file information from the database
@@ -298,27 +455,20 @@ fn get_database_path(project_root: &Path) -> PathBuf {
     project_root.join(".lash/lash.db")
 }
 
-/// Output JSON when database doesn't exist
-fn output_json_no_db() -> Result<()> {
-    use serde_json::json;
-
-    let output = json!({
-        "error": "Database not found",
-        "suggestion": "Run `lash index` to create the database"
-    });
-
-    println!("{}", serde_json::to_string_pretty(&output)?);
-    Ok(())
+/// Output error as JSON
+fn output_json_error(error: &LashError) -> Result<()> {
+    let diagnostic = error.to_diagnostic();
+    output_json_diagnostic(&diagnostic)
 }
 
-/// Output JSON when target not found
-fn output_json_not_found(target: &str) -> Result<()> {
+/// Output diagnostic as JSON
+fn output_json_diagnostic(diagnostic: &lash_types::error::Diagnostic) -> Result<()> {
     use serde_json::json;
 
     let output = json!({
-        "error": "Not found",
-        "target": target,
-        "suggestion": "Run `lash index` to ensure the database is up to date"
+        "error": diagnostic.message,
+        "code": diagnostic.code,
+        "suggestion": diagnostic.help.clone().unwrap_or_else(|| "Run `lash index` to ensure the database is up to date".to_string()),
     });
 
     println!("{}", serde_json::to_string_pretty(&output)?);

@@ -3,10 +3,13 @@
 //! The `lash list` command queries and filters tasks from the `SQLite` database.
 
 use anyhow::{Context, Result};
+use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash_cli::formatter::{OutputFormat as OutputFormatTrait, Verbosity};
 use lash_cli::theme::CliTheme;
 use lash_cli::tree_formatter::TreeFormatter;
 use lash_db::repository::files::FileRecord;
 use lash_db::{open_database, DocRefRepository, FileRepository};
+use lash_types::error::LashError;
 use lash_types::tree::TreeNode;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -49,6 +52,8 @@ pub struct ListArgs {
     pub max_depth: Option<usize>,
     /// Use ASCII characters for tree
     pub ascii: bool,
+    /// Verbosity level for output
+    pub verbosity: Verbosity,
 }
 
 /// Execute the list command
@@ -61,6 +66,7 @@ pub struct ListArgs {
 ///
 /// Exit code: 0 (success), 1 (general error), 3 (DB error)
 #[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_lines)]
 pub fn execute(args: ListArgs) -> Result<i32> {
     // Determine project root
     let project_root = if let Some(ref root) = args.project_root {
@@ -82,17 +88,51 @@ pub fn execute(args: ListArgs) -> Result<i32> {
 
     // Check if database exists
     if !db_path.exists() {
-        if args.format == OutputFormat::Text {
-            eprintln!("Database not found at {}", db_path.display());
-            eprintln!("Run `lash index` to create the database.");
+        let error = LashError::io_file_not_found(db_path);
+        // Convert to diagnostic and add help text
+        let mut diag = error.to_diagnostic();
+        diag.help = Some("Run `lash index` to create the database".to_string());
+
+        if args.format == OutputFormat::Json || args.format == OutputFormat::JsonPretty {
+            output_json_diagnostic(&diag)?;
         } else {
-            output_json_no_db()?;
+            let reporter_config = ErrorReporterConfig {
+                verbosity: args.verbosity,
+                output_format: OutputFormatTrait::Text,
+                display_mode: ErrorDisplayMode::Streaming,
+                theme: args.theme.clone(),
+                show_summary: false,
+            };
+            let mut reporter = ErrorReporter::new(reporter_config);
+            reporter.report_diagnostic(&diag);
         }
         return Ok(3); // Exit code 3 for DB error
     }
 
     // Open database
-    let conn = open_database(&db_path).context("Failed to open database")?;
+    let conn = match open_database(&db_path) {
+        Ok(conn) => conn,
+        Err(e) => {
+            let error = LashError::index_corrupted(format!("Failed to open database: {e}"));
+            let mut diag = error.to_diagnostic();
+            diag.help = Some("Try running `lash index` to rebuild the database".to_string());
+
+            if args.format == OutputFormat::Json || args.format == OutputFormat::JsonPretty {
+                output_json_diagnostic(&diag)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormatTrait::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: args.theme.clone(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_diagnostic(&diag);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
+    };
 
     // Create repositories
     let file_repo = FileRepository::new(&conn);
@@ -107,14 +147,58 @@ pub fn execute(args: ListArgs) -> Result<i32> {
     );
 
     // Get files
-    let mut files = file_repo.list_all()?;
+    let mut files = match file_repo.list_all() {
+        Ok(files) => files,
+        Err(e) => {
+            let error = LashError::internal(
+                format!("Database query failed: {e}"),
+                Some("list_all".to_string()),
+            );
+            if args.format == OutputFormat::Json || args.format == OutputFormat::JsonPretty {
+                output_json_error(&error)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormatTrait::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: args.theme.clone(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_error(&error);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
+    };
 
     // Filter by doc references if requested
     if let Some(ref doc_path) = args.docs {
         tracing::debug!(doc_path = %doc_path, "Filtering by doc references");
 
         // Find all files that reference this document
-        let doc_sources = doc_repo.find_by_target_prefix(doc_path)?;
+        let doc_sources = match doc_repo.find_by_target_prefix(doc_path) {
+            Ok(sources) => sources,
+            Err(e) => {
+                let error = LashError::internal(
+                    format!("Database query failed: {e}"),
+                    Some("find_by_target_prefix".to_string()),
+                );
+                if args.format == OutputFormat::Json || args.format == OutputFormat::JsonPretty {
+                    output_json_error(&error)?;
+                } else {
+                    let reporter_config = ErrorReporterConfig {
+                        verbosity: args.verbosity,
+                        output_format: OutputFormatTrait::Text,
+                        display_mode: ErrorDisplayMode::Streaming,
+                        theme: args.theme.clone(),
+                        show_summary: false,
+                    };
+                    let mut reporter = ErrorReporter::new(reporter_config);
+                    reporter.report_error(&error);
+                }
+                return Ok(3); // Exit code 3 for DB error
+            }
+        };
 
         // Collect unique file IDs
         let file_ids: HashSet<i64> = doc_sources.iter().map(|row| row.source_file_id).collect();
@@ -301,13 +385,20 @@ fn build_file_tree(
     roots
 }
 
-/// Output JSON when database doesn't exist
-fn output_json_no_db() -> Result<()> {
+/// Output error as JSON
+fn output_json_error(error: &LashError) -> Result<()> {
+    let diagnostic = error.to_diagnostic();
+    output_json_diagnostic(&diagnostic)
+}
+
+/// Output diagnostic as JSON
+fn output_json_diagnostic(diagnostic: &lash_types::error::Diagnostic) -> Result<()> {
     use serde_json::json;
 
     let output = json!({
-        "error": "Database not found",
-        "suggestion": "Run `lash index` to create the database",
+        "error": diagnostic.message,
+        "code": diagnostic.code,
+        "suggestion": diagnostic.help.clone().unwrap_or_else(|| "Run `lash index` to create the database".to_string()),
         "files": []
     });
 
@@ -472,6 +563,7 @@ mod tests {
             tree_view: None,
             max_depth: None,
             ascii: false,
+            verbosity: Verbosity::Normal,
         };
 
         // Should default to true if no config exists
@@ -494,6 +586,7 @@ mod tests {
             tree_view: Some(false),
             max_depth: None,
             ascii: false,
+            verbosity: Verbosity::Normal,
         };
 
         assert!(!determine_tree_view_enabled(&args));

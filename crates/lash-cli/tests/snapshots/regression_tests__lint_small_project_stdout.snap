@@ -5,8 +5,12 @@ expression: normalized_stdout
 ┓    ┓
 ┃ ┏┓┏┣┓
 ┗┛┗┻┛┛┗
-./bugs.md:0:0: warning[W_INDEX_ORPHAN]: File './bugs.md' is not referenced in the root index
-  help: Add './bugs.md' to ./lash.index.md or move to an archive directory
-./tasks.md:0:0: warning[W_INDEX_ORPHAN]: File './tasks.md' is not referenced in the root index
-  help: Add './tasks.md' to ./lash.index.md or move to an archive directory
+warning[W_INDEX_ORPHAN]: File './bugs.md' is not referenced in the root index
+  at ./bugs.md:0:0
+warning[W_INDEX_ORPHAN]: File './tasks.md' is not referenced in the root index
+  at ./tasks.md:0:0
 ✓ Linting passed (with warnings)
+
+Summary:
+  0 errors, 2 warnings, 0 info, 0 hints
+  2 files affected

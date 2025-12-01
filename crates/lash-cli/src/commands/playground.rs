@@ -8,6 +8,7 @@
 #![allow(clippy::too_many_lines)]
 
 use anyhow::{Context, Result};
+use lash_cli::formatter::Verbosity;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::instrument;
@@ -124,7 +125,9 @@ fn index_playground(project_root: &Path) -> Result<()> {
         show_files: false,
         json: false,
         no_color: false,
+        errors_streaming: false,
         project_root: Some(project_root.to_path_buf()),
+        verbosity: Verbosity::Normal,
     };
 
     execute(args)?;

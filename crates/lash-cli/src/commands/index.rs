@@ -4,8 +4,13 @@
 
 use anyhow::{Context, Result};
 use lash_db::{init_database, open_database, run_migrations, Indexer, IndexerConfig};
+use lash_types::error::LashError;
 use lash_types::LashConfig;
 use std::path::{Path, PathBuf};
+
+use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash_cli::formatter::{OutputFormat, Verbosity};
+use lash_cli::theme::CliTheme;
 
 use crate::utils::file_discovery::find_project_root;
 use crate::utils::output::create_progress_bar;
@@ -22,8 +27,12 @@ pub struct IndexArgs {
     pub json: bool,
     /// Disable colored output
     pub no_color: bool,
+    /// Show errors as they occur (streaming) vs at end (batch)
+    pub errors_streaming: bool,
     /// Project root (detected automatically if None)
     pub project_root: Option<PathBuf>,
+    /// Verbosity level for output
+    pub verbosity: Verbosity,
 }
 
 /// Execute the index command
@@ -35,7 +44,11 @@ pub struct IndexArgs {
 /// # Returns
 ///
 /// Exit code: 0 (success), 1 (general error), 3 (indexing failed)
+#[allow(clippy::too_many_lines)]
 pub fn execute(args: IndexArgs) -> Result<i32> {
+    // Load theme based on no_color flag
+    let theme = CliTheme::load(None, !args.no_color)?;
+
     // Determine project root
     let project_root = if let Some(root) = args.project_root {
         root
@@ -81,6 +94,30 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
         .with_progress(!args.json)
         .with_profiling(false);
 
+    // Set up error reporter
+    let output_format = if args.json {
+        OutputFormat::JsonPretty
+    } else {
+        OutputFormat::Text
+    };
+
+    // Determine error display mode based on CLI flag
+    let display_mode = if args.errors_streaming {
+        ErrorDisplayMode::Streaming
+    } else {
+        ErrorDisplayMode::Batch
+    };
+
+    let reporter_config = ErrorReporterConfig {
+        verbosity: args.verbosity,
+        output_format,
+        display_mode,
+        theme: theme.clone(),
+        show_summary: false, // We'll print our own summary
+    };
+
+    let mut error_reporter = ErrorReporter::new(reporter_config);
+
     // Set up progress reporting if requested
     let pb = if !args.json && args.show_files {
         Some(create_progress_bar(100)) // Will update total later
@@ -106,16 +143,42 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
     // Execute indexing
     let report = indexer.index_project().context("Failed to index project")?;
 
-    // Clear progress bar
+    // Convert parse errors to LashError types and report them
+    // (Do this before clearing the progress bar so we can use it for suspended output)
+    for parse_error in &report.errors {
+        // Create a parse error with the error message
+        // Since we don't have precise location information from the indexer,
+        // we use line 1, column 1 as a generic location
+        let error = LashError::Parse {
+            code: "E_PARSE",
+            message: parse_error.error.clone(),
+            location: Some(lash_types::error::Location::new(
+                parse_error.file_path.clone(),
+                1,
+                1,
+            )),
+            snippet: None,
+            help: Some("Fix the syntax errors in the file and re-run indexing".to_string()),
+        };
+        // Use progress-aware error reporting to avoid mangling progress bar output
+        error_reporter.report_error_with_progress(&error, pb.as_ref());
+    }
+
+    // Clear progress bar after reporting errors
     if let Some(pb) = pb {
         pb.finish_and_clear();
     }
 
+    // Flush any collected errors (for batch mode)
+    if !args.errors_streaming {
+        error_reporter.flush();
+    }
+
     // Output results
     if args.json {
-        output_json_report(&report)?;
+        output_json_report(&report, &error_reporter)?;
     } else {
-        output_text_report(&report, args.force, args.no_color);
+        output_text_report(&report, args.force, &error_reporter, theme.as_ref());
     }
 
     // Return exit code based on errors
@@ -144,8 +207,10 @@ fn get_database_path(project_root: &Path) -> Result<PathBuf> {
 }
 
 /// Output indexing report as JSON
-fn output_json_report(report: &lash_db::IndexReport) -> Result<()> {
+fn output_json_report(report: &lash_db::IndexReport, error_reporter: &ErrorReporter) -> Result<()> {
     use serde_json::json;
+
+    let summary = error_reporter.summary();
 
     let output = json!({
         "files_indexed": report.files_processed,
@@ -155,10 +220,14 @@ fn output_json_report(report: &lash_db::IndexReport) -> Result<()> {
         "files_deleted": report.files_deleted,
         "files_unchanged": report.files_unchanged,
         "has_changes": report.has_changes,
-        "errors": report.errors.iter().map(|e| json!({
-            "file": e.file_path.display().to_string(),
-            "error": e.error,
-        })).collect::<Vec<_>>(),
+        "errors": {
+            "count": summary.error_count,
+            "files_affected": summary.files_affected.len(),
+            "details": report.errors.iter().map(|e| json!({
+                "file": e.file_path.display().to_string(),
+                "error": e.error,
+            })).collect::<Vec<_>>(),
+        }
     });
 
     println!("{}", serde_json::to_string_pretty(&output)?);
@@ -166,22 +235,23 @@ fn output_json_report(report: &lash_db::IndexReport) -> Result<()> {
 }
 
 /// Output indexing report as human-readable text
-fn output_text_report(report: &lash_db::IndexReport, force: bool, no_color: bool) {
-    use owo_colors::OwoColorize;
-
-    let use_color = !no_color;
-
+fn output_text_report(
+    report: &lash_db::IndexReport,
+    force: bool,
+    error_reporter: &ErrorReporter,
+    theme: Option<&CliTheme>,
+) {
     // Summary line
-    if force {
-        if use_color {
-            println!("{}", "Full rebuild complete".green().bold());
-        } else {
-            println!("Full rebuild complete");
-        }
-    } else if use_color {
-        println!("{}", "Incremental index complete".green().bold());
+    let summary_msg = if force {
+        "Full rebuild complete"
     } else {
-        println!("Incremental index complete");
+        "Incremental index complete"
+    };
+
+    if let Some(t) = theme {
+        println!("{}", t.style_success(summary_msg));
+    } else {
+        println!("{summary_msg}");
     }
 
     // Statistics
@@ -189,55 +259,49 @@ fn output_text_report(report: &lash_db::IndexReport, force: bool, no_color: bool
     println!("Files processed: {}", report.files_processed);
 
     if report.files_added > 0 {
-        if use_color {
-            println!("  Added:     {}", report.files_added.to_string().green());
+        let added_str = if let Some(t) = theme {
+            t.style_success(&report.files_added.to_string())
         } else {
-            println!("  Added:     {}", report.files_added);
-        }
+            report.files_added.to_string()
+        };
+        println!("  Added:     {added_str}");
     }
 
     if report.files_updated > 0 {
-        if use_color {
-            println!("  Updated:   {}", report.files_updated.to_string().yellow());
+        let updated_str = if let Some(t) = theme {
+            t.style_warning(&report.files_updated.to_string())
         } else {
-            println!("  Updated:   {}", report.files_updated);
-        }
+            report.files_updated.to_string()
+        };
+        println!("  Updated:   {updated_str}");
     }
 
     if report.files_deleted > 0 {
-        if use_color {
-            println!("  Deleted:   {}", report.files_deleted.to_string().red());
+        let deleted_str = if let Some(t) = theme {
+            t.style_error(&report.files_deleted.to_string())
         } else {
-            println!("  Deleted:   {}", report.files_deleted);
-        }
+            report.files_deleted.to_string()
+        };
+        println!("  Deleted:   {deleted_str}");
     }
 
     if report.files_unchanged > 0 {
         println!("  Unchanged: {}", report.files_unchanged);
     }
 
-    // Show errors if any
-    if !report.errors.is_empty() {
+    // Print error summary
+    let summary = error_reporter.summary();
+    if summary.error_count > 0 {
         println!();
-        if use_color {
+        if let Some(t) = theme {
             println!(
                 "{}",
-                format!("Errors ({})", report.errors.len()).red().bold()
+                t.style_error(&format!("Errors: {}", summary.error_count))
             );
+            println!("  {} files affected", summary.files_affected.len());
         } else {
-            println!("Errors ({})", report.errors.len());
-        }
-
-        for error in &report.errors {
-            if use_color {
-                println!(
-                    "  {} {}",
-                    error.file_path.display().to_string().yellow(),
-                    error.error.red()
-                );
-            } else {
-                println!("  {}: {}", error.file_path.display(), error.error);
-            }
+            println!("Errors: {}", summary.error_count);
+            println!("  {} files affected", summary.files_affected.len());
         }
     }
 }
@@ -274,8 +338,34 @@ mod tests {
             profile: None,
         };
 
+        // Create error reporter
+        let reporter_config = ErrorReporterConfig {
+            verbosity: Verbosity::Normal,
+            output_format: OutputFormat::JsonPretty,
+            display_mode: ErrorDisplayMode::Batch,
+            theme: None,
+            show_summary: false,
+        };
+        let mut error_reporter = ErrorReporter::new(reporter_config);
+
+        // Convert errors
+        for parse_error in &report.errors {
+            let error = LashError::Parse {
+                code: "E_PARSE",
+                message: parse_error.error.clone(),
+                location: Some(lash_types::error::Location::new(
+                    parse_error.file_path.clone(),
+                    1,
+                    1,
+                )),
+                snippet: None,
+                help: Some("Fix the syntax errors in the file and re-run indexing".to_string()),
+            };
+            error_reporter.collect_error(error);
+        }
+
         // Should not panic
-        let result = output_json_report(&report);
+        let result = output_json_report(&report, &error_reporter);
         assert!(result.is_ok());
     }
 }

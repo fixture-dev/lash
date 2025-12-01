@@ -5,6 +5,10 @@ expression: normalized_stdout
 ┓    ┓
 ┃ ┏┓┏┣┓
 ┗┛┗┻┛┛┗
-./many.md:0:0: warning[W_INDEX_ORPHAN]: File './many.md' is not referenced in the root index
-  help: Add './many.md' to ./lash.index.md or move to an archive directory
+warning[W_INDEX_ORPHAN]: File './many.md' is not referenced in the root index
+  at ./many.md:0:0
 ✓ Linting passed (with warnings)
+
+Summary:
+  0 errors, 1 warnings, 0 info, 0 hints
+  1 files affected
