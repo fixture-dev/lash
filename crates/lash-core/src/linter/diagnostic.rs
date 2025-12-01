@@ -49,6 +49,19 @@ pub struct LintDiagnostic {
     /// Additional context labels (for multi-location errors)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub labels: Option<Vec<(String, String)>>,
+
+    // === Agent-friendly fields ===
+    /// Exact CLI command to run for automated recovery
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_command: Option<String>,
+
+    /// Step-by-step instructions for manually fixing the error
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix_steps: Option<Vec<String>>,
+
+    /// Detailed explanation of the error for agents/documentation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
 }
 
 impl LintDiagnostic {
@@ -70,6 +83,9 @@ impl LintDiagnostic {
             help: None,
             fix: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
         }
     }
 
@@ -91,6 +107,9 @@ impl LintDiagnostic {
             help: None,
             fix: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
         }
     }
 
@@ -112,6 +131,9 @@ impl LintDiagnostic {
             help: None,
             fix: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
         }
     }
 
@@ -147,6 +169,59 @@ impl LintDiagnostic {
     #[must_use]
     pub fn with_span(mut self, start: usize, end: usize) -> Self {
         self.location = self.location.with_span(start, end);
+        self
+    }
+
+    /// Add a recovery command for agents
+    #[must_use]
+    pub fn with_recovery_command(mut self, cmd: impl Into<String>) -> Self {
+        self.recovery_command = Some(cmd.into());
+        self
+    }
+
+    /// Add fix steps for agents
+    #[must_use]
+    pub fn with_fix_steps(mut self, steps: Vec<String>) -> Self {
+        self.fix_steps = Some(steps);
+        self
+    }
+
+    /// Add an explanation for agents
+    #[must_use]
+    pub fn with_explanation(mut self, explanation: impl Into<String>) -> Self {
+        self.explanation = Some(explanation.into());
+        self
+    }
+
+    /// Enrich this diagnostic with agent-friendly context
+    ///
+    /// Adds recovery commands, fix steps, and explanations based on the error code.
+    #[must_use]
+    pub fn enriched(mut self) -> Self {
+        use lash_types::error_explanations::explain_error;
+
+        // Add explanation if not already present
+        if self.explanation.is_none() {
+            if let Some(exp) = explain_error(self.code) {
+                self.explanation = Some(exp.description.to_string());
+            }
+        }
+
+        // Add recovery command based on code type
+        if self.recovery_command.is_none() {
+            let path = self.location.file_path.display().to_string();
+            if self.code.starts_with("E_PARSE") || self.code.starts_with("E_LINT") {
+                self.recovery_command = Some(format!("lash format {path}"));
+            }
+        }
+
+        // Add fix steps if we have an explanation
+        if self.fix_steps.is_none() {
+            if let Some(exp) = explain_error(self.code) {
+                self.fix_steps = Some(vec![exp.how_to_fix.to_string()]);
+            }
+        }
+
         self
     }
 

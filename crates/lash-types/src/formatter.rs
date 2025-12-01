@@ -240,6 +240,10 @@ mod tests {
             snippet: Some("[*] bad".to_string()),
             help: Some("use [ ], [-], [x], or [!]".to_string()),
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let formatted = ErrorFormatter::format_human(&diag, false);
@@ -260,6 +264,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let formatted = ErrorFormatter::format_human(&diag, true);
@@ -282,6 +290,10 @@ mod tests {
                 "dependency chain".to_string(),
                 "A -> B -> C -> A".to_string(),
             )]),
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let formatted = ErrorFormatter::format_human(&diag, false);
@@ -300,6 +312,10 @@ mod tests {
             snippet: Some("[*] bad".to_string()),
             help: Some("use valid syntax".to_string()),
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let json = ErrorFormatter::format_json(&diag).unwrap();
@@ -325,6 +341,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let compact = ErrorFormatter::format_compact(&diag);
@@ -346,6 +366,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let compact = ErrorFormatter::format_compact(&diag);
@@ -369,6 +393,10 @@ mod tests {
                 snippet: None,
                 help: None,
                 labels: None,
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             };
 
             let formatted = ErrorFormatter::format_human(&diag, false);

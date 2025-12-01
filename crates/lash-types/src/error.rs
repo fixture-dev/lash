@@ -280,6 +280,10 @@ impl LashError {
                 snippet: snippet.clone(),
                 help: help.clone(),
                 labels: None,
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             },
             Self::Dependency {
                 code,
@@ -297,6 +301,10 @@ impl LashError {
                 labels: chain
                     .as_ref()
                     .map(|c| vec![("dependency chain".to_string(), c.join(" -> "))]),
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             },
             Self::Index {
                 code,
@@ -313,6 +321,10 @@ impl LashError {
                 labels: context
                     .as_ref()
                     .map(|c| vec![("context".to_string(), c.clone())]),
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             },
             Self::Query {
                 code,
@@ -326,6 +338,10 @@ impl LashError {
                 snippet: None,
                 help: help.clone(),
                 labels: None,
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             },
             Self::Config {
                 code,
@@ -345,6 +361,10 @@ impl LashError {
                 snippet: None,
                 help: help.clone(),
                 labels: None,
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             },
             Self::IO {
                 code,
@@ -366,6 +386,10 @@ impl LashError {
                 labels: io_error
                     .as_ref()
                     .map(|s| vec![("underlying error".to_string(), s.clone())]),
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             },
             Self::Internal {
                 code,
@@ -381,6 +405,10 @@ impl LashError {
                 labels: context
                     .as_ref()
                     .map(|c| vec![("context".to_string(), c.clone())]),
+                recovery_command: None,
+                fix_steps: None,
+                explanation: None,
+                docs_url: None,
             },
         }
     }
@@ -868,6 +896,24 @@ pub struct Diagnostic {
     /// Additional labeled context (for dependency chains, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub labels: Option<Vec<(String, String)>>,
+
+    // === Agent-friendly fields ===
+    /// Exact CLI command to run for automated recovery
+    /// e.g., `lash format path/to/file.md` or `lash lint --fix path/to/file.md`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_command: Option<String>,
+
+    /// Step-by-step instructions for manually fixing the error
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix_steps: Option<Vec<String>>,
+
+    /// Detailed explanation of the error for agents/documentation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+
+    /// URL to documentation for this error code (if available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docs_url: Option<String>,
 }
 
 impl Diagnostic {
@@ -898,6 +944,34 @@ impl Diagnostic {
     #[must_use]
     pub fn with_labels(mut self, labels: Vec<(String, String)>) -> Self {
         self.labels = Some(labels);
+        self
+    }
+
+    /// Create a new diagnostic with a recovery command
+    #[must_use]
+    pub fn with_recovery_command(mut self, cmd: impl Into<String>) -> Self {
+        self.recovery_command = Some(cmd.into());
+        self
+    }
+
+    /// Create a new diagnostic with fix steps
+    #[must_use]
+    pub fn with_fix_steps(mut self, steps: Vec<String>) -> Self {
+        self.fix_steps = Some(steps);
+        self
+    }
+
+    /// Create a new diagnostic with an explanation
+    #[must_use]
+    pub fn with_explanation(mut self, explanation: impl Into<String>) -> Self {
+        self.explanation = Some(explanation.into());
+        self
+    }
+
+    /// Create a new diagnostic with a docs URL
+    #[must_use]
+    pub fn with_docs_url(mut self, url: impl Into<String>) -> Self {
+        self.docs_url = Some(url.into());
         self
     }
 }
@@ -1187,6 +1261,10 @@ mod tests {
             snippet: None,
             help: Some("Reduce nesting level to 3 or fewer".to_string()),
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let json = diag.to_json().unwrap();
@@ -1242,6 +1320,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let with_help = diag.clone().with_help("Flatten hierarchy");
@@ -1855,6 +1937,10 @@ mod tests {
             snippet: Some("- [ ] nested task".to_string()),
             help: Some("Flatten hierarchy".to_string()),
             labels: Some(vec![("context".to_string(), "level 5".to_string())]),
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let display = format!("{diag}");
@@ -1877,6 +1963,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let display = format!("{diag}");
@@ -1897,6 +1987,10 @@ mod tests {
             snippet: Some("[*] invalid".to_string()),
             help: Some("Use [ ], [-], [x], or [!]".to_string()),
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let json = diag.to_json().unwrap();
@@ -1917,6 +2011,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         };
 
         let json = diag.to_json().unwrap();
@@ -1987,6 +2085,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         }
         .with_labels(labels);
 
@@ -2006,6 +2108,10 @@ mod tests {
             snippet: None,
             help: None,
             labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
         }
         .with_help("Help text")
         .with_snippet("Code snippet")

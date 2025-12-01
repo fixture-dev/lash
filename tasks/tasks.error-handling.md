@@ -225,26 +225,26 @@ Ensure error messages are optimized for AI agent consumption and error recovery.
 
 ### Subtasks
 
-- [ ] Add structured error context for agents
-  - [ ] Exact error location (file, line, col)
-  - [ ] Error code (for matching against documentation)
-  - [ ] Actionable fix suggestion (specific steps)
-  - [ ] Related context (affected dependencies, etc.)
-- [ ] Implement error recovery hints
-  - [ ] "Run `lash format` to fix formatting"
-  - [ ] "Remove duplicate ID or rename to unique value"
-  - [ ] "Update reference to: `correct/path.md#task:id`"
-- [ ] Add error documentation links
-  - [ ] URL to error code documentation (if available)
-  - [ ] Inline explanation in JSON output
-- [ ] Implement `--explain` flag (optional)
-  - [ ] `lash lint --explain E_LINT_001`
-  - [ ] Show detailed explanation of error code
-  - [ ] Show examples and fixes
-- [ ] Ensure JSON errors are complete
-  - [ ] All fields populated
-  - [ ] No ambiguous or vague messages
-  - [ ] Include context needed for automated fixes
+- [x] Add structured error context for agents
+  - [x] Exact error location (file, line, col)
+  - [x] Error code (for matching against documentation)
+  - [x] Actionable fix suggestion (specific steps)
+  - [x] Related context (affected dependencies, etc.)
+- [x] Implement error recovery hints
+  - [x] "Run `lash format` to fix formatting"
+  - [x] "Remove duplicate ID or rename to unique value"
+  - [x] "Update reference to: `correct/path.md#task:id`"
+- [x] Add error documentation links
+  - [x] URL to error code documentation (if available)
+  - [x] Inline explanation in JSON output
+- [x] Implement `--explain` flag (optional)
+  - [x] `lash explain E_LINT_DUPLICATE_ID`
+  - [x] Show detailed explanation of error code
+  - [x] Show examples and fixes
+- [x] Ensure JSON errors are complete
+  - [x] All fields populated
+  - [x] No ambiguous or vague messages
+  - [x] Include context needed for automated fixes
 
 ### Success Criteria
 

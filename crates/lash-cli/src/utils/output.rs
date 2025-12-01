@@ -290,25 +290,29 @@ pub fn format_json_output(
     diagnostics: &[LintDiagnostic],
     files_checked: usize,
 ) -> Result<String, serde_json::Error> {
-    let error_count = diagnostics
+    // Enrich all diagnostics with agent-friendly context
+    let enriched_diagnostics: Vec<LintDiagnostic> =
+        diagnostics.iter().map(|d| d.clone().enriched()).collect();
+
+    let error_count = enriched_diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Error)
         .count();
-    let warning_count = diagnostics
+    let warning_count = enriched_diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Warning)
         .count();
-    let info_count = diagnostics
+    let info_count = enriched_diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Info)
         .count();
-    let hint_count = diagnostics
+    let hint_count = enriched_diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Hint)
         .count();
 
     let output = serde_json::json!({
-        "diagnostics": diagnostics,
+        "diagnostics": enriched_diagnostics,
         "summary": {
             "files_checked": files_checked,
             "errors": error_count,
