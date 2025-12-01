@@ -20,14 +20,29 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let file_count = state.files.len();
     let task_count = state.tasks.len();
 
-    let line = Line::from(vec![
+    // Build spans for status bar
+    let mut spans = vec![
         Span::styled(
             format!(" {focused_pane_name} "),
             Style::default().fg(Color::Black).bg(Color::Cyan),
         ),
         Span::raw(format!("  Files: {file_count}  Tasks: {task_count}  ")),
-        Span::styled(" Press ? for help ", Style::default().fg(Color::DarkGray)),
-    ]);
+    ];
+
+    // Add active filter indicator if present
+    if let Some(filter) = &state.current_label_filter {
+        spans.push(Span::styled(
+            format!("#{filter}  "),
+            Style::default().fg(state.theme.label_color()),
+        ));
+    }
+
+    spans.push(Span::styled(
+        " Press ? for help ",
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    let line = Line::from(spans);
 
     let paragraph = Paragraph::new(line).style(Style::default().bg(Color::Black));
 

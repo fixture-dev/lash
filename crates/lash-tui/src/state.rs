@@ -105,6 +105,9 @@ pub struct AppState {
 
     /// Search modal state (None = closed, Some = open)
     pub search_modal_state: Option<SearchModalState>,
+
+    /// Filter modal state (None = closed, Some = open)
+    pub filter_modal_state: Option<FilterModalState>,
 }
 
 /// State for the theme selector modal
@@ -167,6 +170,28 @@ pub struct SearchModalState {
     pub error: Option<String>,
 }
 
+/// State for the filter modal
+#[derive(Debug)]
+pub struct FilterModalState {
+    /// Available labels to filter by (with task counts)
+    pub available_labels: Vec<LabelStats>,
+
+    /// Currently selected label index in the list
+    pub selected_index: usize,
+
+    /// Scroll offset for the label list
+    pub scroll_offset: usize,
+
+    /// Current text input for filtering the label list
+    pub input: String,
+
+    /// Cursor position in input
+    pub cursor_position: usize,
+
+    /// Filtered labels (indices into `available_labels`)
+    pub filtered_indices: Vec<usize>,
+}
+
 /// Information about a selected tree node
 #[derive(Debug, Clone)]
 pub struct SelectedTreeNode {
@@ -219,6 +244,7 @@ impl AppState {
             selected_label_index: 0,
             current_label_filter: None,
             search_modal_state: None,
+            filter_modal_state: None,
         }
     }
 
@@ -941,6 +967,145 @@ impl AppState {
         }
 
         self.file_tree = Some(roots);
+    }
+
+    /// Open filter modal
+    pub fn open_filter_modal(&mut self, labels: Vec<LabelStats>) {
+        // Create filtered indices (initially all labels)
+        let filtered_indices: Vec<usize> = (0..labels.len()).collect();
+
+        // Find current filter in the list
+        let selected_index = if let Some(current_filter) = &self.current_label_filter {
+            labels
+                .iter()
+                .position(|l| &l.name == current_filter)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        self.filter_modal_state = Some(FilterModalState {
+            available_labels: labels,
+            selected_index,
+            scroll_offset: selected_index.saturating_sub(5), // Center selection
+            input: String::new(),
+            cursor_position: 0,
+            filtered_indices,
+        });
+    }
+
+    /// Close filter modal without applying
+    pub fn close_filter_modal(&mut self) {
+        self.filter_modal_state = None;
+    }
+
+    /// Check if filter modal is open
+    #[must_use]
+    pub fn is_filter_modal_open(&self) -> bool {
+        self.filter_modal_state.is_some()
+    }
+
+    /// Move selection up in filter modal
+    pub fn filter_modal_up(&mut self) {
+        if let Some(modal) = &mut self.filter_modal_state {
+            if modal.selected_index > 0 {
+                modal.selected_index -= 1;
+            }
+        }
+    }
+
+    /// Move selection down in filter modal
+    pub fn filter_modal_down(&mut self) {
+        if let Some(modal) = &mut self.filter_modal_state {
+            let max_index = modal.filtered_indices.len();
+            if modal.selected_index + 1 < max_index {
+                modal.selected_index += 1;
+            }
+        }
+    }
+
+    /// Update filter modal input and recompute filtered labels
+    pub fn filter_modal_update_input(&mut self, input: &str) {
+        if let Some(modal) = &mut self.filter_modal_state {
+            modal.input.clone_from(&input.to_string());
+
+            // Filter labels based on input (case-insensitive substring match)
+            let input_lower = input.to_lowercase();
+            modal.filtered_indices = modal
+                .available_labels
+                .iter()
+                .enumerate()
+                .filter(|(_, label)| label.name.to_lowercase().contains(&input_lower))
+                .map(|(idx, _)| idx)
+                .collect();
+
+            // Reset selection if current selection is not in filtered list
+            if modal.selected_index >= modal.filtered_indices.len() {
+                modal.selected_index = 0;
+            }
+        }
+    }
+
+    /// Handle text input for filter modal
+    pub fn filter_modal_input(&mut self, ch: char) {
+        if let Some(modal) = &mut self.filter_modal_state {
+            modal.input.insert(modal.cursor_position, ch);
+            modal.cursor_position += 1;
+
+            // Update filtered list
+            let input = modal.input.clone();
+            self.filter_modal_update_input(&input);
+        }
+    }
+
+    /// Handle backspace in filter modal
+    pub fn filter_modal_backspace(&mut self) {
+        if let Some(modal) = &mut self.filter_modal_state {
+            if modal.cursor_position > 0 {
+                modal.cursor_position -= 1;
+                modal.input.remove(modal.cursor_position);
+
+                // Update filtered list
+                let input = modal.input.clone();
+                self.filter_modal_update_input(&input);
+            }
+        }
+    }
+
+    /// Handle delete key in filter modal
+    pub fn filter_modal_delete(&mut self) {
+        if let Some(modal) = &mut self.filter_modal_state {
+            if modal.cursor_position < modal.input.len() {
+                modal.input.remove(modal.cursor_position);
+
+                // Update filtered list
+                let input = modal.input.clone();
+                self.filter_modal_update_input(&input);
+            }
+        }
+    }
+
+    /// Clear filter input
+    pub fn filter_modal_clear(&mut self) {
+        if let Some(modal) = &mut self.filter_modal_state {
+            modal.input.clear();
+            modal.cursor_position = 0;
+
+            // Reset filtered list to show all
+            modal.filtered_indices = (0..modal.available_labels.len()).collect();
+            modal.selected_index = 0;
+        }
+    }
+
+    /// Get currently selected label from filter modal
+    #[must_use]
+    pub fn selected_filter_label(&self) -> Option<&LabelStats> {
+        self.filter_modal_state.as_ref().and_then(|modal| {
+            modal
+                .filtered_indices
+                .get(modal.selected_index)
+                .and_then(|&idx| modal.available_labels.get(idx))
+        })
     }
 
     /// Build task tree from flat task list

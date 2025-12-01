@@ -225,12 +225,12 @@ Implement all keyboard commands for TUI interaction as specified in design doc s
   - [x] Navigate results with `j/k` or arrow keys
   - [x] Select result with Enter to navigate to file/task
   - [x] `Esc`: close search modal
-- [-] Implement filtering (deferred to future version)
-  - [-] `l`: open label filter input
-  - [-] Type or select labels
-  - [-] Filter task list in detail pane
-  - [-] Show active filters in status bar (deferred)
-  - [-] `c`: clear filters (deferred)
+- [x] Implement filtering
+  - [x] `f`: open label filter modal (changed from `l` which is used for navigation)
+  - [x] Type to filter labels or navigate with `j/k`/arrows
+  - [x] Filter task list in detail pane
+  - [x] Show active filters in status bar
+  - [x] `c`: clear filters
 - [-] Implement dependency graph view (deferred to future version)
   - [-] `g`: show dependency graph for selected task
   - [-] Display as text tree or overlay
@@ -276,6 +276,28 @@ Implement all keyboard commands for TUI interaction as specified in design doc s
 - `crates/lash-tui/src/app.rs` - Added search modal event routing and search execution
 - `crates/lash-tui/src/ui/search_modal.rs` - New file for search modal rendering
 - `crates/lash-tui/src/ui/mod.rs` - Added search modal rendering
+
+### Implementation Notes (Filter Feature)
+
+**Filter Modal Implementation:**
+- Press `f` to open filter modal overlay
+- Displays all labels with task counts in a scrollable list
+- Type-to-filter functionality for filtering label list (case-insensitive substring match)
+- Currently active filter indicated with bullet (●) indicator
+- Navigate labels with Up/Down or `j`/`k`
+- Enter applies the selected filter and loads filtered tasks
+- Escape closes the modal without changes
+- Active filter shown in status bar as `#label_name`
+- `c` key clears the active filter from anywhere in the TUI
+
+**Files Modified:**
+- `crates/lash-tui/src/state.rs` - Added `FilterModalState` struct and modal management methods
+- `crates/lash-tui/src/event.rs` - Added filter event types and `poll_filter_event()`
+- `crates/lash-tui/src/app.rs` - Added filter modal event routing and filter application
+- `crates/lash-tui/src/ui/filter_modal.rs` - New file for filter modal rendering
+- `crates/lash-tui/src/ui/mod.rs` - Added filter modal rendering
+- `crates/lash-tui/src/ui/status_bar.rs` - Updated to show active filter
+- `crates/lash-tui/src/ui/help.rs` - Added filter help entries
 
 ---
 
