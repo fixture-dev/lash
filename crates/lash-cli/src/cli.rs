@@ -129,6 +129,10 @@ pub enum Commands {
         #[arg(long)]
         fix: bool,
 
+        /// Show fix suggestions without applying them
+        #[arg(long)]
+        suggest: bool,
+
         /// Run only specific rule(s) by code (can be specified multiple times)
         #[arg(long = "rule", value_name = "CODE")]
         rules: Vec<String>,

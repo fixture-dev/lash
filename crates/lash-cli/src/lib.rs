@@ -16,7 +16,9 @@ pub mod command;
 pub mod command_utils;
 pub mod config;
 pub mod context;
+pub mod diff_display;
 pub mod error_reporter;
+pub mod error_validator;
 pub mod formatter;
 pub mod logging;
 pub mod progress;
@@ -29,7 +31,9 @@ pub use cli::{Commands, LashCli};
 pub use command::Command;
 pub use config::Config;
 pub use context::{Context, ContextBuilder};
+pub use diff_display::DiffDisplay;
 pub use error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig, ErrorSummary};
+pub use error_validator::{ErrorValidator, ValidationResult};
 pub use formatter::{
     JsonFormatter, OutputFormat, OutputFormatter, QuietFormatter, TextFormatter, Verbosity,
 };
