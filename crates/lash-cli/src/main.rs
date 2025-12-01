@@ -197,6 +197,7 @@ fn run(cli: LashCli) -> Result<()> {
         Commands::Lint {
             paths,
             fix,
+            interactive,
             suggest,
             rules,
             min_severity,
@@ -213,6 +214,7 @@ fn run(cli: LashCli) -> Result<()> {
                 paths,
                 json: cli.json,
                 fix,
+                interactive,
                 suggest,
                 rules,
                 min_severity: severity,

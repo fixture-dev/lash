@@ -324,22 +324,22 @@ Implement utilities for error recovery and validation to help users fix errors q
 
 ### Subtasks
 
-- [ ] Implement `ErrorValidator`
-  - [ ] Validate that a file has no errors after fix
-  - [ ] Re-run lint after auto-fix
-  - [ ] Report remaining errors
-- [ ] Implement auto-fix suggestions
-  - [ ] Detect fixable errors (whitespace, formatting)
-  - [ ] Generate fix suggestions
-  - [ ] Apply fixes with user confirmation
-- [ ] Add error recovery workflow
-  - [ ] `lash lint --fix`: apply auto-fixes
-  - [ ] `lash lint --suggest`: show fix suggestions
-  - [ ] Iterate until no fixable errors remain
-- [ ] Implement error diff
-  - [ ] Show before/after for fixes
-  - [ ] Highlight what changed
-  - [ ] Confirm before applying
+- [x] Implement `ErrorValidator`
+  - [x] Validate that a file has no errors after fix
+  - [x] Re-run lint after auto-fix
+  - [x] Report remaining errors
+- [x] Implement auto-fix suggestions
+  - [x] Detect fixable errors (whitespace, formatting)
+  - [x] Generate fix suggestions
+  - [x] Apply fixes with user confirmation
+- [x] Add error recovery workflow
+  - [x] `lash lint --fix`: apply auto-fixes
+  - [x] `lash lint --suggest`: show fix suggestions
+  - [x] Iterate until no fixable errors remain
+- [x] Implement error diff
+  - [x] Show before/after for fixes
+  - [x] Highlight what changed
+  - [x] Confirm before applying
 
 ### Success Criteria
 

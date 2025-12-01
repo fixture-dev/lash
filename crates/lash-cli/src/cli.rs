@@ -129,6 +129,10 @@ pub enum Commands {
         #[arg(long)]
         fix: bool,
 
+        /// Confirm each fix before applying (requires --fix)
+        #[arg(short = 'i', long)]
+        interactive: bool,
+
         /// Show fix suggestions without applying them
         #[arg(long)]
         suggest: bool,
@@ -432,6 +436,35 @@ mod tests {
         let cli = LashCli::try_parse_from(["lash", "lint", "--fix", "test.md"]).unwrap();
         if let Commands::Lint { fix, .. } = cli.command {
             assert!(fix);
+        } else {
+            panic!("Expected Lint command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_lint_with_interactive() {
+        let cli =
+            LashCli::try_parse_from(["lash", "lint", "--fix", "--interactive", "test.md"]).unwrap();
+        if let Commands::Lint {
+            fix, interactive, ..
+        } = cli.command
+        {
+            assert!(fix);
+            assert!(interactive);
+        } else {
+            panic!("Expected Lint command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_lint_with_interactive_short() {
+        let cli = LashCli::try_parse_from(["lash", "lint", "--fix", "-i", "test.md"]).unwrap();
+        if let Commands::Lint {
+            fix, interactive, ..
+        } = cli.command
+        {
+            assert!(fix);
+            assert!(interactive);
         } else {
             panic!("Expected Lint command");
         }
