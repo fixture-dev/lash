@@ -1,6 +1,7 @@
 //! UI rendering and layout
 
 mod detail_pane;
+mod filter_modal;
 mod help;
 mod nav_pane;
 mod search_modal;
@@ -59,5 +60,10 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     // Render search modal overlay if active
     if state.search_modal_state.is_some() {
         search_modal::render(frame, frame.area(), state);
+    }
+
+    // Render filter modal overlay if active
+    if state.filter_modal_state.is_some() {
+        filter_modal::render(frame, frame.area(), state);
     }
 }

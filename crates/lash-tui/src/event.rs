@@ -74,6 +74,12 @@ pub enum AppEvent {
     ExecuteSearch,
     /// Close search modal
     CloseSearch,
+    /// Open filter modal
+    OpenFilter,
+    /// Close filter modal
+    CloseFilter,
+    /// Apply selected filter
+    ApplyFilter,
 }
 
 /// Poll for the next event with timeout
@@ -110,6 +116,25 @@ pub fn poll_search_event(timeout: Duration) -> TuiResult<AppEvent> {
     }
 }
 
+/// Poll for filter input events
+///
+/// When in filter modal mode, key events are handled differently:
+/// - Most keys are passed as character input for filtering the label list
+/// - Enter applies the selected filter
+/// - Escape closes the filter modal
+/// - Navigation keys for label list
+pub fn poll_filter_event(timeout: Duration) -> TuiResult<AppEvent> {
+    if event::poll(timeout)? {
+        match event::read()? {
+            Event::Key(key) => Ok(handle_filter_key_event(key)),
+            Event::Resize(width, height) => Ok(AppEvent::Resize(width, height)),
+            _ => Ok(AppEvent::None),
+        }
+    } else {
+        Ok(AppEvent::None)
+    }
+}
+
 /// Convert key event to application event for search mode
 fn handle_search_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
@@ -130,6 +155,37 @@ fn handle_search_key_event(key: KeyEvent) -> AppEvent {
         (KeyCode::End, _) | (KeyCode::Char('e'), KeyModifiers::CONTROL) => AppEvent::End,
 
         // Text editing
+        (KeyCode::Backspace, _) => AppEvent::Backspace,
+        (KeyCode::Delete, _) => AppEvent::Delete,
+
+        // Clear input (Ctrl-U)
+        (KeyCode::Char('u'), KeyModifiers::CONTROL) => AppEvent::ClearFilters,
+
+        // Character input
+        (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => AppEvent::CharInput(c),
+
+        _ => AppEvent::None,
+    }
+}
+
+/// Convert key event to application event for filter mode
+fn handle_filter_key_event(key: KeyEvent) -> AppEvent {
+    match (key.code, key.modifiers) {
+        // Close filter (Esc or Ctrl-C)
+        (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => AppEvent::CloseFilter,
+
+        // Apply filter
+        (KeyCode::Enter, KeyModifiers::NONE) => AppEvent::ApplyFilter,
+
+        // Navigate label list
+        (KeyCode::Up, _)
+        | (KeyCode::Char('p'), KeyModifiers::CONTROL)
+        | (KeyCode::Char('k'), KeyModifiers::NONE) => AppEvent::Up,
+        (KeyCode::Down, _)
+        | (KeyCode::Char('n'), KeyModifiers::CONTROL)
+        | (KeyCode::Char('j'), KeyModifiers::NONE) => AppEvent::Down,
+
+        // Text editing (for filtering the label list)
         (KeyCode::Backspace, _) => AppEvent::Backspace,
         (KeyCode::Delete, _) => AppEvent::Delete,
 
@@ -180,6 +236,7 @@ fn handle_key_event(key: KeyEvent) -> AppEvent {
         (KeyCode::Char(' '), KeyModifiers::NONE) => AppEvent::Select,
         (KeyCode::Char('e'), KeyModifiers::NONE) => AppEvent::OpenEditor,
         (KeyCode::Char('/'), KeyModifiers::NONE) => AppEvent::Search,
+        (KeyCode::Char('f'), KeyModifiers::NONE) => AppEvent::OpenFilter,
         (KeyCode::Char('F'), KeyModifiers::SHIFT) => AppEvent::LabelFilter,
         (KeyCode::Char('c'), KeyModifiers::NONE) => AppEvent::ClearFilters,
         (KeyCode::Char('g'), KeyModifiers::CONTROL) => AppEvent::DependencyGraph,

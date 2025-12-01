@@ -12,7 +12,7 @@ use lash_db::repository::labels::LabelRepository;
 use lash_db::repository::tasks::TaskRepository;
 
 use crate::error::{TuiError, TuiResult};
-use crate::event::{poll_event, poll_search_event, AppEvent};
+use crate::event::{poll_event, poll_filter_event, poll_search_event, AppEvent};
 use crate::state::AppState;
 use crate::terminal;
 use crate::ui;
@@ -103,6 +103,8 @@ impl TuiApp {
             // Handle events - use different polling depending on modal state
             let event = if self.state.is_search_modal_open() {
                 poll_search_event(Duration::from_millis(100))?
+            } else if self.state.is_filter_modal_open() {
+                poll_filter_event(Duration::from_millis(100))?
             } else {
                 poll_event(Duration::from_millis(100))?
             };
@@ -133,6 +135,23 @@ impl TuiApp {
                         self.handle_search_result_select()?;
                     }
                     _ => {} // Ignore other events when search is open
+                }
+            } else if self.state.is_filter_modal_open() {
+                // Filter modal is open - route events to it
+                match event {
+                    AppEvent::CloseFilter => {
+                        self.state.close_filter_modal();
+                    }
+                    AppEvent::ApplyFilter => {
+                        self.handle_apply_filter()?;
+                    }
+                    AppEvent::Up => self.state.filter_modal_up(),
+                    AppEvent::Down => self.state.filter_modal_down(),
+                    AppEvent::Backspace => self.state.filter_modal_backspace(),
+                    AppEvent::Delete => self.state.filter_modal_delete(),
+                    AppEvent::ClearFilters => self.state.filter_modal_clear(),
+                    AppEvent::CharInput(c) => self.state.filter_modal_input(c),
+                    _ => {} // Ignore other events when filter is open
                 }
             } else if self.state.is_task_detail_open() {
                 // Task detail is open - route events to it
@@ -198,6 +217,7 @@ impl TuiApp {
                     AppEvent::ClearFilters => self.state.clear_label_filter(),
 
                     AppEvent::Search => self.state.open_search_modal(),
+                    AppEvent::OpenFilter => self.handle_open_filter()?,
 
                     // TODO: implement these features
                     AppEvent::ExpandNode
@@ -208,6 +228,8 @@ impl TuiApp {
                     | AppEvent::CloseThemeSelector
                     | AppEvent::CloseSearch
                     | AppEvent::ExecuteSearch
+                    | AppEvent::CloseFilter
+                    | AppEvent::ApplyFilter
                     | AppEvent::CharInput(_)
                     | AppEvent::Backspace
                     | AppEvent::Delete
@@ -567,6 +589,48 @@ impl TuiApp {
         self.state.focused_pane = crate::state::FocusedPane::Detail;
         self.state.nav_mode = crate::state::NavMode::Files;
         self.state.current_label_filter = None;
+
+        Ok(())
+    }
+
+    /// Handle opening filter modal
+    fn handle_open_filter(&mut self) -> TuiResult<()> {
+        // Load labels with stats
+        let label_repo = LabelRepository::new(&self.conn);
+        let labels = label_repo
+            .get_label_stats()
+            .map_err(|e| TuiError::App(format!("Failed to load labels: {e}")))?;
+
+        self.state.open_filter_modal(labels);
+        Ok(())
+    }
+
+    /// Handle applying selected filter
+    fn handle_apply_filter(&mut self) -> TuiResult<()> {
+        let Some(label) = self.state.selected_filter_label() else {
+            // No label selected, close modal
+            self.state.close_filter_modal();
+            return Ok(());
+        };
+
+        let label_name = label.name.clone();
+
+        // Close the filter modal
+        self.state.close_filter_modal();
+
+        // Load tasks with this label
+        let task_repo = TaskRepository::new(&self.conn);
+        self.state.tasks = task_repo
+            .find_by_label(&label_name)
+            .map_err(|e| TuiError::App(format!("Failed to load tasks for label: {e}")))?;
+
+        // Set current filter and reset selection
+        self.state.current_label_filter = Some(label_name);
+        self.state.selected_task_index = 0;
+        self.state.build_task_tree();
+
+        // Switch to detail pane to show filtered tasks
+        self.state.focused_pane = crate::state::FocusedPane::Detail;
 
         Ok(())
     }
