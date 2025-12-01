@@ -134,10 +134,10 @@ Parse dependency references from tasks and build the complete dependency graph.
 - [x] Implement `DependencyResolver` struct
   - [x] Hold references to parsed tasks and files
   - [x] Track resolution errors (broken links)
-- [-] Implement implicit hierarchy resolution
-  - [-] For each task, add edges to all children
-  - [-] Edges are `(parent_id, child_id, type=hierarchy)`
-  - Note: Hierarchy dependencies are handled separately during indexing (not part of resolver)
+- [x] Implement implicit hierarchy resolution
+  - [x] For each task, add edges to all children
+  - [x] Edges are `(parent_id, child_id, type=hierarchy)`
+  - Note: Implemented in indexing layer (`DependencyUpdater.insert_hierarchy_dependencies()`)
 - [x] Implement explicit `@depends-on` resolution
   - [x] Parse `@depends-on` annotations
   - [x] Support formats:
@@ -157,7 +157,7 @@ Parse dependency references from tasks and build the complete dependency graph.
 - [x] Handle broken dependencies
   - [x] Collect all broken references
   - [x] Return structured errors with source location
-  - [-] Mark affected tasks as potentially blocked - handled by status computation
+  - [x] Mark affected tasks as potentially blocked - implemented in status computation
 
 ### Success Criteria
 
@@ -168,7 +168,7 @@ Parse dependency references from tasks and build the complete dependency graph.
 
 ### Tests
 
-- [-] Unit: Resolve implicit hierarchy - handled by indexing layer
+- [x] Unit: Resolve implicit hierarchy - tests in indexing layer (`test_hierarchy_dependencies_created`)
 - [x] Unit: Resolve explicit cross-file dependencies
 - [x] Unit: Resolve various path formats
 - [x] Unit: Handle broken links gracefully
