@@ -364,8 +364,49 @@ impl<'a> AsciiGraphRenderer<'a> {
     fn render_node(&self, node: &NodeData) -> String {
         let checkbox = self.render_checkbox(node.status);
         let title = self.truncate_title(&node.title);
+        let styled_title = self.style_labels_in_text(&title);
 
-        format!("{checkbox} {title}")
+        format!("{checkbox} {styled_title}")
+    }
+
+    /// Style labels (hashtags like #backend, #docs) within text
+    fn style_labels_in_text(&self, text: &str) -> String {
+        let Some(theme) = self.theme else {
+            return text.to_string();
+        };
+
+        let mut result = String::new();
+        let mut chars = text.char_indices().peekable();
+
+        while let Some((i, c)) = chars.next() {
+            if c == '#' {
+                // Found potential label start - collect the label
+                let label_start = i;
+                let mut label_end = i + 1;
+
+                // Collect alphanumeric chars and hyphens/underscores
+                while let Some(&(j, next_c)) = chars.peek() {
+                    if next_c.is_alphanumeric() || next_c == '-' || next_c == '_' {
+                        label_end = j + next_c.len_utf8();
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+
+                // Only style if we have at least one char after #
+                if label_end > label_start + 1 {
+                    let label = &text[label_start..label_end];
+                    result.push_str(&theme.style_label(label));
+                } else {
+                    result.push(c);
+                }
+            } else {
+                result.push(c);
+            }
+        }
+
+        result
     }
 
     /// Render a status checkbox with theme colors
@@ -605,5 +646,22 @@ mod tests {
         let output = renderer.render(&FilterOptions::default());
 
         assert!(output.contains("..."));
+    }
+
+    #[test]
+    fn test_labels_in_title() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#task".to_string(),
+            create_test_node("Add feature #backend #p1", TaskStatus::Open, "test"),
+        );
+
+        // Without theme, labels should appear as-is
+        let renderer = AsciiGraphRenderer::new(&graph, None);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(output.contains("#backend"));
+        assert!(output.contains("#p1"));
+        assert!(output.contains("Add feature"));
     }
 }
