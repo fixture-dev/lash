@@ -11,7 +11,7 @@
   [![Built with Markdown](https://img.shields.io/badge/built%20with-markdown-000000.svg?logo=markdown)](https://commonmark.org/)
   [![SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg?logo=sqlite)](https://www.sqlite.org/)
 
-  **Status:** Active Development (Phase 4/5 - TUI Complete, Queries In Progress)
+  **Status:** Active Development (Phase 5 - Core Complete, Documentation In Progress)
 </div>
 
 ## Overview
@@ -26,7 +26,7 @@ Lash is a terminal-first task management system that uses Markdown as the single
 
 ## What's Implemented
 
-Core functionality is production-ready:
+All core functionality is production-ready:
 
 - **Markdown Parser** - Full task file parsing with 390+ tests (67.7µs benchmark)
 - **Linter & Formatter** - 20 validation rules with auto-formatting (607 tests)
@@ -35,20 +35,19 @@ Core functionality is production-ready:
 - **Terminal UI (TUI)** - Interactive interface with 300+ Gogh color schemes
 - **CLI Framework** - Configuration, logging, and command execution infrastructure
 - **Query Commands** - List, search, show, and graph commands for exploring tasks
-
-Next up: Agent integration and prompt generation
+- **Agent Integration** - Token-minimized prompt generation for LLM workflows
 
 ## Project Structure
 
 ```
 lash/
 ├── crates/
-│   ├── lash-types/    # Shared types, errors, config ✅
-│   ├── lash-core/     # Markdown parsing & validation ✅
-│   ├── lash-db/       # SQLite indexing & queries ✅
-│   ├── lash-agent/    # Agent integration (in progress)
-│   ├── lash-tui/      # Terminal UI ✅
-│   └── lash-cli/      # CLI binary ✅
+│   ├── lash-types/    # Shared types, errors, config
+│   ├── lash-core/     # Markdown parsing & validation
+│   ├── lash-db/       # SQLite indexing & queries
+│   ├── lash-agent/    # Agent integration & prompt generation
+│   ├── lash-tui/      # Terminal UI
+│   └── lash-cli/      # CLI binary
 ├── docs/              # Design docs & error codes
 └── tasks/             # Development task tracking
 ```
@@ -178,8 +177,6 @@ The profiler tracks:
 
 ## Usage
 
-**Implemented commands:**
-
 ```bash
 # Lint task files
 lash lint [PATH...]
@@ -190,8 +187,11 @@ lash format [PATH...]
 # Index files into database
 lash index
 
+# Verify database consistency
+lash check-index
+
 # List tasks (with filters)
-lash list [--label backend] [--status open]
+lash list [--label backend] [--status open] [--tree]
 
 # Search tasks
 lash search "authentication"
@@ -200,10 +200,30 @@ lash search "authentication"
 lash show task-id
 
 # Export dependency graph
-lash graph [--format dot|json]
+lash graph [--format dot|json|mermaid]
 
-# Launch TUI (with optional color scheme)
+# Validate cross-file links
+lash check-links [--fix]
+
+# Generate agent prompt for LLMs
+lash agent-prompt [OPTIONS]
+
+# Launch TUI
 lash tui [--color-scheme "Nord"]
+
+# Manage configuration
+lash config get <key>
+lash config set <key> <value>
+lash config list
+
+# Generate shell completions
+lash completion bash|zsh|fish|powershell
+
+# Explain error codes
+lash explain <CODE>
+
+# Initialize demo project
+lash playground init
 ```
 
 ### Color Schemes
@@ -224,17 +244,11 @@ Lash supports 300+ color schemes from the [Gogh](https://gogh-co.github.io/Gogh/
 
 Popular schemes include: Nord, Dracula, Solarized Dark, Solarized Light, Monokai, Tokyo Night, Catppuccin, and Base2Tone Desert (default).
 
-**Planned commands:**
-
-```bash
-# Generate agent prompt
-lash agent-prompt
-```
-
 ## Documentation
 
 - [Design Document](./docs/design-doc.md) - Comprehensive specification
 - [Error Codes](./docs/error-codes.md) - Complete error catalog
+- [Testing Guide](./docs/TESTING.md) - Testing documentation
 - [Development Tasks](./tasks/tasks.md) - Implementation roadmap
 
 ## Contributing
@@ -244,4 +258,3 @@ Lash is in active development. See [`tasks/tasks.md`](./tasks/tasks.md) for the 
 ## License
 
 MIT OR Apache-2.0 (dual-licensed)
-
