@@ -530,5 +530,16 @@ fn run(cli: LashCli) -> Result<()> {
             let exit_code = commands::explain::execute(&args)?;
             process::exit(exit_code);
         }
+
+        Commands::Config { command } => {
+            let args = commands::config::ConfigArgs {
+                command,
+                json: cli.json,
+                no_color: cli.no_color,
+                project_root,
+            };
+            let exit_code = commands::config::execute(&args)?;
+            process::exit(exit_code);
+        }
     }
 }

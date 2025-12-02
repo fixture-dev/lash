@@ -266,10 +266,10 @@ Support project-level and user-level configuration files for customizing Lash be
   - [x] Check for unknown keys (warn)
   - [x] Validate value types and ranges
   - [x] Return helpful error messages
-- [ ] Add `lash config` command (optional)
-  - [ ] `lash config get <key>` - show current value
-  - [ ] `lash config set <key> <value>` - update config
-  - [ ] `lash config list` - show all settings
+- [x] Add `lash config` command (optional)
+  - [x] `lash config get <key>` - show current value
+  - [x] `lash config set <key> <value>` - update config
+  - [x] `lash config list` - show all settings
 
 ### Success Criteria
 
