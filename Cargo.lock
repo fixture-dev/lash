@@ -1046,6 +1046,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
+ "crossterm",
  "dirs",
  "ignore",
  "indicatif",

@@ -511,14 +511,15 @@ fn test_graph_output() {
         .assert()
         .success();
 
-    // Generate graph
+    // Generate graph (default is ASCII format)
     let mut cmd = create_lash_command();
     cmd.arg("--root")
         .arg(temp.path())
         .arg("graph")
         .assert()
         .success()
-        .stdout(predicate::str::contains("digraph").or(predicate::str::contains("graph")));
+        // ASCII format uses box-drawing characters and checkboxes
+        .stdout(predicate::str::contains("───").or(predicate::str::contains("[ ]")));
 }
 
 #[test]
@@ -950,11 +951,13 @@ fn test_playground_full_workflow() {
         .success()
         .stdout(predicate::str::contains("Player Movement"));
 
-    // 5. Generate dependency graph
+    // 5. Generate dependency graph (explicitly request DOT format for .dot file)
     let graph_output = playground_path.join("graph.dot");
     create_lash_command()
         .current_dir(&playground_path)
         .arg("graph")
+        .arg("--format")
+        .arg("dot")
         .arg("--output")
         .arg(&graph_output)
         .assert()

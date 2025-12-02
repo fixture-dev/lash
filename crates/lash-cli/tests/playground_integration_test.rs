@@ -344,12 +344,14 @@ fn test_playground_graph_export() {
         .assert()
         .success();
 
-    // Export graph
+    // Export graph (explicitly request DOT format)
     let graph_output = playground_path.join("graph.dot");
     Command::cargo_bin("lash")
         .unwrap()
         .current_dir(&playground_path)
         .arg("graph")
+        .arg("--format")
+        .arg("dot")
         .arg("--output")
         .arg(&graph_output)
         .assert()
