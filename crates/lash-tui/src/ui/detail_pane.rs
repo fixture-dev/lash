@@ -28,8 +28,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         format!(" Tasks [#{label}] ")
     } else {
         state
-            .selected_file()
-            .map_or_else(|| " Tasks ".to_string(), |f| format!(" {} ", f.title))
+            .selected_file_title()
+            .map_or_else(|| " Tasks ".to_string(), |t| format!(" {t} "))
     };
 
     let block = Block::default()

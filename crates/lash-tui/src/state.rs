@@ -529,6 +529,28 @@ impl AppState {
         self.files.get(self.selected_file_index)
     }
 
+    /// Get the title of the currently selected file in the navigation pane.
+    ///
+    /// When in tree view mode, this returns the title from the selected tree node
+    /// (which correctly maps to the visual selection). Falls back to the flat
+    /// file list if tree view is not available.
+    #[must_use]
+    pub fn selected_file_title(&self) -> Option<String> {
+        // In tree view mode, get title from the selected tree node
+        if let Some(node) = self.selected_tree_node() {
+            if let Some(file) = node.file_record {
+                return Some(file.title);
+            }
+            // Directory nodes don't have a meaningful title for detail pane
+            return None;
+        }
+
+        // Fall back to flat file list
+        self.files
+            .get(self.selected_file_index)
+            .map(|f| f.title.clone())
+    }
+
     /// Get the selected node from the file tree view
     ///
     /// Returns the node at the current `selected_file_index` position in the
