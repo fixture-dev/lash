@@ -340,6 +340,38 @@ pub enum Commands {
         #[arg(long)]
         list: bool,
     },
+
+    /// Manage configuration settings
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
+    },
+}
+
+/// Configuration subcommands
+#[derive(Subcommand, Debug, Clone)]
+pub enum ConfigCommand {
+    /// Get a configuration value
+    Get {
+        /// The configuration key (e.g., `output.default_format`, `linter.max_depth`)
+        key: String,
+    },
+    /// Set a configuration value
+    Set {
+        /// The configuration key
+        key: String,
+        /// The value to set
+        value: String,
+        /// Write to user config (~/.config/lash/config.toml) instead of project config
+        #[arg(long)]
+        user: bool,
+    },
+    /// List all configuration settings
+    List {
+        /// Show only values that differ from defaults
+        #[arg(long)]
+        changed: bool,
+    },
 }
 
 /// Playground subcommands
