@@ -260,7 +260,7 @@ pub enum Commands {
     /// Output dependency graph in various formats
     Graph {
         /// Output format
-        #[arg(long, value_enum, default_value = "dot")]
+        #[arg(long, value_enum, default_value = "ascii")]
         format: GraphFormat,
 
         /// Scope to specific path or label
@@ -418,8 +418,13 @@ pub enum OutputFormat {
 /// Graph output formats
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum GraphFormat {
+    /// ASCII/Unicode box-drawing format for terminal display (default)
+    Ascii,
+    /// Graphviz DOT format
     Dot,
+    /// Mermaid diagram format
     Mermaid,
+    /// JSON format for programmatic access
     Json,
 }
 

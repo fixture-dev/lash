@@ -418,6 +418,7 @@ fn run(cli: LashCli) -> Result<()> {
                 commands::graph::GraphFormat::Json
             } else {
                 match format {
+                    lash_cli::cli::GraphFormat::Ascii => commands::graph::GraphFormat::Ascii,
                     lash_cli::cli::GraphFormat::Dot => commands::graph::GraphFormat::Dot,
                     lash_cli::cli::GraphFormat::Mermaid => commands::graph::GraphFormat::Mermaid,
                     lash_cli::cli::GraphFormat::Json => commands::graph::GraphFormat::Json,

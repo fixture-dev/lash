@@ -12,13 +12,19 @@ use lash_types::error::LashError;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::commands::ascii_graph::AsciiGraphRenderer;
 use crate::utils::file_discovery::find_project_root;
 
 /// Output format for graph export
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GraphFormat {
+    /// ASCII/Unicode box-drawing format for terminal display
+    Ascii,
+    /// Graphviz DOT format
     Dot,
+    /// Mermaid diagram format
     Mermaid,
+    /// JSON format
     Json,
 }
 
@@ -122,11 +128,23 @@ pub fn execute(args: &GraphArgs) -> Result<i32> {
     let filter_options = build_filter_options(args);
 
     // Export graph in requested format
-    let exporter = GraphExporter::new(&graph);
     let output_text = match args.format {
-        GraphFormat::Dot => exporter.to_dot(&filter_options),
-        GraphFormat::Mermaid => export_mermaid(&exporter, &filter_options),
-        GraphFormat::Json => exporter.to_json(&filter_options),
+        GraphFormat::Ascii => {
+            let renderer = AsciiGraphRenderer::new(&graph, args.theme.as_ref());
+            renderer.render(&filter_options)
+        }
+        GraphFormat::Dot => {
+            let exporter = GraphExporter::new(&graph);
+            exporter.to_dot(&filter_options)
+        }
+        GraphFormat::Mermaid => {
+            let exporter = GraphExporter::new(&graph);
+            export_mermaid(&exporter, &filter_options)
+        }
+        GraphFormat::Json => {
+            let exporter = GraphExporter::new(&graph);
+            exporter.to_json(&filter_options)
+        }
     };
 
     // Write output to file or stdout
