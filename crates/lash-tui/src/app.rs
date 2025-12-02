@@ -305,6 +305,14 @@ impl TuiApp {
                                 })?;
                                 self.state.selected_task_index = 0;
                                 self.state.build_task_tree();
+
+                                // Update selected_file_index to match the selected file
+                                if let Some(file_index) =
+                                    self.state.files.iter().position(|f| f.id == file.id)
+                                {
+                                    self.state.selected_file_index = file_index;
+                                }
+
                                 self.state.switch_pane();
                             }
                         } else {
