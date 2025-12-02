@@ -831,9 +831,9 @@ fn apply_fixes_to_file(
 
 /// Apply auto-fixes to files
 ///
-/// This function uses the FixApplicator to apply per-rule fixes and the
-/// ErrorValidator to verify that fixes were successful. It iterates up to
-/// MAX_FIX_ITERATIONS times to handle cascading fixes.
+/// This function uses the `FixApplicator` to apply per-rule fixes and the
+/// `ErrorValidator` to verify that fixes were successful. It iterates up to
+/// `MAX_FIX_ITERATIONS` times to handle cascading fixes.
 ///
 /// When `interactive` is true and stdin is a TTY, prompts the user before
 /// applying fixes to each file.
