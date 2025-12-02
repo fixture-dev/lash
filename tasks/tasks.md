@@ -4,10 +4,10 @@ This directory contains the comprehensive task breakdown for implementing Lash v
 
 ## Project Status
 
-**Current Phase:** Phase 4 - Dependencies & Queries
+**Current Phase:** Phase 8 - Testing & Documentation
 **Target:** v1.0 Production Release
 **Estimated Duration:** 40-60 days (8-13 weeks)
-**Completed:** Project Setup, Core Data Model, Error Handling, Markdown Parser, Linter & Formatter, SQLite Schema, Indexing, Dependency Resolution
+**Completed:** Project Setup, Core Data Model, Error Handling, Markdown Parser, Linter & Formatter, SQLite Schema, Indexing, Dependency Resolution, CLI Framework, CLI Commands, Fuzzy Search, Agent Integration, TUI, Testing
 
 ## Task Organization
 
@@ -37,7 +37,7 @@ Tasks are organized by major module/component. Each task file contains:
 
 ### CLI & Commands
 - [x] [tasks.cli-framework.md](tasks.cli-framework.md) - CLI infrastructure, output formatting, progress reporting (Tasks 1-8 complete) ✅
-- [x] [tasks.cli-commands.md](tasks.cli-commands.md) - Individual command implementations: lint, format, index, check-index, list, show (Tasks 1-6 complete) ✅
+- [x] [tasks.cli-commands.md](tasks.cli-commands.md) - Individual command implementations: lint, format, index, check-index, list, show, search, graph, check-links, agent-prompt (Tasks 1-14 complete) ✅
 - [x] [tasks.fuzzy-search.md](tasks.fuzzy-search.md) - Full-text search, ranking, search command (Tasks 1-5 complete) ✅
 
 ### User Interfaces
@@ -52,14 +52,15 @@ Tasks are organized by major module/component. Each task file contains:
 
 ## Implementation Phases
 
-### Phase 1: Foundation (Weeks 1-2)
+### Phase 1: Foundation (Weeks 1-2) - COMPLETE ✅
 **Goal:** Set up project infrastructure and core data model
 
-1. tasks.project-setup (ALL)
-2. tasks.core-data-model (ALL)
-3. tasks.error-handling#1
+1. ✅ tasks.project-setup (ALL) - Complete
+2. ✅ tasks.core-data-model (ALL) - Complete
+3. ✅ tasks.error-handling#1 - Complete
 
 **Deliverable:** Compiling project with core types; can create tasks programmatically
+**Status:** Complete. Project infrastructure established with 6 crates, error taxonomy, and core data model.
 
 ### Phase 2: Core Functionality (Weeks 3-5) - COMPLETE ✅
 **Goal:** Parse Markdown files and implement linting/validation
@@ -91,15 +92,15 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** Can query tasks; dependency resolution works
 **Status:** Complete. All core CLI commands implemented with 862 tests passing. Dependency resolution (495 tests), CLI framework (626 tests), and command implementations (1,056 total tests across all crates) all working.
 
-### Phase 5: Search & Advanced Commands (Weeks 9-10) - IN PROGRESS ⚙️
+### Phase 5: Search & Advanced Commands (Weeks 9-10) - COMPLETE ✅
 **Goal:** Fuzzy search; additional features
 
 1. ✅ tasks.fuzzy-search (ALL) - Complete
-2. tasks.cli-commands#7-9
-3. tasks.dependency-resolution#4-5
+2. ✅ tasks.cli-commands#7-14 (search, graph, check-links, agent-prompt, advanced features) - Complete
+3. ✅ tasks.dependency-resolution#4-5 - Complete
 
 **Deliverable:** All core CLI commands functional
-**Status:** Fuzzy search complete (Tasks 1-5). Full-text search with FTS5 implemented with filter support. Search performance exceeds targets by 50-100x. 697 total tests passing.
+**Status:** Complete. All advanced commands implemented including search (FTS5), graph (ASCII/DOT/Mermaid/JSON), check-links with fuzzy fix suggestions. 1,604+ total tests passing.
 
 ### Phase 6: Agent Integration (Week 11) - COMPLETE ✅
 **Goal:** Make Lash usable by AI agents
@@ -110,22 +111,22 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** Agents can use Lash effectively
 **Status:** Complete. Agent integration production-ready with schema generation, prompt templates, token minimization, sparse context generation, `lash agent-prompt` command, and comprehensive workflow documentation. 40 tests + 22 doctests passing.
 
-### Phase 7: TUI (Week 12)
+### Phase 7: TUI (Week 12) - COMPLETE ✅
 **Goal:** Terminal UI for interactive use
 
-1. tasks.tui (ALL)
+1. ✅ tasks.tui (ALL) - Complete (Task 5 Agent View deferred to future)
 
 **Deliverable:** `lash tui` command provides interactive interface
+**Status:** Complete. Full TUI with navigation pane, detail view, search modal, label filter, theme selector (300+ Gogh schemes), tree view with expand/collapse. Task 5 (Agent View Mode) deferred intentionally.
 
-### Phase 8: Testing & Documentation (Week 13)
+### Phase 8: Testing & Documentation (Week 13) - IN PROGRESS ⚙️
 **Goal:** Polish and prepare for release
 
-1. tasks.testing#1, #4
-2. tasks.documentation#1, #4
-3. tasks.testing#2
-4. tasks.documentation#2-3
+1. ✅ tasks.testing (ALL) - Complete
+2. tasks.documentation#1-8 - Not started
 
 **Deliverable:** Production-ready v1.0 release
+**Status:** Testing complete with 1,604+ tests, >80% coverage, CI/CD configured. Documentation tasks not yet started.
 
 ## Critical Path
 
@@ -147,20 +148,20 @@ Parallelization opportunities exist within each phase (see individual task files
 - ✅ Full dependency resolution and cycle detection
 - ✅ `lash list`, `lash show` commands work
 - ✅ `lash search` command with full-text search and filters
-- [ ] `lash graph` exports dependency graph
+- ✅ `lash graph` exports dependency graph (ASCII, DOT, Mermaid, JSON formats)
 - ✅ Agent integration (`lash agent-prompt`)
 - ✅ Comprehensive test coverage (>80%)
 - [ ] User documentation
 
 ### Should Have
-- ✅ TUI for interactive use (Tasks 1-4, 6-7 complete; Task 5 deferred)
+- ✅ TUI for interactive use (Tasks 1-4, 6-10 complete; Task 5 Agent View deferred)
 - ✅ Incremental indexing
 - ✅ Auto-formatting
 - ✅ Performance benchmarks
 
 ### Nice to Have
-- ⚠️ Advanced agent views
-- ⚠️ Fuzzy link fixing
+- ⚠️ Advanced agent views (deferred to future)
+- ✅ Fuzzy link fixing (`check-links --fix` with suggestions)
 - ⚠️ Archive command
 
 ## Supporting Documentation
