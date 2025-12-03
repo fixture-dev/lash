@@ -46,6 +46,9 @@ Tasks are organized by major module/component. Each task file contains:
 ### Advanced Features
 - [x] [tasks.agent-integration.md](tasks.agent-integration.md) - Agent prompts, token minimization (Tasks 1-6 complete) ✅
 
+### Content Features
+- [ ] [tasks.description-section.md](tasks.description-section.md) - `## Description` section support (parser, linter, schema, indexing, search)
+
 ### Quality & Documentation
 - [x] [tasks.testing.md](tasks.testing.md) - Test strategy, integration tests, benchmarks, CI/CD (Tasks 1-9 complete) ✅
 - [ ] [tasks.documentation.md](tasks.documentation.md) - User guide, developer docs, examples, README
@@ -128,6 +131,14 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** Production-ready v1.0 release
 **Status:** Testing complete with 1,604+ tests, >80% coverage, CI/CD configured. Documentation tasks not yet started.
 
+### Phase 9: Content Features (Week 14) - NOT STARTED
+**Goal:** Add description section feature for richer file context
+
+1. tasks.description-section#1-8 (design doc, parser, linter, schema, indexing, search, CLI, TUI)
+
+**Deliverable:** Task files support optional `## Description` section with length validation and full-text search
+**Status:** Not started. Feature specification defined.
+
 ## Critical Path
 
 The following tasks form the critical path and must be completed in order:
@@ -163,6 +174,7 @@ Parallelization opportunities exist within each phase (see individual task files
 - ⚠️ Advanced agent views (deferred to future)
 - ✅ Fuzzy link fixing (`check-links --fix` with suggestions)
 - ⚠️ Archive command
+- [ ] `## Description` section for task files (inline context for humans/agents)
 
 ## Supporting Documentation
 
