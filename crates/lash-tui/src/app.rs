@@ -277,9 +277,19 @@ impl TuiApp {
             .get_dependencies(task.id)
             .map_err(|e| TuiError::App(format!("Failed to get dependencies: {e}")))?;
 
+        // Get subtasks (direct children) for this task
+        let subtasks = TaskRepository::new(&self.conn)
+            .get_children(task.id)
+            .map_err(|e| TuiError::App(format!("Failed to get subtasks: {e}")))?;
+
         // Open the task detail view
-        self.state
-            .open_task_detail(task.clone(), file_record.path, labels, dependencies);
+        self.state.open_task_detail(
+            task.clone(),
+            file_record.path,
+            labels,
+            dependencies,
+            subtasks,
+        );
 
         Ok(())
     }

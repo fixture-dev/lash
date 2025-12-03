@@ -141,6 +141,9 @@ pub struct TaskDetailState {
     /// Dependencies (tasks this task depends on)
     pub dependencies: Vec<DependencyRecord>,
 
+    /// Direct child tasks (subtasks)
+    pub subtasks: Vec<TaskRecord>,
+
     /// Total content height for scroll bounds
     pub content_height: usize,
 }
@@ -478,6 +481,7 @@ impl AppState {
         file_path: PathBuf,
         labels: Vec<String>,
         dependencies: Vec<DependencyRecord>,
+        subtasks: Vec<TaskRecord>,
     ) {
         self.task_detail_state = Some(TaskDetailState {
             task,
@@ -485,6 +489,7 @@ impl AppState {
             scroll_offset: 0,
             labels,
             dependencies,
+            subtasks,
             content_height: 0, // Will be calculated during rendering
         });
     }
