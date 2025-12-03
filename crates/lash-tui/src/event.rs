@@ -240,7 +240,7 @@ fn handle_key_event(key: KeyEvent) -> AppEvent {
         (KeyCode::Char('F'), KeyModifiers::SHIFT) => AppEvent::LabelFilter,
         (KeyCode::Char('c'), KeyModifiers::NONE) => AppEvent::ClearFilters,
         (KeyCode::Char('g'), KeyModifiers::CONTROL) => AppEvent::DependencyGraph,
-        (KeyCode::Char('?'), KeyModifiers::SHIFT) => AppEvent::Help,
+        (KeyCode::Char('?'), _) => AppEvent::Help,
         (KeyCode::Char('t'), KeyModifiers::NONE) => AppEvent::OpenThemeSelector,
         (KeyCode::Esc, _) => AppEvent::CloseThemeSelector,
 
