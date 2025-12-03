@@ -60,6 +60,9 @@ fn build_content_lines(
     // Description section
     add_description_section(&mut content_lines, state, detail_state);
 
+    // Subtasks section
+    add_subtasks_section(&mut content_lines, state, detail_state);
+
     // Dependencies section
     add_dependencies_section(&mut content_lines, state, detail_state);
 
@@ -243,6 +246,38 @@ fn add_dependencies_section(
                 format!("({kind_str})"),
                 Style::default().fg(state.theme.muted_color()),
             ),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+}
+
+/// Add subtasks section
+fn add_subtasks_section(
+    lines: &mut Vec<Line<'static>>,
+    state: &AppState,
+    detail_state: &crate::state::TaskDetailState,
+) {
+    if detail_state.subtasks.is_empty() {
+        return;
+    }
+
+    lines.push(Line::from(vec![Span::styled(
+        "Subtasks",
+        Style::default()
+            .fg(state.theme.info_color())
+            .add_modifier(Modifier::BOLD),
+    )]));
+
+    for subtask in &detail_state.subtasks {
+        let checkbox = state.theme.checkbox_char(subtask.status);
+        let status_style = state.theme.task_status_style(subtask.status);
+
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(checkbox.to_string(), status_style),
+            Span::raw(" "),
+            Span::styled(subtask.title.clone(), status_style),
         ]));
     }
 
