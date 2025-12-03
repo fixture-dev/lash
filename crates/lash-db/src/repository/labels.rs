@@ -281,13 +281,21 @@ impl<'conn> LabelRepository<'conn> {
 
     /// Get label statistics
     ///
+    /// Returns task counts that include both direct task labels AND tasks
+    /// that inherit the label from their file (matching `find_by_label` behavior).
+    ///
     /// # Errors
     ///
     /// Returns error if query fails
     pub fn get_label_stats(&self) -> DbResult<Vec<LabelStats>> {
         let mut stmt = self.conn.prepare(
             "SELECT l.name,
-                    (SELECT COUNT(*) FROM task_labels tl WHERE tl.label_id = l.id) as task_count,
+                    (SELECT COUNT(DISTINCT t.id)
+                     FROM tasks t
+                     JOIN files f ON t.file_id = f.id
+                     LEFT JOIN task_labels tl ON t.id = tl.task_id AND tl.label_id = l.id
+                     LEFT JOIN file_labels fl ON f.id = fl.file_id AND fl.label_id = l.id
+                     WHERE tl.label_id IS NOT NULL OR fl.label_id IS NOT NULL) as task_count,
                     (SELECT COUNT(*) FROM file_labels fl WHERE fl.label_id = l.id) as file_count
              FROM labels l
              ORDER BY l.name",
@@ -517,8 +525,9 @@ mod tests {
         assert_eq!(backend_stats.task_count, 2);
         assert_eq!(backend_stats.file_count, 0);
 
+        // docs is a file label - tasks in the file inherit it, so task_count = 2
         let docs_stats = stats.iter().find(|s| s.name == "docs").unwrap();
-        assert_eq!(docs_stats.task_count, 0);
+        assert_eq!(docs_stats.task_count, 2);
         assert_eq!(docs_stats.file_count, 1);
     }
 }
