@@ -10,7 +10,7 @@ mod app;
 pub mod colors;
 mod error;
 mod event;
-mod state;
+pub mod state;
 mod terminal;
 mod ui;
 
