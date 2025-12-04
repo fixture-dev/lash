@@ -5,6 +5,30 @@ expression: normalized
 ┓    ┓
 ┃ ┏┓┏┣┓
 ┗┛┗┻┛┛┗
+─── medium-project 
+├── [ ] API docs
+│   └── [ ] Documentation #docs
+├── [x] Database schema
+│   └── [ ] Backend development #backend
+│       ├── [ ] API implementation
+│       │   └── (cycle)
+│       └── [ ] Backend tests
+│           └── (cycle)
+├── [ ] Production deployment
+│   └── [ ] Deployment #ops
+├── [ ] Staging environment
+│   └── [ ] Deployment #ops
+├── [ ] State management
+│   └── [ ] Frontend development #frontend
+│       └── [ ] Frontend tests
+│           └── (cycle)
+├── [ ] UI components
+│   └── [ ] Frontend development #frontend
+│       └── [ ] Frontend tests
+│           └── (cycle)
+└── [ ] User guide
+    └── [ ] Documentation #docs
+
 ─── backend.api 
 ├── [ ] Example requests
 │   └── [ ] Add API documentation #docs
@@ -182,27 +206,3 @@ expression: normalized
 │           └── (cycle)
 └── [ ] Visual regression
     └── [ ] Visual tests #visual-testing
-
-─── medium-project 
-├── [ ] API docs
-│   └── [ ] Documentation #docs
-├── [x] Database schema
-│   └── [ ] Backend development #backend
-│       ├── [ ] API implementation
-│       │   └── (cycle)
-│       └── [ ] Backend tests
-│           └── (cycle)
-├── [ ] Production deployment
-│   └── [ ] Deployment #ops
-├── [ ] Staging environment
-│   └── [ ] Deployment #ops
-├── [ ] State management
-│   └── [ ] Frontend development #frontend
-│       └── [ ] Frontend tests
-│           └── (cycle)
-├── [ ] UI components
-│   └── [ ] Frontend development #frontend
-│       └── [ ] Frontend tests
-│           └── (cycle)
-└── [ ] User guide
-    └── [ ] Documentation #docs

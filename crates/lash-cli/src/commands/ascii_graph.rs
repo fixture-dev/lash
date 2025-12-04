@@ -198,14 +198,15 @@ impl<'a> AsciiGraphRenderer<'a> {
         nodes
     }
 
-    /// Check if a `file_id` corresponds to an index file
+    /// Check if any node in a list belongs to an index file
     ///
-    /// Index files are identified by `file_ids` that:
-    /// - Equal "lash.index" or "index.lash" (from lash.index.md or index.lash.md)
-    /// - Or are derived from files with explicit @id annotations in index files
-    fn is_index_file(file_id: &str) -> bool {
-        // Direct index file patterns
-        file_id == "lash.index" || file_id == "index.lash"
+    /// Index files are `lash.index.md` or `index.lash.md`
+    fn has_index_file_node(&self, node_ids: &[String]) -> bool {
+        node_ids.iter().any(|id| {
+            self.graph
+                .get_node(id)
+                .is_some_and(NodeData::is_from_index_file)
+        })
     }
 
     /// Group nodes by file ID, with index files sorted first
@@ -228,15 +229,15 @@ impl<'a> AsciiGraphRenderer<'a> {
             node_list.sort();
         }
 
-        // Separate index files from regular files
+        // Separate index files from regular files by checking source_path
         let mut index_files: Vec<(String, Vec<String>)> = Vec::new();
         let mut regular_files: Vec<(String, Vec<String>)> = Vec::new();
 
-        for (file_id, nodes) in groups {
-            if Self::is_index_file(&file_id) {
-                index_files.push((file_id, nodes));
+        for (file_id, node_list) in groups {
+            if self.has_index_file_node(&node_list) {
+                index_files.push((file_id, node_list));
             } else {
-                regular_files.push((file_id, nodes));
+                regular_files.push((file_id, node_list));
             }
         }
 
@@ -395,7 +396,7 @@ impl<'a> AsciiGraphRenderer<'a> {
     /// applies colorization to the title using the theme.
     fn render_node(&self, node: &NodeData) -> String {
         let checkbox = self.render_checkbox(node.status);
-        let is_index = Self::is_index_file(&node.file_id);
+        let is_index = node.is_from_index_file();
 
         // For index files, extract link text and colorize
         let title = if is_index {
@@ -610,6 +611,16 @@ mod tests {
         NodeData::new(title.to_string(), status, file_id.to_string(), 0)
     }
 
+    fn create_test_node_with_path(
+        title: &str,
+        status: TaskStatus,
+        file_id: &str,
+        source_path: &str,
+    ) -> NodeData {
+        NodeData::new(title.to_string(), status, file_id.to_string(), 0)
+            .with_source_path(source_path.to_string())
+    }
+
     #[test]
     fn test_empty_graph() {
         let graph = DependencyGraph::new();
@@ -799,15 +810,31 @@ mod tests {
     }
 
     #[test]
-    fn test_is_index_file() {
-        // Should identify index file patterns
-        assert!(AsciiGraphRenderer::is_index_file("lash.index"));
-        assert!(AsciiGraphRenderer::is_index_file("index.lash"));
+    fn test_is_from_index_file() {
+        // Should identify index file patterns by source path
+        let node1 =
+            create_test_node_with_path("Task", TaskStatus::Open, "pixelquest", "lash.index.md");
+        assert!(node1.is_from_index_file());
+
+        let node2 =
+            create_test_node_with_path("Task", TaskStatus::Open, "project", "index.lash.md");
+        assert!(node2.is_from_index_file());
+
+        // Nested paths should also work
+        let node3 =
+            create_test_node_with_path("Task", TaskStatus::Open, "sub", "subdir/lash.index.md");
+        assert!(node3.is_from_index_file());
 
         // Should not identify regular files
-        assert!(!AsciiGraphRenderer::is_index_file("tasks"));
-        assert!(!AsciiGraphRenderer::is_index_file("core.api"));
-        assert!(!AsciiGraphRenderer::is_index_file("index")); // Not lash.index or index.lash
+        let node4 = create_test_node_with_path("Task", TaskStatus::Open, "tasks", "tasks.md");
+        assert!(!node4.is_from_index_file());
+
+        let node5 = create_test_node_with_path("Task", TaskStatus::Open, "core.api", "core/api.md");
+        assert!(!node5.is_from_index_file());
+
+        // Node without source path should not be identified as index file
+        let node6 = create_test_node("Task", TaskStatus::Open, "test");
+        assert!(!node6.is_from_index_file());
     }
 
     #[test]
@@ -847,55 +874,66 @@ mod tests {
     fn test_index_files_sorted_first() {
         let mut graph = DependencyGraph::new();
 
-        // Add regular file tasks
+        // Add regular file tasks (with source paths)
         graph.add_node(
             "alpha#task1".to_string(),
-            create_test_node("Alpha Task", TaskStatus::Open, "alpha"),
+            create_test_node_with_path("Alpha Task", TaskStatus::Open, "alpha", "alpha.md"),
         );
         graph.add_node(
             "zebra#task1".to_string(),
-            create_test_node("Zebra Task", TaskStatus::Open, "zebra"),
+            create_test_node_with_path("Zebra Task", TaskStatus::Open, "zebra", "zebra.md"),
         );
 
-        // Add index file tasks
+        // Add index file tasks (with source paths to index files)
         graph.add_node(
-            "lash.index#main".to_string(),
-            create_test_node("[Core](core.md)", TaskStatus::Open, "lash.index"),
+            "pixelquest#main".to_string(),
+            create_test_node_with_path(
+                "[Core](core.md)",
+                TaskStatus::Open,
+                "pixelquest",
+                "lash.index.md",
+            ),
         );
         graph.add_node(
-            "index.lash#secondary".to_string(),
-            create_test_node("[Secondary](secondary.md)", TaskStatus::Open, "index.lash"),
+            "myproject#secondary".to_string(),
+            create_test_node_with_path(
+                "[Secondary](secondary.md)",
+                TaskStatus::Open,
+                "myproject",
+                "index.lash.md",
+            ),
         );
 
         let renderer = AsciiGraphRenderer::new(&graph, None);
         let output = renderer.render(&FilterOptions::default());
 
-        // Find positions of file headers
-        let index_lash_pos = output.find("index.lash");
-        let lash_index_pos = output.find("lash.index");
+        // Find positions of file headers (using file_id, not filename)
+        let myproject_pos = output.find("myproject");
+        let pixelquest_pos = output.find("pixelquest");
         let alpha_pos = output.find("alpha");
         let zebra_pos = output.find("zebra");
 
         // Index files should appear first
-        assert!(index_lash_pos.is_some());
-        assert!(lash_index_pos.is_some());
+        assert!(myproject_pos.is_some());
+        assert!(pixelquest_pos.is_some());
         assert!(alpha_pos.is_some());
         assert!(zebra_pos.is_some());
 
         // Both index files should come before regular files
-        assert!(index_lash_pos.unwrap() < alpha_pos.unwrap());
-        assert!(lash_index_pos.unwrap() < alpha_pos.unwrap());
+        assert!(myproject_pos.unwrap() < alpha_pos.unwrap());
+        assert!(pixelquest_pos.unwrap() < alpha_pos.unwrap());
     }
 
     #[test]
     fn test_index_task_link_extraction() {
         let mut graph = DependencyGraph::new();
         graph.add_node(
-            "lash.index#core".to_string(),
-            create_test_node(
+            "pixelquest#core".to_string(),
+            create_test_node_with_path(
                 "[Core Module](core/module.md)",
                 TaskStatus::Open,
-                "lash.index",
+                "pixelquest",
+                "lash.index.md",
             ),
         );
 
@@ -912,11 +950,12 @@ mod tests {
     fn test_index_task_with_labels() {
         let mut graph = DependencyGraph::new();
         graph.add_node(
-            "lash.index#core".to_string(),
-            create_test_node(
+            "pixelquest#core".to_string(),
+            create_test_node_with_path(
                 "[Core API](core.md) #backend #p1",
                 TaskStatus::Open,
-                "lash.index",
+                "pixelquest",
+                "lash.index.md",
             ),
         );
 

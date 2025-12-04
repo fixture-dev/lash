@@ -394,6 +394,9 @@ pub struct NodeData {
 
     /// Nesting depth (0 = top-level)
     pub depth: u8,
+
+    /// Source file path (relative to project root)
+    pub source_path: Option<String>,
 }
 
 impl NodeData {
@@ -405,7 +408,27 @@ impl NodeData {
             status,
             file_id,
             depth,
+            source_path: None,
         }
+    }
+
+    /// Set the source path for this node
+    #[must_use]
+    pub fn with_source_path(mut self, path: String) -> Self {
+        self.source_path = Some(path);
+        self
+    }
+
+    /// Check if this node is from an index file (lash.index.md or index.lash.md)
+    #[must_use]
+    pub fn is_from_index_file(&self) -> bool {
+        self.source_path.as_ref().is_some_and(|p| {
+            let filename = std::path::Path::new(p)
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or("");
+            filename == "lash.index.md" || filename == "index.lash.md"
+        })
     }
 }
 
