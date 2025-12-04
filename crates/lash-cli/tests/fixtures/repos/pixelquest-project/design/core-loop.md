@@ -5,7 +5,11 @@
 @labels: design, gameplay, p0
 @created: 2024-01-15
 
-Core gameplay mechanics, pacing, and player experience design.
+## Description
+
+Core gameplay mechanics, pacing, and player experience design. The loop follows Explore → Fight → Collect → Progress with target session lengths of 20-30 minutes.
+
+@agent-note: Skill check placement is critical for pacing. Secret areas reward exploration without blocking main progression.
 
 ## Tasks
 

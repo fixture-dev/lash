@@ -5,7 +5,11 @@
 @labels: backend, audio, p1
 @created: 2024-01-15
 
-Sound engine for music playback, sound effects, and spatial audio.
+## Description
+
+Sound engine for music playback, sound effects, and spatial audio. Supports OGG and WAV formats with a flexible mixer for layered audio.
+
+@agent-note: Dynamic music layers are stretch goal - focus on crossfade transitions first for smooth level transitions.
 
 ## Tasks
 

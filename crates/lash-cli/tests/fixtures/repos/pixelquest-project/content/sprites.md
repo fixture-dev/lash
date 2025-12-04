@@ -5,7 +5,11 @@
 @labels: art, sprites, p0
 @created: 2024-01-15
 
-Character sprites, tile sets, UI elements, and visual assets.
+## Description
+
+Character sprites, tile sets, UI elements, and visual assets. All sprites use a consistent 16x16 pixel grid with a limited retro color palette.
+
+@agent-note: Tilesets should be completed before level design tasks. Enemy sprites should match their AI behavior patterns.
 
 ## Tasks
 

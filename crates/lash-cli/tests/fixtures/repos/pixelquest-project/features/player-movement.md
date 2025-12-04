@@ -5,7 +5,11 @@
 @labels: backend, gameplay, p0
 @created: 2024-01-15
 
-Core player movement mechanics including physics, controls, animations, and special moves.
+## Description
+
+Core player movement mechanics including physics, controls, animations, and special moves. The movement system prioritizes responsive controls and "game feel" with features like coyote time and jump buffering.
+
+@agent-note: Movement polish tasks (coyote time, buffering) are lower priority but critical for player satisfaction. Consider these before release.
 
 ## Tasks
 

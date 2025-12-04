@@ -8,7 +8,11 @@
 @depends-on: systems/rendering.md
 @created: 2024-01-15
 
-Alpha release: core gameplay loop playable from start to finish.
+## Description
+
+Alpha release: core gameplay loop playable from start to finish. Focus is on validating game feel and core mechanics before expanding content.
+
+@agent-note: Alpha is feature-complete for core gameplay. All remaining work should be bug fixes and polish within existing systems.
 
 ## Tasks
 

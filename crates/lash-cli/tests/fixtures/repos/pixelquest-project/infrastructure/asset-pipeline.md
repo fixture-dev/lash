@@ -5,7 +5,11 @@
 @labels: tooling, assets, p1
 @created: 2024-01-15
 
-Automated asset import, optimization, and conversion.
+## Description
+
+Automated asset import, optimization, and conversion. Converts source assets into optimized formats for each build target.
+
+@agent-note: Texture atlases are generated from sprite sheets automatically. Audio should be normalized before OGG conversion.
 
 ## Tasks
 

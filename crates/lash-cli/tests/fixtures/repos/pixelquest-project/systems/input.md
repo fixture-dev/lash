@@ -5,7 +5,11 @@
 @labels: backend, input, p0
 @created: 2024-01-15
 
-Controller mapping, input buffering, and multi-device support.
+## Description
+
+Controller mapping, input buffering, and multi-device support. The abstraction layer allows seamless switching between keyboard and gamepad.
+
+@agent-note: Input buffering works with player movement's jump buffering - coordinate timing values between both systems.
 
 ## Tasks
 

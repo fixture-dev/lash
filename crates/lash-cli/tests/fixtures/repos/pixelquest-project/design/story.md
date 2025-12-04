@@ -5,7 +5,11 @@
 @labels: design, narrative, p2
 @created: 2024-01-15
 
-Game narrative, character backstory, and world building.
+## Description
+
+Game narrative, character backstory, and world building. Story is conveyed through environmental storytelling and brief cutscenes rather than extensive dialogue.
+
+@agent-note: NPC dialogue has been waived to focus on core gameplay. Story beats should be deliverable through visual storytelling.
 
 ## Tasks
 
