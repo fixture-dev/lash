@@ -24,7 +24,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let mut spans = vec![
         Span::styled(
             format!(" {focused_pane_name} "),
-            Style::default().fg(Color::Black).bg(Color::Cyan),
+            Style::default()
+                .fg(state.theme.background())
+                .bg(state.theme.border_focused()),
         ),
         Span::raw(format!("  Files: {file_count}  Tasks: {task_count}  ")),
     ];
