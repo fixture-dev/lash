@@ -34,6 +34,8 @@
 //!     tasks: TaskTree::new(),
 //!     hash: "hash".to_string(),
 //!     mtime: SystemTime::now(),
+//!     description: None,
+//!     description_agent_notes: Vec::new(),
 //! };
 //! let formatted = formatter.format_file(&file).unwrap();
 //! assert!(formatted.contains("# Test File"));
@@ -120,6 +122,8 @@ impl Formatter {
     /// #     tasks: TaskTree::new(),
     /// #     hash: "hash".to_string(),
     /// #     mtime: SystemTime::now(),
+    /// #     description: None,
+    /// #     description_agent_notes: Vec::new(),
     /// # };
     /// let formatted = formatter.format_file(&file).unwrap();
     /// assert!(formatted.contains("# Test File"));
@@ -139,10 +143,15 @@ impl Formatter {
         // 1. Format header (title, annotations, overview)
         self.format_header(&file, &mut output);
 
-        // 2. Format tasks section
+        // 2. Format description section (if present)
+        if file.description.is_some() {
+            Self::format_description(&file, &mut output);
+        }
+
+        // 3. Format tasks section
         self.format_tasks(&file, &mut output);
 
-        // 3. Format references section (if present)
+        // 4. Format references section (if present)
         // TODO: Implement once references are stored in TaskFile
 
         // 4. Normalize whitespace
@@ -278,6 +287,8 @@ impl Formatter {
             title: file.title.clone(),
             id: file.id.clone(),
             metadata: file.metadata.clone(),
+            description: file.description.clone(),
+            description_agent_notes: file.description_agent_notes.clone(),
             tasks: new_tree,
             hash: file.hash.clone(),
             mtime: file.mtime,
@@ -457,6 +468,18 @@ impl Formatter {
         }
     }
 
+    /// Format the description section
+    fn format_description(file: &TaskFile, output: &mut String) {
+        output.push_str("## Description\n");
+        output.push('\n');
+
+        if let Some(ref description) = file.description {
+            output.push_str(description);
+            output.push('\n');
+            output.push('\n');
+        }
+    }
+
     /// Format the tasks section
     fn format_tasks(&self, file: &TaskFile, output: &mut String) {
         output.push_str("## Tasks\n");
@@ -598,6 +621,8 @@ mod tests {
             title: "Test File".to_string(),
             id: "test".to_string(),
             metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
             tasks: tree,
             hash: "hash".to_string(),
             mtime: SystemTime::now(),

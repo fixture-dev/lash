@@ -50,6 +50,8 @@ fn test_db_inspector_file_operations() {
             mtime: SystemTime::now(),
             metadata: FileMetadata::default(),
             tasks: TaskTree::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
         })
         .unwrap();
 
@@ -62,6 +64,8 @@ fn test_db_inspector_file_operations() {
             mtime: SystemTime::now(),
             metadata: FileMetadata::default(),
             tasks: TaskTree::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
         })
         .unwrap();
 
@@ -97,6 +101,8 @@ fn test_assert_file_helpers() {
             mtime: SystemTime::now(),
             metadata: FileMetadata::default(),
             tasks: TaskTree::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
         })
         .unwrap();
 

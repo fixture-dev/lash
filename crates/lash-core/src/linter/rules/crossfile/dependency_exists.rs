@@ -313,6 +313,8 @@ mod tests {
             title: "Test File".to_string(),
             id: id.to_string(),
             metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
             tasks,
             hash: "test-hash".to_string(),
             mtime: SystemTime::now(),

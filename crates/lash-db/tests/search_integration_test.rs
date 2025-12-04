@@ -11,14 +11,15 @@ fn setup_test_db() -> (NamedTempFile, Connection) {
     let temp_file = NamedTempFile::new().unwrap();
     let conn = init_database(temp_file.path()).unwrap();
 
-    // Insert a test file
+    // Insert a test file (with description for description search tests)
     conn.execute(
-        "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO files (path, file_id, title, description, hash, mtime, status, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         (
             "tasks.md",
             "tasks",
             "Project Tasks",
+            "This file contains all the project tasks for the backend parser implementation",
             "hash1",
             1234567890_i64,
             "in_progress",
@@ -481,4 +482,161 @@ fn test_search_with_path_scope_filter() {
     assert_eq!(results.results.len(), 1);
     assert!(results.results[0].file_path.starts_with("core/"));
     assert_eq!(results.results[0].full_id, "core-tasks#core-parser");
+}
+
+#[test]
+fn test_search_by_description_content() {
+    let (_temp, conn) = setup_test_db();
+
+    // Search for text that only appears in the file description
+    let query = SearchQuery::new("implementation");
+    let results = search(&conn, &query).unwrap();
+
+    // Should find tasks in files with matching descriptions
+    assert!(!results.results.is_empty());
+
+    // Check that at least one result has "file_description" in matched_fields
+    let has_description_match = results
+        .results
+        .iter()
+        .any(|r| r.matched_fields.contains(&"file_description".to_string()));
+    assert!(
+        has_description_match,
+        "Expected at least one result to match the file description"
+    );
+}
+
+#[test]
+fn test_search_description_with_empty_description() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let conn = init_database(temp_file.path()).unwrap();
+
+    // Insert a file with empty description
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, description, hash, mtime, status, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        (
+            "empty-desc.md",
+            "empty-desc",
+            "Empty Description File",
+            "",
+            "hash1",
+            1234567890_i64,
+            "in_progress",
+            "{}",
+        ),
+    )
+    .unwrap();
+
+    let file_id = conn.last_insert_rowid();
+
+    // Insert a task
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6, '{}')",
+        (
+            file_id,
+            "task1",
+            "empty-desc#task1",
+            "Test Task",
+            "open",
+            "Body with searchable content",
+        ),
+    )
+    .unwrap();
+
+    // Search for content in body
+    let query = SearchQuery::new("searchable");
+    let results = search(&conn, &query).unwrap();
+
+    // Should find the task via body match, not description
+    assert_eq!(results.results.len(), 1);
+    assert!(results.results[0]
+        .matched_fields
+        .contains(&"body".to_string()));
+    assert!(!results.results[0]
+        .matched_fields
+        .contains(&"file_description".to_string()));
+}
+
+#[test]
+fn test_search_description_relevance_ranking() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let conn = init_database(temp_file.path()).unwrap();
+
+    // Insert two files: one with description match, one with title match
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, description, hash, mtime, status, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        (
+            "file1.md",
+            "file1",
+            "File One",
+            "Contains the unique word xylophone in the description",
+            "hash1",
+            1234567890_i64,
+            "in_progress",
+            "{}",
+        ),
+    )
+    .unwrap();
+    let file1_id = conn.last_insert_rowid();
+
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, description, hash, mtime, status, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        (
+            "file2.md",
+            "file2",
+            "Xylophone Tasks",
+            "This file has xylophone in the title",
+            "hash2",
+            1234567890_i64,
+            "in_progress",
+            "{}",
+        ),
+    )
+    .unwrap();
+    let file2_id = conn.last_insert_rowid();
+
+    // Insert tasks in both files
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6, '{}')",
+        (
+            file1_id,
+            "task1",
+            "file1#task1",
+            "Task One",
+            "open",
+            "Regular task body",
+        ),
+    )
+    .unwrap();
+
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6, '{}')",
+        (
+            file2_id,
+            "task2",
+            "file2#task2",
+            "Task Two",
+            "open",
+            "Another task body",
+        ),
+    )
+    .unwrap();
+
+    // Search for "xylophone"
+    let query = SearchQuery::new("xylophone");
+    let results = search(&conn, &query).unwrap();
+
+    // Should find both tasks
+    assert_eq!(results.results.len(), 2);
+
+    // The task from file2 (title match) should rank higher than file1 (description match)
+    // because title weight (3.0) > description weight (1.5)
+    assert_eq!(results.results[0].full_id, "file2#task2");
+    assert_eq!(results.results[1].full_id, "file1#task1");
 }

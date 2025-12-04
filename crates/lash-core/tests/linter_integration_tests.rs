@@ -37,6 +37,8 @@ fn make_test_file(path: &str, tasks: Vec<Task>) -> TaskFile {
         title: "Test File".to_string(),
         id: "test".to_string(),
         metadata: FileMetadata::default(),
+        description: None,
+        description_agent_notes: Vec::new(),
         tasks: tree,
         hash: "test-hash".to_string(),
         mtime: SystemTime::now(),

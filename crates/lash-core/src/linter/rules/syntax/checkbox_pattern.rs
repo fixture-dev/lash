@@ -127,6 +127,8 @@ mod tests {
             title: "Test".to_string(),
             id: "test".to_string(),
             metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
             tasks: TaskTree::new(),
             hash: "hash".to_string(),
             mtime: SystemTime::now(),

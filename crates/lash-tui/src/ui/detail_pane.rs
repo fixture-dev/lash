@@ -2,9 +2,10 @@
 
 use lash_db::repository::tasks::TaskRecord;
 use ratatui::{
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 
@@ -47,6 +48,18 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let paragraph = Paragraph::new(text).block(block);
         frame.render_widget(paragraph, area);
     } else {
+        // Check if we need to show description and split the area
+        let (description_area, tasks_area) = if should_show_description(state) {
+            split_area_for_description(area, state)
+        } else {
+            (None, area)
+        };
+
+        // Render description if we have one to show
+        if let Some(desc_area) = description_area {
+            render_description(frame, desc_area, state);
+        }
+
         // Check if tree view is available
         let items: Vec<ListItem> = if let Some(task_trees) = &state.task_tree {
             render_task_tree(task_trees, state, theme)
@@ -62,8 +75,173 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let mut list_state = ListState::default();
         list_state.select(Some(state.selected_task_index));
 
-        frame.render_stateful_widget(list, area, &mut list_state);
+        frame.render_stateful_widget(list, tasks_area, &mut list_state);
     }
+}
+
+/// Check if we should show the description section
+fn should_show_description(state: &AppState) -> bool {
+    // Only show description if we're viewing a single file (not a label filter)
+    // and the selected file has a non-empty description
+    if state.current_label_filter.is_some() {
+        return false;
+    }
+
+    if let Some(selected_node) = state.selected_tree_node() {
+        if let Some(file) = selected_node.file_record.as_ref() {
+            return !file.description.is_empty();
+        }
+    }
+
+    false
+}
+
+/// Split the area to make room for description above the tasks
+fn split_area_for_description(area: Rect, state: &AppState) -> (Option<Rect>, Rect) {
+    // Get the description to calculate how much space we need
+    let description = if let Some(selected_node) = state.selected_tree_node() {
+        selected_node
+            .file_record
+            .as_ref()
+            .map(|f| f.description.clone())
+    } else {
+        None
+    };
+
+    let Some(desc_text) = description else {
+        return (None, area);
+    };
+
+    // Calculate lines needed for description (limit to 5 lines for now)
+    // Each line is roughly 80 chars at typical terminal width
+    let lines_needed = calculate_lines_needed(&desc_text, area.width.saturating_sub(4) as usize);
+    let desc_height = lines_needed.clamp(2, 5); // Min 2 lines, max 5 lines
+
+    // Split vertically: description area + tasks area
+    #[allow(clippy::cast_possible_truncation)]
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(desc_height as u16 + 2), // +2 for borders
+            Constraint::Min(1),                         // Tasks area
+        ])
+        .split(area);
+
+    (Some(chunks[0]), chunks[1])
+}
+
+/// Calculate how many lines are needed to display text with wrapping
+fn calculate_lines_needed(text: &str, width: usize) -> usize {
+    if width == 0 {
+        return text.lines().count();
+    }
+
+    text.lines()
+        .map(|line| {
+            if line.is_empty() {
+                1
+            } else {
+                line.len().div_ceil(width) // Ceiling division
+            }
+        })
+        .sum()
+}
+
+/// Render the description section
+fn render_description(frame: &mut Frame, area: Rect, state: &AppState) {
+    let theme = &state.theme;
+
+    // Get description from selected file
+    let description = if let Some(selected_node) = state.selected_tree_node() {
+        selected_node.file_record.as_ref().and_then(|f| {
+            if f.description.is_empty() {
+                None
+            } else {
+                Some(f.description.clone())
+            }
+        })
+    } else {
+        None
+    };
+
+    let Some(desc_text) = description else {
+        return;
+    };
+
+    // Parse description and highlight @agent-note annotations
+    let lines = parse_description_with_highlights(&desc_text, theme);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Description ")
+        .border_style(themes::unfocused_border_style(theme));
+
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+
+    frame.render_widget(paragraph, area);
+}
+
+/// Parse description text and highlight @agent-note annotations
+fn parse_description_with_highlights(
+    text: &str,
+    theme: &crate::colors::Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+
+    for line in text.lines() {
+        if line.contains("@agent-note") {
+            // Parse line with @agent-note highlighting
+            let mut spans = Vec::new();
+            let mut remaining = line;
+
+            while let Some(idx) = remaining.find("@agent-note") {
+                // Add text before @agent-note
+                if idx > 0 {
+                    spans.push(Span::raw(remaining[..idx].to_string()));
+                }
+
+                // Find the end of the annotation (end of line or next space after colon)
+                let annotation_start = idx;
+                let after_annotation = &remaining[annotation_start..];
+
+                // Find where the annotation value ends (at next sentence or line end)
+                let annotation_end = if let Some(colon_idx) = after_annotation.find(':') {
+                    // Find the end of the sentence or line
+                    let after_colon = &after_annotation[colon_idx + 1..];
+                    after_colon.find('.').map_or(remaining.len(), |i| {
+                        annotation_start + colon_idx + 1 + i + 1
+                    })
+                } else {
+                    // No colon, just highlight the keyword
+                    annotation_start + "@agent-note".len()
+                };
+
+                // Add highlighted annotation
+                spans.push(Span::styled(
+                    remaining[annotation_start..annotation_end].to_string(),
+                    Style::default()
+                        .fg(theme.warning_color())
+                        .add_modifier(Modifier::BOLD),
+                ));
+
+                remaining = &remaining[annotation_end..];
+            }
+
+            // Add remaining text
+            if !remaining.is_empty() {
+                spans.push(Span::raw(remaining.to_string()));
+            }
+
+            lines.push(Line::from(spans));
+        } else {
+            // Regular line without annotation
+            lines.push(Line::from(line.to_string()));
+        }
+    }
+
+    lines
 }
 
 /// Render tasks in tree view
