@@ -440,6 +440,23 @@ impl<'conn> FileRepository<'conn> {
         Ok(())
     }
 
+    /// Get the root index file if it exists
+    ///
+    /// Checks for `lash.index.md` or `index.lash.md` (the project root markers).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails
+    pub fn get_root_index(&self) -> DbResult<Option<FileRecord>> {
+        // Try lash.index.md first
+        if let Some(record) = self.get_by_path(Path::new("lash.index.md"))? {
+            return Ok(Some(record));
+        }
+
+        // Try index.lash.md as fallback
+        self.get_by_path(Path::new("index.lash.md"))
+    }
+
     /// Upsert (insert or update) multiple files in a single batch transaction
     ///
     /// Uses `SQLite`'s `INSERT ... ON CONFLICT ... DO UPDATE` for efficient upserts.

@@ -539,6 +539,28 @@ impl<'conn> TaskRepository<'conn> {
         Ok(())
     }
 
+    /// Get total task count and completed task count for the entire project
+    ///
+    /// Returns a tuple of `(total_tasks, completed_tasks)` where completed
+    /// includes both "done" and "waived" statuses.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails
+    pub fn get_project_counts(&self) -> DbResult<(usize, usize)> {
+        let (total, completed): (i64, i64) = self.conn.query_row(
+            "SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN status IN ('done', 'waived') THEN 1 ELSE 0 END) as completed
+             FROM tasks",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        #[allow(clippy::cast_sign_loss)]
+        Ok((total as usize, completed as usize))
+    }
+
     /// Helper to convert a row to `TaskRecord`
     fn row_to_task_record(row: &rusqlite::Row) -> rusqlite::Result<TaskRecord> {
         let metadata_json: String = row.get(12)?;

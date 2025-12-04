@@ -108,6 +108,9 @@ pub struct AppState {
 
     /// Filter modal state (None = closed, Some = open)
     pub filter_modal_state: Option<FilterModalState>,
+
+    /// Project-level statistics (total tasks, completion, title)
+    pub project_stats: ProjectStats,
 }
 
 /// State for the theme selector modal
@@ -171,6 +174,33 @@ pub struct SearchModalState {
 
     /// Error message if search failed
     pub error: Option<String>,
+}
+
+/// Project-level statistics
+#[derive(Debug, Clone, Default)]
+pub struct ProjectStats {
+    /// Project title from root index file
+    pub title: Option<String>,
+
+    /// Total number of tasks across all files
+    pub total_tasks: usize,
+
+    /// Number of completed tasks (done or waived)
+    pub completed_tasks: usize,
+}
+
+impl ProjectStats {
+    /// Calculate completion percentage (0-100)
+    #[must_use]
+    pub fn completion_percent(&self) -> u8 {
+        if self.total_tasks == 0 {
+            0
+        } else {
+            #[allow(clippy::cast_possible_truncation)]
+            let percent = (self.completed_tasks * 100 / self.total_tasks) as u8;
+            percent.min(100)
+        }
+    }
 }
 
 /// State for the filter modal
@@ -248,6 +278,7 @@ impl AppState {
             current_label_filter: None,
             search_modal_state: None,
             filter_modal_state: None,
+            project_stats: ProjectStats::default(),
         }
     }
 

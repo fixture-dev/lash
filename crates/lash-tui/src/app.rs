@@ -68,9 +68,11 @@ impl TuiApp {
         // Build file tree for tree view
         state.build_file_tree();
 
+        // Create task repo for loading tasks
+        let task_repo = TaskRepository::new(&conn);
+
         // Load tasks for first file if available
         if let Some(file) = state.selected_file() {
-            let task_repo = TaskRepository::new(&conn);
             state.tasks = task_repo
                 .get_by_file(file.id)
                 .map_err(|e| TuiError::App(format!("Failed to load tasks: {e}")))?;
@@ -81,6 +83,22 @@ impl TuiApp {
         state.labels = label_repo
             .get_label_stats()
             .map_err(|e| TuiError::App(format!("Failed to load labels: {e}")))?;
+
+        // Load project stats (total/completed tasks and root index title)
+        let (total_tasks, completed_tasks) = task_repo
+            .get_project_counts()
+            .map_err(|e| TuiError::App(format!("Failed to load task counts: {e}")))?;
+
+        let root_title = file_repo
+            .get_root_index()
+            .map_err(|e| TuiError::App(format!("Failed to load root index: {e}")))?
+            .map(|f| f.title);
+
+        state.project_stats = crate::state::ProjectStats {
+            title: root_title,
+            total_tasks,
+            completed_tasks,
+        };
 
         Ok(Self {
             terminal,

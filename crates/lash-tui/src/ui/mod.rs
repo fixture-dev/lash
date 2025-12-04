@@ -45,9 +45,15 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         ])
         .split(main_chunks[0]);
 
-    // Render logo in upper-left
+    // Render logo in upper-left with project stats
     let is_nav_focused = state.focused_pane == FocusedPane::Navigation;
-    logo::render(frame, left_chunks[0], &state.theme, is_nav_focused);
+    logo::render(
+        frame,
+        left_chunks[0],
+        &state.theme,
+        is_nav_focused,
+        &state.project_stats,
+    );
 
     // Render navigation pane below logo
     nav_pane::render(frame, left_chunks[1], state);
