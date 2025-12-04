@@ -121,8 +121,8 @@ impl Default for RuleRegistry {
 /// Register all default built-in rules
 ///
 /// Creates a registry with all built-in linting rules:
-/// - 7 syntax rules (Task #2 - Complete)
-/// - 10 semantic rules (Task #3 - Complete)
+/// - 8 syntax rules (Task #2 - Complete)
+/// - 11 semantic rules (Task #3 - Complete)
 /// - 5 cross-file rules (Task #4 - Complete)
 ///
 /// # Syntax Rules
@@ -134,6 +134,7 @@ impl Default for RuleRegistry {
 /// 5. Unknown Annotation Keys (`E_SYNTAX_UNKNOWN_KEY`)
 /// 6. Header Structure (`W_SYNTAX_HEADER`)
 /// 7. Annotation Ordering (`I_SYNTAX_ORDER`)
+/// 8. Duplicate Description Section (`E_SYNTAX_DUPLICATE_DESCRIPTION`)
 ///
 /// # Semantic Rules
 ///
@@ -145,8 +146,9 @@ impl Default for RuleRegistry {
 /// 6. Valid Estimate Format (`E_SEM_INVALID_ESTIMATE`)
 /// 7. Valid Owner Format (`W_SEM_OWNER_FORMAT`)
 /// 8. Empty Task Title (`E_SEM_EMPTY_TITLE`)
-/// 9. Valid Documentation Reference (`E_SEM_INVALID_DOC`)
-/// 10. Broken Documentation Fragment (`W_SEM_DOC_FRAGMENT`)
+/// 9. Description Length Limit (`W_SEM_DESC_TOO_LONG`, `E_SEM_DESC_TOO_LONG`)
+/// 10. Valid Documentation Reference (`E_SEM_INVALID_DOC`)
+/// 11. Broken Documentation Fragment (`W_SEM_DOC_FRAGMENT`)
 ///
 /// # Cross-File Rules
 ///
@@ -187,6 +189,10 @@ pub fn register_default_rules() -> RuleRegistry {
         RuleCategory::Syntax,
         Arc::new(rules::AnnotationOrderRule::new()),
     );
+    registry.register(
+        RuleCategory::Syntax,
+        Arc::new(rules::DuplicateDescriptionRule::new()),
+    );
 
     // Register semantic rules (Task #3)
     registry.register(
@@ -220,6 +226,10 @@ pub fn register_default_rules() -> RuleRegistry {
     registry.register(
         RuleCategory::Semantic,
         Arc::new(rules::EmptyTitleRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::DescriptionLengthRule::new()),
     );
     registry.register(
         RuleCategory::Semantic,
@@ -360,10 +370,10 @@ mod tests {
     #[test]
     fn test_default_registry() {
         let registry = register_default_rules();
-        // Should have 7 syntax rules (Task #2) + 10 semantic rules (Task #3) + 5 cross-file rules (Task #4)
-        assert_eq!(registry.rule_count(), 22);
-        assert_eq!(registry.category_count(RuleCategory::Syntax), 7);
-        assert_eq!(registry.category_count(RuleCategory::Semantic), 10);
+        // Should have 8 syntax rules (Task #2) + 11 semantic rules (Task #3) + 5 cross-file rules (Task #4)
+        assert_eq!(registry.rule_count(), 24);
+        assert_eq!(registry.category_count(RuleCategory::Syntax), 8);
+        assert_eq!(registry.category_count(RuleCategory::Semantic), 11);
         assert_eq!(registry.category_count(RuleCategory::CrossFile), 5);
     }
 }
