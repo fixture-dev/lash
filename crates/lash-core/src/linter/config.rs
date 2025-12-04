@@ -20,6 +20,7 @@ use lash_types::Severity;
 /// auto_fix = true
 /// enabled_rules = ["E_SYNTAX_DEPTH", "E_SEM_DUPLICATE_ID"]
 /// disabled_rules = ["I_SYNTAX_ORDER"]
+/// description_max_length = 1500
 ///
 /// [linter.severity_overrides]
 /// "W_SEM_STATUS_INCONSISTENT" = "error"
@@ -56,6 +57,16 @@ pub struct LintConfig {
     /// that have fix suggestions. If false, fixes are only reported, not applied.
     #[serde(default)]
     pub auto_fix: bool,
+
+    /// Maximum description length threshold (warning)
+    ///
+    /// If set, overrides the default warning threshold (1000 characters)
+    /// for the `W_SEM_DESC_TOO_LONG` rule. The error threshold remains
+    /// at 2000 characters (hard limit).
+    ///
+    /// Set to `None` to use the default threshold of 1000 characters.
+    #[serde(default)]
+    pub description_max_length: Option<usize>,
 }
 
 impl LintConfig {
@@ -131,7 +142,16 @@ impl LintConfig {
             disabled_rules: HashSet::new(),
             severity_overrides: HashMap::new(),
             auto_fix: false,
+            description_max_length: None,
         }
+    }
+
+    /// Get the description max length threshold
+    ///
+    /// Returns the configured value or the default of 1000 characters.
+    #[must_use]
+    pub fn description_max_length(&self) -> usize {
+        self.description_max_length.unwrap_or(1000)
     }
 }
 
@@ -224,5 +244,35 @@ mod tests {
         let deserialized: LintConfig = toml::from_str(&toml).unwrap();
 
         assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn test_description_max_length_default() {
+        let config = LintConfig::default();
+        assert_eq!(config.description_max_length(), 1000);
+    }
+
+    #[test]
+    fn test_description_max_length_custom() {
+        let config = LintConfig {
+            description_max_length: Some(1500),
+            ..Default::default()
+        };
+        assert_eq!(config.description_max_length(), 1500);
+    }
+
+    #[test]
+    fn test_description_max_length_serialization() {
+        let config = LintConfig {
+            description_max_length: Some(1500),
+            ..Default::default()
+        };
+
+        let toml = toml::to_string(&config).unwrap();
+        assert!(toml.contains("description_max_length = 1500"));
+
+        let deserialized: LintConfig = toml::from_str(&toml).unwrap();
+        assert_eq!(deserialized.description_max_length, Some(1500));
+        assert_eq!(deserialized.description_max_length(), 1500);
     }
 }

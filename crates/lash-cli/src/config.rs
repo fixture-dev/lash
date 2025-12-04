@@ -74,6 +74,14 @@ pub struct LinterConfig {
     /// Rules to enable/disable
     #[serde(default)]
     pub rules: Vec<String>,
+
+    /// Maximum description length threshold (warning)
+    ///
+    /// If set, overrides the default warning threshold (1000 characters)
+    /// for the `W_SEM_DESC_TOO_LONG` rule. The error threshold is
+    /// automatically set to 2x this value.
+    #[serde(default)]
+    pub description_max_length: Option<usize>,
 }
 
 /// Search configuration
@@ -155,6 +163,7 @@ impl Default for LinterConfig {
             max_depth: default_max_depth(),
             auto_fix: default_false(),
             rules: Vec::new(),
+            description_max_length: None,
         }
     }
 }
@@ -317,6 +326,10 @@ impl Config {
                 } else {
                     other.linter.rules
                 },
+                description_max_length: other
+                    .linter
+                    .description_max_length
+                    .or(self.linter.description_max_length),
             },
             search: SearchConfig {
                 fuzzy_threshold: if (other.search.fuzzy_threshold - default_fuzzy_threshold()).abs()
