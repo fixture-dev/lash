@@ -398,9 +398,10 @@ impl<'a> AsciiGraphRenderer<'a> {
         let checkbox = self.render_checkbox(node.status);
         let is_index = node.is_from_index_file();
 
-        // For index files, extract link text and colorize
+        // For index files, extract link text and format annotations
         let title = if is_index {
-            Self::extract_link_text(&node.title)
+            let extracted = Self::extract_link_text(&node.title);
+            Self::format_index_annotations(&extracted)
         } else {
             node.title.clone()
         };
@@ -501,6 +502,72 @@ impl<'a> AsciiGraphRenderer<'a> {
 
         // Return original if no link pattern found
         text.to_string()
+    }
+
+    /// Format index task annotations for display
+    ///
+    /// Strips `@id:` annotations and converts `@labels:` to hashtag format.
+    /// Example: "Alpha @id:`milestone.alpha` @labels:`milestone, p0`"
+    /// becomes: "Alpha #milestone #p0"
+    fn format_index_annotations(text: &str) -> String {
+        let mut result = String::new();
+        let mut remaining = text;
+
+        // Process the text, stripping @id: and converting @labels:
+        while !remaining.is_empty() {
+            // Check for @id: annotation - strip it completely
+            if remaining.starts_with("@id:") {
+                // Find the end of the backtick-wrapped value
+                if let Some(backtick_start) = remaining.find('`') {
+                    if let Some(backtick_end) = remaining[backtick_start + 1..].find('`') {
+                        // Skip past the entire @id:`value` including trailing space
+                        let end_pos = backtick_start + 1 + backtick_end + 1;
+                        remaining = remaining[end_pos..].trim_start();
+                        continue;
+                    }
+                }
+                // If no backticks found, skip to end
+                break;
+            }
+
+            // Check for @labels: annotation - convert to hashtags
+            if remaining.starts_with("@labels:") {
+                if let Some(backtick_start) = remaining.find('`') {
+                    if let Some(backtick_end) = remaining[backtick_start + 1..].find('`') {
+                        let labels_content =
+                            &remaining[backtick_start + 1..backtick_start + 1 + backtick_end];
+                        // Convert comma-separated labels to hashtags
+                        for label in labels_content.split(',') {
+                            let label = label.trim();
+                            if !label.is_empty() {
+                                result.push('#');
+                                result.push_str(label);
+                                result.push(' ');
+                            }
+                        }
+                        // Move past the @labels:`value`
+                        let end_pos = backtick_start + 1 + backtick_end + 1;
+                        remaining = remaining[end_pos..].trim_start();
+                        continue;
+                    }
+                }
+                // If no backticks found, skip to end
+                break;
+            }
+
+            // Find the next @ or end of string
+            if let Some(next_at) = remaining[1..].find('@') {
+                // Add text up to next annotation
+                result.push_str(&remaining[..=next_at]);
+                remaining = &remaining[next_at + 1..];
+            } else {
+                // No more annotations, add rest of text
+                result.push_str(remaining);
+                break;
+            }
+        }
+
+        result.trim().to_string()
     }
 
     /// Style labels (hashtags like #backend, #docs) within text
@@ -867,6 +934,41 @@ mod tests {
         assert_eq!(
             AsciiGraphRenderer::extract_link_text("`path/file.md`"),
             "`path/file.md`"
+        );
+    }
+
+    #[test]
+    fn test_format_index_annotations() {
+        // Full annotation: strip @id and convert @labels to hashtags
+        assert_eq!(
+            AsciiGraphRenderer::format_index_annotations(
+                "Alpha @id:`milestone.alpha` @labels:`milestone, p0`"
+            ),
+            "Alpha #milestone #p0"
+        );
+
+        // Just @id annotation - strip completely
+        assert_eq!(
+            AsciiGraphRenderer::format_index_annotations("Task @id:`some.id`"),
+            "Task"
+        );
+
+        // Just @labels annotation - convert to hashtags
+        assert_eq!(
+            AsciiGraphRenderer::format_index_annotations("Task @labels:`foo, bar, baz`"),
+            "Task #foo #bar #baz"
+        );
+
+        // No annotations - return as-is
+        assert_eq!(
+            AsciiGraphRenderer::format_index_annotations("Plain Task"),
+            "Plain Task"
+        );
+
+        // With existing hashtags - preserve them
+        assert_eq!(
+            AsciiGraphRenderer::format_index_annotations("Task #existing @labels:`new`"),
+            "Task #existing #new"
         );
     }
 
