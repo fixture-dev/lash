@@ -439,3 +439,176 @@ fn test_file_tree_with_directories_preserves_description() -> TuiResult<()> {
 
     Ok(())
 }
+
+/// Helper to set up a test database with nested directories where intermediate
+/// directories don't contain files directly (like playground/worlds/forest/)
+fn setup_test_db_with_intermediate_dirs() -> TuiResult<(TempDir, PathBuf)> {
+    let temp_dir = tempfile::tempdir()?;
+    let project_root = temp_dir.path().to_path_buf();
+    let db_path = project_root.join(".lash").join("db.sqlite");
+
+    // Create .lash directory and nested subdirectories
+    // Note: "worlds" has no direct .md files, only subdirectories
+    std::fs::create_dir_all(db_path.parent().unwrap())?;
+    std::fs::create_dir_all(project_root.join("design"))?;
+    std::fs::create_dir_all(project_root.join("worlds").join("forest").join("levels"))?;
+
+    // Initialize database
+    let conn = init_database(&db_path)?;
+
+    // Create index file
+    let index_file = project_root.join("lash.index.md");
+    std::fs::write(
+        &index_file,
+        r#"# Project Index
+
+@id: index
+
+## Tasks
+
+- [ ] Root task
+"#,
+    )?;
+
+    // Create design/story.md (direct child, like playground)
+    let story_file = project_root.join("design").join("story.md");
+    std::fs::write(
+        &story_file,
+        r#"# Story Design
+
+@id: design.story
+
+## Tasks
+
+- [ ] Write story
+"#,
+    )?;
+
+    // Create worlds/forest/boss.md (nested in intermediate dir)
+    let boss_file = project_root.join("worlds").join("forest").join("boss.md");
+    std::fs::write(
+        &boss_file,
+        r#"# Forest Boss
+
+@id: worlds.forest.boss
+
+## Tasks
+
+- [ ] Design boss
+"#,
+    )?;
+
+    // Create worlds/forest/levels/world-1.md (deeply nested)
+    let level_file = project_root
+        .join("worlds")
+        .join("forest")
+        .join("levels")
+        .join("world-1.md");
+    std::fs::write(
+        &level_file,
+        r#"# World 1 Levels
+
+@id: worlds.forest.levels.world1
+
+## Tasks
+
+- [ ] Build level 1
+"#,
+    )?;
+
+    // Index the project
+    let indexer_config = IndexerConfig::new(project_root)
+        .with_incremental(false)
+        .with_progress(false);
+    let parser_config = LashConfig::default();
+    let mut indexer = Indexer::new(&conn, indexer_config, &parser_config);
+    indexer.index_project()?;
+
+    Ok((temp_dir, db_path))
+}
+
+#[test]
+fn test_file_tree_with_intermediate_directories() -> TuiResult<()> {
+    use lash_tui::state::AppState;
+
+    let (_temp_dir, db_path) = setup_test_db_with_intermediate_dirs()?;
+    let conn = lash_db::open_database(&db_path)?;
+
+    // Load files like TUI does
+    let file_repo = lash_db::repository::FileRepository::new(&conn);
+    let files = file_repo.list_all()?;
+
+    eprintln!("Files in database:");
+    for f in &files {
+        eprintln!("  path={}", f.path.display());
+    }
+
+    // Create state and build file tree
+    let mut state = AppState::new();
+    state.files = files;
+    state.build_file_tree();
+
+    // Get the tree
+    let trees = state.file_tree.as_ref().expect("Should have file tree");
+
+    // Collect all directory names at root level
+    let root_names: Vec<&str> = trees.iter().map(|t| t.data.name.as_str()).collect();
+
+    eprintln!("Root level items: {root_names:?}");
+
+    // The key assertion: "worlds" should be at root level, NOT "forest"
+    // If intermediate directories aren't created, "forest" would appear at root
+    assert!(
+        root_names.contains(&"worlds"),
+        "Root should contain 'worlds' directory, got: {root_names:?}",
+    );
+    assert!(
+        !root_names.contains(&"forest"),
+        "Root should NOT contain 'forest' (it should be under 'worlds'), got: {root_names:?}",
+    );
+    assert!(
+        !root_names.contains(&"levels"),
+        "Root should NOT contain 'levels' (it should be under 'worlds/forest'), got: {root_names:?}",
+    );
+
+    // Also verify "design" is at root (direct child directory)
+    assert!(
+        root_names.contains(&"design"),
+        "Root should contain 'design' directory, got: {root_names:?}",
+    );
+
+    // Now verify the nested structure: worlds -> forest -> levels
+    let worlds_node = trees.iter().find(|t| t.data.name == "worlds").unwrap();
+    let worlds_children: Vec<&str> = worlds_node
+        .children
+        .iter()
+        .map(|c| c.data.name.as_str())
+        .collect();
+    eprintln!("worlds children: {worlds_children:?}");
+    assert!(
+        worlds_children.contains(&"forest"),
+        "worlds should contain 'forest', got: {worlds_children:?}",
+    );
+
+    let forest_node = worlds_node
+        .children
+        .iter()
+        .find(|c| c.data.name == "forest")
+        .unwrap();
+    let forest_children: Vec<&str> = forest_node
+        .children
+        .iter()
+        .map(|c| c.data.name.as_str())
+        .collect();
+    eprintln!("forest children: {forest_children:?}");
+    assert!(
+        forest_children.contains(&"levels"),
+        "forest should contain 'levels', got: {forest_children:?}",
+    );
+    assert!(
+        forest_children.contains(&"boss.md"),
+        "forest should contain 'boss.md', got: {forest_children:?}",
+    );
+
+    Ok(())
+}

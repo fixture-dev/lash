@@ -23,6 +23,56 @@ pub struct DirectoryNode {
     pub file_record: Option<FileRecord>,
 }
 
+/// Ensure all ancestor directories exist in the tree as nodes.
+///
+/// For example, if the path is `worlds/forest/levels`, this creates
+/// nodes for `worlds` and `worlds/forest` if they don't already exist.
+fn ensure_ancestors(
+    dir_nodes: &mut std::collections::HashMap<PathBuf, TreeNode<DirectoryNode>>,
+    path: &std::path::Path,
+    default_expanded: bool,
+    max_depth: usize,
+) {
+    // Collect all ancestor paths that need to be created
+    let mut ancestors: Vec<PathBuf> = Vec::new();
+    let mut current = path.to_path_buf();
+    while let Some(parent) = current.parent() {
+        if parent.as_os_str().is_empty() {
+            break;
+        }
+        if !dir_nodes.contains_key(parent) {
+            ancestors.push(parent.to_path_buf());
+        }
+        current = parent.to_path_buf();
+    }
+
+    // Create ancestor nodes from root to leaf (reverse order)
+    for ancestor in ancestors.into_iter().rev() {
+        let depth = ancestor.components().count();
+        let dir_name = ancestor
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new(""))
+            .to_string_lossy()
+            .to_string();
+
+        let mut dir_node = TreeNode::new(
+            DirectoryNode {
+                name: dir_name,
+                path: ancestor.clone(),
+                is_directory: true,
+                file_record: None,
+            },
+            depth,
+        );
+
+        if default_expanded && depth < max_depth {
+            dir_node.expand();
+        }
+
+        dir_nodes.insert(ancestor, dir_node);
+    }
+}
+
 /// Which pane is currently focused
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusedPane {
@@ -958,6 +1008,9 @@ impl AppState {
             let files = dir_map.get(dir_path).unwrap();
             let depth = dir_path.components().count();
 
+            // Ensure all ancestor directories exist (e.g., "worlds" for "worlds/forest")
+            ensure_ancestors(&mut dir_nodes, dir_path, default_expanded, max_depth);
+
             // Create directory node if it doesn't exist
             if !dir_nodes.contains_key(dir_path) && depth > 0 {
                 let dir_name = dir_path
@@ -1012,7 +1065,9 @@ impl AppState {
         }
 
         // Build parent-child relationships for directories
-        let dir_paths: Vec<PathBuf> = dir_nodes.keys().cloned().collect();
+        // Sort from deepest to shallowest so children are processed before parents
+        let mut dir_paths: Vec<PathBuf> = dir_nodes.keys().cloned().collect();
+        dir_paths.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
         for dir_path in &dir_paths {
             if let Some(parent_path) = dir_path.parent() {
                 if parent_path.as_os_str().is_empty() {
