@@ -443,6 +443,13 @@ impl AppState {
     /// Apply selected theme and close selector
     ///
     /// Saves the theme to user config and updates the current theme.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The selected scheme is not found in the registry
+    /// - Failed to save the theme to user config
+    /// - Theme selector is not open
     pub fn apply_selected_theme(&mut self) -> Result<(), String> {
         use crate::colors::REGISTRY;
         use lash_types::UserConfig;
@@ -876,6 +883,11 @@ impl AppState {
     ///
     /// Converts the flat `self.files` list into a hierarchical directory tree.
     /// Groups files by directory path components and creates intermediate directory nodes.
+    ///
+    /// # Panics
+    ///
+    /// This function does not panic under normal operation. The internal `unwrap()`
+    /// is safe because we iterate over keys that are guaranteed to exist in the map.
     pub fn build_file_tree(&mut self) {
         use lash_types::UserConfig;
         use std::collections::HashMap;

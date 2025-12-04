@@ -38,6 +38,21 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         .title(title)
         .border_style(border_style);
 
+    // First, check if we need to show description and split the area
+    // This is done regardless of task state - the selected file may have a description
+    // even if its tasks haven't been loaded yet (e.g., when navigating with Up/Down)
+    let (description_area, content_area) = if should_show_description(state) {
+        split_area_for_description(area, state)
+    } else {
+        (None, area)
+    };
+
+    // Render description if we have one to show
+    if let Some(desc_area) = description_area {
+        render_description(frame, desc_area, state);
+    }
+
+    // Now render the task content (or empty state message)
     if state.tasks.is_empty() {
         // Show empty state
         let text = if state.files.is_empty() {
@@ -46,20 +61,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             "No tasks in this file."
         };
         let paragraph = Paragraph::new(text).block(block);
-        frame.render_widget(paragraph, area);
+        frame.render_widget(paragraph, content_area);
     } else {
-        // Check if we need to show description and split the area
-        let (description_area, tasks_area) = if should_show_description(state) {
-            split_area_for_description(area, state)
-        } else {
-            (None, area)
-        };
-
-        // Render description if we have one to show
-        if let Some(desc_area) = description_area {
-            render_description(frame, desc_area, state);
-        }
-
         // Check if tree view is available
         let items: Vec<ListItem> = if let Some(task_trees) = &state.task_tree {
             render_task_tree(task_trees, state, theme)
@@ -75,7 +78,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let mut list_state = ListState::default();
         list_state.select(Some(state.selected_task_index));
 
-        frame.render_stateful_widget(list, tasks_area, &mut list_state);
+        frame.render_stateful_widget(list, content_area, &mut list_state);
     }
 }
 

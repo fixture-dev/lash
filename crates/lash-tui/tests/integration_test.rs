@@ -18,11 +18,22 @@ fn setup_test_db() -> TuiResult<(TempDir, PathBuf)> {
     // Initialize database
     let conn = init_database(&db_path)?;
 
-    // Create a minimal test file in temp directory
+    // Create a minimal test file in temp directory WITH description
     let test_file = project_root.join("test.md");
     std::fs::write(
         &test_file,
         r#"# Test File
+
+@id: test-file
+@status: in-progress
+
+## Description
+
+This is a test file with a description section to verify TUI display.
+
+@agent-note: This note should be highlighted in the TUI.
+
+## Tasks
 
 - [ ] Task 1
   - [ ] Subtask 1.1
@@ -93,6 +104,113 @@ fn test_database_loads_files() -> TuiResult<()> {
 }
 
 #[test]
+fn test_database_loads_description() -> TuiResult<()> {
+    let (_temp_dir, db_path) = setup_test_db()?;
+    let conn = lash_db::open_database(&db_path)?;
+
+    // Verify files were indexed with descriptions
+    let file_repo = lash_db::repository::FileRepository::new(&conn);
+    let files = file_repo.list_all()?;
+
+    // Find the test file
+    let test_file = files
+        .iter()
+        .find(|f| f.title == "Test File")
+        .expect("Should find Test File");
+
+    // Verify description was loaded
+    assert!(
+        !test_file.description.is_empty(),
+        "Test file should have a description"
+    );
+    assert!(
+        test_file
+            .description
+            .contains("test file with a description"),
+        "Description should contain expected text"
+    );
+    assert!(
+        test_file.description.contains("@agent-note"),
+        "Description should contain agent-note annotation"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_state_file_tree_contains_description() -> TuiResult<()> {
+    use lash_tui::state::AppState;
+
+    let (_temp_dir, db_path) = setup_test_db()?;
+    let conn = lash_db::open_database(&db_path)?;
+
+    // Load files like TUI does
+    let file_repo = lash_db::repository::FileRepository::new(&conn);
+    let files = file_repo.list_all()?;
+
+    // Verify files have descriptions before building tree
+    let test_file_direct = files.iter().find(|f| f.title == "Test File").unwrap();
+    eprintln!(
+        "Direct file description len: {} content: '{}'",
+        test_file_direct.description.len(),
+        &test_file_direct.description
+    );
+    assert!(
+        !test_file_direct.description.is_empty(),
+        "Files list should have description"
+    );
+
+    // Create state and build file tree
+    let mut state = AppState::new();
+    state.files = files;
+    state.build_file_tree();
+
+    // List all tree nodes to find the test file
+    eprintln!("Looking for Test File in tree...");
+    for idx in 0..10 {
+        state.selected_file_index = idx;
+        if let Some(node) = state.selected_tree_node() {
+            let title = node
+                .file_record
+                .as_ref()
+                .map(|f| f.title.as_str())
+                .unwrap_or("(directory)");
+            let desc_len = node
+                .file_record
+                .as_ref()
+                .map(|f| f.description.len())
+                .unwrap_or(0);
+            eprintln!(
+                "  idx={}: is_dir={}, title='{}', desc_len={}",
+                idx, node.is_directory, title, desc_len
+            );
+            if title == "Test File" {
+                assert!(
+                    !node.is_directory,
+                    "Test File node should not be a directory"
+                );
+                assert!(
+                    node.file_record.is_some(),
+                    "Test File node should have file_record"
+                );
+                let file = node.file_record.unwrap();
+                assert!(
+                    !file.description.is_empty(),
+                    "File record in tree should have description, got: '{}'",
+                    file.description
+                );
+                eprintln!("Found Test File at idx={idx} with description!");
+                return Ok(());
+            }
+        } else {
+            break;
+        }
+    }
+
+    panic!("Test File not found in tree");
+}
+
+#[test]
 fn test_database_loads_tasks() -> TuiResult<()> {
     let (_temp_dir, db_path) = setup_test_db()?;
     let conn = lash_db::open_database(&db_path)?;
@@ -120,6 +238,204 @@ fn test_database_loads_tasks() -> TuiResult<()> {
     let subtask1 = &tasks[1];
     assert_eq!(subtask1.title, "Subtask 1.1");
     assert_eq!(subtask1.depth, 1);
+
+    Ok(())
+}
+
+/// Helper to set up a test database with subdirectory structure (like playground)
+fn setup_test_db_with_dirs() -> TuiResult<(TempDir, PathBuf)> {
+    let temp_dir = tempfile::tempdir()?;
+    let project_root = temp_dir.path().to_path_buf();
+    let db_path = project_root.join(".lash").join("db.sqlite");
+
+    // Create .lash directory and subdirectories
+    std::fs::create_dir_all(db_path.parent().unwrap())?;
+    std::fs::create_dir_all(project_root.join("systems"))?;
+    std::fs::create_dir_all(project_root.join("features"))?;
+
+    // Initialize database
+    let conn = init_database(&db_path)?;
+
+    // Create index file (no description)
+    let index_file = project_root.join("lash.index.md");
+    std::fs::write(
+        &index_file,
+        r#"# Project Index
+
+@id: index
+
+## Tasks
+
+- [ ] Root task
+"#,
+    )?;
+
+    // Create audio.md in systems/ subdirectory WITH description
+    let audio_file = project_root.join("systems").join("audio.md");
+    std::fs::write(
+        &audio_file,
+        r#"# Audio Engine
+
+@id: systems.audio
+@status: in-progress
+
+## Description
+
+Sound engine for music playback, sound effects, and spatial audio.
+
+@agent-note: Focus on crossfade transitions first.
+
+## Tasks
+
+- [x] Set up audio engine
+- [ ] Implement music system
+"#,
+    )?;
+
+    // Create movement.md in features/ subdirectory WITH description
+    let movement_file = project_root.join("features").join("movement.md");
+    std::fs::write(
+        &movement_file,
+        r#"# Player Movement
+
+@id: features.movement
+@status: in-progress
+
+## Description
+
+Core player movement mechanics including physics and controls.
+
+@agent-note: Prioritize responsive input handling.
+
+## Tasks
+
+- [x] Basic movement
+- [ ] Advanced movement
+"#,
+    )?;
+
+    // Index the project
+    let indexer_config = IndexerConfig::new(project_root)
+        .with_incremental(false)
+        .with_progress(false);
+    let parser_config = LashConfig::default();
+    let mut indexer = Indexer::new(&conn, indexer_config, &parser_config);
+    indexer.index_project()?;
+
+    Ok((temp_dir, db_path))
+}
+
+#[test]
+fn test_file_tree_with_directories_preserves_description() -> TuiResult<()> {
+    use lash_tui::state::AppState;
+
+    let (_temp_dir, db_path) = setup_test_db_with_dirs()?;
+    let conn = lash_db::open_database(&db_path)?;
+
+    // Load files like TUI does
+    let file_repo = lash_db::repository::FileRepository::new(&conn);
+    let files = file_repo.list_all()?;
+
+    eprintln!("Files in database:");
+    for f in &files {
+        eprintln!(
+            "  path={}, title={}, desc_len={}",
+            f.path.display(),
+            f.title,
+            f.description.len()
+        );
+    }
+
+    // Verify audio file has description before building tree
+    let audio_file = files.iter().find(|f| f.title == "Audio Engine").unwrap();
+    assert!(
+        !audio_file.description.is_empty(),
+        "Audio file should have description in file list"
+    );
+
+    // Create state and build file tree
+    let mut state = AppState::new();
+    state.files = files;
+    state.build_file_tree();
+
+    // Expand all directories to make all files visible
+    if let Some(trees) = &mut state.file_tree {
+        for tree in trees {
+            tree.expand_all(10); // Expand up to depth 10
+        }
+    }
+
+    // Print the entire tree structure
+    eprintln!("\nFile tree structure (after expand_all):");
+    let mut found_audio = false;
+    for idx in 0..20 {
+        state.selected_file_index = idx;
+        if let Some(node) = state.selected_tree_node() {
+            let name = if node.is_directory {
+                format!("[DIR] {}", node.file_record.as_ref().map_or("?", |_| ""))
+            } else {
+                node.file_record
+                    .as_ref()
+                    .map(|f| f.title.as_str())
+                    .unwrap_or("(no file_record)")
+                    .to_string()
+            };
+            let desc_len = node
+                .file_record
+                .as_ref()
+                .map(|f| f.description.len())
+                .unwrap_or(0);
+            eprintln!(
+                "  idx={}: is_dir={}, name='{}', desc_len={}, expanded={}",
+                idx, node.is_directory, name, desc_len, node.is_expanded
+            );
+
+            // Check Audio Engine specifically
+            if let Some(file) = &node.file_record {
+                if file.title == "Audio Engine" {
+                    found_audio = true;
+                    assert!(
+                        !file.description.is_empty(),
+                        "Audio Engine should have description in tree, got: '{}'",
+                        file.description
+                    );
+                    eprintln!(
+                        "  -> Found Audio Engine with description len {}",
+                        file.description.len()
+                    );
+                }
+            }
+        } else {
+            break;
+        }
+    }
+
+    assert!(found_audio, "Should have found Audio Engine in tree");
+
+    // Now test what the detail pane render logic would do
+    // Set selection to Audio Engine (idx=4 based on above output)
+    state.selected_file_index = 4;
+    let node = state
+        .selected_tree_node()
+        .expect("Should have node at idx 4");
+    assert!(!node.is_directory, "Audio Engine should not be a directory");
+    let file = node
+        .file_record
+        .expect("Audio Engine should have file_record");
+    assert!(
+        !file.description.is_empty(),
+        "Audio Engine should have non-empty description"
+    );
+
+    // This is what should_show_description checks
+    assert!(
+        state.current_label_filter.is_none(),
+        "No label filter should be active"
+    );
+    eprintln!(
+        "\nDescription check for Audio Engine: desc_len={}, should_show=true",
+        file.description.len()
+    );
 
     Ok(())
 }

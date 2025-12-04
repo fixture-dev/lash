@@ -57,11 +57,11 @@ fn test_playground_init_creates_all_files() {
     assert_dir_exists(&playground_path.join("milestones"));
     assert!(playground_path.join("PLAYGROUND_GUIDE.md").exists());
 
-    // Count files (should be 24 task files + guide = 25)
+    // Count files (should be 26 task files + guide = 27)
     let file_count = count_md_files(&playground_path);
     assert_eq!(
-        file_count, 25,
-        "Expected 25 markdown files (24 task files from fixture + PLAYGROUND_GUIDE.md)"
+        file_count, 27,
+        "Expected 27 markdown files (26 task files from fixture + PLAYGROUND_GUIDE.md)"
     );
 }
 
