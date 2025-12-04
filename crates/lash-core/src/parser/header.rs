@@ -72,19 +72,86 @@ pub fn parse_header(content: &str, ctx: &mut ParseContext) -> ParsedHeader {
     // Find H1 title
     let (title, h1_line_num) = find_h1_title(parser, &lines, ctx);
 
+    // Find the Description section (## Description)
+    let description_section_line = find_description_section(content);
+
     // Find the Tasks section (## Tasks)
     let tasks_section_line = find_tasks_section(content, ctx);
 
-    // Extract annotations and overview between H1 and Tasks section
+    // Determine the end of the header section (either Description or Tasks, whichever comes first)
+    let header_end_line = match (description_section_line, tasks_section_line) {
+        (Some(desc), Some(tasks)) => Some(desc.min(tasks)),
+        (Some(desc), None) => Some(desc),
+        (None, Some(tasks)) => Some(tasks),
+        (None, None) => None,
+    };
+
+    // Extract annotations and overview between H1 and first H2 section
     let (annotations, overview) = if let Some(h1_line) = h1_line_num {
         let start_line = h1_line + 1; // Line after H1
-        let end_line = tasks_section_line.unwrap_or(lines.len());
+        let end_line = header_end_line.unwrap_or(lines.len());
 
         extract_annotations_and_overview(&lines, start_line, end_line, ctx)
     } else {
         // No H1 found, look for annotations at start of file
-        let end_line = tasks_section_line.unwrap_or(lines.len());
+        let end_line = header_end_line.unwrap_or(lines.len());
         extract_annotations_and_overview(&lines, 0, end_line, ctx)
+    };
+
+    // Extract description section if present
+    let (description, description_agent_notes) = if let Some(desc_line) = description_section_line {
+        // Check that Description comes before Tasks
+        if let Some(tasks_line) = tasks_section_line {
+            if desc_line > tasks_line {
+                ctx.add_diagnostic(Diagnostic {
+                    severity: Severity::Error,
+                    code: "E_PARSE_DESCRIPTION_AFTER_TASKS",
+                    message: "Description section must come before Tasks section".to_string(),
+                    location: Some(Location::new(ctx.file_path.to_path_buf(), desc_line + 1, 1)),
+                    snippet: Some(lines.get(desc_line).copied().unwrap_or("").to_string()),
+                    help: Some(
+                        "Move the ## Description section before the ## Tasks section".to_string(),
+                    ),
+                    labels: None,
+                    recovery_command: None,
+                    fix_steps: None,
+                    explanation: None,
+                    docs_url: None,
+                });
+                (None, Vec::new())
+            } else {
+                // Description is correctly placed before Tasks
+                let desc_end_line = tasks_line;
+                let (desc_text, agent_notes) =
+                    extract_description_and_agent_notes(&lines, desc_line, desc_end_line);
+                if desc_text.is_empty() {
+                    (None, agent_notes)
+                } else {
+                    (Some(desc_text), agent_notes)
+                }
+            }
+        } else {
+            // No Tasks section, extract until end of file or next ## heading
+            let desc_end_line = lines
+                .iter()
+                .enumerate()
+                .skip(desc_line + 1)
+                .find(|(_, line)| {
+                    let trimmed = line.trim();
+                    trimmed.starts_with("## ")
+                })
+                .map_or(lines.len(), |(idx, _)| idx);
+
+            let (desc_text, agent_notes) =
+                extract_description_and_agent_notes(&lines, desc_line, desc_end_line);
+            if desc_text.is_empty() {
+                (None, agent_notes)
+            } else {
+                (Some(desc_text), agent_notes)
+            }
+        }
+    } else {
+        (None, Vec::new())
     };
 
     // Update parse context section state
@@ -96,6 +163,8 @@ pub fn parse_header(content: &str, ctx: &mut ParseContext) -> ParsedHeader {
         title,
         annotations,
         overview,
+        description,
+        description_agent_notes,
     }
 }
 
@@ -202,7 +271,7 @@ fn find_tasks_section(content: &str, ctx: &mut ParseContext) -> Option<usize> {
             Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
                 if h2_text.trim().eq_ignore_ascii_case("tasks") {
                     // Found it! Find the line number
-                    return find_line_with_heading(&lines, 2);
+                    return find_heading_with_text(&lines, 2, "tasks");
                 }
                 in_h2 = false;
             }
@@ -226,6 +295,61 @@ fn find_tasks_section(content: &str, ctx: &mut ParseContext) -> Option<usize> {
     });
 
     None
+}
+
+/// Find the ## Description section heading
+///
+/// Returns the line number where "## Description" appears (0-indexed).
+/// Case-insensitive comparison.
+fn find_description_section(content: &str) -> Option<usize> {
+    let lines: Vec<&str> = content.lines().collect();
+    find_heading_with_text(&lines, 2, "description")
+}
+
+/// Extract description text and agent notes from Description section
+///
+/// Finds the content between ## Description and the next ## heading.
+/// Extracts inline `@agent-note:` annotations from the description text.
+///
+/// Returns `(description_text, agent_notes_vec)`
+fn extract_description_and_agent_notes(
+    lines: &[&str],
+    desc_start_line: usize,
+    desc_end_line: usize,
+) -> (String, Vec<String>) {
+    let mut description_lines = Vec::new();
+    let mut agent_notes = Vec::new();
+
+    // Regex pattern for @agent-note: inline annotations
+    let agent_note_pattern = regex::Regex::new(r"@agent-note:\s*(.+)").unwrap();
+
+    // Calculate number of lines to take, ensuring no underflow
+    let num_lines = if desc_end_line > desc_start_line + 1 {
+        desc_end_line - desc_start_line - 1
+    } else {
+        0
+    };
+
+    for line in lines.iter().skip(desc_start_line + 1).take(num_lines) {
+        // Check for @agent-note: pattern
+        if let Some(captures) = agent_note_pattern.captures(line) {
+            if let Some(note) = captures.get(1) {
+                agent_notes.push(note.as_str().trim().to_string());
+            }
+        }
+
+        // Add line to description (including agent notes as they appear)
+        description_lines.push(*line);
+    }
+
+    let description = description_lines.join("\n").trim().to_string();
+    let description = if description.is_empty() {
+        String::new()
+    } else {
+        description
+    };
+
+    (description, agent_notes)
 }
 
 /// Find the line number where a heading of the given level appears
@@ -807,5 +931,170 @@ Overview of the project goes here.
         // Should synthesize title and find annotation
         assert_eq!(header.title, "Test");
         assert_eq!(header.annotations.get_single("id"), Some("test"));
+    }
+
+    // ==================== Description Section Tests ====================
+
+    #[test]
+    fn test_parse_header_with_description() {
+        let content = r"# Project Tasks
+
+@id: project-1
+
+## Description
+
+This is the project description. It provides context for both humans and agents.
+
+## Tasks
+
+- [ ] First task";
+
+        let test_ctx = TestContext::new("test.md");
+        let mut ctx = test_ctx.context();
+        let header = parse_header(content, &mut ctx);
+
+        assert_eq!(header.title, "Project Tasks");
+        assert!(header.description.is_some());
+        let desc = header.description.unwrap();
+        assert!(desc.contains("project description"));
+        assert!(!ctx.has_errors());
+    }
+
+    #[test]
+    fn test_parse_header_with_description_and_agent_notes() {
+        let content = r"# Project Tasks
+
+@id: project-1
+
+## Description
+
+This is the project description. @agent-note: This is important for context.
+It provides context for both humans and agents. @agent-note: Focus on the API design.
+
+## Tasks
+
+- [ ] First task";
+
+        let test_ctx = TestContext::new("test.md");
+        let mut ctx = test_ctx.context();
+        let header = parse_header(content, &mut ctx);
+
+        assert!(header.description.is_some());
+        assert_eq!(header.description_agent_notes.len(), 2);
+        assert!(header.description_agent_notes[0].contains("important for context"));
+        assert!(header.description_agent_notes[1].contains("Focus on the API design"));
+    }
+
+    #[test]
+    fn test_parse_header_description_without_tasks() {
+        let content = r"# Project Tasks
+
+@id: project-1
+
+## Description
+
+This file has a description but no tasks section yet.";
+
+        let test_ctx = TestContext::new("test.md");
+        let mut ctx = test_ctx.context();
+        let header = parse_header(content, &mut ctx);
+
+        assert!(header.description.is_some());
+        assert!(header.description.unwrap().contains("no tasks section"));
+    }
+
+    #[test]
+    fn test_parse_header_empty_description() {
+        let content = r"# Project Tasks
+
+@id: project-1
+
+## Description
+
+## Tasks
+
+- [ ] First task";
+
+        let test_ctx = TestContext::new("test.md");
+        let mut ctx = test_ctx.context();
+        let header = parse_header(content, &mut ctx);
+
+        // Empty description section should return None
+        assert!(header.description.is_none());
+    }
+
+    #[test]
+    fn test_parse_header_description_after_tasks_error() {
+        let content = r"# Project Tasks
+
+@id: project-1
+
+## Tasks
+
+- [ ] First task
+
+## Description
+
+This should error because description comes after tasks.";
+
+        let test_ctx = TestContext::new("test.md");
+        let mut ctx = test_ctx.context();
+        let header = parse_header(content, &mut ctx);
+
+        // Should have an error diagnostic
+        assert!(ctx.has_errors());
+        assert!(ctx
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E_PARSE_DESCRIPTION_AFTER_TASKS"));
+        // Description should not be extracted
+        assert!(header.description.is_none());
+    }
+
+    #[test]
+    fn test_parse_header_no_description() {
+        let content = r"# Project Tasks
+
+@id: project-1
+
+## Tasks
+
+- [ ] First task";
+
+        let test_ctx = TestContext::new("test.md");
+        let mut ctx = test_ctx.context();
+        let header = parse_header(content, &mut ctx);
+
+        assert!(header.description.is_none());
+        assert!(header.description_agent_notes.is_empty());
+    }
+
+    #[test]
+    fn test_parse_header_description_with_multiple_paragraphs() {
+        let content = r"# Project Tasks
+
+@id: project-1
+
+## Description
+
+This is the first paragraph of the description.
+
+This is the second paragraph with more details.
+
+And a third paragraph for good measure.
+
+## Tasks
+
+- [ ] First task";
+
+        let test_ctx = TestContext::new("test.md");
+        let mut ctx = test_ctx.context();
+        let header = parse_header(content, &mut ctx);
+
+        assert!(header.description.is_some());
+        let desc = header.description.unwrap();
+        assert!(desc.contains("first paragraph"));
+        assert!(desc.contains("second paragraph"));
+        assert!(desc.contains("third paragraph"));
     }
 }

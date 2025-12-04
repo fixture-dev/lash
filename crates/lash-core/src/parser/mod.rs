@@ -159,14 +159,17 @@ impl<'a> ParseContext<'a> {
 
 /// Sections of a Lash task file
 ///
-/// A well-formed task file has three main sections:
-/// - Header: Title (H1), metadata annotations, optional overview text
+/// A well-formed task file has four main sections:
+/// - Header: Title (H1), metadata annotations
+/// - Description: Optional `## Description` section with free-form text
 /// - Tasks: The `## Tasks` section with checkbox lists
 /// - References: Optional `## References` section with links/notes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
-    /// Header section (H1, annotations, overview)
+    /// Header section (H1, annotations)
     Header,
+    /// Description section (## Description)
+    Description,
     /// Tasks section (## Tasks)
     Tasks,
     /// References section (## References)
@@ -196,8 +199,8 @@ pub struct ParsedFile {
 
 /// Parsed header block
 ///
-/// Contains the file title, metadata annotations, and optional overview text
-/// extracted from the top of the file before the `## Tasks` section.
+/// Contains the file title, metadata annotations, optional overview text
+/// (deprecated in favor of Description section), and optional Description section.
 #[derive(Debug, Clone)]
 pub struct ParsedHeader {
     /// File title (from H1 heading)
@@ -206,8 +209,14 @@ pub struct ParsedHeader {
     /// Metadata annotations (@id, @labels, @status, etc.)
     pub annotations: annotations::AnnotationBlock,
 
-    /// Optional overview/description text
+    /// Optional overview/description text (legacy, before Description section)
     pub overview: Option<String>,
+
+    /// Optional Description section content (## Description)
+    pub description: Option<String>,
+
+    /// Agent notes extracted from Description section
+    pub description_agent_notes: Vec<String>,
 }
 
 /// Main entry point for parsing a Lash task file
@@ -365,6 +374,8 @@ pub fn parse_file_from_string(content: &str, config: &LashConfig) -> ParseResult
         title: header.title,
         id: file_id,
         metadata: file_metadata,
+        description: header.description,
+        description_agent_notes: header.description_agent_notes,
         tasks,
         hash,
         mtime: std::time::SystemTime::now(),
@@ -1603,5 +1614,131 @@ More text
         // Should have annotation metadata
         assert_eq!(task.metadata.owner, Some("bob".to_string()));
         assert_eq!(task.metadata.docs.len(), 1);
+    }
+
+    // ==================== Description Section Integration Tests ====================
+
+    #[test]
+    fn test_parse_file_with_description() {
+        let content = r"# Test File
+
+@id: test-file
+
+## Description
+
+This is a comprehensive description of the test file.
+It explains the scope and intent of the tasks below.
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+
+        assert!(file.description.is_some());
+        let desc = file.description.unwrap();
+        assert!(desc.contains("comprehensive description"));
+        assert!(desc.contains("scope and intent"));
+        assert_eq!(file.tasks.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_file_with_description_and_agent_notes() {
+        let content = r"# Test File
+
+@id: test-file
+
+## Description
+
+This is a description. @agent-note: Pay attention to the architecture.
+More content here. @agent-note: Focus on performance optimization.
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+
+        assert!(file.description.is_some());
+        assert_eq!(file.description_agent_notes.len(), 2);
+        assert!(file.description_agent_notes[0].contains("architecture"));
+        assert!(file.description_agent_notes[1].contains("performance"));
+    }
+
+    #[test]
+    fn test_parse_file_description_after_tasks_error() {
+        let content = r"# Test File
+
+@id: test-file
+
+## Tasks
+
+- [ ] Task 1
+
+## Description
+
+This should fail.
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        // Should fail with error
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(!errors.is_empty());
+        assert!(errors
+            .iter()
+            .any(|d| d.code == "E_PARSE_DESCRIPTION_AFTER_TASKS"));
+    }
+
+    #[test]
+    fn test_parse_file_with_empty_description() {
+        let content = r"# Test File
+
+@id: test-file
+
+## Description
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+
+        // Empty description should be None
+        assert!(file.description.is_none());
+        assert!(file.description_agent_notes.is_empty());
+    }
+
+    #[test]
+    fn test_parse_file_no_description() {
+        let content = r"# Test File
+
+@id: test-file
+
+## Tasks
+
+- [ ] Task 1
+";
+        let config = LashConfig::default();
+        let result = parse_file_from_string(content, &config);
+
+        assert!(result.is_ok(), "Expected success, got: {result:?}");
+        let file = result.unwrap();
+
+        assert!(file.description.is_none());
+        assert!(file.description_agent_notes.is_empty());
     }
 }

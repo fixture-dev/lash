@@ -159,6 +159,8 @@ mod tests {
             title: "Test File".to_string(),
             id: "test".to_string(),
             metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
             tasks: tree,
             hash: "hash".to_string(),
             mtime: SystemTime::now(),

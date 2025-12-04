@@ -155,7 +155,7 @@ This is a **living document**: sections marked as “TBD/Decide” are design su
 Each task file has:
 
 1. **Header block** (YAML-like or fenced metadata; exact syntax TBD but consistent).
-2. **Optional overview** (one or two paragraphs).
+2. **Description section** (optional but recommended) - Free-form Markdown text explaining the scope, context, and intent of the file.
 3. **Task tree** (hierarchical checkbox list).
 4. **Optional reference/notes section**.
 
@@ -170,7 +170,15 @@ Example sketch (**not final syntax**, but concrete enough to implement):
 @owner: frank
 @created: 2025-11-16
 
-Short description of the sepia filter feature, constraints, and goals.
+## Description
+
+This file tracks implementation of the sepia filter effect for the photo app.
+The sepia filter applies a warm, vintage tone to images by shifting RGB values
+toward brown/tan colors. @agent-note: This is a non-destructive operation that
+should preserve the original image data.
+
+Key constraints: must process 4K images in under 100ms, integrate with existing
+filter pipeline, support both CPU and GPU implementations.
 
 ## Tasks
 
@@ -190,6 +198,25 @@ Short description of the sepia filter feature, constraints, and goals.
 - Depends on: `../core/image-pipeline.md`
 - Related: `../photo-app.filters.vignette.md`
 ```
+
+#### Description Section Specification
+
+The `## Description` section:
+
+* **Placement**: Must appear after the metadata block and before `## Tasks`.
+* **Purpose**: Provides contextual information about the file's scope, goals, constraints, and implementation notes. This helps both humans and agents understand the purpose and context before diving into tasks.
+* **Content**: Free-form Markdown text. May include:
+  * Overview of what this file covers
+  * Key constraints or requirements
+  * Design decisions or architectural notes
+  * Implementation guidance
+  * Inline `@agent-note:` annotations for LLM-specific hints
+* **Length limits**:
+  * Recommended: 500-1000 characters
+  * Warning threshold: 1000 characters (linter will warn)
+  * Error threshold: 2000 characters (linter will fail)
+  * Rationale: Keeps descriptions concise and agent-token-friendly while allowing sufficient context.
+* **Optional but recommended**: While not strictly required, the linter may suggest adding a description section for files with significant task trees or complex dependencies.
 
 ### 4.2 Task Line Format
 
@@ -519,6 +546,7 @@ Tables (names illustrative):
   * `hash` (content hash, e.g. blake3)
   * `mtime`
   * `status` (overall file state)
+  * `description` (TEXT; content from `## Description` section)
   * `labels` (optional normalized relation or JSON)
   * `meta` (JSON blob for extra header info)
 
@@ -562,7 +590,7 @@ Tables (names illustrative):
 Indexes:
 
 * On `tasks.status`, `labels.name`, `files.path`.
-* FTS (if used) on `tasks.title`, `tasks.body`, `files.path`.
+* FTS (if used) on `tasks.title`, `tasks.body`, `files.path`, `files.description`.
 
 ### 9.3 Fuzzy Search
 

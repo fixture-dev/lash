@@ -252,10 +252,10 @@ Update the FTS5 search index to include file description text, making descriptio
 
 Update CLI commands (`list`, `show`, `search`) to display file descriptions where relevant.
 
-- [ ] Update `lash show` command
-  - [ ] Display description section after metadata, before tasks
-  - [ ] Format with appropriate heading and indentation
-  - [ ] Respect `--format=json` (include description in JSON output)
+- [x] Update `lash show` command
+  - [x] Display description section after metadata, before tasks
+  - [x] Format with appropriate heading and indentation
+  - [x] Respect `--format=json` (include description in JSON output)
 - [ ] Update `lash list` command
   - [ ] Add `--show-descriptions` flag
   - [ ] Show first 100 chars of description for each file
@@ -281,14 +281,14 @@ Update CLI commands (`list`, `show`, `search`) to display file descriptions wher
 
 Update the TUI detail pane to show file descriptions when viewing task files.
 
-- [ ] Update detail pane layout
-  - [ ] Add description section after file metadata
-  - [ ] Show description text with word wrapping
-  - [ ] Use distinct styling (e.g., italic or different color)
-  - [ ] Show "No description available" if absent
-- [ ] Handle long descriptions
-  - [ ] Truncate if needed to fit pane height
-  - [ ] Support scrolling within detail pane
+- [x] Update detail pane layout
+  - [x] Add description section after file metadata
+  - [x] Show description text with word wrapping
+  - [x] Use distinct styling (e.g., italic or different color)
+  - [x] Show "No description available" if absent
+- [x] Handle long descriptions
+  - [x] Truncate if needed to fit pane height
+  - [x] Support scrolling within detail pane
 
 **Success Criteria:**
 - TUI shows descriptions in detail pane

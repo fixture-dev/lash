@@ -259,6 +259,8 @@ mod tests {
                 created: date.map(std::string::ToString::to_string),
                 ..Default::default()
             },
+            description: None,
+            description_agent_notes: Vec::new(),
             tasks: TaskTree::new(),
             hash: "hash".to_string(),
             mtime: SystemTime::now(),

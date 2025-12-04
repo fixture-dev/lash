@@ -7,12 +7,16 @@ use crate::error::{DbError, DbResult};
 
 mod v2_enhanced_fts;
 mod v3_doc_refs;
+mod v4_file_descriptions;
+mod v5_fts_description;
 
 use v2_enhanced_fts::MigrationV2EnhancedFts;
 use v3_doc_refs::MigrationV3DocRefs;
+use v4_file_descriptions::MigrationV4FileDescriptions;
+use v5_fts_description::MigrationV5FtsDescription;
 
 /// Current schema version
-pub const CURRENT_SCHEMA_VERSION: i32 = 3;
+pub const CURRENT_SCHEMA_VERSION: i32 = 5;
 
 /// A database migration
 pub trait Migration {
@@ -121,6 +125,8 @@ fn get_migrations() -> Vec<Box<dyn Migration>> {
     vec![
         Box::new(MigrationV2EnhancedFts),
         Box::new(MigrationV3DocRefs),
+        Box::new(MigrationV4FileDescriptions),
+        Box::new(MigrationV5FtsDescription),
     ]
 }
 

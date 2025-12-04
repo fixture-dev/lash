@@ -18,6 +18,8 @@ fn create_test_file(path: &str, file_id: &str) -> TaskFile {
         tasks: TaskTree::new(),
         hash: "test_hash".to_string(),
         mtime: SystemTime::now(),
+        description: None,
+        description_agent_notes: Vec::new(),
     }
 }
 

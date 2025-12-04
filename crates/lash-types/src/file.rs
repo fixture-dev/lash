@@ -17,6 +17,7 @@ use crate::task::TaskTree;
 /// - A title (from the first H1 heading)
 /// - An ID (explicit via @id or derived from path)
 /// - File-level metadata
+/// - Optional description section
 /// - A hierarchical task tree
 /// - Content hash for change detection
 #[derive(Debug, Clone)]
@@ -32,6 +33,12 @@ pub struct TaskFile {
 
     /// File-level metadata
     pub metadata: FileMetadata,
+
+    /// Optional description section content (## Description)
+    pub description: Option<String>,
+
+    /// Agent notes extracted from description section
+    pub description_agent_notes: Vec<String>,
 
     /// Hierarchical task structure
     pub tasks: TaskTree,
@@ -279,6 +286,8 @@ mod tests {
             tasks: TaskTree::new(),
             hash: hash.clone(),
             mtime: SystemTime::now(),
+            description: None,
+            description_agent_notes: Vec::new(),
         };
 
         assert!(file.hash_matches(content));
@@ -317,6 +326,8 @@ mod tests {
             tasks: TaskTree::new(),
             hash: compute_hash(""),
             mtime: SystemTime::now(),
+            description: None,
+            description_agent_notes: Vec::new(),
         };
 
         assert_eq!(file.compute_status(), FileStatus::Empty);
@@ -352,6 +363,8 @@ mod tests {
             tasks,
             hash: compute_hash(""),
             mtime: SystemTime::now(),
+            description: None,
+            description_agent_notes: Vec::new(),
         };
 
         assert_eq!(file.compute_status(), FileStatus::Complete);
@@ -387,6 +400,8 @@ mod tests {
             tasks,
             hash: compute_hash(""),
             mtime: SystemTime::now(),
+            description: None,
+            description_agent_notes: Vec::new(),
         };
 
         assert_eq!(file.compute_status(), FileStatus::InProgress);
@@ -413,6 +428,8 @@ mod tests {
             tasks,
             hash: compute_hash(""),
             mtime: SystemTime::now(),
+            description: None,
+            description_agent_notes: Vec::new(),
         };
 
         assert_eq!(file.compute_status(), FileStatus::Blocked);
@@ -435,6 +452,8 @@ mod tests {
             tasks,
             hash: compute_hash(""),
             mtime: SystemTime::now(),
+            description: None,
+            description_agent_notes: Vec::new(),
         };
 
         assert!(file.validate(&config).is_ok());

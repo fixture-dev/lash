@@ -61,6 +61,9 @@ pub struct FileRecord {
     /// Title from first H1 heading
     pub title: String,
 
+    /// Description text (multi-paragraph text after metadata, before tasks)
+    pub description: String,
+
     /// blake3 content hash
     pub hash: String,
 
@@ -120,6 +123,8 @@ impl<'conn> FileRepository<'conn> {
     ///     tasks: TaskTree::new(),
     ///     hash: "abc123".to_string(),
     ///     mtime: SystemTime::now(),
+    ///     description: None,
+    ///     description_agent_notes: Vec::new(),
     /// };
     ///
     /// let file_id = repo.insert(&file).unwrap();
@@ -145,12 +150,13 @@ impl<'conn> FileRepository<'conn> {
             .as_secs() as i64;
 
         self.conn.execute(
-            "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO files (path, file_id, title, description, hash, mtime, status, metadata)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             (
                 normalize_path_for_db(&file.path),
                 &file.id,
                 &file.title,
+                &file.description.as_deref().unwrap_or(""),
                 &file.hash,
                 mtime,
                 status.as_str(),
@@ -182,11 +188,12 @@ impl<'conn> FileRepository<'conn> {
 
         let rows = self.conn.execute(
             "UPDATE files
-             SET file_id = ?1, title = ?2, hash = ?3, mtime = ?4, status = ?5, metadata = ?6
-             WHERE path = ?7",
+             SET file_id = ?1, title = ?2, description = ?3, hash = ?4, mtime = ?5, status = ?6, metadata = ?7
+             WHERE path = ?8",
             (
                 &file.id,
                 &file.title,
+                &file.description.as_deref().unwrap_or(""),
                 &file.hash,
                 mtime,
                 status.as_str(),
@@ -227,21 +234,21 @@ impl<'conn> FileRepository<'conn> {
     pub fn get_by_path(&self, path: &Path) -> DbResult<Option<FileRecord>> {
         self.conn
             .query_row(
-                "SELECT id, path, file_id, title, hash, mtime, status, metadata, indexed_at
+                "SELECT id, path, file_id, title, description, hash, mtime, status, metadata, indexed_at
                  FROM files WHERE path = ?1",
                 [normalize_path_for_db(path)],
                 |row| {
-                    let metadata_json: String = row.get(7)?;
+                    let metadata_json: String = row.get(8)?;
                     let metadata: FileMetadata =
                         serde_json::from_str(&metadata_json).map_err(|e| {
                             rusqlite::Error::FromSqlConversionFailure(
-                                7,
+                                8,
                                 rusqlite::types::Type::Text,
                                 Box::new(e),
                             )
                         })?;
 
-                    let status_str: String = row.get(6)?;
+                    let status_str: String = row.get(7)?;
                     let status = FileStatus::from_str_lossy(&status_str);
 
                     Ok(FileRecord {
@@ -249,11 +256,12 @@ impl<'conn> FileRepository<'conn> {
                         path: PathBuf::from(row.get::<_, String>(1)?),
                         file_id: row.get(2)?,
                         title: row.get(3)?,
-                        hash: row.get(4)?,
-                        mtime: row.get(5)?,
+                        description: row.get(4)?,
+                        hash: row.get(5)?,
+                        mtime: row.get(6)?,
                         status,
                         metadata,
-                        indexed_at: row.get(8)?,
+                        indexed_at: row.get(9)?,
                     })
                 },
             )
@@ -269,21 +277,21 @@ impl<'conn> FileRepository<'conn> {
     pub fn get_by_file_id(&self, file_id: &str) -> DbResult<Option<FileRecord>> {
         self.conn
             .query_row(
-                "SELECT id, path, file_id, title, hash, mtime, status, metadata, indexed_at
+                "SELECT id, path, file_id, title, description, hash, mtime, status, metadata, indexed_at
                  FROM files WHERE file_id = ?1",
                 [file_id],
                 |row| {
-                    let metadata_json: String = row.get(7)?;
+                    let metadata_json: String = row.get(8)?;
                     let metadata: FileMetadata =
                         serde_json::from_str(&metadata_json).map_err(|e| {
                             rusqlite::Error::FromSqlConversionFailure(
-                                7,
+                                8,
                                 rusqlite::types::Type::Text,
                                 Box::new(e),
                             )
                         })?;
 
-                    let status_str: String = row.get(6)?;
+                    let status_str: String = row.get(7)?;
                     let status = FileStatus::from_str_lossy(&status_str);
 
                     Ok(FileRecord {
@@ -291,11 +299,12 @@ impl<'conn> FileRepository<'conn> {
                         path: PathBuf::from(row.get::<_, String>(1)?),
                         file_id: row.get(2)?,
                         title: row.get(3)?,
-                        hash: row.get(4)?,
-                        mtime: row.get(5)?,
+                        description: row.get(4)?,
+                        hash: row.get(5)?,
+                        mtime: row.get(6)?,
                         status,
                         metadata,
-                        indexed_at: row.get(8)?,
+                        indexed_at: row.get(9)?,
                     })
                 },
             )
@@ -311,21 +320,21 @@ impl<'conn> FileRepository<'conn> {
     pub fn get_by_db_id(&self, id: i64) -> DbResult<Option<FileRecord>> {
         self.conn
             .query_row(
-                "SELECT id, path, file_id, title, hash, mtime, status, metadata, indexed_at
+                "SELECT id, path, file_id, title, description, hash, mtime, status, metadata, indexed_at
                  FROM files WHERE id = ?1",
                 [id],
                 |row| {
-                    let metadata_json: String = row.get(7)?;
+                    let metadata_json: String = row.get(8)?;
                     let metadata: FileMetadata =
                         serde_json::from_str(&metadata_json).map_err(|e| {
                             rusqlite::Error::FromSqlConversionFailure(
-                                7,
+                                8,
                                 rusqlite::types::Type::Text,
                                 Box::new(e),
                             )
                         })?;
 
-                    let status_str: String = row.get(6)?;
+                    let status_str: String = row.get(7)?;
                     let status = FileStatus::from_str_lossy(&status_str);
 
                     Ok(FileRecord {
@@ -333,11 +342,12 @@ impl<'conn> FileRepository<'conn> {
                         path: PathBuf::from(row.get::<_, String>(1)?),
                         file_id: row.get(2)?,
                         title: row.get(3)?,
-                        hash: row.get(4)?,
-                        mtime: row.get(5)?,
+                        description: row.get(4)?,
+                        hash: row.get(5)?,
+                        mtime: row.get(6)?,
                         status,
                         metadata,
-                        indexed_at: row.get(8)?,
+                        indexed_at: row.get(9)?,
                     })
                 },
             )
@@ -352,22 +362,22 @@ impl<'conn> FileRepository<'conn> {
     /// Returns error if query fails
     pub fn list_all(&self) -> DbResult<Vec<FileRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, file_id, title, hash, mtime, status, metadata, indexed_at
+            "SELECT id, path, file_id, title, description, hash, mtime, status, metadata, indexed_at
              FROM files ORDER BY path",
         )?;
 
         let files = stmt
             .query_map([], |row| {
-                let metadata_json: String = row.get(7)?;
+                let metadata_json: String = row.get(8)?;
                 let metadata: FileMetadata = serde_json::from_str(&metadata_json).map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(
-                        7,
+                        8,
                         rusqlite::types::Type::Text,
                         Box::new(e),
                     )
                 })?;
 
-                let status_str: String = row.get(6)?;
+                let status_str: String = row.get(7)?;
                 let status = FileStatus::from_str_lossy(&status_str);
 
                 Ok(FileRecord {
@@ -375,11 +385,12 @@ impl<'conn> FileRepository<'conn> {
                     path: PathBuf::from(row.get::<_, String>(1)?),
                     file_id: row.get(2)?,
                     title: row.get(3)?,
-                    hash: row.get(4)?,
-                    mtime: row.get(5)?,
+                    description: row.get(4)?,
+                    hash: row.get(5)?,
+                    mtime: row.get(6)?,
                     status,
                     metadata,
-                    indexed_at: row.get(8)?,
+                    indexed_at: row.get(9)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -410,12 +421,13 @@ impl<'conn> FileRepository<'conn> {
                 .as_secs() as i64;
 
             tx.execute(
-                "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO files (path, file_id, title, description, hash, mtime, status, metadata)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 (
                     normalize_path_for_db(&file.path),
                     &file.id,
                     &file.title,
+                    &file.description.as_deref().unwrap_or(""),
                     &file.hash,
                     mtime,
                     status.as_str(),
@@ -461,11 +473,12 @@ impl<'conn> FileRepository<'conn> {
             let normalized_path = normalize_path_for_db(&file.path);
 
             tx.execute(
-                "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "INSERT INTO files (path, file_id, title, description, hash, mtime, status, metadata)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(path) DO UPDATE SET
                    file_id = excluded.file_id,
                    title = excluded.title,
+                   description = excluded.description,
                    hash = excluded.hash,
                    mtime = excluded.mtime,
                    status = excluded.status,
@@ -474,6 +487,7 @@ impl<'conn> FileRepository<'conn> {
                     &normalized_path,
                     &file.id,
                     &file.title,
+                    &file.description.as_deref().unwrap_or(""),
                     &file.hash,
                     mtime,
                     status.as_str(),
@@ -510,6 +524,8 @@ mod tests {
             title: "Test File".to_string(),
             id: path.replace('/', "."),
             metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
             tasks: TaskTree::new(),
             hash: "test_hash".to_string(),
             mtime: SystemTime::now(),

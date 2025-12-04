@@ -380,6 +380,7 @@ fn show_task(
             path: PathBuf::from(format!("<file-id-{}>", task.file_id)),
             file_id: format!("file-{}", task.file_id),
             title: String::from("<unknown>"),
+            description: String::new(),
             hash: String::new(),
             mtime: 0,
             status: lash_types::FileStatus::InProgress,
@@ -483,9 +484,21 @@ fn output_json_file(
 ) -> Result<()> {
     use serde_json::json;
 
+    let mut file_json = json!({
+        "path": file.path,
+        "file_id": file.file_id,
+        "title": file.title,
+        "status": file.status,
+    });
+
+    // Include description if present
+    if !file.description.is_empty() {
+        file_json["description"] = json!(file.description);
+    }
+
     let output = json!({
         "type": "file",
-        "file": file,
+        "file": file_json,
         "task_count": tasks.len(),
         "tasks": tasks,
         "doc_refs": doc_refs,
@@ -575,6 +588,19 @@ fn output_text_file(
             println!("  Docs:     {}", theme.style_muted(&doc_str));
         } else {
             println!("  Docs:     {doc_str}");
+        }
+    }
+
+    // Description
+    if !file.description.is_empty() {
+        println!();
+        if let Some(theme) = theme {
+            println!("{}", theme.style_info("Description:"));
+        } else {
+            println!("Description:");
+        }
+        for line in file.description.lines() {
+            println!("  {line}");
         }
     }
 

@@ -1383,4 +1383,89 @@ mod tests {
             "Doc ref should be updated to new.md"
         );
     }
+
+    #[test]
+    fn test_description_field_indexed() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create a markdown file with a description section
+        fs::write(
+            root.join("test.md"),
+            "# Test File\n\n@id: test\n\n## Description\n\nThis is a test description.\nIt has multiple lines.\n\n## Tasks\n\n- [ ] Task 1\n  @id: task1\n",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.path().join("test.db");
+        let conn = init_database(&db_path).unwrap();
+
+        let config = IndexerConfig::new(root.to_path_buf());
+        let parser_config = LashConfig::default();
+
+        // Index the project
+        let mut indexer = Indexer::new(&conn, config, &parser_config);
+        let report = indexer.index_project().unwrap();
+
+        assert_eq!(report.files_processed, 1);
+        assert_eq!(report.files_added, 1);
+        assert_eq!(report.errors.len(), 0);
+
+        // Verify description was indexed
+        let file_repo = FileRepository::new(&conn);
+        let files = file_repo.list_all().unwrap();
+        assert_eq!(files.len(), 1);
+
+        let file_record = &files[0];
+        assert_eq!(file_record.title, "Test File");
+        assert!(
+            !file_record.description.is_empty(),
+            "Description should not be empty"
+        );
+        assert!(
+            file_record
+                .description
+                .contains("This is a test description"),
+            "Description should contain the expected text"
+        );
+        assert!(
+            file_record.description.contains("multiple lines"),
+            "Description should contain multi-line content"
+        );
+    }
+
+    #[test]
+    fn test_empty_description_defaults_to_empty_string() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create a markdown file without a description section
+        fs::write(
+            root.join("test.md"),
+            "# Test File\n\n@id: test\n\n## Tasks\n\n- [ ] Task 1\n  @id: task1\n",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.path().join("test.db");
+        let conn = init_database(&db_path).unwrap();
+
+        let config = IndexerConfig::new(root.to_path_buf());
+        let parser_config = LashConfig::default();
+
+        // Index the project
+        let mut indexer = Indexer::new(&conn, config, &parser_config);
+        let report = indexer.index_project().unwrap();
+
+        assert_eq!(report.files_processed, 1);
+
+        // Verify description is empty string (not null)
+        let file_repo = FileRepository::new(&conn);
+        let files = file_repo.list_all().unwrap();
+        assert_eq!(files.len(), 1);
+
+        let file_record = &files[0];
+        assert_eq!(
+            file_record.description, "",
+            "Description should be empty string when not provided"
+        );
+    }
 }

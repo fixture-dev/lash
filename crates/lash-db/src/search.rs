@@ -501,7 +501,7 @@ pub fn search_with_profiling(
     }
 
     // Build the SQL query with column-weighted BM25 scoring
-    // FTS5 bm25() with column weights: title (3.0), labels (2.0), body (1.0), file_path (0.5)
+    // FTS5 bm25() with column weights: title (3.0), body (1.0), labels (2.0), file_path (0.5), file_description (1.5)
     let mut sql = String::from(
         "
         SELECT
@@ -512,9 +512,10 @@ pub fn search_with_profiling(
             t.status,
             t.owner,
             f.path,
-            bm25(tasks_fts, 3.0, 1.0, 2.0, 0.5) as bm25_score,
+            bm25(tasks_fts, 3.0, 1.0, 2.0, 0.5, 1.5) as bm25_score,
             fts.labels,
-            fts.file_path
+            fts.file_path,
+            fts.file_description
         FROM tasks_fts fts
         JOIN tasks t ON t.id = fts.rowid
         JOIN files f ON f.id = t.file_id
@@ -620,6 +621,7 @@ pub fn search_with_profiling(
         let bm25_score: f64 = row.get(7)?;
         let labels_str: String = row.get(8)?;
         let fts_file_path: String = row.get(9)?;
+        let file_description: String = row.get(10)?;
 
         Ok((
             task_id,
@@ -632,6 +634,7 @@ pub fn search_with_profiling(
             bm25_score,
             labels_str,
             fts_file_path,
+            file_description,
         ))
     })?;
 
@@ -655,6 +658,7 @@ pub fn search_with_profiling(
             bm25_score,
             labels_str,
             _fts_file_path,
+            file_description,
         ) = row?;
 
         // Parse status
@@ -676,6 +680,8 @@ pub fn search_with_profiling(
             .as_ref()
             .is_some_and(|b| b.to_lowercase().contains(&query_lower));
         let label_match = labels_str.to_lowercase().contains(&query_lower);
+        let description_match =
+            !file_description.is_empty() && file_description.to_lowercase().contains(&query_lower);
 
         if title_match {
             matched_fields.push("title".to_string());
@@ -685,6 +691,9 @@ pub fn search_with_profiling(
         }
         if label_match {
             matched_fields.push("labels".to_string());
+        }
+        if description_match {
+            matched_fields.push("file_description".to_string());
         }
 
         // Check for prefix match

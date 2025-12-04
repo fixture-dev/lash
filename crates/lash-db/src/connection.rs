@@ -190,7 +190,7 @@ mod tests {
 
         // Verify schema version is set
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
 
         // Verify tables exist
         let tables: Vec<String> = conn
@@ -222,7 +222,7 @@ mod tests {
         // Open existing database
         let conn = open_database(path).unwrap();
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
     }
 
     #[test]
@@ -276,9 +276,9 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let conn = init_database(temp_file.path()).unwrap();
 
-        // Initial version should be 3 (current schema version)
+        // Initial version should be 5 (current schema version)
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
 
         // Update version
         set_schema_version(&conn, 3).unwrap();

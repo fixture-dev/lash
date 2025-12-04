@@ -637,6 +637,8 @@ mod tests {
             title: "Test File".to_string(),
             id: path.replace('/', "."),
             metadata: TypesFileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
             tasks: TaskTree::new(),
             hash: hash.to_string(),
             mtime,

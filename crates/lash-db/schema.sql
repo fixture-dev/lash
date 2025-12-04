@@ -20,7 +20,7 @@ CREATE TABLE metadata (
 );
 
 -- Initialize schema version
-INSERT INTO metadata (key, value) VALUES ('schema_version', '2');
+INSERT INTO metadata (key, value) VALUES ('schema_version', '5');
 
 -- ============================================================================
 -- Files table (task files from the project)
@@ -37,6 +37,9 @@ CREATE TABLE files (
 
     -- Title from first H1 heading
     title TEXT NOT NULL,
+
+    -- Description text (multi-paragraph text after metadata, before tasks)
+    description TEXT NOT NULL DEFAULT '',
 
     -- blake3 content hash for change detection
     hash TEXT NOT NULL,
@@ -215,12 +218,45 @@ CREATE TABLE file_labels (
 CREATE INDEX idx_file_labels_label ON file_labels(label_id);
 
 -- ============================================================================
+-- Doc Refs table (documentation references from @doc annotations)
+-- ============================================================================
+
+CREATE TABLE doc_refs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Source file (required - every doc ref belongs to a file)
+    source_file_id INTEGER NOT NULL,
+
+    -- Source task (NULL for file-level @doc annotations)
+    source_task_id INTEGER NULL,
+
+    -- Target document path (relative path to the doc)
+    target_path TEXT NOT NULL,
+
+    -- Optional fragment (e.g., section anchor)
+    fragment TEXT NULL,
+
+    FOREIGN KEY (source_file_id) REFERENCES files(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+-- Index for finding all doc refs for a file
+CREATE INDEX idx_doc_refs_source_file ON doc_refs(source_file_id);
+
+-- Index for finding all doc refs for a task
+CREATE INDEX idx_doc_refs_source_task ON doc_refs(source_task_id) WHERE source_task_id IS NOT NULL;
+
+-- Index for reverse lookup (find all sources that reference a doc)
+CREATE INDEX idx_doc_refs_target_path ON doc_refs(target_path);
+
+-- ============================================================================
 -- FTS5 virtual table for full-text search
 -- ============================================================================
 --
 -- Column weights for relevance ranking (configured via bm25()):
 -- - title: highest weight (most important)
 -- - labels: medium-high weight
+-- - file_description: medium weight (higher than task body, lower than title)
 -- - body: standard weight
 -- - file_path: lower weight
 
@@ -230,6 +266,7 @@ CREATE VIRTUAL TABLE tasks_fts USING fts5(
     body,               -- Searchable body text
     labels,             -- Space-separated labels
     file_path,          -- File path for filename matching
+    file_description,   -- File description text (searchable)
     tokenize='unicode61 remove_diacritics 2'
 );
 
@@ -243,7 +280,7 @@ CREATE VIRTUAL TABLE tasks_fts USING fts5(
 
 -- Insert trigger: add new task to search index
 CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
-    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path)
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description)
     SELECT
         new.id,
         new.full_id,
@@ -255,7 +292,8 @@ CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
             JOIN labels l ON l.id = tl.label_id
             WHERE tl.task_id = new.id
         ), ''),
-        f.path
+        f.path,
+        COALESCE(f.description, '')
     FROM files f
     WHERE f.id = new.file_id;
 END;
@@ -263,7 +301,7 @@ END;
 -- Update trigger: update search index when task changes
 CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
     DELETE FROM tasks_fts WHERE rowid = old.id;
-    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path)
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description)
     SELECT
         new.id,
         new.full_id,
@@ -275,7 +313,8 @@ CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
             JOIN labels l ON l.id = tl.label_id
             WHERE tl.task_id = new.id
         ), ''),
-        f.path
+        f.path,
+        COALESCE(f.description, '')
     FROM files f
     WHERE f.id = new.file_id;
 END;
@@ -288,7 +327,7 @@ END;
 -- Trigger to update FTS when labels change
 CREATE TRIGGER task_labels_ai AFTER INSERT ON task_labels BEGIN
     DELETE FROM tasks_fts WHERE rowid = new.task_id;
-    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path)
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description)
     SELECT
         t.id,
         t.full_id,
@@ -300,7 +339,8 @@ CREATE TRIGGER task_labels_ai AFTER INSERT ON task_labels BEGIN
             JOIN labels l ON l.id = tl.label_id
             WHERE tl.task_id = t.id
         ), ''),
-        f.path
+        f.path,
+        COALESCE(f.description, '')
     FROM tasks t
     JOIN files f ON f.id = t.file_id
     WHERE t.id = new.task_id;
@@ -308,7 +348,7 @@ END;
 
 CREATE TRIGGER task_labels_ad AFTER DELETE ON task_labels BEGIN
     DELETE FROM tasks_fts WHERE rowid = old.task_id;
-    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path)
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description)
     SELECT
         t.id,
         t.full_id,
@@ -320,7 +360,8 @@ CREATE TRIGGER task_labels_ad AFTER DELETE ON task_labels BEGIN
             JOIN labels l ON l.id = tl.label_id
             WHERE tl.task_id = t.id
         ), ''),
-        f.path
+        f.path,
+        COALESCE(f.description, '')
     FROM tasks t
     JOIN files f ON f.id = t.file_id
     WHERE t.id = old.task_id;
