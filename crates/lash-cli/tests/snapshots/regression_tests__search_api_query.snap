@@ -1,5 +1,6 @@
 ---
 source: crates/lash-cli/tests/regression_tests.rs
+assertion_line: 314
 expression: normalized
 ---
 ┓    ┓
@@ -8,31 +9,28 @@ expression: normalized
 Found 20 result(s) for 'api'
 
 └── backend/
-    ├── api.md/
-    │   ├── [x] Design REST API (0.58)
-    │   ├── [ ] Add API documentation #docs (0.57)
-    │   ├── [x] Define endpoints (0.53)
-    │   ├── [ ] Session management (0.53)
-    │   ├── [x] User endpoints (0.53)
-    │   ├── [ ] Task endpoints (0.53)
-    │   ├── [ ] Project endpoints (0.53)
-    │   ├── [ ] OpenAPI spec (0.56)
-    │   ├── [ ] Example requests (0.53)
-    │   └── [x] JWT token generation (0.53)
-    └── tests.md/
-        └── [x] API endpoint tests (0.59)
+    └── api.md/
+        ├── [x] Design REST API (0.59)
+        ├── [ ] Add API documentation #docs (0.58)
+        ├── [x] Define endpoints (0.54)
+        ├── [ ] Session management (0.54)
+        ├── [x] User endpoints (0.54)
+        ├── [ ] Task endpoints (0.54)
+        ├── [ ] Project endpoints (0.54)
+        ├── [ ] OpenAPI spec (0.57)
+        ├── [ ] Example requests (0.54)
+        └── [x] JWT token generation (0.54)
 └── docs/
     └── api-docs.md/
-        ├── [ ] API guide #guides (0.61)
-        ├── [ ] API reference documentation #docs (0.60)
-        ├── [ ] Authentication endpoints (0.53)
-        └── [ ] User endpoints (0.53)
+        ├── [ ] API guide #guides (0.62)
+        ├── [ ] API reference documentation #docs (0.61)
+        ├── [ ] Authentication endpoints (0.54)
+        ├── [ ] User endpoints (0.54)
+        ├── [ ] Task endpoints (0.54)
+        ├── [ ] Project endpoints (0.54)
+        ├── [ ] Getting started (0.54)
+        ├── [ ] Authentication guide (0.54)
+        └── [ ] Rate limiting (0.54)
 └── frontend/
-    ├── state.md/
-    │   ├── [ ] Add API integration #api (0.60)
-    │   └── [x] API client (0.59)
-    └── tests.md/
-        └── [x] Mock API (0.56)
-└── lash.index.md/
-    ├── [ ] API implementation (0.59)
-    └── [ ] API docs (0.59)
+    └── state.md/
+        └── [ ] Add API integration #api (0.60)
