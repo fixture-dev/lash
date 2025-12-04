@@ -117,24 +117,24 @@ Extend the Markdown parser to recognize and extract `## Description` sections fr
 
 Implement linter rules to validate description sections, primarily enforcing the length limit.
 
-- [ ] Implement Rule: Description Length Limit
-  - [ ] Code: `W_DESC_TOO_LONG`
-  - [ ] Check: Description <= 1000 characters (warning)
-  - [ ] Check: Description > 2000 characters (error, hard limit)
-  - [ ] Suggestion: "Consider moving detailed content to linked documentation"
-- [ ] Implement Rule: Description Section Order
-  - [ ] Code: `E_DESC_WRONG_POSITION`
-  - [ ] Check: Description appears after header, before Tasks
-  - [ ] Error on: Description after `## Tasks` or `## References`
-- [ ] Implement Rule: Duplicate Description Section
-  - [ ] Code: `E_DESC_DUPLICATE`
-  - [ ] Check: Only one `## Description` section per file
-- [ ] Add configuration option for length limit
-  - [ ] Add `description_max_length` to `LintConfig`
-  - [ ] Default: 1000 characters (warning threshold)
-  - [ ] Allow projects to configure via `.lash/config.toml`
-- [ ] Register rules with rule engine
-- [ ] Update linter tests
+- [x] Implement Rule: Description Length Limit
+  - [x] Code: `W_SEM_DESC_TOO_LONG` (warning) / `E_SEM_DESC_TOO_LONG` (error)
+  - [x] Check: Description <= 1000 characters (warning)
+  - [x] Check: Description > 2000 characters (error, hard limit)
+  - [x] Suggestion: "Consider moving detailed content to linked documentation"
+- [x] Implement Rule: Description Section Order
+  - [x] Code: `E_PARSE_DESCRIPTION_AFTER_TASKS` (handled by parser)
+  - [x] Check: Description appears after header, before Tasks
+  - [x] Error on: Description after `## Tasks` or `## References`
+- [x] Implement Rule: Duplicate Description Section
+  - [x] Code: `E_SYNTAX_DUPLICATE_DESCRIPTION`
+  - [x] Check: Only one `## Description` section per file
+- [x] Add configuration option for length limit
+  - [x] Add `description_max_length` to `LintConfig`
+  - [x] Default: 1000 characters (warning threshold)
+  - [x] Allow projects to configure via `.lash/config.toml`
+- [x] Register rules with rule engine
+- [x] Update linter tests
 
 **Success Criteria:**
 - Length limit enforced with clear diagnostics
