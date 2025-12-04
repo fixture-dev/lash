@@ -125,6 +125,11 @@ impl Default for RuleRegistry {
 /// - 11 semantic rules (Task #3 - Complete)
 /// - 5 cross-file rules (Task #4 - Complete)
 ///
+/// # Arguments
+///
+/// * `config` - Optional configuration for customizing rule behavior.
+///   If `None`, default values are used for all rules.
+///
 /// # Syntax Rules
 ///
 /// 1. Valid Checkbox Pattern (`E_SYNTAX_CHECKBOX`)
@@ -158,7 +163,7 @@ impl Default for RuleRegistry {
 /// 4. Orphaned Files (`W_INDEX_ORPHAN`)
 /// 5. Valid Dependency Path Resolution (`E_LINK_INVALID_PATH`)
 #[must_use]
-pub fn register_default_rules() -> RuleRegistry {
+pub fn register_default_rules(config: Option<&LintConfig>) -> RuleRegistry {
     use crate::linter::rules;
 
     let mut registry = RuleRegistry::new();
@@ -227,10 +232,17 @@ pub fn register_default_rules() -> RuleRegistry {
         RuleCategory::Semantic,
         Arc::new(rules::EmptyTitleRule::new()),
     );
-    registry.register(
-        RuleCategory::Semantic,
-        Arc::new(rules::DescriptionLengthRule::new()),
-    );
+
+    // Configure DescriptionLengthRule with custom threshold if provided
+    let description_rule = if let Some(cfg) = config {
+        let max_len = cfg.description_max_length();
+        // Error threshold is always 2x the warning threshold
+        rules::DescriptionLengthRule::with_thresholds(max_len, max_len * 2)
+    } else {
+        rules::DescriptionLengthRule::new()
+    };
+    registry.register(RuleCategory::Semantic, Arc::new(description_rule));
+
     registry.register(
         RuleCategory::Semantic,
         Arc::new(rules::ValidDocReferenceRule::new()),
@@ -369,11 +381,26 @@ mod tests {
 
     #[test]
     fn test_default_registry() {
-        let registry = register_default_rules();
+        let registry = register_default_rules(None);
         // Should have 8 syntax rules (Task #2) + 11 semantic rules (Task #3) + 5 cross-file rules (Task #4)
         assert_eq!(registry.rule_count(), 24);
         assert_eq!(registry.category_count(RuleCategory::Syntax), 8);
         assert_eq!(registry.category_count(RuleCategory::Semantic), 11);
         assert_eq!(registry.category_count(RuleCategory::CrossFile), 5);
+    }
+
+    #[test]
+    fn test_registry_with_custom_description_length() {
+        let config = LintConfig {
+            description_max_length: Some(1500),
+            ..Default::default()
+        };
+
+        let registry = register_default_rules(Some(&config));
+        assert_eq!(registry.rule_count(), 24);
+
+        // Create linter and verify it was configured properly
+        let linter = registry.create_linter(config.clone());
+        assert_eq!(linter.rule_count(), 24);
     }
 }

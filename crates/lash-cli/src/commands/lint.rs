@@ -198,8 +198,13 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     // Load project configuration
     let project_config = load_project_config(&files)?;
 
-    // Configure linter
-    let lint_config = configure_linter(&args);
+    // Determine project root for loading CLI config
+    let project_root = files
+        .first()
+        .and_then(|first_file| first_file.parent().map(find_project_root));
+
+    // Configure linter (loads CLI config from .lash/config.toml if available)
+    let lint_config = configure_linter(&args, project_root.as_deref())?;
 
     // Parse all files first
     let (parsed_files, parse_errors) = parse_files(&files, &project_config, &args, theme.as_ref())?;
@@ -518,11 +523,22 @@ fn load_project_config(files: &[PathBuf]) -> anyhow::Result<LashConfig> {
     Ok(LashConfig::default())
 }
 
-/// Configure the linter based on command arguments
-fn configure_linter(args: &LintArgs) -> LintConfig {
-    let mut config = LintConfig::default();
+/// Configure the linter based on command arguments and CLI config
+fn configure_linter(
+    args: &LintArgs,
+    project_root: Option<&std::path::Path>,
+) -> anyhow::Result<LintConfig> {
+    // Load CLI config from .lash/config.toml (if available)
+    let cli_config = lash_cli::config::Config::load_merged(project_root)?;
 
-    // If specific rules are requested, disable all others
+    // Build LintConfig from CLI config
+    let mut config = LintConfig {
+        auto_fix: cli_config.linter.auto_fix,
+        description_max_length: cli_config.linter.description_max_length,
+        ..Default::default()
+    };
+
+    // Command-line arguments override config file settings
     if !args.rules.is_empty() {
         config.enabled_rules.clear();
         for rule in &args.rules {
@@ -530,9 +546,12 @@ fn configure_linter(args: &LintArgs) -> LintConfig {
         }
     }
 
-    config.auto_fix = args.fix;
+    // --fix flag overrides config file auto_fix setting
+    if args.fix {
+        config.auto_fix = true;
+    }
 
-    config
+    Ok(config)
 }
 
 /// Parse all files with progress reporting
@@ -608,8 +627,8 @@ fn lint_files(
     lint_config: &LintConfig,
     args: &LintArgs,
 ) -> anyhow::Result<Vec<LintDiagnostic>> {
-    // Create linter with all rules
-    let registry = register_default_rules();
+    // Create linter with all rules, passing config for rule customization
+    let registry = register_default_rules(Some(lint_config));
     let linter = registry.create_linter(lint_config.clone());
 
     let show_progress = !args.json && parsed_files.len() > 1;
