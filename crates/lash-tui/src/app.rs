@@ -217,13 +217,25 @@ impl TuiApp {
                     AppEvent::Quit => {
                         self.state.should_quit = true;
                     }
-                    AppEvent::Up => self.state.move_up(),
-                    AppEvent::Down => self.state.move_down(),
+                    AppEvent::Up => {
+                        self.state.move_up();
+                        self.load_tasks_for_selected_file()?;
+                    }
+                    AppEvent::Down => {
+                        self.state.move_down();
+                        self.load_tasks_for_selected_file()?;
+                    }
                     AppEvent::Right => self.handle_select()?,
                     AppEvent::Select => self.handle_toggle_status()?,
                     AppEvent::SwitchPane => self.state.switch_pane(),
-                    AppEvent::GoTop => self.state.go_top(),
-                    AppEvent::GoBottom => self.state.go_bottom(),
+                    AppEvent::GoTop => {
+                        self.state.go_top();
+                        self.load_tasks_for_selected_file()?;
+                    }
+                    AppEvent::GoBottom => {
+                        self.state.go_bottom();
+                        self.load_tasks_for_selected_file()?;
+                    }
                     AppEvent::Help => self.state.toggle_help(),
                     AppEvent::OpenEditor => self.handle_open_editor()?,
                     AppEvent::OpenThemeSelector => self.state.open_theme_selector(),
@@ -443,6 +455,49 @@ impl TuiApp {
     fn handle_left(&mut self) {
         // TODO: Implement tree navigation for file/task tree
         // For now, no-op (Left is not used in flat list view)
+    }
+
+    /// Load tasks for the currently selected file in Navigation pane
+    ///
+    /// This is called when navigating up/down in the file list to automatically
+    /// show tasks for the highlighted file in the Tasks pane.
+    fn load_tasks_for_selected_file(&mut self) -> TuiResult<()> {
+        use crate::state::{FocusedPane, NavMode};
+
+        // Only load tasks when in Navigation pane in Files mode
+        if self.state.focused_pane != FocusedPane::Navigation {
+            return Ok(());
+        }
+
+        if self.state.nav_mode != NavMode::Files && self.state.nav_mode != NavMode::SearchResults {
+            return Ok(());
+        }
+
+        // Try to get file from tree view first, then fall back to flat list
+        let file_id = if let Some(selected) = self.state.selected_tree_node() {
+            selected.file_record.map(|f| f.id)
+        } else {
+            self.state.selected_file().map(|f| f.id)
+        };
+
+        let Some(file_id) = file_id else {
+            // No file selected (might be a directory node) - clear tasks
+            self.state.tasks.clear();
+            self.state.task_tree = None;
+            self.state.selected_task_index = 0;
+            return Ok(());
+        };
+
+        // Load tasks for the selected file
+        let task_repo = TaskRepository::new(&self.conn);
+        self.state.tasks = task_repo
+            .get_by_file(file_id)
+            .map_err(|e| TuiError::App(format!("Failed to load tasks: {e}")))?;
+
+        self.state.selected_task_index = 0;
+        self.state.build_task_tree();
+
+        Ok(())
     }
 
     /// Handle expand all nodes in current tree
