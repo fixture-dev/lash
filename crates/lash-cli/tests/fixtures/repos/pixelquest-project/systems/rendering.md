@@ -5,7 +5,11 @@
 @labels: backend, rendering, p0
 @created: 2024-01-15
 
-2D graphics rendering including sprite batching, camera systems, and shader effects.
+## Description
+
+2D graphics rendering including sprite batching, camera systems, and shader effects. The pipeline supports WebGL for browser deployment and native OpenGL for desktop.
+
+@agent-note: Sprite batching is critical for performance - aim for single draw call per layer. Camera shake adds impact to combat and explosions.
 
 ## Tasks
 

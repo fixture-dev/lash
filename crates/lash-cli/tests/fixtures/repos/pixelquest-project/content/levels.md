@@ -5,7 +5,11 @@
 @labels: design, levels, p0
 @created: 2024-01-15
 
-Hand-crafted level layouts for each world and tutorial sequences.
+## Description
+
+Hand-crafted level layouts for each world and tutorial sequences. Levels progress from introducing mechanics in tutorials to challenging combinations in later worlds.
+
+@agent-note: Tutorial levels establish core mechanics. Each world introduces one new mechanic while reinforcing previous skills.
 
 ## Tasks
 

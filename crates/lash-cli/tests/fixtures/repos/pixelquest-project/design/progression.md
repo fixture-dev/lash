@@ -5,7 +5,11 @@
 @labels: design, gameplay, p0
 @created: 2024-01-15
 
-Difficulty curve, unlock progression, and meta-progression systems.
+## Description
+
+Difficulty curve, unlock progression, and meta-progression systems. Abilities unlock through gameplay progression while optional content provides replayability.
+
+@agent-note: Meta-progression (achievements, collectibles) are p2 and can be deferred to post-launch updates.
 
 ## Tasks
 

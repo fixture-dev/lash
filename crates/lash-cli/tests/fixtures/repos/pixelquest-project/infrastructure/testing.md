@@ -5,7 +5,11 @@
 @labels: testing, qa, p1
 @created: 2024-01-15
 
-Unit tests, integration tests, and automated playtesting.
+## Description
+
+Unit tests, integration tests, and automated playtesting. Test coverage focuses on physics, AI, and input systems to ensure consistent game feel.
+
+@agent-note: Physics tests are complete - use as template for AI behavior tests. Automated playthrough is a stretch goal for regression testing.
 
 ## Tasks
 

@@ -5,7 +5,11 @@
 @labels: backend, ai, p0
 @created: 2024-01-15
 
-Enemy behavior systems including behavior trees, pathfinding, and difficulty scaling.
+## Description
+
+Enemy behavior systems including behavior trees, pathfinding, and difficulty scaling. Each enemy type uses the behavior tree system for consistent, extensible AI patterns.
+
+@agent-note: The behavior tree system (task #enemy-behavior-trees) is a dependency for boss fights. Ensure tree evaluation is complete before starting boss AI work.
 
 ## Tasks
 

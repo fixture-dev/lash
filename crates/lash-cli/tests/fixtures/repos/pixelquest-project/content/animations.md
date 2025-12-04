@@ -5,7 +5,11 @@
 @labels: art, animation, p1
 @created: 2024-01-15
 
-Character animations, frame sequences, and timing.
+## Description
+
+Character animations, frame sequences, and timing. Animations are frame-based with configurable timing to match the responsive feel of classic platformers.
+
+@agent-note: Attack and death animations are higher priority than environmental animations. Particle effects can be implemented alongside the rendering pipeline particle system.
 
 ## Tasks
 

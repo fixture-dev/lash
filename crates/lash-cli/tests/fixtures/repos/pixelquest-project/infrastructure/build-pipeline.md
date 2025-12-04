@@ -5,7 +5,11 @@
 @labels: tooling, devops, p1
 @created: 2024-01-15
 
-Continuous integration, automated testing, and release management.
+## Description
+
+Continuous integration, automated testing, and release management. Uses GitHub Actions to build for multiple platforms and automate the release process.
+
+@agent-note: Web (WASM) build is the primary target for early testing. Steam deployment requires Steamworks SDK integration.
 
 ## Tasks
 

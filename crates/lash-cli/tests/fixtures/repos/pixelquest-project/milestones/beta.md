@@ -7,7 +7,11 @@
 @depends-on: features/boss-fights.md#world-1-boss
 @created: 2024-01-15
 
-Beta release: all features complete, full content, ready for polish.
+## Description
+
+Beta release: all features complete, full content, ready for polish. External playtesting begins to gather feedback before final release.
+
+@agent-note: World 1 boss blocking this milestone - see boss-fights.md. Beta playtesting feedback should drive final polish priorities.
 
 ## Tasks
 

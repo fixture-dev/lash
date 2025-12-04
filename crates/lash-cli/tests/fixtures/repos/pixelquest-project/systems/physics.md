@@ -5,7 +5,11 @@
 @labels: backend, physics, p0
 @created: 2024-01-15
 
-2D physics simulation including collision detection, forces, and platformer-specific physics.
+## Description
+
+2D physics simulation including collision detection, forces, and platformer-specific physics. Uses AABB collision with tile-based level geometry for efficient broad-phase detection.
+
+@agent-note: Slopes and moving platforms are p1 but heavily requested. Consider implementing before beta if time permits.
 
 ## Tasks
 

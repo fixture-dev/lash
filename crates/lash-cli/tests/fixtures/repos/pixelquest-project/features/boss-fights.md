@@ -6,7 +6,11 @@
 @depends-on: features/enemy-ai.md#enemy-behavior-trees
 @created: 2024-01-15
 
-Special boss encounters with unique attack patterns, phases, and cinematics.
+## Description
+
+Special boss encounters with unique attack patterns, phases, and cinematics. Each world culminates in a boss fight that tests skills learned throughout the level.
+
+@agent-note: Boss fights depend on the enemy AI behavior tree system. The World 1 boss is blocking the beta milestone - prioritize accordingly.
 
 ## Tasks
 

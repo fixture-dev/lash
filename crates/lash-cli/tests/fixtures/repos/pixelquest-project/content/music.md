@@ -5,7 +5,11 @@
 @labels: audio, music, p1
 @created: 2024-01-15
 
-Background music, level themes, and boss battle tracks.
+## Description
+
+Background music, level themes, and boss battle tracks. Composed in a chiptune style to match the retro aesthetic with memorable melodies for each world.
+
+@agent-note: Boss themes should build tension with faster tempos and more intense instrumentation than level themes.
 
 ## Tasks
 

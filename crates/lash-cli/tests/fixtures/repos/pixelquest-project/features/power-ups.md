@@ -5,7 +5,11 @@
 @labels: backend, gameplay, p1
 @created: 2024-01-15
 
-Item collection system, power-up effects, and game balance.
+## Description
+
+Item collection system, power-up effects, and game balance. Power-ups provide temporary buffs while permanent upgrades unlock new abilities and progression paths.
+
+@agent-note: Balance tuning should wait until core gameplay loop is stable. Stacking behavior needs careful design to prevent exploits.
 
 ## Tasks
 
