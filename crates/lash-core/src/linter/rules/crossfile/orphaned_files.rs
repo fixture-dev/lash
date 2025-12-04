@@ -45,11 +45,24 @@ impl OrphanedFilesRule {
     }
 
     /// Extract file references from the index file
+    ///
+    /// Handles both plain path titles and markdown link format:
+    /// - Plain: `tasks.md` or `path/to/file.md`
+    /// - Markdown link: `[Title](path/to/file.md)`
+    /// - Directory reference: `[Title](path/to/dir/)` (ends with /)
     fn extract_file_references(file: &TaskFile) -> Vec<String> {
         let mut references = Vec::new();
 
         for task in file.tasks.tasks() {
             let title = task.title.trim();
+
+            // Try to extract path from markdown link [text](path)
+            if let Some(path) = Self::extract_markdown_link_path(title) {
+                references.push(path);
+                continue;
+            }
+
+            // Fall back to checking if the title itself is a path
             if std::path::Path::new(title)
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
@@ -59,6 +72,28 @@ impl OrphanedFilesRule {
         }
 
         references
+    }
+
+    /// Extract path from a markdown link format: [text](path)
+    ///
+    /// Returns Some(path) if found, None otherwise
+    fn extract_markdown_link_path(text: &str) -> Option<String> {
+        // Look for pattern [...](...)
+        let open_paren = text.find("](")?;
+        let close_paren = text.rfind(')')?;
+
+        if open_paren + 2 < close_paren {
+            let path = &text[open_paren + 2..close_paren];
+            // Accept paths ending in .md or directories ending in /
+            let is_md = std::path::Path::new(path)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
+            if is_md || path.ends_with('/') {
+                return Some(path.to_string());
+            }
+        }
+
+        None
     }
 
     /// Find the root index file in the context
@@ -413,5 +448,91 @@ mod tests {
         let tasks = files.get(&PathBuf::from("tasks.md")).unwrap();
         let diagnostics = rule.check_file(tasks, &ctx);
         assert_eq!(diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_extract_markdown_link_path() {
+        // Standard markdown link
+        assert_eq!(
+            OrphanedFilesRule::extract_markdown_link_path("[Title](path/to/file.md)"),
+            Some("path/to/file.md".to_string())
+        );
+
+        // Link with annotations after
+        assert_eq!(
+            OrphanedFilesRule::extract_markdown_link_path(
+                "[Physics](systems/physics.md) @id:`systems.physics`"
+            ),
+            Some("systems/physics.md".to_string())
+        );
+
+        // Directory reference
+        assert_eq!(
+            OrphanedFilesRule::extract_markdown_link_path("[World 1](worlds/forest/)"),
+            Some("worlds/forest/".to_string())
+        );
+
+        // Plain text (no link)
+        assert_eq!(
+            OrphanedFilesRule::extract_markdown_link_path("Just plain text"),
+            None
+        );
+
+        // Plain path (no markdown link format)
+        assert_eq!(
+            OrphanedFilesRule::extract_markdown_link_path("path/to/file.md"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_markdown_link_references_in_index() {
+        let rule = OrphanedFilesRule::new();
+        let config = LashConfig::default();
+
+        let mut files = HashMap::new();
+
+        // Create index with markdown links
+        files.insert(
+            PathBuf::from("lash.index.md"),
+            make_index_file(
+                "lash.index.md",
+                &[
+                    "[Physics](systems/physics.md)",
+                    "[Input](systems/input.md)",
+                    "[World 1](worlds/forest/)",
+                ],
+            ),
+        );
+        files.insert(
+            PathBuf::from("systems/physics.md"),
+            make_regular_file("systems/physics.md", "physics"),
+        );
+        files.insert(
+            PathBuf::from("systems/input.md"),
+            make_regular_file("systems/input.md", "input"),
+        );
+        files.insert(
+            PathBuf::from("orphan.md"),
+            make_regular_file("orphan.md", "orphan"),
+        );
+
+        // Physics should not be orphaned
+        let ctx = LintContext::new(&config, PathBuf::from("systems/physics.md"), &files);
+        let physics = files.get(&PathBuf::from("systems/physics.md")).unwrap();
+        let diagnostics = rule.check_file(physics, &ctx);
+        assert_eq!(diagnostics.len(), 0);
+
+        // Input should not be orphaned
+        let ctx = LintContext::new(&config, PathBuf::from("systems/input.md"), &files);
+        let input = files.get(&PathBuf::from("systems/input.md")).unwrap();
+        let diagnostics = rule.check_file(input, &ctx);
+        assert_eq!(diagnostics.len(), 0);
+
+        // Orphan should still be orphaned
+        let ctx = LintContext::new(&config, PathBuf::from("orphan.md"), &files);
+        let orphan = files.get(&PathBuf::from("orphan.md")).unwrap();
+        let diagnostics = rule.check_file(orphan, &ctx);
+        assert_eq!(diagnostics.len(), 1);
     }
 }

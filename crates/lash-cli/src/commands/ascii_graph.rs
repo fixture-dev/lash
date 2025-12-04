@@ -198,8 +198,20 @@ impl<'a> AsciiGraphRenderer<'a> {
         nodes
     }
 
-    /// Group nodes by file ID
-    fn group_by_file(&self, nodes: &HashSet<String>) -> BTreeMap<String, Vec<String>> {
+    /// Check if a `file_id` corresponds to an index file
+    ///
+    /// Index files are identified by `file_ids` that:
+    /// - Equal "lash.index" or "index.lash" (from lash.index.md or index.lash.md)
+    /// - Or are derived from files with explicit @id annotations in index files
+    fn is_index_file(file_id: &str) -> bool {
+        // Direct index file patterns
+        file_id == "lash.index" || file_id == "index.lash"
+    }
+
+    /// Group nodes by file ID, with index files sorted first
+    ///
+    /// Returns files in order: index files first, then alphabetical for the rest
+    fn group_by_file(&self, nodes: &HashSet<String>) -> Vec<(String, Vec<String>)> {
         let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
         for node_id in nodes {
@@ -216,7 +228,24 @@ impl<'a> AsciiGraphRenderer<'a> {
             node_list.sort();
         }
 
-        groups
+        // Separate index files from regular files
+        let mut index_files: Vec<(String, Vec<String>)> = Vec::new();
+        let mut regular_files: Vec<(String, Vec<String>)> = Vec::new();
+
+        for (file_id, nodes) in groups {
+            if Self::is_index_file(&file_id) {
+                index_files.push((file_id, nodes));
+            } else {
+                regular_files.push((file_id, nodes));
+            }
+        }
+
+        // Sort index files alphabetically among themselves
+        index_files.sort_by(|a, b| a.0.cmp(&b.0));
+
+        // Combine: index files first, then regular files (already sorted by BTreeMap)
+        index_files.extend(regular_files);
+        index_files
     }
 
     /// Find root nodes (nodes with no parents in the filtered set)
@@ -361,12 +390,116 @@ impl<'a> AsciiGraphRenderer<'a> {
     }
 
     /// Render a single node with checkbox and title
+    ///
+    /// For index file tasks, extracts link text from Markdown links and
+    /// applies colorization to the title using the theme.
     fn render_node(&self, node: &NodeData) -> String {
         let checkbox = self.render_checkbox(node.status);
-        let title = self.truncate_title(&node.title);
-        let styled_title = self.style_labels_in_text(&title);
+        let is_index = Self::is_index_file(&node.file_id);
+
+        // For index files, extract link text and colorize
+        let title = if is_index {
+            Self::extract_link_text(&node.title)
+        } else {
+            node.title.clone()
+        };
+
+        let truncated_title = self.truncate_title(&title);
+
+        // Style the title: for index files, apply index styling; always style inline labels
+        let styled_title = if is_index {
+            self.style_index_task_title(&truncated_title)
+        } else {
+            self.style_labels_in_text(&truncated_title)
+        };
 
         format!("{checkbox} {styled_title}")
+    }
+
+    /// Style index task title with theme colorization
+    ///
+    /// For index file tasks, applies special coloring to the title text
+    /// and any inline labels.
+    fn style_index_task_title(&self, title: &str) -> String {
+        let Some(theme) = self.theme else {
+            return self.style_labels_in_text(title);
+        };
+
+        // Apply info styling to the main title, then handle labels within
+        // Split the title to find labels
+        let mut result = String::new();
+        let mut chars = title.char_indices().peekable();
+        let mut last_pos = 0;
+
+        while let Some((i, c)) = chars.next() {
+            if c == '#' {
+                // Found potential label start
+                // First, add the text before this point with info styling
+                if i > last_pos {
+                    let text_segment = &title[last_pos..i];
+                    result.push_str(&theme.style_info(text_segment));
+                }
+
+                // Collect the label
+                let label_start = i;
+                let mut label_end = i + 1;
+
+                while let Some(&(j, next_c)) = chars.peek() {
+                    if next_c.is_alphanumeric() || next_c == '-' || next_c == '_' {
+                        label_end = j + next_c.len_utf8();
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+
+                if label_end > label_start + 1 {
+                    let label = &title[label_start..label_end];
+                    result.push_str(&theme.style_label(label));
+                } else {
+                    result.push_str(&theme.style_info(&title[label_start..label_end]));
+                }
+                last_pos = label_end;
+            }
+        }
+
+        // Add any remaining text with info styling
+        if last_pos < title.len() {
+            result.push_str(&theme.style_info(&title[last_pos..]));
+        }
+
+        result
+    }
+
+    /// Extract link text from Markdown links
+    ///
+    /// Converts `[link text](path)` to just `link text`.
+    /// Also handles backtick-wrapped paths: `` `path/file.md` `` → `path/file.md`
+    /// Returns the original text if no link is found.
+    fn extract_link_text(text: &str) -> String {
+        // Try to match [link text](path) pattern
+        if let (Some(open_bracket), Some(close_bracket)) = (text.find('['), text.find("](")) {
+            if open_bracket < close_bracket {
+                if let Some(close_paren) = text.rfind(')') {
+                    if close_bracket < close_paren {
+                        // Extract the link text between [ and ](
+                        let link_text = &text[open_bracket + 1..close_bracket];
+                        // Return just the link text, preserving any prefix
+                        let prefix = &text[..open_bracket];
+                        // Check for suffix after the link
+                        let suffix = if close_paren + 1 < text.len() {
+                            &text[close_paren + 1..]
+                        } else {
+                            ""
+                        };
+                        return format!("{prefix}{link_text}{suffix}");
+                    }
+                }
+            }
+        }
+
+        // Return original if no link pattern found
+        text.to_string()
     }
 
     /// Style labels (hashtags like #backend, #docs) within text
@@ -663,5 +796,137 @@ mod tests {
         assert!(output.contains("#backend"));
         assert!(output.contains("#p1"));
         assert!(output.contains("Add feature"));
+    }
+
+    #[test]
+    fn test_is_index_file() {
+        // Should identify index file patterns
+        assert!(AsciiGraphRenderer::is_index_file("lash.index"));
+        assert!(AsciiGraphRenderer::is_index_file("index.lash"));
+
+        // Should not identify regular files
+        assert!(!AsciiGraphRenderer::is_index_file("tasks"));
+        assert!(!AsciiGraphRenderer::is_index_file("core.api"));
+        assert!(!AsciiGraphRenderer::is_index_file("index")); // Not lash.index or index.lash
+    }
+
+    #[test]
+    fn test_extract_link_text() {
+        // Standard markdown link
+        assert_eq!(
+            AsciiGraphRenderer::extract_link_text("[Core API](core/api.md)"),
+            "Core API"
+        );
+
+        // Link with prefix
+        assert_eq!(
+            AsciiGraphRenderer::extract_link_text("Prefix [Link Text](path.md)"),
+            "Prefix Link Text"
+        );
+
+        // Link with suffix
+        assert_eq!(
+            AsciiGraphRenderer::extract_link_text("[Link](path.md) suffix"),
+            "Link suffix"
+        );
+
+        // No link - returns original
+        assert_eq!(
+            AsciiGraphRenderer::extract_link_text("Plain text"),
+            "Plain text"
+        );
+
+        // Backtick path (no transformation - not a link)
+        assert_eq!(
+            AsciiGraphRenderer::extract_link_text("`path/file.md`"),
+            "`path/file.md`"
+        );
+    }
+
+    #[test]
+    fn test_index_files_sorted_first() {
+        let mut graph = DependencyGraph::new();
+
+        // Add regular file tasks
+        graph.add_node(
+            "alpha#task1".to_string(),
+            create_test_node("Alpha Task", TaskStatus::Open, "alpha"),
+        );
+        graph.add_node(
+            "zebra#task1".to_string(),
+            create_test_node("Zebra Task", TaskStatus::Open, "zebra"),
+        );
+
+        // Add index file tasks
+        graph.add_node(
+            "lash.index#main".to_string(),
+            create_test_node("[Core](core.md)", TaskStatus::Open, "lash.index"),
+        );
+        graph.add_node(
+            "index.lash#secondary".to_string(),
+            create_test_node("[Secondary](secondary.md)", TaskStatus::Open, "index.lash"),
+        );
+
+        let renderer = AsciiGraphRenderer::new(&graph, None);
+        let output = renderer.render(&FilterOptions::default());
+
+        // Find positions of file headers
+        let index_lash_pos = output.find("index.lash");
+        let lash_index_pos = output.find("lash.index");
+        let alpha_pos = output.find("alpha");
+        let zebra_pos = output.find("zebra");
+
+        // Index files should appear first
+        assert!(index_lash_pos.is_some());
+        assert!(lash_index_pos.is_some());
+        assert!(alpha_pos.is_some());
+        assert!(zebra_pos.is_some());
+
+        // Both index files should come before regular files
+        assert!(index_lash_pos.unwrap() < alpha_pos.unwrap());
+        assert!(lash_index_pos.unwrap() < alpha_pos.unwrap());
+    }
+
+    #[test]
+    fn test_index_task_link_extraction() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "lash.index#core".to_string(),
+            create_test_node(
+                "[Core Module](core/module.md)",
+                TaskStatus::Open,
+                "lash.index",
+            ),
+        );
+
+        let renderer = AsciiGraphRenderer::new(&graph, None);
+        let output = renderer.render(&FilterOptions::default());
+
+        // Should contain extracted link text, not the full markdown link
+        assert!(output.contains("Core Module"));
+        assert!(!output.contains("core/module.md"));
+        assert!(!output.contains("[Core Module]"));
+    }
+
+    #[test]
+    fn test_index_task_with_labels() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "lash.index#core".to_string(),
+            create_test_node(
+                "[Core API](core.md) #backend #p1",
+                TaskStatus::Open,
+                "lash.index",
+            ),
+        );
+
+        // Without theme, labels should appear as-is
+        let renderer = AsciiGraphRenderer::new(&graph, None);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(output.contains("Core API"));
+        assert!(output.contains("#backend"));
+        assert!(output.contains("#p1"));
+        assert!(!output.contains("core.md")); // Path should be stripped
     }
 }
