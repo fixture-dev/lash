@@ -14,13 +14,14 @@ pub mod syntax;
 // Re-export all syntax rules for convenience
 pub use syntax::{
     AnnotationOrderRule, AnnotationSyntaxRule, CheckboxPatternRule, DepthLimitRule,
-    HeaderStructureRule, IndentationRule, UnknownAnnotationRule,
+    DuplicateDescriptionRule, HeaderStructureRule, IndentationRule, UnknownAnnotationRule,
 };
 
 // Re-export all semantic rules for convenience
 pub use semantic::{
-    AutoWaiveRule, BrokenDocFragmentRule, DuplicateIdRule, EmptyTitleRule, StatusConsistencyRule,
-    ValidDateRule, ValidDocReferenceRule, ValidEstimateRule, ValidLabelRule, ValidOwnerRule,
+    AutoWaiveRule, BrokenDocFragmentRule, DescriptionLengthRule, DuplicateIdRule, EmptyTitleRule,
+    StatusConsistencyRule, ValidDateRule, ValidDocReferenceRule, ValidEstimateRule, ValidLabelRule,
+    ValidOwnerRule,
 };
 
 // Re-export all cross-file rules for convenience
