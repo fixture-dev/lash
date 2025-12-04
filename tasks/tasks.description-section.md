@@ -2,7 +2,7 @@
 
 @id: tasks.description-section
 @labels: parser, linter, schema, indexing, search, cross-cutting
-@status: not-started
+@status: in-progress
 @created: 2025-12-03
 
 ## Description
@@ -44,20 +44,20 @@ This provides context for both humans and agents.
 
 Update the design document to formalize the `## Description` section specification.
 
-- [ ] Update section 4.1 (High-Level Structure) in design-doc.md
-  - [ ] Replace "optional overview" with formal `## Description` section
-  - [ ] Specify placement: after metadata block, before `## Tasks`
-  - [ ] Document that it's optional but recommended
-- [ ] Update section 4.1 example to include `## Description`
-  - [ ] Add example description text
-  - [ ] Show inline `@agent-note:` usage
-- [ ] Add Description Section specification details
-  - [ ] Define allowed content: free-form Markdown text
-  - [ ] Specify length limit: 500-1000 characters (configurable)
-  - [ ] Document `@agent-note:` inline annotation support
-- [ ] Update section 9.2 (SQLite Schema) to mention description storage
-  - [ ] Add `description` column to `files` table specification
-  - [ ] Note that description is indexed in FTS5
+- [x] Update section 4.1 (High-Level Structure) in design-doc.md
+  - [x] Replace "optional overview" with formal `## Description` section
+  - [x] Specify placement: after metadata block, before `## Tasks`
+  - [x] Document that it's optional but recommended
+- [x] Update section 4.1 example to include `## Description`
+  - [x] Add example description text
+  - [x] Show inline `@agent-note:` usage
+- [x] Add Description Section specification details
+  - [x] Define allowed content: free-form Markdown text
+  - [x] Specify length limit: 500-1000 characters (configurable)
+  - [x] Document `@agent-note:` inline annotation support
+- [x] Update section 9.2 (SQLite Schema) to mention description storage
+  - [x] Add `description` column to `files` table specification
+  - [x] Note that description is indexed in FTS5
 
 **Success Criteria:**
 - Design document clearly specifies `## Description` section format
@@ -75,29 +75,29 @@ Update the design document to formalize the `## Description` section specificati
 
 Extend the Markdown parser to recognize and extract `## Description` sections from task files.
 
-- [ ] Update `Section` enum in parser module
-  - [ ] Add `Section::Description` variant
-  - [ ] Update section detection logic in event stream processor
-  - [ ] Handle transition from Header -> Description -> Tasks
-- [ ] Implement description extraction in parser
-  - [ ] Detect `## Description` heading
-  - [ ] Collect all text until next `##` heading or EOF
-  - [ ] Preserve formatting (paragraphs, inline code, etc.)
-  - [ ] Extract inline `@agent-note:` annotations
-- [ ] Update `TaskFile` struct in core data model
-  - [ ] Add `description: Option<String>` field
-  - [ ] Add `description_agent_notes: Vec<String>` field
-  - [ ] Update constructors and builders
-- [ ] Handle edge cases
-  - [ ] Empty description section (just heading, no content)
-  - [ ] Multiple `## Description` headings (error: duplicate section)
-  - [ ] Description after `## Tasks` (error: wrong order)
-- [ ] Update parser tests
-  - [ ] Parse file with description section
-  - [ ] Parse file without description (verify None)
-  - [ ] Parse description with inline annotations
-  - [ ] Parse description with multiple paragraphs
-  - [ ] Error on duplicate description sections
+- [x] Update `Section` enum in parser module
+  - [x] Add `Section::Description` variant
+  - [x] Update section detection logic in event stream processor
+  - [x] Handle transition from Header -> Description -> Tasks
+- [x] Implement description extraction in parser
+  - [x] Detect `## Description` heading
+  - [x] Collect all text until next `##` heading or EOF
+  - [x] Preserve formatting (paragraphs, inline code, etc.)
+  - [x] Extract inline `@agent-note:` annotations
+- [x] Update `TaskFile` struct in core data model
+  - [x] Add `description: Option<String>` field
+  - [x] Add `description_agent_notes: Vec<String>` field
+  - [x] Update constructors and builders
+- [x] Handle edge cases
+  - [x] Empty description section (just heading, no content)
+  - [x] Multiple `## Description` headings (error: duplicate section)
+  - [x] Description after `## Tasks` (error: wrong order)
+- [x] Update parser tests
+  - [x] Parse file with description section
+  - [x] Parse file without description (verify None)
+  - [x] Parse description with inline annotations
+  - [x] Parse description with multiple paragraphs
+  - [x] Error on duplicate description sections
 
 **Success Criteria:**
 - Parser correctly extracts description text
@@ -153,21 +153,21 @@ Implement linter rules to validate description sections, primarily enforcing the
 
 Add a `description` column to the `files` table to store description text.
 
-- [ ] Update schema definition in `lash-db/src/schema.rs`
-  - [ ] Add `description TEXT` column to `files` table
-  - [ ] Make column nullable (files may not have descriptions)
-- [ ] Create migration for existing databases
-  - [ ] Write migration using `ALTER TABLE files ADD COLUMN description TEXT`
-  - [ ] Test migration on existing test databases
-- [ ] Update `FileRecord` struct
-  - [ ] Add `description: Option<String>` field
-  - [ ] Update SQL queries to include description
-  - [ ] Update `from_row()` and `to_params()` methods
-- [ ] Update file repository queries
-  - [ ] `insert_file()`: include description column
-  - [ ] `update_file()`: include description column
-  - [ ] `get_file_by_id()`: retrieve description
-  - [ ] `get_file_by_path()`: retrieve description
+- [x] Update schema definition in `lash-db/src/schema.rs`
+  - [x] Add `description TEXT` column to `files` table
+  - [x] Make column nullable (files may not have descriptions)
+- [x] Create migration for existing databases
+  - [x] Write migration using `ALTER TABLE files ADD COLUMN description TEXT`
+  - [x] Test migration on existing test databases
+- [x] Update `FileRecord` struct
+  - [x] Add `description: Option<String>` field
+  - [x] Update SQL queries to include description
+  - [x] Update `from_row()` and `to_params()` methods
+- [x] Update file repository queries
+  - [x] `insert_file()`: include description column
+  - [x] `update_file()`: include description column
+  - [x] `get_file_by_id()`: retrieve description
+  - [x] `get_file_by_path()`: retrieve description
 
 **Success Criteria:**
 - Schema migration applies cleanly
@@ -186,19 +186,19 @@ Add a `description` column to the `files` table to store description text.
 
 Update the indexing engine to extract and store description text when indexing files.
 
-- [ ] Update `FileIndexer` in indexing engine
-  - [ ] Extract `description` field from parsed `TaskFile`
-  - [ ] Pass description to file repository during insert/update
-  - [ ] Handle None case (files without descriptions)
-- [ ] Update incremental indexing
-  - [ ] Re-index file if description changes
-  - [ ] Update FTS5 index when description changes
-- [ ] Update index verification
-  - [ ] `check-index` command verifies description matches Markdown
-  - [ ] Report drift if description in DB doesn't match parsed file
-- [ ] Add description to index statistics
-  - [ ] Count files with descriptions vs without
-  - [ ] Include in `lash index --verbose` output
+- [x] Update `FileIndexer` in indexing engine
+  - [x] Extract `description` field from parsed `TaskFile`
+  - [x] Pass description to file repository during insert/update
+  - [x] Handle None case (files without descriptions)
+- [x] Update incremental indexing
+  - [x] Re-index file if description changes
+  - [x] Update FTS5 index when description changes
+- [x] Update index verification
+  - [x] `check-index` command verifies description matches Markdown
+  - [x] Report drift if description in DB doesn't match parsed file
+- [x] Add description to index statistics
+  - [x] Count files with descriptions vs without
+  - [x] Include in `lash index --verbose` output
 
 **Success Criteria:**
 - Indexing extracts and stores descriptions
@@ -217,23 +217,23 @@ Update the indexing engine to extract and store description text when indexing f
 
 Update the FTS5 search index to include file description text, making descriptions searchable.
 
-- [ ] Update FTS5 search schema
-  - [ ] Add description content to `search_index` virtual table
-  - [ ] Set column weight (higher than task body, lower than title)
-- [ ] Update search index population
-  - [ ] During indexing, extract description from `files` table
-  - [ ] Insert description into FTS5 `search_index`
-  - [ ] Handle NULL descriptions
-- [ ] Update search result presentation
-  - [ ] Include description in search results
-  - [ ] Show description snippet if matched
-  - [ ] Highlight matched terms in description
-- [ ] Implement file-level search results
-  - [ ] When description matches but no tasks match, return file-level result
-  - [ ] Show file path and description excerpt
-- [ ] Update search scoring
-  - [ ] Weight: file title > description > task title > task body
-  - [ ] Tune weights based on testing
+- [x] Update FTS5 search schema
+  - [x] Add description content to `search_index` virtual table
+  - [x] Set column weight (higher than task body, lower than title)
+- [x] Update search index population
+  - [x] During indexing, extract description from `files` table
+  - [x] Insert description into FTS5 `search_index`
+  - [x] Handle NULL descriptions
+- [x] Update search result presentation
+  - [x] Include description in search results
+  - [x] Show description snippet if matched
+  - [x] Highlight matched terms in description
+- [x] Implement file-level search results
+  - [x] When description matches but no tasks match, return file-level result
+  - [x] Show file path and description excerpt
+- [x] Update search scoring
+  - [x] Weight: file title > description > task title > task body
+  - [x] Tune weights based on testing
 
 **Success Criteria:**
 - Descriptions are searchable via FTS5
