@@ -97,13 +97,15 @@ impl<'conn> GraphBuilder<'conn> {
     pub fn build(&self) -> DbResult<DependencyGraph> {
         let mut graph = DependencyGraph::new();
 
-        // Step 1: Build file ID mapping (db_id -> file_id)
+        // Step 1: Build file ID and path mappings (db_id -> file_id, db_id -> path)
         let file_repo = FileRepository::new(self.conn);
         let files = file_repo.list_all()?;
 
         let mut db_id_to_file_id: HashMap<i64, String> = HashMap::new();
-        for file in files {
+        let mut db_id_to_file_path: HashMap<i64, String> = HashMap::new();
+        for file in &files {
             db_id_to_file_id.insert(file.id, file.file_id.clone());
+            db_id_to_file_path.insert(file.id, file.path.to_string_lossy().to_string());
         }
 
         // Step 2: Query all tasks and create nodes
@@ -114,6 +116,7 @@ impl<'conn> GraphBuilder<'conn> {
         // We need to get tasks from all files
         for (file_db_id, file_id) in &db_id_to_file_id {
             let tasks = task_repo.get_by_file(*file_db_id)?;
+            let file_path = db_id_to_file_path.get(file_db_id).cloned();
 
             for task in tasks {
                 let full_id = task.full_id.clone();
@@ -121,9 +124,12 @@ impl<'conn> GraphBuilder<'conn> {
                 // Store mapping for dependency resolution
                 db_id_to_full_id.insert(task.id, full_id.clone());
 
-                // Create node
-                let node =
+                // Create node with source path
+                let mut node =
                     NodeData::new(task.title.clone(), task.status, file_id.clone(), task.depth);
+                if let Some(ref path) = file_path {
+                    node = node.with_source_path(path.clone());
+                }
                 graph.add_node(full_id.clone(), node);
 
                 // Track parent relationship for hierarchy edges
