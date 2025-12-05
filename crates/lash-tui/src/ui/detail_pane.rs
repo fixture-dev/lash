@@ -101,59 +101,24 @@ fn should_show_description(state: &AppState) -> bool {
 }
 
 /// Split the area to make room for description above the tasks
-fn split_area_for_description(area: Rect, state: &AppState) -> (Option<Rect>, Rect) {
-    // Get the description to calculate how much space we need
-    let description = if let Some(selected_node) = state.selected_tree_node() {
-        selected_node
-            .file_record
-            .as_ref()
-            .map(|f| f.description.clone())
-    } else {
-        None
-    };
-
-    let Some(desc_text) = description else {
-        return (None, area);
-    };
-
-    // Calculate lines needed for description (limit to 5 lines for now)
-    // Each line is roughly 80 chars at typical terminal width
-    let lines_needed = calculate_lines_needed(&desc_text, area.width.saturating_sub(4) as usize);
-    let desc_height = lines_needed.clamp(2, 5); // Min 2 lines, max 5 lines
-
-    // Split vertically: description area + tasks area
-    #[allow(clippy::cast_possible_truncation)]
+fn split_area_for_description(area: Rect, _state: &AppState) -> (Option<Rect>, Rect) {
+    // Use a fixed percentage for description area to allow scrolling
+    // 30% for description, 70% for tasks
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(desc_height as u16 + 2), // +2 for borders
-            Constraint::Min(1),                         // Tasks area
+            Constraint::Percentage(30), // Description area (scrollable)
+            Constraint::Percentage(70), // Tasks area
         ])
         .split(area);
 
     (Some(chunks[0]), chunks[1])
 }
 
-/// Calculate how many lines are needed to display text with wrapping
-fn calculate_lines_needed(text: &str, width: usize) -> usize {
-    if width == 0 {
-        return text.lines().count();
-    }
-
-    text.lines()
-        .map(|line| {
-            if line.is_empty() {
-                1
-            } else {
-                line.len().div_ceil(width) // Ceiling division
-            }
-        })
-        .sum()
-}
-
 /// Render the description section
 fn render_description(frame: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let is_focused = state.focused_pane == FocusedPane::Description;
 
     // Get description from selected file
     let description = if let Some(selected_node) = state.selected_tree_node() {
@@ -175,14 +140,30 @@ fn render_description(frame: &mut Frame, area: Rect, state: &AppState) {
     // Parse description and highlight @agent-note annotations
     let lines = parse_description_with_highlights(&desc_text, theme);
 
+    // Build title with scroll hint when focused
+    let title = if is_focused {
+        " Description (j/k to scroll) "
+    } else {
+        " Description "
+    };
+
+    let border_style = if is_focused {
+        themes::focused_border_style(theme)
+    } else {
+        themes::unfocused_border_style(theme)
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Description ")
-        .border_style(themes::unfocused_border_style(theme));
+        .title(title)
+        .border_style(border_style);
 
+    // Apply scroll offset when focused
+    #[allow(clippy::cast_possible_truncation)]
     let paragraph = Paragraph::new(lines)
         .block(block)
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .scroll((state.description_scroll as u16, 0));
 
     frame.render_widget(paragraph, area);
 }

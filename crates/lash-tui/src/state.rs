@@ -78,7 +78,9 @@ fn ensure_ancestors(
 pub enum FocusedPane {
     /// Navigation pane (left)
     Navigation,
-    /// Detail pane (right)
+    /// Description pane (top-right)
+    Description,
+    /// Detail/Tasks pane (bottom-right)
     Detail,
 }
 
@@ -119,6 +121,12 @@ pub struct AppState {
 
     /// Detail pane scroll offset
     pub detail_scroll: usize,
+
+    /// Description pane scroll offset
+    pub description_scroll: usize,
+
+    /// Description content height (in lines, for scroll bounds)
+    pub description_content_height: usize,
 
     /// Whether help overlay is shown
     pub show_help: bool,
@@ -315,6 +323,8 @@ impl AppState {
             selected_task_index: 0,
             nav_scroll: 0,
             detail_scroll: 0,
+            description_scroll: 0,
+            description_content_height: 0,
             show_help: false,
             should_quit: false,
             theme,
@@ -383,15 +393,16 @@ impl AppState {
         Theme::new(scheme.clone())
     }
 
-    /// Switch focus to the other pane
+    /// Switch focus to the next pane (Navigation → Description → Detail → Navigation)
     pub fn switch_pane(&mut self) {
         self.focused_pane = match self.focused_pane {
-            FocusedPane::Navigation => FocusedPane::Detail,
+            FocusedPane::Navigation => FocusedPane::Description,
+            FocusedPane::Description => FocusedPane::Detail,
             FocusedPane::Detail => FocusedPane::Navigation,
         };
     }
 
-    /// Move selection up
+    /// Move selection up (or scroll up for Description pane)
     pub fn move_up(&mut self) {
         match self.focused_pane {
             FocusedPane::Navigation => match self.nav_mode {
@@ -406,6 +417,9 @@ impl AppState {
                     }
                 }
             },
+            FocusedPane::Description => {
+                self.description_scroll_up();
+            }
             FocusedPane::Detail => {
                 if self.selected_task_index > 0 {
                     self.selected_task_index -= 1;
@@ -414,8 +428,8 @@ impl AppState {
         }
     }
 
-    /// Move selection down
-    pub fn move_down(&mut self) {
+    /// Move selection down (or scroll down for Description pane)
+    pub fn move_down(&mut self, description_visible_height: usize) {
         match self.focused_pane {
             FocusedPane::Navigation => match self.nav_mode {
                 NavMode::Files | NavMode::SearchResults => {
@@ -430,6 +444,9 @@ impl AppState {
                     }
                 }
             },
+            FocusedPane::Description => {
+                self.description_scroll_down(description_visible_height);
+            }
             FocusedPane::Detail => {
                 if self.selected_task_index + 1 < self.tasks.len() {
                     self.selected_task_index += 1;
@@ -438,19 +455,42 @@ impl AppState {
         }
     }
 
-    /// Go to top of current list
+    /// Scroll description pane up
+    pub fn description_scroll_up(&mut self) {
+        if self.description_scroll > 0 {
+            self.description_scroll -= 1;
+        }
+    }
+
+    /// Scroll description pane down
+    pub fn description_scroll_down(&mut self, visible_height: usize) {
+        let max_scroll = self
+            .description_content_height
+            .saturating_sub(visible_height);
+        if self.description_scroll < max_scroll {
+            self.description_scroll += 1;
+        }
+    }
+
+    /// Reset description scroll when changing files
+    pub fn reset_description_scroll(&mut self) {
+        self.description_scroll = 0;
+    }
+
+    /// Go to top of current list (or scroll to top for Description pane)
     pub fn go_top(&mut self) {
         match self.focused_pane {
             FocusedPane::Navigation => match self.nav_mode {
                 NavMode::Files | NavMode::SearchResults => self.selected_file_index = 0,
                 NavMode::Labels => self.selected_label_index = 0,
             },
+            FocusedPane::Description => self.description_scroll = 0,
             FocusedPane::Detail => self.selected_task_index = 0,
         }
     }
 
-    /// Go to bottom of current list
-    pub fn go_bottom(&mut self) {
+    /// Go to bottom of current list (or scroll to bottom for Description pane)
+    pub fn go_bottom(&mut self, description_visible_height: usize) {
         match self.focused_pane {
             FocusedPane::Navigation => match self.nav_mode {
                 NavMode::Files | NavMode::SearchResults => {
@@ -465,6 +505,12 @@ impl AppState {
                     }
                 }
             },
+            FocusedPane::Description => {
+                let max_scroll = self
+                    .description_content_height
+                    .saturating_sub(description_visible_height);
+                self.description_scroll = max_scroll;
+            }
             FocusedPane::Detail => {
                 if !self.tasks.is_empty() {
                     self.selected_task_index = self.tasks.len() - 1;
@@ -571,6 +617,42 @@ impl AppState {
         dependencies: Vec<DependencyRecord>,
         subtasks: Vec<TaskRecord>,
     ) {
+        // Calculate content height based on sections that will be rendered
+        // Header: 2 lines (ID/Status + blank)
+        let mut content_height = 2;
+
+        // Metadata: header + file + optional owner + optional estimate + blank
+        content_height += 3; // header + file + blank
+        if task.owner.is_some() {
+            content_height += 1;
+        }
+        if task.estimate.is_some() {
+            content_height += 1;
+        }
+
+        // Labels: header + labels line + blank (if not empty)
+        if !labels.is_empty() {
+            content_height += 3;
+        }
+
+        // Description: header + body lines + blank (if present)
+        if let Some(body) = &task.body {
+            content_height += 2 + body.lines().count();
+        }
+
+        // Subtasks: header + count + blank (if not empty)
+        if !subtasks.is_empty() {
+            content_height += 2 + subtasks.len();
+        }
+
+        // Dependencies: header + count + blank (if not empty)
+        if !dependencies.is_empty() {
+            content_height += 2 + dependencies.len();
+        }
+
+        // Footer: blank + instructions
+        content_height += 2;
+
         self.task_detail_state = Some(TaskDetailState {
             task,
             file_path,
@@ -578,7 +660,7 @@ impl AppState {
             labels,
             dependencies,
             subtasks,
-            content_height: 0, // Will be calculated during rendering
+            content_height,
         });
     }
 
