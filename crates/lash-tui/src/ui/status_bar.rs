@@ -14,6 +14,7 @@ use crate::state::AppState;
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let focused_pane_name = match state.focused_pane {
         crate::state::FocusedPane::Navigation => "Files",
+        crate::state::FocusedPane::Description => "Description",
         crate::state::FocusedPane::Detail => "Tasks",
     };
 

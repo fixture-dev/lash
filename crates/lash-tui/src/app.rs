@@ -213,6 +213,11 @@ impl TuiApp {
                 }
             } else {
                 // Normal event handling
+                // Calculate description visible height for scrolling
+                let screen_height = self.terminal.size().map(|s| s.height).unwrap_or(24) as usize;
+                // Description pane is roughly 30% of screen height minus borders
+                let description_visible_height = (screen_height * 30 / 100).saturating_sub(2);
+
                 match event {
                     AppEvent::Quit => {
                         self.state.should_quit = true;
@@ -222,7 +227,7 @@ impl TuiApp {
                         self.load_tasks_for_selected_file()?;
                     }
                     AppEvent::Down => {
-                        self.state.move_down();
+                        self.state.move_down(description_visible_height);
                         self.load_tasks_for_selected_file()?;
                     }
                     AppEvent::Right => self.handle_select()?,
@@ -233,7 +238,7 @@ impl TuiApp {
                         self.load_tasks_for_selected_file()?;
                     }
                     AppEvent::GoBottom => {
-                        self.state.go_bottom();
+                        self.state.go_bottom(description_visible_height);
                         self.load_tasks_for_selected_file()?;
                     }
                     AppEvent::Help => self.state.toggle_help(),
@@ -366,6 +371,10 @@ impl TuiApp {
                     }
                 }
             }
+            FocusedPane::Description => {
+                // Enter on description pane moves to tasks pane
+                self.state.focused_pane = FocusedPane::Detail;
+            }
             FocusedPane::Detail => {
                 // Enter on detail pane shows task details
                 self.open_task_detail_for_selected()?;
@@ -474,11 +483,28 @@ impl TuiApp {
         }
 
         // Try to get file from tree view first, then fall back to flat list
-        let file_id = if let Some(selected) = self.state.selected_tree_node() {
-            selected.file_record.map(|f| f.id)
+        let (file_id, description) = if let Some(selected) = self.state.selected_tree_node() {
+            (
+                selected.file_record.as_ref().map(|f| f.id),
+                selected
+                    .file_record
+                    .as_ref()
+                    .map(|f| f.description.clone())
+                    .unwrap_or_default(),
+            )
         } else {
-            self.state.selected_file().map(|f| f.id)
+            (
+                self.state.selected_file().map(|f| f.id),
+                self.state
+                    .selected_file()
+                    .map(|f| f.description.clone())
+                    .unwrap_or_default(),
+            )
         };
+
+        // Reset description scroll and calculate content height
+        self.state.reset_description_scroll();
+        self.state.description_content_height = description.lines().count();
 
         let Some(file_id) = file_id else {
             // No file selected (might be a directory node) - clear tasks
@@ -516,6 +542,7 @@ impl TuiApp {
                     }
                 }
             }
+            FocusedPane::Description => {} // No tree to expand in description pane
             FocusedPane::Detail => {
                 if let Some(trees) = &mut self.state.task_tree {
                     for tree in trees {
@@ -538,6 +565,7 @@ impl TuiApp {
                     }
                 }
             }
+            FocusedPane::Description => {} // No tree to collapse in description pane
             FocusedPane::Detail => {
                 if let Some(trees) = &mut self.state.task_tree {
                     for tree in trees {
