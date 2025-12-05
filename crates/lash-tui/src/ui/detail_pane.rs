@@ -1,5 +1,6 @@
 //! Detail pane rendering
 
+use lash_core::display;
 use lash_db::repository::tasks::TaskRecord;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -256,14 +257,27 @@ fn render_task_tree(
     let mut items = Vec::new();
     let chars = state.tree_chars;
 
+    // Check if current file is an index file
+    // Try tree view first (like task loading does), then fall back to flat list
+    let is_index = if let Some(selected) = state.selected_tree_node() {
+        selected
+            .file_record
+            .is_some_and(|f| display::is_index_file(&f.path))
+    } else {
+        state
+            .selected_file()
+            .is_some_and(|f| display::is_index_file(&f.path))
+    };
+
     for tree in trees {
-        render_task_node(tree, &mut items, state, theme, chars, &[], true);
+        render_task_node(tree, &mut items, state, theme, chars, &[], true, is_index);
     }
 
     items
 }
 
 /// Recursively render a task tree node
+#[allow(clippy::too_many_arguments)]
 fn render_task_node(
     node: &TreeNode<TaskRecord>,
     items: &mut Vec<ListItem<'static>>,
@@ -272,6 +286,7 @@ fn render_task_node(
     chars: lash_types::tree::TreeChars,
     ancestors_is_last: &[bool],
     is_last: bool,
+    is_index_file: bool,
 ) {
     let current_index = items.len();
     let is_selected = current_index == state.selected_task_index;
@@ -299,13 +314,15 @@ fn render_task_node(
         themes::status_style(node.data.status, theme)
     };
 
-    let line = Line::from(vec![
-        Span::raw(prefix),
-        Span::raw(expand_indicator),
-        Span::raw(checkbox),
-        Span::raw(" "),
-        Span::styled(node.data.title.clone(), style),
-    ]);
+    // Format title - for index files, extract link text and convert annotations to hashtags
+    let title = if is_index_file {
+        display::format_index_title(&node.data.title)
+    } else {
+        node.data.title.clone()
+    };
+
+    // Build the line with styled labels (hashtags)
+    let line = build_styled_task_line(prefix, expand_indicator, checkbox, &title, style, theme);
 
     items.push(ListItem::new(line));
 
@@ -325,13 +342,89 @@ fn render_task_node(
                 chars,
                 &new_ancestors,
                 is_last_child,
+                is_index_file,
             );
         }
     }
 }
 
+/// Build a styled task line with colored labels
+fn build_styled_task_line(
+    prefix: String,
+    expand_indicator: &str,
+    checkbox: &str,
+    title: &str,
+    base_style: Style,
+    theme: &crate::colors::Theme,
+) -> Line<'static> {
+    let mut spans = vec![
+        Span::raw(prefix),
+        Span::raw(expand_indicator.to_string()),
+        Span::raw(checkbox.to_string()),
+        Span::raw(" ".to_string()),
+    ];
+
+    // Parse the title for labels and style them differently
+    let mut chars = title.char_indices().peekable();
+    let mut last_pos = 0;
+
+    while let Some((i, c)) = chars.next() {
+        if c == '#' {
+            // Found potential label start
+            // First, add the text before this point with base styling
+            if i > last_pos {
+                let text_segment = title[last_pos..i].to_string();
+                spans.push(Span::styled(text_segment, base_style));
+            }
+
+            // Collect the label
+            let label_start = i;
+            let mut label_end = i + 1;
+
+            while let Some(&(j, next_c)) = chars.peek() {
+                if next_c.is_alphanumeric() || next_c == '-' || next_c == '_' {
+                    label_end = j + next_c.len_utf8();
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+
+            if label_end > label_start + 1 {
+                let label = title[label_start..label_end].to_string();
+                spans.push(Span::styled(label, themes::label_style(theme)));
+            } else {
+                spans.push(Span::styled(
+                    title[label_start..label_end].to_string(),
+                    base_style,
+                ));
+            }
+            last_pos = label_end;
+        }
+    }
+
+    // Add any remaining text with base styling
+    if last_pos < title.len() {
+        spans.push(Span::styled(title[last_pos..].to_string(), base_style));
+    }
+
+    Line::from(spans)
+}
+
 /// Render tasks in flat list view (fallback)
 fn render_flat_task_list(state: &AppState, theme: &crate::colors::Theme) -> Vec<ListItem<'static>> {
+    // Check if current file is an index file
+    // Try tree view first (like task loading does), then fall back to flat list
+    let is_index = if let Some(selected) = state.selected_tree_node() {
+        selected
+            .file_record
+            .is_some_and(|f| display::is_index_file(&f.path))
+    } else {
+        state
+            .selected_file()
+            .is_some_and(|f| display::is_index_file(&f.path))
+    };
+
     state
         .tasks
         .iter()
@@ -346,12 +439,14 @@ fn render_flat_task_list(state: &AppState, theme: &crate::colors::Theme) -> Vec<
                 themes::status_style(task.status, theme)
             };
 
-            let line = Line::from(vec![
-                Span::raw(indent),
-                Span::raw(checkbox),
-                Span::raw(" "),
-                Span::styled(task.title.clone(), style),
-            ]);
+            // Format title - for index files, extract link text and convert annotations
+            let title = if is_index {
+                display::format_index_title(&task.title)
+            } else {
+                task.title.clone()
+            };
+
+            let line = build_styled_task_line(indent, "", checkbox, &title, style, theme);
 
             ListItem::new(line)
         })

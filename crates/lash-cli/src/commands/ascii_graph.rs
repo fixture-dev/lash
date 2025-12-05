@@ -5,6 +5,7 @@
 
 use crossterm::terminal;
 use lash_core::dependency::{DependencyGraph, FilterOptions, NodeData};
+use lash_core::display;
 use lash_types::TaskStatus;
 use std::collections::{BTreeMap, HashSet};
 
@@ -398,10 +399,9 @@ impl<'a> AsciiGraphRenderer<'a> {
         let checkbox = self.render_checkbox(node.status);
         let is_index = node.is_from_index_file();
 
-        // For index files, extract link text and format annotations
+        // For index files, extract link text and format annotations using shared display utilities
         let title = if is_index {
-            let extracted = Self::extract_link_text(&node.title);
-            Self::format_index_annotations(&extracted)
+            display::format_index_title(&node.title)
         } else {
             node.title.clone()
         };
@@ -471,103 +471,6 @@ impl<'a> AsciiGraphRenderer<'a> {
         }
 
         result
-    }
-
-    /// Extract link text from Markdown links
-    ///
-    /// Converts `[link text](path)` to just `link text`.
-    /// Also handles backtick-wrapped paths: `` `path/file.md` `` → `path/file.md`
-    /// Returns the original text if no link is found.
-    fn extract_link_text(text: &str) -> String {
-        // Try to match [link text](path) pattern
-        if let (Some(open_bracket), Some(close_bracket)) = (text.find('['), text.find("](")) {
-            if open_bracket < close_bracket {
-                if let Some(close_paren) = text.rfind(')') {
-                    if close_bracket < close_paren {
-                        // Extract the link text between [ and ](
-                        let link_text = &text[open_bracket + 1..close_bracket];
-                        // Return just the link text, preserving any prefix
-                        let prefix = &text[..open_bracket];
-                        // Check for suffix after the link
-                        let suffix = if close_paren + 1 < text.len() {
-                            &text[close_paren + 1..]
-                        } else {
-                            ""
-                        };
-                        return format!("{prefix}{link_text}{suffix}");
-                    }
-                }
-            }
-        }
-
-        // Return original if no link pattern found
-        text.to_string()
-    }
-
-    /// Format index task annotations for display
-    ///
-    /// Strips `@id:` annotations and converts `@labels:` to hashtag format.
-    /// Example: "Alpha @id:`milestone.alpha` @labels:`milestone, p0`"
-    /// becomes: "Alpha #milestone #p0"
-    fn format_index_annotations(text: &str) -> String {
-        let mut result = String::new();
-        let mut remaining = text;
-
-        // Process the text, stripping @id: and converting @labels:
-        while !remaining.is_empty() {
-            // Check for @id: annotation - strip it completely
-            if remaining.starts_with("@id:") {
-                // Find the end of the backtick-wrapped value
-                if let Some(backtick_start) = remaining.find('`') {
-                    if let Some(backtick_end) = remaining[backtick_start + 1..].find('`') {
-                        // Skip past the entire @id:`value` including trailing space
-                        let end_pos = backtick_start + 1 + backtick_end + 1;
-                        remaining = remaining[end_pos..].trim_start();
-                        continue;
-                    }
-                }
-                // If no backticks found, skip to end
-                break;
-            }
-
-            // Check for @labels: annotation - convert to hashtags
-            if remaining.starts_with("@labels:") {
-                if let Some(backtick_start) = remaining.find('`') {
-                    if let Some(backtick_end) = remaining[backtick_start + 1..].find('`') {
-                        let labels_content =
-                            &remaining[backtick_start + 1..backtick_start + 1 + backtick_end];
-                        // Convert comma-separated labels to hashtags
-                        for label in labels_content.split(',') {
-                            let label = label.trim();
-                            if !label.is_empty() {
-                                result.push('#');
-                                result.push_str(label);
-                                result.push(' ');
-                            }
-                        }
-                        // Move past the @labels:`value`
-                        let end_pos = backtick_start + 1 + backtick_end + 1;
-                        remaining = remaining[end_pos..].trim_start();
-                        continue;
-                    }
-                }
-                // If no backticks found, skip to end
-                break;
-            }
-
-            // Find the next @ or end of string
-            if let Some(next_at) = remaining[1..].find('@') {
-                // Add text up to next annotation
-                result.push_str(&remaining[..=next_at]);
-                remaining = &remaining[next_at + 1..];
-            } else {
-                // No more annotations, add rest of text
-                result.push_str(remaining);
-                break;
-            }
-        }
-
-        result.trim().to_string()
     }
 
     /// Style labels (hashtags like #backend, #docs) within text
@@ -908,31 +811,28 @@ mod tests {
     fn test_extract_link_text() {
         // Standard markdown link
         assert_eq!(
-            AsciiGraphRenderer::extract_link_text("[Core API](core/api.md)"),
+            display::extract_link_text("[Core API](core/api.md)"),
             "Core API"
         );
 
         // Link with prefix
         assert_eq!(
-            AsciiGraphRenderer::extract_link_text("Prefix [Link Text](path.md)"),
+            display::extract_link_text("Prefix [Link Text](path.md)"),
             "Prefix Link Text"
         );
 
         // Link with suffix
         assert_eq!(
-            AsciiGraphRenderer::extract_link_text("[Link](path.md) suffix"),
+            display::extract_link_text("[Link](path.md) suffix"),
             "Link suffix"
         );
 
         // No link - returns original
-        assert_eq!(
-            AsciiGraphRenderer::extract_link_text("Plain text"),
-            "Plain text"
-        );
+        assert_eq!(display::extract_link_text("Plain text"), "Plain text");
 
         // Backtick path (no transformation - not a link)
         assert_eq!(
-            AsciiGraphRenderer::extract_link_text("`path/file.md`"),
+            display::extract_link_text("`path/file.md`"),
             "`path/file.md`"
         );
     }
@@ -941,7 +841,7 @@ mod tests {
     fn test_format_index_annotations() {
         // Full annotation: strip @id and convert @labels to hashtags
         assert_eq!(
-            AsciiGraphRenderer::format_index_annotations(
+            display::format_index_annotations(
                 "Alpha @id:`milestone.alpha` @labels:`milestone, p0`"
             ),
             "Alpha #milestone #p0"
@@ -949,25 +849,25 @@ mod tests {
 
         // Just @id annotation - strip completely
         assert_eq!(
-            AsciiGraphRenderer::format_index_annotations("Task @id:`some.id`"),
+            display::format_index_annotations("Task @id:`some.id`"),
             "Task"
         );
 
         // Just @labels annotation - convert to hashtags
         assert_eq!(
-            AsciiGraphRenderer::format_index_annotations("Task @labels:`foo, bar, baz`"),
+            display::format_index_annotations("Task @labels:`foo, bar, baz`"),
             "Task #foo #bar #baz"
         );
 
         // No annotations - return as-is
         assert_eq!(
-            AsciiGraphRenderer::format_index_annotations("Plain Task"),
+            display::format_index_annotations("Plain Task"),
             "Plain Task"
         );
 
         // With existing hashtags - preserve them
         assert_eq!(
-            AsciiGraphRenderer::format_index_annotations("Task #existing @labels:`new`"),
+            display::format_index_annotations("Task #existing @labels:`new`"),
             "Task #existing #new"
         );
     }

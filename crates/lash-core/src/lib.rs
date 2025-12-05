@@ -23,3 +23,6 @@ pub mod dependency;
 
 // Logo and branding utilities
 pub mod logo;
+
+// Display formatting utilities
+pub mod display;
