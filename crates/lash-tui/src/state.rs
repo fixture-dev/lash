@@ -769,9 +769,37 @@ impl AppState {
     }
 
     /// Get currently selected task
+    ///
+    /// When tree view is active, this returns the task at the visual position
+    /// in the flattened tree. Otherwise, it returns from the flat task list.
     #[must_use]
     pub fn selected_task(&self) -> Option<&TaskRecord> {
-        self.tasks.get(self.selected_task_index)
+        // When tree view is active, we need to get the task from the flattened tree
+        // because the visual index corresponds to the flattened tree position,
+        // not the flat tasks vector
+        if let Some(task_trees) = &self.task_tree {
+            // Flatten all trees to get tasks in visual order
+            let mut flat_tasks: Vec<&TaskRecord> = Vec::new();
+            for tree in task_trees {
+                Self::flatten_task_tree(tree, &mut flat_tasks);
+            }
+            flat_tasks.get(self.selected_task_index).copied()
+        } else {
+            self.tasks.get(self.selected_task_index)
+        }
+    }
+
+    /// Recursively flatten a task tree into a vector of task references
+    ///
+    /// Only includes visible nodes (respects expansion state).
+    fn flatten_task_tree<'a>(node: &'a TreeNode<TaskRecord>, result: &mut Vec<&'a TaskRecord>) {
+        result.push(&node.data);
+
+        if node.expanded {
+            for child in &node.children {
+                Self::flatten_task_tree(child, result);
+            }
+        }
     }
 
     /// Get currently selected label
