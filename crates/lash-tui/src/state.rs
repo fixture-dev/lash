@@ -169,6 +169,35 @@ pub struct AppState {
 
     /// Project-level statistics (total tasks, completion, title)
     pub project_stats: ProjectStats,
+
+    /// Status message to display (transient feedback)
+    pub status_message: Option<StatusMessage>,
+}
+
+/// A transient status message displayed in the UI
+#[derive(Debug, Clone)]
+pub struct StatusMessage {
+    /// The message text
+    pub text: String,
+
+    /// Message severity/type for styling
+    pub level: StatusLevel,
+
+    /// When the message expires (instant)
+    pub expires_at: std::time::Instant,
+}
+
+/// Severity level for status messages
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusLevel {
+    /// Informational message
+    Info,
+    /// Warning message
+    Warning,
+    /// Error message
+    Error,
+    /// Success message
+    Success,
 }
 
 /// State for the theme selector modal
@@ -339,6 +368,7 @@ impl AppState {
             search_modal_state: None,
             filter_modal_state: None,
             project_stats: ProjectStats::default(),
+            status_message: None,
         }
     }
 
@@ -522,6 +552,56 @@ impl AppState {
     /// Toggle help overlay
     pub fn toggle_help(&mut self) {
         self.show_help = !self.show_help;
+    }
+
+    /// Set a status message with the given level and duration
+    ///
+    /// The message will automatically expire after the specified duration.
+    pub fn set_status_message(
+        &mut self,
+        text: impl Into<String>,
+        level: StatusLevel,
+        duration_ms: u64,
+    ) {
+        self.status_message = Some(StatusMessage {
+            text: text.into(),
+            level,
+            expires_at: std::time::Instant::now() + std::time::Duration::from_millis(duration_ms),
+        });
+    }
+
+    /// Set an info status message (default 3 second duration)
+    pub fn set_info_message(&mut self, text: impl Into<String>) {
+        self.set_status_message(text, StatusLevel::Info, 3000);
+    }
+
+    /// Set a warning status message (default 4 second duration)
+    pub fn set_warning_message(&mut self, text: impl Into<String>) {
+        self.set_status_message(text, StatusLevel::Warning, 4000);
+    }
+
+    /// Set an error status message (default 5 second duration)
+    pub fn set_error_message(&mut self, text: impl Into<String>) {
+        self.set_status_message(text, StatusLevel::Error, 5000);
+    }
+
+    /// Set a success status message (default 3 second duration)
+    pub fn set_success_message(&mut self, text: impl Into<String>) {
+        self.set_status_message(text, StatusLevel::Success, 3000);
+    }
+
+    /// Clear the status message
+    pub fn clear_status_message(&mut self) {
+        self.status_message = None;
+    }
+
+    /// Check if status message has expired and clear it if so
+    pub fn check_status_expiry(&mut self) {
+        if let Some(msg) = &self.status_message {
+            if std::time::Instant::now() >= msg.expires_at {
+                self.status_message = None;
+            }
+        }
     }
 
     /// Open theme selector

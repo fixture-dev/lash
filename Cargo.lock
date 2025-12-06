@@ -1123,6 +1123,7 @@ dependencies = [
  "lash-types",
  "once_cell",
  "ratatui",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
