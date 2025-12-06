@@ -172,6 +172,11 @@ pub struct AppState {
     /// Shown when marking a task complete that has open subtasks.
     pub confirm_complete_modal_state: Option<ConfirmCompleteModalState>,
 
+    /// Confirm incomplete modal state (None = closed, Some = open)
+    ///
+    /// Shown when marking a completed subtask as incomplete when parent is complete.
+    pub confirm_incomplete_modal_state: Option<ConfirmIncompleteModalState>,
+
     /// Project-level statistics (total tasks, completion, title)
     pub project_stats: ProjectStats,
 
@@ -333,6 +338,23 @@ pub struct ConfirmCompleteModalState {
     pub open_subtasks: Vec<TaskRecord>,
 }
 
+/// State for the confirm incomplete modal
+///
+/// Shown when a user attempts to mark a completed subtask as incomplete
+/// when its parent task is also complete. Prompts the user to confirm
+/// that the parent will also be marked incomplete.
+#[derive(Debug)]
+pub struct ConfirmIncompleteModalState {
+    /// The subtask being marked incomplete
+    pub task: TaskRecord,
+
+    /// File path containing this task
+    pub file_path: PathBuf,
+
+    /// Completed ancestor tasks that will be marked incomplete
+    pub completed_ancestors: Vec<TaskRecord>,
+}
+
 /// Information about a selected tree node
 #[derive(Debug, Clone)]
 pub struct SelectedTreeNode {
@@ -402,6 +424,7 @@ impl AppState {
             search_modal_state: None,
             filter_modal_state: None,
             confirm_complete_modal_state: None,
+            confirm_incomplete_modal_state: None,
             project_stats: ProjectStats::default(),
             status_message: None,
         }
@@ -1579,6 +1602,34 @@ impl AppState {
     #[must_use]
     pub fn is_confirm_complete_modal_open(&self) -> bool {
         self.confirm_complete_modal_state.is_some()
+    }
+
+    /// Open the confirm incomplete modal
+    ///
+    /// Called when a user attempts to mark a completed subtask as incomplete
+    /// when its parent is also complete.
+    pub fn open_confirm_incomplete_modal(
+        &mut self,
+        task: TaskRecord,
+        file_path: PathBuf,
+        completed_ancestors: Vec<TaskRecord>,
+    ) {
+        self.confirm_incomplete_modal_state = Some(ConfirmIncompleteModalState {
+            task,
+            file_path,
+            completed_ancestors,
+        });
+    }
+
+    /// Close confirm incomplete modal without applying
+    pub fn close_confirm_incomplete_modal(&mut self) {
+        self.confirm_incomplete_modal_state = None;
+    }
+
+    /// Check if confirm incomplete modal is open
+    #[must_use]
+    pub fn is_confirm_incomplete_modal_open(&self) -> bool {
+        self.confirm_incomplete_modal_state.is_some()
     }
 
     /// Collect the expansion state of all task tree nodes
