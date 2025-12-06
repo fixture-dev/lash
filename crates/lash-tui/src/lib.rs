@@ -13,6 +13,7 @@ mod event;
 pub mod state;
 mod terminal;
 mod ui;
+pub mod utils;
 
 pub use app::TuiApp;
 pub use error::{TuiError, TuiResult};
