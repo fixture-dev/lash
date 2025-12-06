@@ -213,12 +213,15 @@ fn add_dependencies_section(
     state: &AppState,
     detail_state: &crate::state::TaskDetailState,
 ) {
+    use lash_types::DependencyKind;
+
     if detail_state.dependencies.is_empty() {
         return;
     }
 
+    // Use "Parent" as label since hierarchy deps show parent task
     lines.push(Line::from(vec![Span::styled(
-        "Dependencies",
+        "Parent",
         Style::default()
             .fg(state.theme.info_color())
             .add_modifier(Modifier::BOLD),
@@ -232,21 +235,43 @@ fn add_dependencies_section(
             .as_deref()
             .or(dep.raw_ref.as_deref())
             .unwrap_or("unresolved");
-        let kind_str = format!("{:?}", dep.kind);
 
-        lines.push(Line::from(vec![
+        // Format kind label for display
+        let kind_label = match dep.kind {
+            DependencyKind::Hierarchy => "Hierarchy",
+            DependencyKind::ExplicitId | DependencyKind::ExplicitPath => "Explicit",
+            DependencyKind::Directory => "Directory",
+        };
+
+        // Build the line with ID and optional title
+        let mut spans = vec![
             Span::raw("  "),
-            Span::styled("→ ", Style::default().fg(state.theme.muted_color())),
+            Span::styled("← ", Style::default().fg(state.theme.muted_color())),
             Span::styled(
                 dep_id.to_string(),
                 Style::default().fg(state.theme.emphasis_color()),
             ),
-            Span::raw(" "),
-            Span::styled(
-                format!("({kind_str})"),
+        ];
+
+        // Add title in distinct color if available
+        if let Some(title) = &dep.to_title {
+            spans.push(Span::styled(
+                " | ",
                 Style::default().fg(state.theme.muted_color()),
-            ),
-        ]));
+            ));
+            spans.push(Span::styled(
+                title.clone(),
+                Style::default().fg(state.theme.label_color()),
+            ));
+        }
+
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            format!("({kind_label})"),
+            Style::default().fg(state.theme.muted_color()),
+        ));
+
+        lines.push(Line::from(spans));
     }
 
     lines.push(Line::from(""));
