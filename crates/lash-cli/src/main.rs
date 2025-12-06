@@ -487,6 +487,24 @@ fn run(cli: LashCli) -> Result<()> {
             Ok(())
         }
 
+        Commands::Init {
+            path,
+            no_index,
+            force,
+        } => {
+            let args = commands::init::InitArgs {
+                path,
+                no_index,
+                force,
+                json: cli.json,
+                no_color: cli.no_color,
+                errors_streaming: cli.errors_streaming,
+                verbosity,
+            };
+            let exit_code = commands::init::execute(args)?;
+            process::exit(exit_code);
+        }
+
         Commands::Playground { command } => {
             use lash_cli::cli::PlaygroundCommand;
             match command {
