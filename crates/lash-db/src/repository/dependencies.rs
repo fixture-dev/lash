@@ -22,6 +22,9 @@ pub struct DependencyRecord {
     /// Full ID of the target task (if resolved)
     pub to_full_id: Option<String>,
 
+    /// Title of the target task (for display purposes)
+    pub to_title: Option<String>,
+
     /// Kind of dependency
     pub kind: DependencyKind,
 
@@ -93,7 +96,7 @@ impl<'conn> DependencyRepository<'conn> {
     /// Returns error if query fails
     pub fn get_dependencies(&self, task_id: i64) -> DbResult<Vec<DependencyRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT d.id, d.from_task_id, d.to_task_id, d.kind, d.raw_ref, t.full_id
+            "SELECT d.id, d.from_task_id, d.to_task_id, d.kind, d.raw_ref, t.full_id, t.title
              FROM dependencies d
              LEFT JOIN tasks t ON d.to_task_id = t.id
              WHERE d.from_task_id = ?1",
@@ -107,6 +110,7 @@ impl<'conn> DependencyRepository<'conn> {
                     from_task_id: row.get(1)?,
                     to_task_id: row.get(2)?,
                     to_full_id: row.get(5)?,
+                    to_title: row.get(6)?,
                     kind: DependencyKind::from_str_lossy(&kind_str),
                     raw_ref: row.get(4)?,
                 })
@@ -123,7 +127,7 @@ impl<'conn> DependencyRepository<'conn> {
     /// Returns error if query fails
     pub fn get_dependents(&self, task_id: i64) -> DbResult<Vec<DependencyRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT d.id, d.from_task_id, d.to_task_id, d.kind, d.raw_ref, t.full_id
+            "SELECT d.id, d.from_task_id, d.to_task_id, d.kind, d.raw_ref, t.full_id, t.title
              FROM dependencies d
              LEFT JOIN tasks t ON d.to_task_id = t.id
              WHERE d.to_task_id = ?1",
@@ -137,6 +141,7 @@ impl<'conn> DependencyRepository<'conn> {
                     from_task_id: row.get(1)?,
                     to_task_id: row.get(2)?,
                     to_full_id: row.get(5)?,
+                    to_title: row.get(6)?,
                     kind: DependencyKind::from_str_lossy(&kind_str),
                     raw_ref: row.get(4)?,
                 })

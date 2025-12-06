@@ -70,6 +70,13 @@ pub fn render(frame: &mut Frame, area: Rect, _state: &AppState) {
         Line::from("  q or Ctrl-c    Quit"),
         Line::from(""),
         Line::from(vec![Span::styled(
+            "Dependency Types:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  Hierarchy      Parent-child from markdown nesting"),
+        Line::from("  Explicit       Declared via @depends-on annotation"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
             "Press ? or Esc to close this help",
             Style::default().fg(Color::DarkGray),
         )]),
