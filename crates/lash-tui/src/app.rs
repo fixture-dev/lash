@@ -12,7 +12,9 @@ use lash_db::repository::labels::LabelRepository;
 use lash_db::repository::tasks::TaskRepository;
 
 use crate::error::{TuiError, TuiResult};
-use crate::event::{poll_event, poll_filter_event, poll_search_event, AppEvent};
+use crate::event::{
+    poll_confirm_complete_event, poll_event, poll_filter_event, poll_search_event, AppEvent,
+};
 use crate::state::AppState;
 use crate::terminal;
 use crate::ui;
@@ -145,6 +147,8 @@ impl TuiApp {
                 poll_search_event(Duration::from_millis(100))?
             } else if self.state.is_filter_modal_open() {
                 poll_filter_event(Duration::from_millis(100))?
+            } else if self.state.is_confirm_complete_modal_open() {
+                poll_confirm_complete_event(Duration::from_millis(100))?
             } else {
                 poll_event(Duration::from_millis(100))?
             };
@@ -192,6 +196,17 @@ impl TuiApp {
                     AppEvent::ClearFilters => self.state.filter_modal_clear(),
                     AppEvent::CharInput(c) => self.state.filter_modal_input(c),
                     _ => {} // Ignore other events when filter is open
+                }
+            } else if self.state.is_confirm_complete_modal_open() {
+                // Confirm complete modal is open - route events to it
+                match event {
+                    AppEvent::CloseConfirmComplete => {
+                        self.state.close_confirm_complete_modal();
+                    }
+                    AppEvent::ConfirmComplete => {
+                        self.handle_confirm_cascading_complete()?;
+                    }
+                    _ => {} // Ignore other events when confirm modal is open
                 }
             } else if self.state.is_task_detail_open() {
                 // Task detail is open - route events to it
@@ -287,6 +302,8 @@ impl TuiApp {
                     | AppEvent::ExecuteSearch
                     | AppEvent::CloseFilter
                     | AppEvent::ApplyFilter
+                    | AppEvent::CloseConfirmComplete
+                    | AppEvent::ConfirmComplete
                     | AppEvent::CharInput(_)
                     | AppEvent::Backspace
                     | AppEvent::Delete
@@ -507,6 +524,29 @@ impl TuiApp {
             }
         };
 
+        // If transitioning to Done, check for open subtasks
+        if old_status == lash_types::TaskStatus::Open && new_status == lash_types::TaskStatus::Done
+        {
+            // Get all descendants of this task
+            let task_repo = TaskRepository::new(&self.conn);
+            let descendants = task_repo
+                .get_descendants(task_id)
+                .map_err(|e| TuiError::App(format!("Failed to get subtasks: {e}")))?;
+
+            // Filter to only open (incomplete) subtasks
+            let open_subtasks: Vec<_> = descendants
+                .into_iter()
+                .filter(|t| !t.status.is_complete())
+                .collect();
+
+            // If there are open subtasks, show confirmation modal
+            if !open_subtasks.is_empty() {
+                self.state
+                    .open_confirm_complete_modal(task.clone(), file_path, open_subtasks);
+                return Ok(());
+            }
+        }
+
         // Update in database
         self.conn
             .execute(
@@ -535,6 +575,96 @@ impl TuiApp {
         let expanded_ids = self.state.collect_expansion_state();
 
         // Reload tasks for the correct file (using file_id from the task)
+        let task_repo = TaskRepository::new(&self.conn);
+        self.state.tasks = task_repo
+            .get_by_file(file_id)
+            .map_err(|e| TuiError::App(format!("Failed to reload tasks: {e}")))?;
+
+        // Rebuild task tree to reflect updated status
+        self.state.build_task_tree();
+
+        // Restore expansion state after rebuild
+        self.state.restore_expansion_state(&expanded_ids);
+
+        Ok(())
+    }
+
+    /// Handle confirmed cascading completion
+    ///
+    /// Called when user confirms marking a task with open subtasks as complete.
+    /// Marks the parent task and all open subtasks as Done.
+    fn handle_confirm_cascading_complete(&mut self) -> TuiResult<()> {
+        // Take the modal state (this also closes the modal)
+        let Some(modal_state) = self.state.confirm_complete_modal_state.take() else {
+            return Ok(());
+        };
+
+        let parent_task = modal_state.task;
+        let file_path = modal_state.file_path;
+        let open_subtasks = modal_state.open_subtasks;
+
+        // Get file_id for reloading tasks later
+        let file_id = parent_task.file_id;
+
+        // Count for feedback message
+        let subtask_count = open_subtasks.len();
+
+        // Update parent task to Done in database
+        self.conn
+            .execute(
+                "UPDATE tasks SET status = ?1 WHERE id = ?2",
+                (lash_types::TaskStatus::Done.as_str(), parent_task.id),
+            )
+            .map_err(|e| TuiError::App(format!("Failed to update parent task: {e}")))?;
+
+        // Update parent task in markdown
+        if let Err(e) = self.update_markdown_task_status(
+            &file_path,
+            &parent_task.title,
+            lash_types::TaskStatus::Open,
+            lash_types::TaskStatus::Done,
+        ) {
+            self.state.set_warning_message(format!(
+                "Parent DB updated, but markdown update failed: {e}"
+            ));
+        }
+
+        // Update all open subtasks to Done
+        for subtask in &open_subtasks {
+            // Update in database
+            self.conn
+                .execute(
+                    "UPDATE tasks SET status = ?1 WHERE id = ?2",
+                    (lash_types::TaskStatus::Done.as_str(), subtask.id),
+                )
+                .map_err(|e| TuiError::App(format!("Failed to update subtask: {e}")))?;
+
+            // Update in markdown
+            if let Err(e) = self.update_markdown_task_status(
+                &file_path,
+                &subtask.title,
+                subtask.status, // Use actual status (could be Open or Blocked)
+                lash_types::TaskStatus::Done,
+            ) {
+                // Log warning but continue with other subtasks
+                self.state.set_warning_message(format!(
+                    "Subtask '{}' markdown update failed: {e}",
+                    subtask.title
+                ));
+            }
+        }
+
+        // Show success message
+        self.state.set_success_message(format!(
+            "Marked task and {} subtask{} as complete",
+            subtask_count,
+            if subtask_count == 1 { "" } else { "s" }
+        ));
+
+        // Preserve expansion state before rebuilding tree
+        let expanded_ids = self.state.collect_expansion_state();
+
+        // Reload tasks for the file
         let task_repo = TaskRepository::new(&self.conn);
         self.state.tasks = task_repo
             .get_by_file(file_id)

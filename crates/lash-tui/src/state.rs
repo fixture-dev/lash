@@ -167,6 +167,11 @@ pub struct AppState {
     /// Filter modal state (None = closed, Some = open)
     pub filter_modal_state: Option<FilterModalState>,
 
+    /// Confirm complete modal state (None = closed, Some = open)
+    ///
+    /// Shown when marking a task complete that has open subtasks.
+    pub confirm_complete_modal_state: Option<ConfirmCompleteModalState>,
+
     /// Project-level statistics (total tasks, completion, title)
     pub project_stats: ProjectStats,
 
@@ -312,6 +317,22 @@ pub struct FilterModalState {
     pub filtered_indices: Vec<usize>,
 }
 
+/// State for the confirm complete modal
+///
+/// Shown when a user attempts to mark a task as complete but it has
+/// open subtasks. Prompts the user to confirm cascading completion.
+#[derive(Debug)]
+pub struct ConfirmCompleteModalState {
+    /// The parent task being marked complete
+    pub task: TaskRecord,
+
+    /// File path containing this task
+    pub file_path: PathBuf,
+
+    /// Open subtasks that will be marked complete
+    pub open_subtasks: Vec<TaskRecord>,
+}
+
 /// Information about a selected tree node
 #[derive(Debug, Clone)]
 pub struct SelectedTreeNode {
@@ -380,6 +401,7 @@ impl AppState {
             current_label_filter: None,
             search_modal_state: None,
             filter_modal_state: None,
+            confirm_complete_modal_state: None,
             project_stats: ProjectStats::default(),
             status_message: None,
         }
@@ -1529,6 +1551,34 @@ impl AppState {
                 .get(modal.selected_index)
                 .and_then(|&idx| modal.available_labels.get(idx))
         })
+    }
+
+    /// Open the confirm complete modal
+    ///
+    /// Called when a user attempts to mark a task as complete but it has
+    /// open subtasks. The modal prompts for confirmation before cascading.
+    pub fn open_confirm_complete_modal(
+        &mut self,
+        task: TaskRecord,
+        file_path: PathBuf,
+        open_subtasks: Vec<TaskRecord>,
+    ) {
+        self.confirm_complete_modal_state = Some(ConfirmCompleteModalState {
+            task,
+            file_path,
+            open_subtasks,
+        });
+    }
+
+    /// Close confirm complete modal without applying
+    pub fn close_confirm_complete_modal(&mut self) {
+        self.confirm_complete_modal_state = None;
+    }
+
+    /// Check if confirm complete modal is open
+    #[must_use]
+    pub fn is_confirm_complete_modal_open(&self) -> bool {
+        self.confirm_complete_modal_state.is_some()
     }
 
     /// Collect the expansion state of all task tree nodes

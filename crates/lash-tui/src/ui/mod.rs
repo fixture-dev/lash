@@ -1,5 +1,6 @@
 //! UI rendering and layout
 
+mod confirm_complete_modal;
 mod detail_pane;
 mod filter_modal;
 mod help;
@@ -87,5 +88,10 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     // Render filter modal overlay if active
     if state.filter_modal_state.is_some() {
         filter_modal::render(frame, frame.area(), state);
+    }
+
+    // Render confirm complete modal overlay if active
+    if state.confirm_complete_modal_state.is_some() {
+        confirm_complete_modal::render(frame, frame.area(), state);
     }
 }
