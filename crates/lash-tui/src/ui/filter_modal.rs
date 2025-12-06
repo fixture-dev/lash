@@ -33,7 +33,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         .split(popup_area);
 
     // Render title
-    render_title(frame, chunks[0]);
+    render_title(frame, chunks[0], &state.theme);
 
     // Render input field
     render_input(frame, chunks[1], filter_state, &state.theme);
@@ -49,7 +49,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 }
 
 /// Render the title section
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame, area: Rect, theme: &crate::colors::Theme) {
     let title_block = Block::default()
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::Black).fg(Color::White));
@@ -57,7 +57,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
     let title_text = vec![Line::from(vec![Span::styled(
         "Filter by Label - ↑↓ to navigate, Enter to apply, Esc to close",
         Style::default()
-            .fg(Color::Cyan)
+            .fg(theme.info_color())
             .add_modifier(Modifier::BOLD),
     )])];
 
