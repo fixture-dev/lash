@@ -3,7 +3,7 @@
 use ratatui::{backend::CrosstermBackend, Terminal};
 use rusqlite::Connection;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use lash_db::repository::dependencies::DependencyRepository;
@@ -27,6 +27,9 @@ pub struct TuiApp {
 
     /// Application state
     state: AppState,
+
+    /// Project root directory (parent of .lash/)
+    project_root: PathBuf,
 }
 
 impl TuiApp {
@@ -52,6 +55,13 @@ impl TuiApp {
     pub fn new_with_scheme(db_path: &Path, color_scheme: Option<&str>) -> TuiResult<Self> {
         let terminal = terminal::setup()?;
         let conn = lash_db::open_database(db_path)?;
+
+        // Calculate project root from db_path (db is at .lash/lash.db)
+        let project_root = db_path
+            .parent() // .lash/
+            .and_then(|p| p.parent()) // project root
+            .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+
         let mut state = if let Some(scheme_name) = color_scheme {
             AppState::with_color_scheme(scheme_name)
                 .map_err(|e| TuiError::App(format!("Invalid color scheme: {e}")))?
@@ -104,6 +114,7 @@ impl TuiApp {
             terminal,
             conn,
             state,
+            project_root,
         })
     }
 
@@ -115,6 +126,9 @@ impl TuiApp {
     #[allow(clippy::too_many_lines)]
     pub fn run(&mut self) -> TuiResult<()> {
         loop {
+            // Check for expired status messages
+            self.state.check_status_expiry();
+
             // Render
             self.terminal.draw(|frame| ui::render(frame, &self.state))?;
 
@@ -420,18 +434,52 @@ impl TuiApp {
 
     /// Handle toggling task status with Space bar
     fn handle_toggle_status(&mut self) -> TuiResult<()> {
-        // Only works in detail pane on a selected task
-        if self.state.focused_pane != crate::state::FocusedPane::Detail {
-            return Ok(());
+        use crate::state::FocusedPane;
+
+        // Check if we're in the right pane
+        match self.state.focused_pane {
+            FocusedPane::Navigation => {
+                self.state.set_warning_message(
+                    "Press Tab twice to focus Tasks pane, then Space to toggle status",
+                );
+                return Ok(());
+            }
+            FocusedPane::Description => {
+                self.state.set_warning_message(
+                    "Press Tab to focus Tasks pane, then Space to toggle status",
+                );
+                return Ok(());
+            }
+            FocusedPane::Detail => {
+                // Continue with toggle logic below
+            }
         }
 
-        let task_index = self.state.selected_task_index;
-        if task_index >= self.state.tasks.len() {
+        // Get the currently selected task (handles tree view correctly)
+        let Some(task) = self.state.selected_task() else {
+            self.state.set_warning_message("No task selected");
             return Ok(());
-        }
+        };
 
-        // Get current task
-        let task = &self.state.tasks[task_index];
+        // Get file for this task (needed for markdown update and reloading)
+        let file_record = FileRepository::new(&self.conn)
+            .get_by_db_id(task.file_id)
+            .map_err(|e| TuiError::App(format!("Failed to get file for task: {e}")))?;
+
+        let Some(file_record) = file_record else {
+            return Err(TuiError::App(format!(
+                "File not found for task: {}",
+                task.id
+            )));
+        };
+
+        let file_path = file_record.path.clone();
+        let file_id = file_record.id;
+
+        // Capture task info before updating
+        let task_id = task.id;
+        let task_title = task.title.clone();
+        let old_status = task.status;
         let new_status = match task.status {
             lash_types::TaskStatus::Open => lash_types::TaskStatus::Done,
             lash_types::TaskStatus::Done => lash_types::TaskStatus::Waived,
@@ -444,17 +492,129 @@ impl TuiApp {
         self.conn
             .execute(
                 "UPDATE tasks SET status = ?1 WHERE id = ?2",
-                (new_status.as_str(), task.id),
+                (new_status.as_str(), task_id),
             )
             .map_err(|e| TuiError::App(format!("Failed to update task status: {e}")))?;
 
-        // Reload tasks to reflect changes
-        if let Some(file) = self.state.selected_file() {
-            let task_repo = TaskRepository::new(&self.conn);
-            self.state.tasks = task_repo
-                .get_by_file(file.id)
-                .map_err(|e| TuiError::App(format!("Failed to reload tasks: {e}")))?;
+        // Update the markdown file
+        if let Err(e) =
+            self.update_markdown_task_status(&file_path, &task_title, old_status, new_status)
+        {
+            // Show warning but don't fail - database is already updated
+            self.state
+                .set_warning_message(format!("DB updated, but markdown update failed: {e}"));
+        } else {
+            // Show success message
+            self.state.set_success_message(format!(
+                "Task status: {} -> {}",
+                Self::status_display_char(old_status),
+                Self::status_display_char(new_status)
+            ));
         }
+
+        // Reload tasks for the correct file (using file_id from the task)
+        let task_repo = TaskRepository::new(&self.conn);
+        self.state.tasks = task_repo
+            .get_by_file(file_id)
+            .map_err(|e| TuiError::App(format!("Failed to reload tasks: {e}")))?;
+
+        // Rebuild task tree to reflect updated status
+        self.state.build_task_tree();
+
+        Ok(())
+    }
+
+    /// Get display character for a task status
+    fn status_display_char(status: lash_types::TaskStatus) -> &'static str {
+        match status {
+            lash_types::TaskStatus::Open => "[ ]",
+            lash_types::TaskStatus::Done => "[x]",
+            lash_types::TaskStatus::Waived => "[-]",
+            lash_types::TaskStatus::Blocked => "[!]",
+        }
+    }
+
+    /// Get checkbox character (just the char inside brackets) for a task status
+    fn status_checkbox_char(status: lash_types::TaskStatus) -> char {
+        match status {
+            lash_types::TaskStatus::Open => ' ',
+            lash_types::TaskStatus::Done => 'x',
+            lash_types::TaskStatus::Waived => '-',
+            lash_types::TaskStatus::Blocked => '!',
+        }
+    }
+
+    /// Update task status in the markdown file
+    ///
+    /// Finds the task line by matching the title and old status, then updates
+    /// the checkbox character to reflect the new status.
+    fn update_markdown_task_status(
+        &self,
+        file_path: &Path,
+        task_title: &str,
+        old_status: lash_types::TaskStatus,
+        new_status: lash_types::TaskStatus,
+    ) -> TuiResult<()> {
+        use std::fs;
+
+        // Construct full path
+        let full_path = self.project_root.join(file_path);
+
+        // Read file content
+        let content = fs::read_to_string(&full_path)
+            .map_err(|e| TuiError::App(format!("Failed to read file: {e}")))?;
+
+        // Build pattern to find the task line
+        // Task lines look like: "- [ ] Task title" with optional leading whitespace
+        let old_char = Self::status_checkbox_char(old_status);
+        let new_char = Self::status_checkbox_char(new_status);
+
+        // Escape special regex characters in the title
+        let escaped_title = regex::escape(task_title);
+
+        // Pattern: whitespace, dash, space, checkbox with old status, space, title
+        // Handle both uppercase and lowercase 'x' for Done status
+        let pattern = if old_status == lash_types::TaskStatus::Done {
+            format!(r"^(\s*- \[)[xX](\] {escaped_title})")
+        } else {
+            format!(r"^(\s*- \[){old_char}(\] {escaped_title})")
+        };
+
+        let re = regex::Regex::new(&pattern)
+            .map_err(|e| TuiError::App(format!("Failed to compile regex: {e}")))?;
+
+        // Find and replace the task line
+        let mut found = false;
+        let updated_content: String = content
+            .lines()
+            .map(|line| {
+                if !found && re.is_match(line) {
+                    found = true;
+                    re.replace(line, format!("${{1}}{new_char}${{2}}"))
+                        .to_string()
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Preserve trailing newline if original had one
+        let final_content = if content.ends_with('\n') && !updated_content.ends_with('\n') {
+            format!("{updated_content}\n")
+        } else {
+            updated_content
+        };
+
+        if !found {
+            return Err(TuiError::App(format!(
+                "Could not find task '{task_title}' in file"
+            )));
+        }
+
+        // Write updated content back to file
+        fs::write(&full_path, final_content)
+            .map_err(|e| TuiError::App(format!("Failed to write file: {e}")))?;
 
         Ok(())
     }
