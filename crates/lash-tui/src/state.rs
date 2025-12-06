@@ -331,6 +331,19 @@ pub struct SelectedTreeNode {
     pub path: Vec<usize>,
 }
 
+/// Information about a selected task tree node
+#[derive(Debug, Clone)]
+pub struct SelectedTaskNode {
+    /// Whether the node is currently expanded
+    pub is_expanded: bool,
+
+    /// Whether the node has children (subtasks)
+    pub has_children: bool,
+
+    /// Path to this node in the tree (indices at each level)
+    pub path: Vec<usize>,
+}
+
 impl AppState {
     /// Create new application state with default theme
     ///
@@ -962,6 +975,101 @@ impl AppState {
                 Self::flatten_task_tree(child, result);
             }
         }
+    }
+
+    /// Get information about the selected task tree node
+    ///
+    /// Returns details about the task at the current `selected_task_index` position
+    /// in the task tree, including whether it has children and is expanded.
+    #[must_use]
+    pub fn selected_task_tree_node(&self) -> Option<SelectedTaskNode> {
+        let trees = self.task_tree.as_ref()?;
+
+        let mut current_index = 0;
+        for (root_idx, tree) in trees.iter().enumerate() {
+            if let Some(result) = Self::find_task_node_at_index(
+                tree,
+                self.selected_task_index,
+                &mut current_index,
+                &[root_idx],
+            ) {
+                return Some(result);
+            }
+        }
+        None
+    }
+
+    /// Recursively find the task node at a given visual index
+    fn find_task_node_at_index(
+        node: &TreeNode<TaskRecord>,
+        target_index: usize,
+        current_index: &mut usize,
+        path: &[usize],
+    ) -> Option<SelectedTaskNode> {
+        if *current_index == target_index {
+            return Some(SelectedTaskNode {
+                is_expanded: node.expanded,
+                has_children: node.has_children(),
+                path: path.to_vec(),
+            });
+        }
+
+        *current_index += 1;
+
+        if node.expanded {
+            for (child_idx, child) in node.children.iter().enumerate() {
+                let mut child_path = path.to_vec();
+                child_path.push(child_idx);
+                if let Some(result) =
+                    Self::find_task_node_at_index(child, target_index, current_index, &child_path)
+                {
+                    return Some(result);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Toggle expand/collapse on the currently selected task tree node
+    ///
+    /// Returns `true` if a node was toggled, `false` if nothing was done.
+    pub fn toggle_selected_task_node(&mut self) -> bool {
+        let Some(selected) = self.selected_task_tree_node() else {
+            return false;
+        };
+
+        if !selected.has_children {
+            return false;
+        }
+
+        let Some(trees) = &mut self.task_tree else {
+            return false;
+        };
+
+        // Navigate to the node using the path
+        if selected.path.is_empty() {
+            return false;
+        }
+
+        let root_idx = selected.path[0];
+        if root_idx >= trees.len() {
+            return false;
+        }
+
+        let mut node = &mut trees[root_idx];
+
+        for &child_idx in &selected.path[1..] {
+            if child_idx >= node.children.len() {
+                return false;
+            }
+            node = &mut node.children[child_idx];
+        }
+
+        // Toggle
+        node.toggle();
+
+        true
     }
 
     /// Get currently selected label
