@@ -9,6 +9,7 @@ pub mod explain;
 pub mod format;
 pub mod graph;
 pub mod index;
+pub mod init;
 pub mod lint;
 pub mod list;
 pub mod playground;

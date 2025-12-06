@@ -313,6 +313,22 @@ pub enum Commands {
     /// Launch the terminal UI
     Tui,
 
+    /// Initialize a new Lash project in the current directory
+    #[command()]
+    Init {
+        /// Target directory path (defaults to current directory)
+        #[arg(long, value_name = "PATH")]
+        path: Option<PathBuf>,
+
+        /// Create index file only (skip running index command)
+        #[arg(long)]
+        no_index: bool,
+
+        /// Force re-initialization even if project already exists
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Initialize a demo playground project
     #[command()]
     Playground {
