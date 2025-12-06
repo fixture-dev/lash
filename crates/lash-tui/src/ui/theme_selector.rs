@@ -30,14 +30,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         .split(popup_area);
 
     // Render title
-    render_title(frame, chunks[0]);
+    render_title(frame, chunks[0], &state.theme);
 
     // Render scheme list with swatches
     render_scheme_list(frame, chunks[1], selector_state, &state.theme);
 }
 
 /// Render the title section
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame, area: Rect, theme: &crate::colors::Theme) {
     let title_block = Block::default()
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::Black).fg(Color::White));
@@ -45,7 +45,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
     let title_text = vec![Line::from(vec![Span::styled(
         "Theme Selector - Navigate with j/k, select with Enter, close with Esc",
         Style::default()
-            .fg(Color::Cyan)
+            .fg(theme.info_color())
             .add_modifier(Modifier::BOLD),
     )])];
 

@@ -11,7 +11,7 @@ use ratatui::{
 use crate::state::AppState;
 
 /// Render help overlay
-pub fn render(frame: &mut Frame, area: Rect, _state: &AppState) {
+pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     // Create centered rect
     let popup_area = centered_rect(60, 70, area);
 
@@ -27,7 +27,7 @@ pub fn render(frame: &mut Frame, area: Rect, _state: &AppState) {
         Line::from(vec![Span::styled(
             "Lash TUI - Keyboard Commands",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(state.theme.info_color())
                 .add_modifier(Modifier::BOLD),
         )]),
         Line::from(""),
