@@ -30,10 +30,10 @@ fn render_status_message(
     state: &AppState,
 ) {
     let (icon, fg_color, bg_color) = match msg.level {
-        StatusLevel::Info => ("i", Color::White, Color::Blue),
-        StatusLevel::Warning => ("!", Color::Black, Color::Yellow),
-        StatusLevel::Error => ("x", Color::White, Color::Red),
-        StatusLevel::Success => ("✓", Color::White, Color::Green),
+        StatusLevel::Info => ("i", state.theme.background(), state.theme.info_color()),
+        StatusLevel::Warning => ("!", state.theme.background(), state.theme.warning_color()),
+        StatusLevel::Error => ("x", state.theme.background(), state.theme.error_color()),
+        StatusLevel::Success => ("✓", state.theme.background(), state.theme.success_color()),
     };
 
     let spans = vec![
