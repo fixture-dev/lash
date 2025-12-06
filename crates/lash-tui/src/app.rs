@@ -398,8 +398,19 @@ impl TuiApp {
                 self.state.focused_pane = FocusedPane::Detail;
             }
             FocusedPane::Detail => {
-                // Enter on detail pane shows task details
-                self.open_task_detail_for_selected()?;
+                // Check if task has children that can be expanded
+                if let Some(task_node) = self.state.selected_task_tree_node() {
+                    if task_node.has_children && !task_node.is_expanded {
+                        // Expand task to show subtasks inline
+                        self.state.toggle_selected_task_node();
+                    } else {
+                        // Leaf task or already expanded - show details modal
+                        self.open_task_detail_for_selected()?;
+                    }
+                } else {
+                    // No tree view - show details modal
+                    self.open_task_detail_for_selected()?;
+                }
             }
         }
         Ok(())
