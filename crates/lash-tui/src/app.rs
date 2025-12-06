@@ -13,7 +13,8 @@ use lash_db::repository::tasks::TaskRepository;
 
 use crate::error::{TuiError, TuiResult};
 use crate::event::{
-    poll_confirm_complete_event, poll_event, poll_filter_event, poll_search_event, AppEvent,
+    poll_confirm_complete_event, poll_confirm_incomplete_event, poll_event, poll_filter_event,
+    poll_search_event, AppEvent,
 };
 use crate::state::AppState;
 use crate::terminal;
@@ -149,6 +150,8 @@ impl TuiApp {
                 poll_filter_event(Duration::from_millis(100))?
             } else if self.state.is_confirm_complete_modal_open() {
                 poll_confirm_complete_event(Duration::from_millis(100))?
+            } else if self.state.is_confirm_incomplete_modal_open() {
+                poll_confirm_incomplete_event(Duration::from_millis(100))?
             } else {
                 poll_event(Duration::from_millis(100))?
             };
@@ -205,6 +208,17 @@ impl TuiApp {
                     }
                     AppEvent::ConfirmComplete => {
                         self.handle_confirm_cascading_complete()?;
+                    }
+                    _ => {} // Ignore other events when confirm modal is open
+                }
+            } else if self.state.is_confirm_incomplete_modal_open() {
+                // Confirm incomplete modal is open - route events to it
+                match event {
+                    AppEvent::CloseConfirmIncomplete => {
+                        self.state.close_confirm_incomplete_modal();
+                    }
+                    AppEvent::ConfirmIncomplete => {
+                        self.handle_confirm_cascading_incomplete()?;
                     }
                     _ => {} // Ignore other events when confirm modal is open
                 }
@@ -304,6 +318,8 @@ impl TuiApp {
                     | AppEvent::ApplyFilter
                     | AppEvent::CloseConfirmComplete
                     | AppEvent::ConfirmComplete
+                    | AppEvent::CloseConfirmIncomplete
+                    | AppEvent::ConfirmIncomplete
                     | AppEvent::CharInput(_)
                     | AppEvent::Backspace
                     | AppEvent::Delete
@@ -469,6 +485,7 @@ impl TuiApp {
     }
 
     /// Handle toggling task status with Space bar
+    #[allow(clippy::too_many_lines)]
     fn handle_toggle_status(&mut self) -> TuiResult<()> {
         use crate::state::FocusedPane;
 
@@ -543,6 +560,34 @@ impl TuiApp {
             if !open_subtasks.is_empty() {
                 self.state
                     .open_confirm_complete_modal(task.clone(), file_path, open_subtasks);
+                return Ok(());
+            }
+        }
+
+        // If transitioning to incomplete (Open), check for completed ancestors
+        // This applies when: (Done -> Waived -> Open) or (Blocked -> Open)
+        // We only care about the case where a completed task becomes incomplete
+        if old_status.is_complete() && new_status == lash_types::TaskStatus::Open {
+            // Get all ancestors of this task
+            let task_repo = TaskRepository::new(&self.conn);
+            let ancestors = task_repo
+                .get_ancestors(task_id)
+                .map_err(|e| TuiError::App(format!("Failed to get ancestors: {e}")))?;
+
+            // Filter to only completed (Done) ancestors
+            // Waived ancestors don't need to be changed since they're intentionally skipped
+            let completed_ancestors: Vec<_> = ancestors
+                .into_iter()
+                .filter(|t| t.status == lash_types::TaskStatus::Done)
+                .collect();
+
+            // If there are completed ancestors, show confirmation modal
+            if !completed_ancestors.is_empty() {
+                self.state.open_confirm_incomplete_modal(
+                    task.clone(),
+                    file_path,
+                    completed_ancestors,
+                );
                 return Ok(());
             }
         }
@@ -659,6 +704,100 @@ impl TuiApp {
             "Marked task and {} subtask{} as complete",
             subtask_count,
             if subtask_count == 1 { "" } else { "s" }
+        ));
+
+        // Preserve expansion state before rebuilding tree
+        let expanded_ids = self.state.collect_expansion_state();
+
+        // Reload tasks for the file
+        let task_repo = TaskRepository::new(&self.conn);
+        self.state.tasks = task_repo
+            .get_by_file(file_id)
+            .map_err(|e| TuiError::App(format!("Failed to reload tasks: {e}")))?;
+
+        // Rebuild task tree to reflect updated status
+        self.state.build_task_tree();
+
+        // Restore expansion state after rebuild
+        self.state.restore_expansion_state(&expanded_ids);
+
+        Ok(())
+    }
+
+    /// Handle confirmed cascading incomplete
+    ///
+    /// Called when user confirms marking a completed subtask as incomplete
+    /// when its parent is also complete. Marks the subtask and all completed
+    /// ancestors as Open.
+    fn handle_confirm_cascading_incomplete(&mut self) -> TuiResult<()> {
+        // Take the modal state (this also closes the modal)
+        let Some(modal_state) = self.state.confirm_incomplete_modal_state.take() else {
+            return Ok(());
+        };
+
+        let subtask = modal_state.task;
+        let file_path = modal_state.file_path;
+        let completed_ancestors = modal_state.completed_ancestors;
+
+        // Get file_id for reloading tasks later
+        let file_id = subtask.file_id;
+
+        // Count for feedback message
+        let ancestor_count = completed_ancestors.len();
+
+        // Determine the old status of the subtask
+        // The transition to Open happens from Waived or Blocked
+        let old_status = subtask.status;
+
+        // Update subtask to Open in database
+        self.conn
+            .execute(
+                "UPDATE tasks SET status = ?1 WHERE id = ?2",
+                (lash_types::TaskStatus::Open.as_str(), subtask.id),
+            )
+            .map_err(|e| TuiError::App(format!("Failed to update subtask: {e}")))?;
+
+        // Update subtask in markdown
+        if let Err(e) = self.update_markdown_task_status(
+            &file_path,
+            &subtask.title,
+            old_status,
+            lash_types::TaskStatus::Open,
+        ) {
+            self.state
+                .set_warning_message(format!("Subtask DB updated, but markdown failed: {e}"));
+        }
+
+        // Update all completed ancestors to Open
+        for ancestor in &completed_ancestors {
+            // Update in database
+            self.conn
+                .execute(
+                    "UPDATE tasks SET status = ?1 WHERE id = ?2",
+                    (lash_types::TaskStatus::Open.as_str(), ancestor.id),
+                )
+                .map_err(|e| TuiError::App(format!("Failed to update ancestor: {e}")))?;
+
+            // Update in markdown (ancestors are Done, so old_status is Done)
+            if let Err(e) = self.update_markdown_task_status(
+                &file_path,
+                &ancestor.title,
+                lash_types::TaskStatus::Done,
+                lash_types::TaskStatus::Open,
+            ) {
+                // Log warning but continue with other ancestors
+                self.state.set_warning_message(format!(
+                    "Ancestor '{}' markdown update failed: {e}",
+                    ancestor.title
+                ));
+            }
+        }
+
+        // Show success message
+        self.state.set_success_message(format!(
+            "Marked task and {} parent{} as incomplete",
+            ancestor_count,
+            if ancestor_count == 1 { "" } else { "s" }
         ));
 
         // Preserve expansion state before rebuilding tree

@@ -84,6 +84,10 @@ pub enum AppEvent {
     CloseConfirmComplete,
     /// Confirm cascading completion
     ConfirmComplete,
+    /// Close confirm incomplete modal
+    CloseConfirmIncomplete,
+    /// Confirm cascading incomplete
+    ConfirmIncomplete,
 }
 
 /// Poll for the next event with timeout
@@ -169,6 +173,41 @@ fn handle_confirm_complete_key_event(key: KeyEvent) -> AppEvent {
 
         // Cancel with 'n'
         (KeyCode::Char('n'), KeyModifiers::NONE) => AppEvent::CloseConfirmComplete,
+
+        _ => AppEvent::None,
+    }
+}
+
+/// Poll for confirm incomplete modal events
+///
+/// When the confirm incomplete modal is open:
+/// - Enter confirms cascading incomplete
+/// - Escape cancels and closes the modal
+pub fn poll_confirm_incomplete_event(timeout: Duration) -> TuiResult<AppEvent> {
+    if event::poll(timeout)? {
+        match event::read()? {
+            Event::Key(key) => Ok(handle_confirm_incomplete_key_event(key)),
+            Event::Resize(width, height) => Ok(AppEvent::Resize(width, height)),
+            _ => Ok(AppEvent::None),
+        }
+    } else {
+        Ok(AppEvent::None)
+    }
+}
+
+/// Convert key event to application event for confirm incomplete mode
+fn handle_confirm_incomplete_key_event(key: KeyEvent) -> AppEvent {
+    match (key.code, key.modifiers) {
+        // Close modal (Esc or Ctrl-C)
+        (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+            AppEvent::CloseConfirmIncomplete
+        }
+
+        // Confirm cascading incomplete (Enter or 'y')
+        (KeyCode::Enter | KeyCode::Char('y'), KeyModifiers::NONE) => AppEvent::ConfirmIncomplete,
+
+        // Cancel with 'n'
+        (KeyCode::Char('n'), KeyModifiers::NONE) => AppEvent::CloseConfirmIncomplete,
 
         _ => AppEvent::None,
     }
