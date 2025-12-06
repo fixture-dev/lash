@@ -935,6 +935,119 @@ ascii_mode = false
 
 ---
 
+## Task 11: Cross-File Link Navigation in TUI
+
+**Priority:** MEDIUM
+**Effort:** 2-3 days
+**Depends on:** Task 3, Task 4, Task 10
+**Status:** IN PROGRESS
+
+### Description
+
+Enable intelligent navigation for cross-file links in index files. When viewing an index file in the TUI detail pane, pressing Enter on a task that contains a cross-file link should navigate to the target file in the Files pane instead of opening the task detail modal.
+
+### Background
+
+Index files (`lash.index.md`, `index.lash.md`) typically contain tasks with markdown links to other files:
+```markdown
+- [ ] [Core API](systems/core-api.md) @id:`milestone.alpha` @labels:`milestone, p0`
+```
+
+Currently, pressing Enter opens the task detail modal, which shows limited information. This task implements intelligent detection and navigation for a better UX.
+
+### Behavioral Requirements
+
+| Task Type | Current Behavior | New Behavior |
+|-----------|-----------------|--------------|
+| Local task with unexpanded children | Expand inline | Expand inline (unchanged) |
+| Local task (leaf or expanded) | Show detail modal | Show detail modal (unchanged) |
+| **Cross-file link task** | **Show detail modal** | **Navigate to target file** |
+| Unresolved cross-file link | Show detail modal | Show detail modal with error indicator |
+
+### Subtasks
+
+- [x] **Phase 1: Link Detection Infrastructure**
+  - [x] Create `is_cross_file_link()` helper in `lash-tui/src/utils.rs`
+    - [x] Query `DependencyRepository::get_dependencies(task_id)`
+    - [x] Return `true` if any dependency has `kind == ExplicitPath || kind == ExplicitId`
+  - [x] Create `get_link_target()` helper in `lash-tui/src/utils.rs`
+    - [x] Return `Option<(file_id, Option<task_id>)>` for resolved links
+    - [x] Handle unresolved links (where `to_task_id.is_none()`)
+  - [ ] Add visual indicator for cross-file links in task list
+    - [ ] Modify `render_task_tree()` in `detail_pane.rs`
+    - [ ] Add → symbol before cross-file link task titles
+    - [ ] Use theme's info color for the indicator
+- [ ] **Phase 2: Navigation Logic Implementation**
+  - [ ] Modify `handle_select()` in `app.rs`
+    - [ ] Before opening modal, check `is_cross_file_link()`
+    - [ ] If true and viewing index file, call `navigate_to_file()`
+  - [ ] Implement `navigate_to_file()` method in `app.rs`
+    - [ ] Find target file in `state.files`
+    - [ ] Expand parent directories in tree
+    - [ ] Select file node and load tasks
+    - [ ] If target task ID provided, select that task
+    - [ ] Show status message
+  - [ ] Add `expand_path_to_file()` method to `AppState` in `state.rs`
+- [ ] **Phase 3: User Feedback and Edge Cases**
+  - [ ] Add status bar message display
+    - [ ] Add `status_message: Option<String>` to `AppState`
+    - [ ] Display in status bar, auto-clear after next action
+  - [ ] Handle unresolved links (show error message)
+  - [ ] Handle missing target files (show error message)
+  - [ ] Handle navigation to current file (scroll to task)
+
+### Success Criteria
+
+- [ ] Enter on cross-file link in index file navigates to target file
+- [ ] Files pane expands directories and selects target file
+- [ ] Detail pane loads and displays target file's tasks
+- [ ] If link includes task ID, that task is selected
+- [ ] Unresolved links show error message
+- [ ] Cross-file link tasks have → visual indicator
+- [ ] Status bar shows navigation feedback
+- [ ] All existing TUI tests pass
+
+### Tests
+
+- [x] Unit: Test `is_cross_file_link()` with various dependency types
+- [x] Unit: Test `get_link_target()` with resolved/unresolved scenarios
+- [ ] Integration: Test navigation flow end-to-end
+- [ ] Integration: Test edge cases (unresolved, missing, same file)
+- [ ] Manual: Visual testing of link indicator and navigation
+
+### Implementation Notes
+
+**Detection Strategy:** Using `DependencyRepository` queries is most reliable - data is already validated and indexed.
+
+**Navigation Flow:**
+```
+1. User presses Enter on task in detail pane
+2. Check if task is cross-file link (is_cross_file_link())
+3. If yes and viewing index file → navigate_to_file()
+4. Get target file path and task ID (get_link_target())
+5. Expand tree to reveal file (expand_path_to_file())
+6. Select file in Files pane
+7. Load tasks for file
+8. Select target task in Detail pane
+9. Show success message in status bar
+```
+
+**Files to Modify:**
+- `crates/lash-tui/src/app.rs` - Add `navigate_to_file()`, modify `handle_select()`
+- `crates/lash-tui/src/state.rs` - Add `expand_path_to_file()`, `status_message` field
+- `crates/lash-tui/src/utils.rs` - Add `is_cross_file_link()`, `get_link_target()` (new file)
+- `crates/lash-tui/src/ui/detail_pane.rs` - Add visual link indicator
+- `crates/lash-tui/src/ui/status_bar.rs` - Display status messages
+
+### References
+
+- Task 3: Detail Pane (baseline modal behavior)
+- Task 4: Keyboard Commands (Enter key handling)
+- Task 10: Tree View Support (expansion logic)
+- `lash-db/src/repository/dependencies.rs` - Dependency data structures
+
+---
+
 ## Non-Goals (for v1)
 
 - Mouse support (keyboard-only is sufficient)
