@@ -1531,6 +1531,55 @@ impl AppState {
         })
     }
 
+    /// Collect the expansion state of all task tree nodes
+    ///
+    /// Returns a set of task IDs that are currently expanded.
+    /// Use with `restore_expansion_state()` to preserve expansion state
+    /// across tree rebuilds.
+    #[must_use]
+    pub fn collect_expansion_state(&self) -> std::collections::HashSet<i64> {
+        fn collect_from_nodes(
+            nodes: &[TreeNode<TaskRecord>],
+            expanded_ids: &mut std::collections::HashSet<i64>,
+        ) {
+            for node in nodes {
+                if node.expanded {
+                    expanded_ids.insert(node.data.id);
+                }
+                collect_from_nodes(&node.children, expanded_ids);
+            }
+        }
+
+        let mut expanded_ids = std::collections::HashSet::new();
+        if let Some(tree) = &self.task_tree {
+            collect_from_nodes(tree, &mut expanded_ids);
+        }
+        expanded_ids
+    }
+
+    /// Restore expansion state to task tree nodes
+    ///
+    /// Takes a set of task IDs that should be expanded and sets the
+    /// expansion state accordingly. Used after rebuilding the tree
+    /// to preserve user's manual expansion choices.
+    pub fn restore_expansion_state(&mut self, expanded_ids: &std::collections::HashSet<i64>) {
+        fn restore_to_nodes(
+            nodes: &mut [TreeNode<TaskRecord>],
+            expanded_ids: &std::collections::HashSet<i64>,
+        ) {
+            for node in nodes {
+                if expanded_ids.contains(&node.data.id) && !node.children.is_empty() {
+                    node.expanded = true;
+                }
+                restore_to_nodes(&mut node.children, expanded_ids);
+            }
+        }
+
+        if let Some(tree) = &mut self.task_tree {
+            restore_to_nodes(tree, expanded_ids);
+        }
+    }
+
     /// Build task tree from flat task list
     ///
     /// Converts the flat `self.tasks` list into a hierarchical task tree.
