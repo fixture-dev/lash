@@ -9,13 +9,16 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
+use rusqlite::Connection;
+use std::collections::HashSet;
 
 use crate::state::{AppState, FocusedPane};
 use crate::ui::themes;
+use crate::utils;
 use lash_types::tree::TreeNode;
 
 /// Render the detail pane
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(frame: &mut Frame, area: Rect, state: &AppState, conn: &Connection) {
     let is_focused = state.focused_pane == FocusedPane::Detail;
     let theme = &state.theme;
 
@@ -66,9 +69,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     } else {
         // Check if tree view is available
         let items: Vec<ListItem> = if let Some(task_trees) = &state.task_tree {
-            render_task_tree(task_trees, state, theme)
+            render_task_tree(task_trees, state, theme, conn)
         } else {
-            render_flat_task_list(state, theme)
+            render_flat_task_list(state, theme, conn)
         };
 
         let list = List::new(items)
@@ -234,6 +237,7 @@ fn render_task_tree(
     trees: &[TreeNode<TaskRecord>],
     state: &AppState,
     theme: &crate::colors::Theme,
+    conn: &Connection,
 ) -> Vec<ListItem<'static>> {
     let mut items = Vec::new();
     let chars = state.tree_chars;
@@ -250,8 +254,30 @@ fn render_task_tree(
             .is_some_and(|f| display::is_index_file(&f.path))
     };
 
+    // Pre-compute cross-file links if viewing an index file
+    let cross_file_links: HashSet<i64> = if is_index {
+        state
+            .tasks
+            .iter()
+            .filter(|t| utils::is_cross_file_link(conn, t.id))
+            .map(|t| t.id)
+            .collect()
+    } else {
+        HashSet::new()
+    };
+
     for tree in trees {
-        render_task_node(tree, &mut items, state, theme, chars, &[], true, is_index);
+        render_task_node(
+            tree,
+            &mut items,
+            state,
+            theme,
+            chars,
+            &[],
+            true,
+            is_index,
+            &cross_file_links,
+        );
     }
 
     items
@@ -268,6 +294,7 @@ fn render_task_node(
     ancestors_is_last: &[bool],
     is_last: bool,
     is_index_file: bool,
+    cross_file_links: &HashSet<i64>,
 ) {
     let current_index = items.len();
     let is_selected = current_index == state.selected_task_index;
@@ -302,8 +329,19 @@ fn render_task_node(
         node.data.title.clone()
     };
 
-    // Build the line with styled labels (hashtags)
-    let line = build_styled_task_line(prefix, expand_indicator, checkbox, &title, style, theme);
+    // Check if this task is a cross-file link
+    let is_cross_file_link = cross_file_links.contains(&node.data.id);
+
+    // Build the line with styled labels (hashtags) and cross-file link indicator
+    let line = build_styled_task_line(
+        prefix,
+        expand_indicator,
+        checkbox,
+        &title,
+        style,
+        theme,
+        is_cross_file_link,
+    );
 
     items.push(ListItem::new(line));
 
@@ -324,12 +362,14 @@ fn render_task_node(
                 &new_ancestors,
                 is_last_child,
                 is_index_file,
+                cross_file_links,
             );
         }
     }
 }
 
 /// Build a styled task line with colored labels
+#[allow(clippy::too_many_arguments)]
 fn build_styled_task_line(
     prefix: String,
     expand_indicator: &str,
@@ -337,6 +377,7 @@ fn build_styled_task_line(
     title: &str,
     base_style: Style,
     theme: &crate::colors::Theme,
+    is_cross_file_link: bool,
 ) -> Line<'static> {
     let mut spans = vec![
         Span::raw(prefix),
@@ -344,6 +385,14 @@ fn build_styled_task_line(
         Span::raw(checkbox.to_string()),
         Span::raw(" ".to_string()),
     ];
+
+    // Add cross-file link indicator if applicable
+    if is_cross_file_link {
+        spans.push(Span::styled(
+            "→ ".to_string(),
+            Style::default().fg(theme.info_color()),
+        ));
+    }
 
     // Parse the title for labels and style them differently
     let mut chars = title.char_indices().peekable();
@@ -393,7 +442,11 @@ fn build_styled_task_line(
 }
 
 /// Render tasks in flat list view (fallback)
-fn render_flat_task_list(state: &AppState, theme: &crate::colors::Theme) -> Vec<ListItem<'static>> {
+fn render_flat_task_list(
+    state: &AppState,
+    theme: &crate::colors::Theme,
+    conn: &Connection,
+) -> Vec<ListItem<'static>> {
     // Check if current file is an index file
     // Try tree view first (like task loading does), then fall back to flat list
     let is_index = if let Some(selected) = state.selected_tree_node() {
@@ -404,6 +457,18 @@ fn render_flat_task_list(state: &AppState, theme: &crate::colors::Theme) -> Vec<
         state
             .selected_file()
             .is_some_and(|f| display::is_index_file(&f.path))
+    };
+
+    // Pre-compute cross-file links if viewing an index file
+    let cross_file_links: HashSet<i64> = if is_index {
+        state
+            .tasks
+            .iter()
+            .filter(|t| utils::is_cross_file_link(conn, t.id))
+            .map(|t| t.id)
+            .collect()
+    } else {
+        HashSet::new()
     };
 
     state
@@ -427,7 +492,18 @@ fn render_flat_task_list(state: &AppState, theme: &crate::colors::Theme) -> Vec<
                 task.title.clone()
             };
 
-            let line = build_styled_task_line(indent, "", checkbox, &title, style, theme);
+            // Check if this task is a cross-file link
+            let is_cross_file_link = cross_file_links.contains(&task.id);
+
+            let line = build_styled_task_line(
+                indent,
+                "",
+                checkbox,
+                &title,
+                style,
+                theme,
+                is_cross_file_link,
+            );
 
             ListItem::new(line)
         })

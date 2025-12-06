@@ -17,11 +17,12 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     Frame,
 };
+use rusqlite::Connection;
 
 use crate::state::{AppState, FocusedPane};
 
 /// Main render function
-pub fn render(frame: &mut Frame, state: &AppState) {
+pub fn render(frame: &mut Frame, state: &AppState, conn: &Connection) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -61,7 +62,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     nav_pane::render(frame, left_chunks[1], state);
 
     // Render detail pane
-    detail_pane::render(frame, main_chunks[1], state);
+    detail_pane::render(frame, main_chunks[1], state, conn);
 
     // Render status bar
     status_bar::render(frame, chunks[1], state);

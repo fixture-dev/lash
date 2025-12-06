@@ -973,28 +973,28 @@ Currently, pressing Enter opens the task detail modal, which shows limited infor
   - [x] Create `get_link_target()` helper in `lash-tui/src/utils.rs`
     - [x] Return `Option<(file_id, Option<task_id>)>` for resolved links
     - [x] Handle unresolved links (where `to_task_id.is_none()`)
-  - [ ] Add visual indicator for cross-file links in task list
-    - [ ] Modify `render_task_tree()` in `detail_pane.rs`
-    - [ ] Add → symbol before cross-file link task titles
-    - [ ] Use theme's info color for the indicator
-- [ ] **Phase 2: Navigation Logic Implementation**
-  - [ ] Modify `handle_select()` in `app.rs`
-    - [ ] Before opening modal, check `is_cross_file_link()`
-    - [ ] If true and viewing index file, call `navigate_to_file()`
-  - [ ] Implement `navigate_to_file()` method in `app.rs`
-    - [ ] Find target file in `state.files`
-    - [ ] Expand parent directories in tree
-    - [ ] Select file node and load tasks
-    - [ ] If target task ID provided, select that task
-    - [ ] Show status message
-  - [ ] Add `expand_path_to_file()` method to `AppState` in `state.rs`
-- [ ] **Phase 3: User Feedback and Edge Cases**
-  - [ ] Add status bar message display
-    - [ ] Add `status_message: Option<String>` to `AppState`
-    - [ ] Display in status bar, auto-clear after next action
-  - [ ] Handle unresolved links (show error message)
-  - [ ] Handle missing target files (show error message)
-  - [ ] Handle navigation to current file (scroll to task)
+  - [x] Add visual indicator for cross-file links in task list
+    - [x] Modify `render_task_tree()` in `detail_pane.rs`
+    - [x] Add → symbol before cross-file link task titles
+    - [x] Use theme's info color for the indicator
+- [x] **Phase 2: Navigation Logic Implementation**
+  - [x] Modify `handle_select()` in `app.rs`
+    - [x] Before opening modal, check `is_cross_file_link()`
+    - [x] If true and viewing index file, call `navigate_to_file()`
+  - [x] Implement `navigate_to_file()` method in `app.rs`
+    - [x] Find target file in `state.files`
+    - [x] Expand parent directories in tree
+    - [x] Select file node and load tasks
+    - [x] If target task ID provided, select that task
+    - [x] Show status message
+  - [x] Add `expand_path_to_file()` method to `AppState` in `state.rs`
+- [x] **Phase 3: User Feedback and Edge Cases**
+  - [x] Add status bar message display
+    - [x] Add `status_message: Option<String>` to `AppState`
+    - [x] Display in status bar, auto-clear after next action
+  - [x] Handle unresolved links (show error message)
+  - [x] Handle missing target files (show error message)
+  - [x] Handle navigation to current file (scroll to task)
 
 ### Success Criteria
 

@@ -8,7 +8,7 @@ use lash_db::repository::files::FileRecord;
 use lash_db::repository::labels::LabelStats;
 use lash_db::repository::tasks::TaskRecord;
 use lash_types::tree::{TreeChars, TreeNode};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Represents a directory or file node in the file tree
 #[derive(Debug, Clone)]
@@ -1678,6 +1678,74 @@ impl AppState {
 
         if let Some(tree) = &mut self.task_tree {
             restore_to_nodes(tree, expanded_ids);
+        }
+    }
+
+    /// Expand the file tree to reveal a specific file by its ID.
+    ///
+    /// This method expands all ancestor directories in the file tree to make
+    /// the target file visible, then returns the file's index in the flat file list.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file is not found in the file list.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lash_tui::state::AppState;
+    /// # let mut state = AppState::new();
+    /// let file_id = 42;
+    /// match state.expand_path_to_file(file_id) {
+    ///     Ok(file_index) => println!("File is at index {}", file_index),
+    ///     Err(e) => eprintln!("Error: {}", e),
+    /// }
+    /// ```
+    pub fn expand_path_to_file(&mut self, file_id: i64) -> Result<usize, String> {
+        // Find the file in the flat file list
+        let file_index = self
+            .files
+            .iter()
+            .position(|f| f.id == file_id)
+            .ok_or_else(|| format!("File with ID {file_id} not found"))?;
+
+        let file_path = &self.files[file_index].path;
+
+        // If no tree view, just return the index
+        let Some(trees) = &mut self.file_tree else {
+            return Ok(file_index);
+        };
+
+        // Expand all ancestor directories
+        // Start from the root and work down to the file
+        let mut current_path = PathBuf::new();
+        for component in file_path.components() {
+            current_path.push(component);
+
+            // Skip the file itself (only expand directories)
+            if current_path == *file_path {
+                break;
+            }
+
+            // Find and expand this directory in the tree
+            Self::expand_directory_in_tree(trees, &current_path);
+        }
+
+        Ok(file_index)
+    }
+
+    /// Recursively find and expand a directory in the file tree
+    fn expand_directory_in_tree(trees: &mut [TreeNode<DirectoryNode>], target_path: &Path) {
+        for tree in trees {
+            if tree.data.path == target_path && tree.data.is_directory {
+                tree.expand();
+                return;
+            }
+
+            // Recursively search children if this node is expanded
+            if tree.expanded {
+                Self::expand_directory_in_tree(&mut tree.children, target_path);
+            }
         }
     }
 
