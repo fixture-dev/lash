@@ -531,6 +531,9 @@ impl TuiApp {
             ));
         }
 
+        // Preserve expansion state before rebuilding tree
+        let expanded_ids = self.state.collect_expansion_state();
+
         // Reload tasks for the correct file (using file_id from the task)
         let task_repo = TaskRepository::new(&self.conn);
         self.state.tasks = task_repo
@@ -539,6 +542,9 @@ impl TuiApp {
 
         // Rebuild task tree to reflect updated status
         self.state.build_task_tree();
+
+        // Restore expansion state after rebuild
+        self.state.restore_expansion_state(&expanded_ids);
 
         Ok(())
     }
