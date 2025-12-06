@@ -81,11 +81,19 @@ impl TuiApp {
         // Create task repo for loading tasks
         let task_repo = TaskRepository::new(&conn);
 
-        // Load tasks for first file if available
-        if let Some(file) = state.selected_file() {
+        // Load tasks for the initially selected file
+        // Use tree-aware selection: try tree view first, then fall back to flat list
+        let file_id = if let Some(selected) = state.selected_tree_node() {
+            selected.file_record.as_ref().map(|f| f.id)
+        } else {
+            state.selected_file().map(|f| f.id)
+        };
+
+        if let Some(file_id) = file_id {
             state.tasks = task_repo
-                .get_by_file(file.id)
+                .get_by_file(file_id)
                 .map_err(|e| TuiError::App(format!("Failed to load tasks: {e}")))?;
+            state.build_task_tree();
         }
 
         // Load labels with stats

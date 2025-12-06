@@ -330,6 +330,7 @@ mod tests {
             files_updated: 2,
             files_deleted: 1,
             files_unchanged: 4,
+            files_skipped: 0,
             errors: vec![ParseError {
                 file_path: PathBuf::from("test.md"),
                 error: "Parse error".to_string(),

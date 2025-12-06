@@ -38,6 +38,7 @@ use crate::error::DbResult;
 use crate::repository::files::FileRecord;
 use crate::repository::FileRepository;
 use crate::walker::{FileMetadata, FileWalker, FileWalkerConfig};
+use lash_core::parser::is_valid_task_file;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::fmt;
@@ -478,9 +479,17 @@ impl<'conn> IndexVerifier<'conn> {
                 }
             } else {
                 // File on filesystem but not in DB
-                report
-                    .issues
-                    .push(VerificationIssue::missing_file(&fs_file.relative_path));
+                // Only report as missing if it's a valid task file (has ## Tasks section or is index file)
+                // Non-task markdown files (like README.md) are intentionally not indexed
+                let is_valid = std::fs::read_to_string(&fs_file.absolute_path)
+                    .map(|content| is_valid_task_file(&fs_file.relative_path, &content))
+                    .unwrap_or(false);
+
+                if is_valid {
+                    report
+                        .issues
+                        .push(VerificationIssue::missing_file(&fs_file.relative_path));
+                }
             }
         }
 
@@ -754,10 +763,11 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let temp_db = NamedTempFile::new().unwrap();
 
-        // Create a file on filesystem but not in database
+        // Create a valid task file on filesystem but not in database
+        // Must have ## Tasks section to be considered a valid task file
         fs::write(
             temp_dir.path().join("missing.md"),
-            "# Missing\n\n@id: missing\n",
+            "# Missing\n\n@id: missing\n\n## Tasks\n\n- [ ] Task 1\n",
         )
         .unwrap();
 
@@ -945,10 +955,10 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let temp_db = NamedTempFile::new().unwrap();
 
-        // Create one file on filesystem
+        // Create one valid task file on filesystem (must have ## Tasks section)
         fs::write(
             temp_dir.path().join("exists.md"),
-            "# Exists\n\n@id: exists\n",
+            "# Exists\n\n@id: exists\n\n## Tasks\n\n- [ ] Task 1\n",
         )
         .unwrap();
 
@@ -967,10 +977,10 @@ mod tests {
         let task_file2 = create_task_file("stale.md", "hash123", 2000);
         file_repo.insert(&task_file2).unwrap();
 
-        // Create another file on filesystem not in DB
+        // Create another valid task file on filesystem not in DB
         fs::write(
             temp_dir.path().join("missing.md"),
-            "# Missing\n\n@id: missing\n",
+            "# Missing\n\n@id: missing\n\n## Tasks\n\n- [ ] Task 2\n",
         )
         .unwrap();
 

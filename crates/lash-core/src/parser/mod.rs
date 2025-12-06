@@ -651,6 +651,98 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
     }
 }
 
+// ==================== Task File Validation Helpers ====================
+
+/// Check if content contains a valid Tasks section header.
+///
+/// Looks for `## Tasks` (case-insensitive) on its own line.
+/// This is used to determine if a file is a valid Lash task file
+/// before attempting to parse it.
+///
+/// # Example
+///
+/// ```
+/// use lash_core::parser::has_tasks_section;
+///
+/// assert!(has_tasks_section("# Title\n\n## Tasks\n\n- [ ] Task"));
+/// assert!(!has_tasks_section("# Just a README\n\nSome content"));
+/// ```
+#[must_use]
+pub fn has_tasks_section(content: &str) -> bool {
+    content.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with("## ")
+            && trimmed
+                .get(3..)
+                .is_some_and(|rest| rest.trim().eq_ignore_ascii_case("tasks"))
+    })
+}
+
+/// Check if a path represents an index file.
+///
+/// Index files (`lash.index.md` or `index.lash.md`) are special and
+/// may or may not have tasks. They should always be considered valid.
+///
+/// # Example
+///
+/// ```
+/// use std::path::Path;
+/// use lash_core::parser::is_index_file;
+///
+/// assert!(is_index_file(Path::new("lash.index.md")));
+/// assert!(is_index_file(Path::new("index.lash.md")));
+/// assert!(!is_index_file(Path::new("tasks.md")));
+/// ```
+#[must_use]
+pub fn is_index_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|f| f.to_str())
+        .is_some_and(|name| name == "lash.index.md" || name == "index.lash.md")
+}
+
+/// Check if a file is a valid Lash task file.
+///
+/// A file is valid if:
+/// - It has a `## Tasks` section, OR
+/// - It is an index file (`lash.index.md` or `index.lash.md`)
+///
+/// This is used by the indexer to filter out documentation files
+/// and other markdown files that are not intended for task tracking.
+///
+/// # Arguments
+///
+/// * `path` - The file path (to check if it's an index file)
+/// * `content` - The file content (to check for Tasks section)
+///
+/// # Example
+///
+/// ```
+/// use std::path::Path;
+/// use lash_core::parser::is_valid_task_file;
+///
+/// // Regular task file with Tasks section
+/// assert!(is_valid_task_file(
+///     Path::new("tasks.md"),
+///     "# Tasks\n\n## Tasks\n\n- [ ] Do something"
+/// ));
+///
+/// // Index file without Tasks section (still valid)
+/// assert!(is_valid_task_file(
+///     Path::new("lash.index.md"),
+///     "# Project Index\n\nNo tasks here"
+/// ));
+///
+/// // Documentation file without Tasks section (invalid)
+/// assert!(!is_valid_task_file(
+///     Path::new("README.md"),
+///     "# README\n\nJust documentation"
+/// ));
+/// ```
+#[must_use]
+pub fn is_valid_task_file(path: &Path, content: &str) -> bool {
+    is_index_file(path) || has_tasks_section(content)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1740,5 +1832,101 @@ This should fail.
 
         assert!(file.description.is_none());
         assert!(file.description_agent_notes.is_empty());
+    }
+
+    // ==================== Task File Validation Tests ====================
+
+    #[test]
+    fn test_has_tasks_section_standard() {
+        assert!(has_tasks_section("# Title\n\n## Tasks\n\n- [ ] Task"));
+    }
+
+    #[test]
+    fn test_has_tasks_section_case_insensitive() {
+        assert!(has_tasks_section("# Title\n\n## tasks\n\n- [ ] Task"));
+        assert!(has_tasks_section("# Title\n\n## TASKS\n\n- [ ] Task"));
+        assert!(has_tasks_section("# Title\n\n## TaSKs\n\n- [ ] Task"));
+    }
+
+    #[test]
+    fn test_has_tasks_section_with_whitespace() {
+        assert!(has_tasks_section("# Title\n\n##   Tasks  \n\n- [ ] Task"));
+        assert!(has_tasks_section("# Title\n\n  ## Tasks\n\n- [ ] Task"));
+    }
+
+    #[test]
+    fn test_has_tasks_section_missing() {
+        assert!(!has_tasks_section("# README\n\nJust documentation"));
+        assert!(!has_tasks_section("# Title\n\n## Other Section\n\nContent"));
+        assert!(!has_tasks_section("# Title\n\n## TasksExtra\n\n- [ ] Task"));
+    }
+
+    #[test]
+    fn test_has_tasks_section_not_a_heading() {
+        // "Tasks" appearing in content but not as H2 heading should not match
+        assert!(!has_tasks_section("# Title\n\nTasks: do things"));
+        assert!(!has_tasks_section("# Title\n\n# Tasks\n\n- [ ] Task")); // H1, not H2
+        assert!(!has_tasks_section("# Title\n\n### Tasks\n\n- [ ] Task")); // H3, not H2
+    }
+
+    #[test]
+    fn test_is_index_file() {
+        assert!(is_index_file(Path::new("lash.index.md")));
+        assert!(is_index_file(Path::new("index.lash.md")));
+        assert!(is_index_file(Path::new("subdir/lash.index.md")));
+        assert!(is_index_file(Path::new("/absolute/path/index.lash.md")));
+    }
+
+    #[test]
+    fn test_is_not_index_file() {
+        assert!(!is_index_file(Path::new("tasks.md")));
+        assert!(!is_index_file(Path::new("README.md")));
+        assert!(!is_index_file(Path::new("lash.md")));
+        assert!(!is_index_file(Path::new("index.md")));
+        assert!(!is_index_file(Path::new("lash.index.txt")));
+    }
+
+    #[test]
+    fn test_is_valid_task_file_with_tasks_section() {
+        // Valid: has Tasks section
+        assert!(is_valid_task_file(
+            Path::new("tasks.md"),
+            "# Tasks\n\n## Tasks\n\n- [ ] Do it"
+        ));
+        assert!(is_valid_task_file(
+            Path::new("README.md"),
+            "# README\n\n## Tasks\n\n- [ ] Fix it"
+        ));
+    }
+
+    #[test]
+    fn test_is_valid_task_file_index_files() {
+        // Valid: is index file (no Tasks needed)
+        assert!(is_valid_task_file(
+            Path::new("lash.index.md"),
+            "# Index\n\nNo tasks"
+        ));
+        assert!(is_valid_task_file(
+            Path::new("index.lash.md"),
+            "# Index\n\nNo tasks"
+        ));
+        // Index file WITH tasks is also valid
+        assert!(is_valid_task_file(
+            Path::new("lash.index.md"),
+            "# Index\n\n## Tasks\n\n- [ ] Task"
+        ));
+    }
+
+    #[test]
+    fn test_is_invalid_task_file() {
+        // Invalid: no Tasks section and not index file
+        assert!(!is_valid_task_file(
+            Path::new("README.md"),
+            "# README\n\nDocs only"
+        ));
+        assert!(!is_valid_task_file(
+            Path::new("guide.md"),
+            "# Guide\n\n## Overview\n\nSome documentation"
+        ));
     }
 }

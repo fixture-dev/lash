@@ -39,7 +39,7 @@ use crate::error::{DbError, DbResult};
 use crate::profiler::{IndexProfiler, ProfileReport};
 use crate::repository::{FileRepository, TaskRepository};
 use crate::walker::{FileMetadata, FileWalker, FileWalkerConfig};
-use lash_core::parser::parse_file;
+use lash_core::parser::{is_valid_task_file, parse_file};
 use lash_types::{LashConfig, TaskFile};
 use rayon::prelude::*;
 use rusqlite::Connection;
@@ -289,6 +289,9 @@ pub struct IndexReport {
     /// Number of files that were unchanged (skipped)
     pub files_unchanged: usize,
 
+    /// Number of non-task markdown files skipped (no ## Tasks section)
+    pub files_skipped: usize,
+
     /// Parse errors encountered (file path -> error message)
     pub errors: Vec<ParseError>,
 
@@ -309,6 +312,7 @@ impl IndexReport {
             files_updated: 0,
             files_deleted: 0,
             files_unchanged: 0,
+            files_skipped: 0,
             errors: Vec::new(),
             has_changes: false,
             profile: None,
@@ -328,6 +332,7 @@ impl IndexReport {
     ///     files_updated: 3,
     ///     files_deleted: 2,
     ///     files_unchanged: 0,
+    ///     files_skipped: 0,
     ///     errors: vec![],
     ///     has_changes: true,
     ///     profile: None,
@@ -353,6 +358,7 @@ impl IndexReport {
     ///     files_updated: 3,
     ///     files_deleted: 2,
     ///     files_unchanged: 0,
+    ///     files_skipped: 0,
     ///     errors: vec![],
     ///     has_changes: true,
     ///     profile: None,
@@ -530,12 +536,26 @@ impl<'conn> Indexer<'conn> {
         }
 
         // Determine files to process
-        let files_to_parse: Vec<FileMetadata> = diff
+        let candidate_files: Vec<FileMetadata> = diff
             .new_files
             .iter()
             .chain(diff.modified_files.iter())
             .cloned()
             .collect();
+
+        // Filter to only valid task files (files with ## Tasks section or index files)
+        // Non-task markdown files (like README.md, documentation) are skipped
+        let mut files_to_parse = Vec::with_capacity(candidate_files.len());
+        for file_meta in candidate_files {
+            if let Ok(content) = std::fs::read_to_string(&file_meta.absolute_path) {
+                if is_valid_task_file(&file_meta.relative_path, &content) {
+                    files_to_parse.push(file_meta);
+                } else {
+                    report.files_skipped += 1;
+                }
+            }
+            // Files we can't read are silently skipped - they'll fail parsing anyway
+        }
 
         let total_files = files_to_parse.len();
 
@@ -1466,6 +1486,121 @@ mod tests {
         assert_eq!(
             file_record.description, "",
             "Description should be empty string when not provided"
+        );
+    }
+
+    #[test]
+    fn test_non_task_files_not_indexed() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create a valid task file
+        fs::write(
+            root.join("tasks.md"),
+            "# Tasks\n\n@id: tasks\n\n## Tasks\n\n- [ ] Task 1\n",
+        )
+        .unwrap();
+
+        // Create a documentation file (no ## Tasks section)
+        fs::write(
+            root.join("README.md"),
+            "# README\n\n## Overview\n\nThis is documentation.\n",
+        )
+        .unwrap();
+
+        // Create another non-task file
+        fs::write(
+            root.join("GUIDE.md"),
+            "# Guide\n\n## Quick Start\n\nSome instructions here.\n",
+        )
+        .unwrap();
+
+        // Create index file (no ## Tasks section, but should be indexed)
+        fs::write(
+            root.join("lash.index.md"),
+            "# Project Index\n\n@id: index\n\nProject overview\n",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.path().join("test.db");
+        let conn = init_database(&db_path).unwrap();
+
+        let config = IndexerConfig::new(root.to_path_buf());
+        let parser_config = LashConfig::default();
+
+        let mut indexer = Indexer::new(&conn, config, &parser_config);
+        let report = indexer.index_project().unwrap();
+
+        // Should index tasks.md and lash.index.md, skip README.md and GUIDE.md
+        assert_eq!(report.files_processed, 2, "Should process 2 valid files");
+        assert_eq!(report.files_skipped, 2, "Should skip 2 non-task files");
+
+        // Verify README.md and GUIDE.md are not indexed
+        let file_repo = FileRepository::new(&conn);
+        assert!(
+            file_repo
+                .get_by_path(std::path::Path::new("README.md"))
+                .unwrap()
+                .is_none(),
+            "README.md should not be indexed"
+        );
+        assert!(
+            file_repo
+                .get_by_path(std::path::Path::new("GUIDE.md"))
+                .unwrap()
+                .is_none(),
+            "GUIDE.md should not be indexed"
+        );
+
+        // Verify tasks.md and lash.index.md are indexed
+        assert!(
+            file_repo
+                .get_by_path(std::path::Path::new("tasks.md"))
+                .unwrap()
+                .is_some(),
+            "tasks.md should be indexed"
+        );
+        assert!(
+            file_repo
+                .get_by_path(std::path::Path::new("lash.index.md"))
+                .unwrap()
+                .is_some(),
+            "lash.index.md should be indexed"
+        );
+    }
+
+    #[test]
+    fn test_index_file_without_tasks_section_is_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create index file without ## Tasks section
+        fs::write(
+            root.join("index.lash.md"),
+            "# Project Index\n\n@id: project\n\n## Description\n\nThis is the project index.\n",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.path().join("test.db");
+        let conn = init_database(&db_path).unwrap();
+
+        let config = IndexerConfig::new(root.to_path_buf());
+        let parser_config = LashConfig::default();
+
+        let mut indexer = Indexer::new(&conn, config, &parser_config);
+        let report = indexer.index_project().unwrap();
+
+        // Index file should be processed even without ## Tasks section
+        assert_eq!(report.files_processed, 1);
+        assert_eq!(report.files_skipped, 0);
+
+        let file_repo = FileRepository::new(&conn);
+        assert!(
+            file_repo
+                .get_by_path(std::path::Path::new("index.lash.md"))
+                .unwrap()
+                .is_some(),
+            "index.lash.md should be indexed"
         );
     }
 }
