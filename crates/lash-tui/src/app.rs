@@ -19,6 +19,7 @@ use crate::event::{
 use crate::state::AppState;
 use crate::terminal;
 use crate::ui;
+use crate::utils;
 
 /// Main TUI application
 pub struct TuiApp {
@@ -141,7 +142,8 @@ impl TuiApp {
             self.state.check_status_expiry();
 
             // Render
-            self.terminal.draw(|frame| ui::render(frame, &self.state))?;
+            self.terminal
+                .draw(|frame| ui::render(frame, &self.state, &self.conn))?;
 
             // Handle events - use different polling depending on modal state
             let event = if self.state.is_search_modal_open() {
@@ -434,14 +436,30 @@ impl TuiApp {
                 // Check if task has children that can be expanded
                 if let Some(task_node) = self.state.selected_task_tree_node() {
                     if task_node.has_children && !task_node.is_expanded {
-                        // Expand task to show subtasks inline
+                        // Expand task to show subtasks inline (children take priority)
                         self.state.toggle_selected_task_node();
                     } else {
-                        // Leaf task or already expanded - show details modal
+                        // Check for cross-file link navigation before showing modal
+                        if self.is_viewing_index_file() {
+                            if let Some(task) = self.state.selected_task() {
+                                if let Some(target) = utils::get_link_target(&self.conn, task.id) {
+                                    return self.navigate_to_file(target.file_id, target.task_id);
+                                }
+                            }
+                        }
+                        // Fall back to showing modal
                         self.open_task_detail_for_selected()?;
                     }
                 } else {
-                    // No tree view - show details modal
+                    // No tree view - check for cross-file link before showing modal
+                    if self.is_viewing_index_file() {
+                        if let Some(task) = self.state.selected_task() {
+                            if let Some(target) = utils::get_link_target(&self.conn, task.id) {
+                                return self.navigate_to_file(target.file_id, target.task_id);
+                            }
+                        }
+                    }
+                    // Fall back to showing modal
                     self.open_task_detail_for_selected()?;
                 }
             }
@@ -918,6 +936,80 @@ impl TuiApp {
     fn handle_left(&mut self) {
         // TODO: Implement tree navigation for file/task tree
         // For now, no-op (Left is not used in flat list view)
+    }
+
+    /// Check if the currently selected file is an index file
+    ///
+    /// Index files are named `lash.index.md` or `index.lash.md`.
+    fn is_viewing_index_file(&self) -> bool {
+        self.state
+            .selected_file()
+            .is_some_and(|f| lash_core::display::is_index_file(&f.path))
+    }
+
+    /// Navigate to a target file from a cross-file link.
+    ///
+    /// This expands the file tree to reveal the target file, selects it,
+    /// loads its tasks, and optionally selects a specific task.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Target file is not found in the file list
+    /// - Failed to load tasks for the target file
+    fn navigate_to_file(
+        &mut self,
+        target_file_id: i64,
+        target_task_id: Option<i64>,
+    ) -> TuiResult<()> {
+        // Find the target file index in state.files
+        let file_index = match self.state.expand_path_to_file(target_file_id) {
+            Ok(index) => index,
+            Err(e) => {
+                self.state
+                    .set_error_message(format!("Navigation failed: {e}"));
+                return Ok(());
+            }
+        };
+
+        // Get the filename for the status message
+        let filename = self.state.files[file_index]
+            .path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        // Update selected file index
+        self.state.selected_file_index = file_index;
+
+        // Load tasks for target file
+        let task_repo = TaskRepository::new(&self.conn);
+        self.state.tasks = task_repo
+            .get_by_file(target_file_id)
+            .map_err(|e| TuiError::App(format!("Failed to load tasks for target file: {e}")))?;
+
+        // Build task tree if tree view enabled
+        self.state.build_task_tree();
+
+        // If target_task_id provided, find and select that task index
+        if let Some(task_id) = target_task_id {
+            if let Some(task_index) = self.state.tasks.iter().position(|t| t.id == task_id) {
+                self.state.selected_task_index = task_index;
+            }
+        } else {
+            // No specific task - select first task
+            self.state.selected_task_index = 0;
+        }
+
+        // Set success status message
+        self.state
+            .set_success_message(format!("Navigated to {filename}"));
+
+        // Switch focus to detail pane
+        self.state.focused_pane = crate::state::FocusedPane::Detail;
+
+        Ok(())
     }
 
     /// Load tasks for the currently selected file in Navigation pane
