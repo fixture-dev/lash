@@ -1012,8 +1012,8 @@ impl TuiApp {
         target_file_id: i64,
         target_task_id: Option<i64>,
     ) -> TuiResult<()> {
-        // Find the target file index in state.files
-        let file_index = match self.state.expand_path_to_file(target_file_id) {
+        // Expand path and get flat file index
+        let flat_file_index = match self.state.expand_path_to_file(target_file_id) {
             Ok(index) => index,
             Err(e) => {
                 self.state
@@ -1023,15 +1023,26 @@ impl TuiApp {
         };
 
         // Get the filename for the status message
-        let filename = self.state.files[file_index]
+        let filename = self.state.files[flat_file_index]
             .path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
 
+        // In tree view mode, we need the visual index (position in flattened visible tree)
+        // In flat list mode, we use the flat file index directly
+        let selected_index = if self.state.file_tree.is_some() {
+            // Get visual index in tree view (after path expansion)
+            self.state
+                .visual_index_of_file(target_file_id)
+                .unwrap_or(flat_file_index)
+        } else {
+            flat_file_index
+        };
+
         // Update selected file index
-        self.state.selected_file_index = file_index;
+        self.state.selected_file_index = selected_index;
 
         // Load tasks for target file
         let task_repo = TaskRepository::new(&self.conn);
