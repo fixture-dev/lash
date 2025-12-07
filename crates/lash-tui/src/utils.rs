@@ -1,8 +1,10 @@
 //! Utility functions for TUI navigation and link detection.
 
-use lash_db::repository::{DependencyRepository, TaskRepository};
+use lash_core::display::extract_link_path;
+use lash_db::repository::{DependencyRepository, FileRepository, TaskRepository};
 use lash_types::DependencyKind;
 use rusqlite::Connection;
+use std::path::Path;
 
 /// Information about a resolved cross-file link target.
 #[derive(Debug, Clone, PartialEq)]
@@ -15,10 +17,11 @@ pub struct LinkTarget {
     pub full_id: String,
 }
 
-/// Checks if a task is a cross-file link based on its dependencies.
+/// Checks if a task is a cross-file link based on its dependencies or markdown link syntax.
 ///
-/// Returns `true` if the task has any `ExplicitPath` or `ExplicitId` dependencies,
-/// which indicate it links to another file.
+/// Returns `true` if:
+/// - The task has `ExplicitPath` or `ExplicitId` dependencies, OR
+/// - The task title contains a markdown link `[text](path.md)`
 ///
 /// # Examples
 ///
@@ -32,26 +35,35 @@ pub struct LinkTarget {
 /// let is_link = is_cross_file_link(&conn, task_id);
 /// ```
 pub fn is_cross_file_link(conn: &Connection, task_id: i64) -> bool {
-    let repo = DependencyRepository::new(conn);
+    // First check explicit dependencies
+    let dep_repo = DependencyRepository::new(conn);
+    if let Ok(deps) = dep_repo.get_dependencies(task_id) {
+        if deps.iter().any(|dep| {
+            matches!(
+                dep.kind,
+                DependencyKind::ExplicitPath | DependencyKind::ExplicitId
+            )
+        }) {
+            return true;
+        }
+    }
 
-    // Query dependencies - return false if query fails
-    let Ok(deps) = repo.get_dependencies(task_id) else {
-        return false;
-    };
+    // Also check task title for markdown link syntax
+    let task_repo = TaskRepository::new(conn);
+    if let Ok(Some(task)) = task_repo.get_by_db_id(task_id) {
+        if extract_link_path(&task.title).is_some() {
+            return true;
+        }
+    }
 
-    // Check if any dependency is ExplicitPath or ExplicitId
-    deps.iter().any(|dep| {
-        matches!(
-            dep.kind,
-            DependencyKind::ExplicitPath | DependencyKind::ExplicitId
-        )
-    })
+    false
 }
 
 /// Gets the target of a cross-file link.
 ///
-/// Returns `Some(LinkTarget)` if the task has a resolved cross-file dependency,
-/// or `None` if there is no cross-file link or it's unresolved.
+/// Returns `Some(LinkTarget)` if the task has a resolved cross-file dependency
+/// or a markdown link in its title that resolves to an existing file.
+/// Returns `None` if there is no cross-file link or it can't be resolved.
 ///
 /// # Examples
 ///
@@ -69,33 +81,95 @@ pub fn is_cross_file_link(conn: &Connection, task_id: i64) -> bool {
 pub fn get_link_target(conn: &Connection, task_id: i64) -> Option<LinkTarget> {
     let dep_repo = DependencyRepository::new(conn);
     let task_repo = TaskRepository::new(conn);
+    let file_repo = FileRepository::new(conn);
 
-    // Query dependencies - return None if query fails
-    let deps = dep_repo.get_dependencies(task_id).ok()?;
+    // First, try to find from explicit dependencies
+    if let Ok(deps) = dep_repo.get_dependencies(task_id) {
+        if let Some(cross_file_dep) = deps.iter().find(|dep| {
+            matches!(
+                dep.kind,
+                DependencyKind::ExplicitPath | DependencyKind::ExplicitId
+            )
+        }) {
+            // Check if dependency is resolved (has to_task_id)
+            if let Some(to_task_id) = cross_file_dep.to_task_id {
+                if let Ok(Some(target_task)) = task_repo.get_by_db_id(to_task_id) {
+                    let full_id = cross_file_dep
+                        .to_full_id
+                        .clone()
+                        .unwrap_or_else(|| target_task.full_id.clone());
 
-    // Find first ExplicitPath or ExplicitId dependency
-    let cross_file_dep = deps.iter().find(|dep| {
-        matches!(
-            dep.kind,
-            DependencyKind::ExplicitPath | DependencyKind::ExplicitId
-        )
-    })?;
+                    return Some(LinkTarget {
+                        file_id: target_task.file_id,
+                        task_id: Some(to_task_id),
+                        full_id,
+                    });
+                }
+            }
+        }
+    }
 
-    // Check if dependency is resolved (has to_task_id)
-    let to_task_id = cross_file_dep.to_task_id?;
+    // If no explicit dependency, try to resolve from markdown link in task title
+    let task = task_repo.get_by_db_id(task_id).ok()??;
+    let link_path = extract_link_path(&task.title)?;
 
-    // Get the target task to extract its file_id
-    let target_task = task_repo.get_by_db_id(to_task_id).ok()??;
+    // Parse the link path - it may be "path/to/file.md" or "path/to/file.md#task-id"
+    let (file_path_str, task_id_part) = if let Some(hash_idx) = link_path.find('#') {
+        (&link_path[..hash_idx], Some(&link_path[hash_idx + 1..]))
+    } else {
+        (link_path.as_str(), None)
+    };
 
-    // Get the full_id (should already be in to_full_id, but use the task record as source of truth)
-    let full_id = cross_file_dep
-        .to_full_id
-        .clone()
-        .unwrap_or_else(|| target_task.full_id.clone());
+    // Try to find the file in the database
+    // The link path is relative to the index file, so we need to resolve it
+    // First, get the current file's path to determine the base directory
+    let current_file = file_repo.get_by_db_id(task.file_id).ok()??;
+    let current_dir = Path::new(&current_file.path)
+        .parent()
+        .unwrap_or(Path::new(""));
+
+    // Resolve the link path relative to the current file
+    let resolved_path = current_dir.join(file_path_str);
+
+    // Try to find the target file by path
+    // The database stores paths relative to project root, so try both the resolved path
+    // and the raw link path
+    let target_file = file_repo
+        .get_by_path(&resolved_path)
+        .ok()
+        .flatten()
+        .or_else(|| {
+            file_repo
+                .get_by_path(Path::new(file_path_str))
+                .ok()
+                .flatten()
+        })?;
+
+    // If there's a task ID part, try to resolve it to a specific task
+    let target_task_id = if let Some(task_local_id) = task_id_part {
+        // Try to find task by local_id within the target file
+        if let Ok(tasks) = task_repo.get_by_file(target_file.id) {
+            tasks
+                .into_iter()
+                .find(|t| t.local_id == task_local_id)
+                .map(|t| t.id)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Build the full_id
+    let full_id = if let Some(tid) = task_id_part {
+        format!("{}#{}", target_file.file_id, tid)
+    } else {
+        target_file.file_id.clone()
+    };
 
     Some(LinkTarget {
-        file_id: target_task.file_id,
-        task_id: Some(to_task_id),
+        file_id: target_file.id,
+        task_id: target_task_id,
         full_id,
     })
 }

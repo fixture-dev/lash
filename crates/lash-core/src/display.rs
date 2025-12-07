@@ -5,6 +5,41 @@
 
 use std::path::Path;
 
+/// Extract the link path from a Markdown link
+///
+/// Extracts the path from `[link text](path)` syntax.
+/// Returns `None` if no link is found.
+///
+/// # Examples
+///
+/// ```
+/// use lash_core::display::extract_link_path;
+///
+/// assert_eq!(extract_link_path("[Core API](core/api.md)"), Some("core/api.md".to_string()));
+/// assert_eq!(extract_link_path("Plain text"), None);
+/// assert_eq!(extract_link_path("[Link](path/to/file.md#task-id)"), Some("path/to/file.md#task-id".to_string()));
+/// ```
+#[must_use]
+pub fn extract_link_path(text: &str) -> Option<String> {
+    // Try to match [link text](path) pattern
+    let open_bracket = text.find('[')?;
+    let close_bracket = text.find("](")?;
+
+    if open_bracket >= close_bracket {
+        return None;
+    }
+
+    let path_start = close_bracket + 2; // Skip "]("
+    let close_paren = text[path_start..].find(')')?;
+    let path = &text[path_start..path_start + close_paren];
+
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
+}
+
 /// Extract link text from Markdown links
 ///
 /// Converts `[link text](path)` to just `link text`.
