@@ -435,25 +435,55 @@ impl TuiApp {
             FocusedPane::Detail => {
                 // Check if task has children that can be expanded
                 if let Some(task_node) = self.state.selected_task_tree_node() {
+                    tracing::debug!(
+                        "Task node: has_children={}, is_expanded={}",
+                        task_node.has_children,
+                        task_node.is_expanded
+                    );
+
+                    // Check for cross-file link navigation FIRST (takes priority over expansion)
+                    // This ensures pressing Enter on a cross-file link navigates to the target
+                    // even if the task has subtasks
+                    let is_index = self.is_viewing_index_file();
+                    tracing::debug!("is_viewing_index_file={}", is_index);
+                    if is_index {
+                        if let Some(task) = self.state.selected_task() {
+                            tracing::debug!(
+                                "Selected task: id={}, title={:?}",
+                                task.id,
+                                task.title
+                            );
+                            if let Some(target) = utils::get_link_target(&self.conn, task.id) {
+                                tracing::debug!(
+                                    "Navigating to target: file_id={}, task_id={:?}",
+                                    target.file_id,
+                                    target.task_id
+                                );
+                                return self.navigate_to_file(target.file_id, target.task_id);
+                            }
+                            tracing::debug!("get_link_target returned None");
+                        }
+                    }
+
+                    // Then check for children expansion
                     if task_node.has_children && !task_node.is_expanded {
-                        // Expand task to show subtasks inline (children take priority)
+                        tracing::debug!("Expanding task node");
                         self.state.toggle_selected_task_node();
                     } else {
-                        // Check for cross-file link navigation before showing modal
-                        if self.is_viewing_index_file() {
-                            if let Some(task) = self.state.selected_task() {
-                                if let Some(target) = utils::get_link_target(&self.conn, task.id) {
-                                    return self.navigate_to_file(target.file_id, target.task_id);
-                                }
-                            }
-                        }
                         // Fall back to showing modal
+                        tracing::debug!("Falling back to modal");
                         self.open_task_detail_for_selected()?;
                     }
                 } else {
                     // No tree view - check for cross-file link before showing modal
+                    tracing::debug!("No task tree node");
                     if self.is_viewing_index_file() {
                         if let Some(task) = self.state.selected_task() {
+                            tracing::debug!(
+                                "Selected task (no tree): id={}, title={:?}",
+                                task.id,
+                                task.title
+                            );
                             if let Some(target) = utils::get_link_target(&self.conn, task.id) {
                                 return self.navigate_to_file(target.file_id, target.task_id);
                             }

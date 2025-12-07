@@ -79,19 +79,28 @@ pub fn is_cross_file_link(conn: &Connection, task_id: i64) -> bool {
 ///     println!("Links to file: {}, task: {:?}", target.file_id, target.task_id);
 /// }
 /// ```
+#[allow(clippy::too_many_lines)]
 pub fn get_link_target(conn: &Connection, task_id: i64) -> Option<LinkTarget> {
+    tracing::debug!("get_link_target called for task_id={}", task_id);
+
     let dep_repo = DependencyRepository::new(conn);
     let task_repo = TaskRepository::new(conn);
     let file_repo = FileRepository::new(conn);
 
     // First, try to find from explicit dependencies
     if let Ok(deps) = dep_repo.get_dependencies(task_id) {
+        tracing::debug!("Found {} dependencies for task_id={}", deps.len(), task_id);
         if let Some(cross_file_dep) = deps.iter().find(|dep| {
             matches!(
                 dep.kind,
                 DependencyKind::ExplicitPath | DependencyKind::ExplicitId
             )
         }) {
+            tracing::debug!(
+                "Found cross-file dep: kind={:?}, to_task_id={:?}",
+                cross_file_dep.kind,
+                cross_file_dep.to_task_id
+            );
             // Check if dependency is resolved (has to_task_id)
             if let Some(to_task_id) = cross_file_dep.to_task_id {
                 if let Ok(Some(target_task)) = task_repo.get_by_db_id(to_task_id) {
@@ -100,6 +109,11 @@ pub fn get_link_target(conn: &Connection, task_id: i64) -> Option<LinkTarget> {
                         .clone()
                         .unwrap_or_else(|| target_task.full_id.clone());
 
+                    tracing::debug!(
+                        "Resolved via explicit dep: file_id={}, task_id={}",
+                        target_task.file_id,
+                        to_task_id
+                    );
                     return Some(LinkTarget {
                         file_id: target_task.file_id,
                         task_id: Some(to_task_id),
@@ -111,8 +125,24 @@ pub fn get_link_target(conn: &Connection, task_id: i64) -> Option<LinkTarget> {
     }
 
     // If no explicit dependency, try to resolve from markdown link in task title
-    let task = task_repo.get_by_db_id(task_id).ok()??;
-    let link_path = extract_link_path(&task.title)?;
+    let task = match task_repo.get_by_db_id(task_id) {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            tracing::debug!("Task not found for task_id={}", task_id);
+            return None;
+        }
+        Err(e) => {
+            tracing::debug!("Error getting task {}: {:?}", task_id, e);
+            return None;
+        }
+    };
+    tracing::debug!("Task title: {:?}", task.title);
+
+    let Some(link_path) = extract_link_path(&task.title) else {
+        tracing::debug!("No link path extracted from title");
+        return None;
+    };
+    tracing::debug!("Extracted link path: {:?}", link_path);
 
     // Parse the link path - it may be "path/to/file.md" or "path/to/file.md#task-id"
     let (file_path_str, task_id_part) = if let Some(hash_idx) = link_path.find('#') {
@@ -120,17 +150,40 @@ pub fn get_link_target(conn: &Connection, task_id: i64) -> Option<LinkTarget> {
     } else {
         (link_path.as_str(), None)
     };
+    tracing::debug!(
+        "Parsed link: file_path={:?}, task_id_part={:?}",
+        file_path_str,
+        task_id_part
+    );
 
     // Try to find the file in the database
     // The link path is relative to the index file, so we need to resolve it
     // First, get the current file's path to determine the base directory
-    let current_file = file_repo.get_by_db_id(task.file_id).ok()??;
+    let current_file = match file_repo.get_by_db_id(task.file_id) {
+        Ok(Some(f)) => f,
+        Ok(None) => {
+            tracing::debug!("Current file not found for file_id={}", task.file_id);
+            return None;
+        }
+        Err(e) => {
+            tracing::debug!("Error getting current file {}: {:?}", task.file_id, e);
+            return None;
+        }
+    };
+    tracing::debug!(
+        "Current file path: {:?}, file_id: {:?}",
+        current_file.path,
+        current_file.file_id
+    );
+
     let current_dir = Path::new(&current_file.path)
         .parent()
         .unwrap_or(Path::new(""));
+    tracing::debug!("Current dir: {:?}", current_dir);
 
     // Resolve the link path relative to the current file
     let resolved_path = current_dir.join(file_path_str);
+    tracing::debug!("Resolved path: {:?}", resolved_path);
 
     // Try to find the target file by path or file_id
     // The database stores paths relative to project root, so try:
@@ -142,16 +195,35 @@ pub fn get_link_target(conn: &Connection, task_id: i64) -> Option<LinkTarget> {
         .ok()
         .flatten()
         .or_else(|| {
+            tracing::debug!("get_by_path({:?}) failed, trying raw path", resolved_path);
             file_repo
                 .get_by_path(Path::new(file_path_str))
                 .ok()
                 .flatten()
         })
         .or_else(|| {
+            tracing::debug!(
+                "get_by_path({:?}) failed, trying synthesized file_id",
+                file_path_str
+            );
             // Fallback: try to find by synthesized file_id from the path
             let synthesized_id = synthesize_file_id(Path::new(file_path_str));
+            tracing::debug!("Synthesized file_id: {:?}", synthesized_id);
             file_repo.get_by_file_id(&synthesized_id).ok().flatten()
-        })?;
+        });
+
+    let target_file = if let Some(f) = target_file {
+        tracing::debug!(
+            "Found target file: id={}, path={:?}, file_id={:?}",
+            f.id,
+            f.path,
+            f.file_id
+        );
+        f
+    } else {
+        tracing::debug!("Target file not found for path {:?}", file_path_str);
+        return None;
+    };
 
     // If there's a task ID part, try to resolve it to a specific task
     let target_task_id = if let Some(task_local_id) = task_id_part {
@@ -404,6 +476,264 @@ mod tests {
         assert!(
             get_target_file_id(&conn, another_task.id).is_none(),
             "task without dependencies should not have a target file ID"
+        );
+    }
+
+    /// Helper to set up a test database with index file and linked files
+    fn setup_test_db_with_markdown_links() -> (TempDir, PathBuf, Connection) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let project_root = temp_dir.path().to_path_buf();
+        let db_path = project_root.join(".lash").join("db.sqlite");
+
+        // Create .lash directory
+        std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+
+        // Create target directory
+        std::fs::create_dir_all(project_root.join("systems")).unwrap();
+
+        // Initialize database
+        let conn = init_database(&db_path).unwrap();
+
+        // Create target file first
+        let target_file = project_root.join("systems/physics.md");
+        std::fs::write(
+            &target_file,
+            r"# Physics System
+
+@id: systems.physics
+
+## Tasks
+
+- [ ] Implement collision detection
+- [ ] Add gravity
+",
+        )
+        .unwrap();
+
+        // Create index file with markdown link to target
+        let index_file = project_root.join("lash.index.md");
+        std::fs::write(
+            &index_file,
+            r"# Project Index
+
+@id: project-index
+
+## Tasks
+
+- [ ] [Physics System](systems/physics.md)
+- [ ] Local task
+",
+        )
+        .unwrap();
+
+        // Index the project
+        let indexer_config = IndexerConfig::new(project_root)
+            .with_incremental(false)
+            .with_progress(false);
+        let parser_config = LashConfig::default();
+        let mut indexer = Indexer::new(&conn, indexer_config, &parser_config);
+        indexer.index_project().unwrap();
+
+        (temp_dir, db_path, conn)
+    }
+
+    #[test]
+    fn test_get_link_target_with_markdown_link() {
+        let (_temp_dir, _db_path, conn) = setup_test_db_with_markdown_links();
+        let task_repo = TaskRepository::new(&conn);
+        let file_repo = FileRepository::new(&conn);
+
+        // Get the index file
+        let index_file = file_repo
+            .get_by_file_id("project-index")
+            .unwrap()
+            .expect("index file should exist");
+
+        // Get all tasks in the index file and find the one with the markdown link
+        let tasks = task_repo.get_by_file(index_file.id).unwrap();
+        let link_task = tasks
+            .iter()
+            .find(|t| t.title.contains("[Physics System]"))
+            .expect("task with markdown link should exist");
+
+        // Verify the link is detected
+        assert!(
+            is_cross_file_link(&conn, link_task.id),
+            "task with markdown link should be detected as cross-file link"
+        );
+
+        // Verify the target is resolved
+        let target = get_link_target(&conn, link_task.id);
+        assert!(
+            target.is_some(),
+            "get_link_target should resolve markdown link"
+        );
+
+        let target = target.unwrap();
+
+        // Verify target file is correct
+        let target_file = file_repo.get_by_db_id(target.file_id).unwrap();
+        assert!(target_file.is_some(), "target file should exist");
+        let target_file = target_file.unwrap();
+        assert_eq!(
+            target_file.file_id, "systems.physics",
+            "target file_id should match"
+        );
+    }
+
+    #[test]
+    fn test_is_cross_file_link_with_markdown_link() {
+        let (_temp_dir, _db_path, conn) = setup_test_db_with_markdown_links();
+        let task_repo = TaskRepository::new(&conn);
+        let file_repo = FileRepository::new(&conn);
+
+        // Get the index file
+        let index_file = file_repo
+            .get_by_file_id("project-index")
+            .unwrap()
+            .expect("index file should exist");
+
+        // Get all tasks in the index file
+        let tasks = task_repo.get_by_file(index_file.id).unwrap();
+        let link_task = tasks
+            .iter()
+            .find(|t| t.title.contains("[Physics System]"))
+            .expect("task with markdown link should exist");
+
+        assert!(
+            is_cross_file_link(&conn, link_task.id),
+            "task with markdown link should be detected as cross-file link"
+        );
+
+        // Verify local task is NOT a cross-file link
+        let local_task = tasks
+            .iter()
+            .find(|t| t.title == "Local task")
+            .expect("local task should exist");
+
+        assert!(
+            !is_cross_file_link(&conn, local_task.id),
+            "local task should not be detected as cross-file link"
+        );
+    }
+
+    /// Test using the actual pixelquest fixture structure
+    #[test]
+    fn test_get_link_target_with_pixelquest_style_index() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let project_root = temp_dir.path().to_path_buf();
+        let db_path = project_root.join(".lash").join("db.sqlite");
+
+        // Create .lash directory and systems directory
+        std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(project_root.join("systems")).unwrap();
+
+        // Initialize database
+        let conn = init_database(&db_path).unwrap();
+
+        // Create target file similar to pixelquest fixture
+        let target_file = project_root.join("systems/physics.md");
+        std::fs::write(
+            &target_file,
+            r"# Physics & Collision System
+
+@id: systems.physics
+@status: in-progress
+@labels: backend, physics, p0
+
+## Tasks
+
+- [x] Implement collision detection
+- [ ] Add physics simulation
+",
+        )
+        .unwrap();
+
+        // Create index file similar to pixelquest fixture
+        let index_file = project_root.join("lash.index.md");
+        std::fs::write(
+            &index_file,
+            r"# PixelQuest: Retro 2D Platformer
+
+@id: pixelquest
+
+## Tasks
+
+### Core Systems
+Engine components and foundational infrastructure.
+
+- [ ] [Physics & Collision](systems/physics.md) @id:`systems.physics` @labels:`backend, physics, p0`
+- [ ] [Input Handling](systems/input.md) @id:`systems.input` @labels:`backend, input, p0`
+
+### Gameplay Features
+Player mechanics, AI, and game systems.
+
+- [ ] [Player Movement](features/player-movement.md) @id:`features.player-movement`
+",
+        )
+        .unwrap();
+
+        // Index the project
+        let indexer_config = IndexerConfig::new(project_root)
+            .with_incremental(false)
+            .with_progress(false);
+        let parser_config = LashConfig::default();
+        let mut indexer = Indexer::new(&conn, indexer_config, &parser_config);
+        indexer.index_project().unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+        let file_repo = FileRepository::new(&conn);
+
+        // Get the index file
+        let index_file_rec = file_repo
+            .get_by_file_id("pixelquest")
+            .unwrap()
+            .expect("index file should exist");
+
+        // Get all tasks in the index file
+        let tasks = task_repo.get_by_file(index_file_rec.id).unwrap();
+        eprintln!("Found {} tasks in index file", tasks.len());
+        for task in &tasks {
+            eprintln!("  Task: id={}, title={:?}", task.id, task.title);
+        }
+
+        // Find the physics task
+        let physics_task = tasks
+            .iter()
+            .find(|t| t.title.contains("[Physics & Collision]"))
+            .expect("task with Physics & Collision link should exist");
+
+        eprintln!(
+            "Physics task: id={}, file_id={}, title={:?}",
+            physics_task.id, physics_task.file_id, physics_task.title
+        );
+
+        // Verify the link is detected
+        assert!(
+            is_cross_file_link(&conn, physics_task.id),
+            "physics task should be detected as cross-file link"
+        );
+
+        // Verify the target is resolved
+        let target = get_link_target(&conn, physics_task.id);
+        assert!(
+            target.is_some(),
+            "get_link_target should resolve physics markdown link"
+        );
+
+        let target = target.unwrap();
+        eprintln!(
+            "Target: file_id={}, task_id={:?}, full_id={:?}",
+            target.file_id, target.task_id, target.full_id
+        );
+
+        // Verify target file is correct
+        let target_file_rec = file_repo.get_by_db_id(target.file_id).unwrap();
+        assert!(target_file_rec.is_some(), "target file should exist");
+        let target_file_rec = target_file_rec.unwrap();
+        assert_eq!(
+            target_file_rec.file_id, "systems.physics",
+            "target file_id should match"
         );
     }
 }
