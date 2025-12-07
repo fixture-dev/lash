@@ -2,6 +2,7 @@
 
 use lash_core::display::extract_link_path;
 use lash_db::repository::{DependencyRepository, FileRepository, TaskRepository};
+use lash_types::file::synthesize_file_id;
 use lash_types::DependencyKind;
 use rusqlite::Connection;
 use std::path::Path;
@@ -131,9 +132,11 @@ pub fn get_link_target(conn: &Connection, task_id: i64) -> Option<LinkTarget> {
     // Resolve the link path relative to the current file
     let resolved_path = current_dir.join(file_path_str);
 
-    // Try to find the target file by path
-    // The database stores paths relative to project root, so try both the resolved path
-    // and the raw link path
+    // Try to find the target file by path or file_id
+    // The database stores paths relative to project root, so try:
+    // 1. Resolved path (relative to current file's directory)
+    // 2. Raw link path
+    // 3. Synthesized file_id from the link path (e.g., "systems/physics.md" -> "systems.physics")
     let target_file = file_repo
         .get_by_path(&resolved_path)
         .ok()
@@ -143,6 +146,11 @@ pub fn get_link_target(conn: &Connection, task_id: i64) -> Option<LinkTarget> {
                 .get_by_path(Path::new(file_path_str))
                 .ok()
                 .flatten()
+        })
+        .or_else(|| {
+            // Fallback: try to find by synthesized file_id from the path
+            let synthesized_id = synthesize_file_id(Path::new(file_path_str));
+            file_repo.get_by_file_id(&synthesized_id).ok().flatten()
         })?;
 
     // If there's a task ID part, try to resolve it to a specific task
