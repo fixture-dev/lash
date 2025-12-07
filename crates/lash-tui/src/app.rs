@@ -968,13 +968,33 @@ impl TuiApp {
         // For now, no-op (Left is not used in flat list view)
     }
 
-    /// Check if the currently selected file is an index file
+    /// Check if the currently viewed file (whose tasks are displayed) is an index file
     ///
     /// Index files are named `lash.index.md` or `index.lash.md`.
+    ///
+    /// This uses the same logic as task loading: in tree view mode, we check the
+    /// tree node's file; otherwise we fall back to the flat file list selection.
     fn is_viewing_index_file(&self) -> bool {
-        self.state
+        // In tree view mode, check the tree node's file (matches task loading logic)
+        if let Some(node) = self.state.selected_tree_node() {
+            if let Some(file) = node.file_record.as_ref() {
+                let is_index = lash_core::display::is_index_file(&file.path);
+                tracing::debug!(
+                    "is_viewing_index_file (tree view): path={:?}, is_index={}",
+                    file.path,
+                    is_index
+                );
+                return is_index;
+            }
+            tracing::debug!("is_viewing_index_file: tree node has no file_record");
+        }
+        // Fall back to flat list selection
+        let result = self
+            .state
             .selected_file()
-            .is_some_and(|f| lash_core::display::is_index_file(&f.path))
+            .is_some_and(|f| lash_core::display::is_index_file(&f.path));
+        tracing::debug!("is_viewing_index_file (flat list): result={}", result);
+        result
     }
 
     /// Navigate to a target file from a cross-file link.
