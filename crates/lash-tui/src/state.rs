@@ -1749,6 +1749,58 @@ impl AppState {
         }
     }
 
+    /// Find the visual index of a file in the tree view by its file ID.
+    ///
+    /// This walks the flattened visible tree (accounting for expand/collapse state)
+    /// and returns the visual position of the file. Returns `None` if:
+    /// - No tree view exists
+    /// - The file is not visible (parent directory collapsed)
+    /// - The file is not in the tree
+    #[must_use]
+    pub fn visual_index_of_file(&self, file_id: i64) -> Option<usize> {
+        let trees = self.file_tree.as_ref()?;
+
+        let mut current_index = 0;
+        for tree in trees {
+            if let Some(index) = Self::find_file_visual_index(tree, file_id, &mut current_index) {
+                return Some(index);
+            }
+        }
+        None
+    }
+
+    /// Recursively find the visual index of a file node by its file ID
+    fn find_file_visual_index(
+        node: &TreeNode<DirectoryNode>,
+        target_file_id: i64,
+        current_index: &mut usize,
+    ) -> Option<usize> {
+        // Check if this node is the target file
+        if let Some(file_record) = &node.data.file_record {
+            if file_record.id == target_file_id {
+                return Some(*current_index);
+            }
+        }
+
+        let this_index = *current_index;
+        *current_index += 1;
+
+        // Only search children if expanded
+        if node.expanded {
+            for child in &node.children {
+                if let Some(index) =
+                    Self::find_file_visual_index(child, target_file_id, current_index)
+                {
+                    return Some(index);
+                }
+            }
+        }
+
+        // This node was counted but not a match
+        let _ = this_index;
+        None
+    }
+
     /// Build task tree from flat task list
     ///
     /// Converts the flat `self.tasks` list into a hierarchical task tree.
