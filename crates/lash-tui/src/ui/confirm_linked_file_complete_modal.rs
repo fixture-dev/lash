@@ -102,10 +102,13 @@ fn render_warning(frame: &mut Frame, area: Rect, state: &AppState) {
 
 /// Render the link task info
 fn render_link_task(frame: &mut Frame, area: Rect, title: &str, theme: &crate::colors::Theme) {
+    // Format the title to strip markdown links and convert @labels to hashtags
+    let formatted_title = lash_core::display::format_index_title(title);
+
     let text = vec![Line::from(vec![
         Span::styled("Link task: ", Style::default().fg(Color::DarkGray)),
         Span::styled(
-            title,
+            formatted_title,
             Style::default()
                 .fg(theme.foreground())
                 .add_modifier(Modifier::BOLD),
