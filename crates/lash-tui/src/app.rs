@@ -13,8 +13,9 @@ use lash_db::repository::tasks::TaskRepository;
 
 use crate::error::{TuiError, TuiResult};
 use crate::event::{
-    poll_confirm_complete_event, poll_confirm_incomplete_event, poll_event, poll_filter_event,
-    poll_search_event, AppEvent,
+    poll_confirm_complete_event, poll_confirm_incomplete_event,
+    poll_confirm_linked_file_complete_event, poll_event, poll_filter_event, poll_search_event,
+    AppEvent,
 };
 use crate::state::AppState;
 use crate::terminal;
@@ -154,6 +155,8 @@ impl TuiApp {
                 poll_confirm_complete_event(Duration::from_millis(100))?
             } else if self.state.is_confirm_incomplete_modal_open() {
                 poll_confirm_incomplete_event(Duration::from_millis(100))?
+            } else if self.state.is_confirm_linked_file_complete_modal_open() {
+                poll_confirm_linked_file_complete_event(Duration::from_millis(100))?
             } else {
                 poll_event(Duration::from_millis(100))?
             };
@@ -221,6 +224,17 @@ impl TuiApp {
                     }
                     AppEvent::ConfirmIncomplete => {
                         self.handle_confirm_cascading_incomplete()?;
+                    }
+                    _ => {} // Ignore other events when confirm modal is open
+                }
+            } else if self.state.is_confirm_linked_file_complete_modal_open() {
+                // Confirm linked file complete modal is open - route events to it
+                match event {
+                    AppEvent::CloseConfirmLinkedFileComplete => {
+                        self.state.close_confirm_linked_file_complete_modal();
+                    }
+                    AppEvent::ConfirmLinkedFileComplete => {
+                        self.handle_confirm_linked_file_complete()?;
                     }
                     _ => {} // Ignore other events when confirm modal is open
                 }
@@ -322,6 +336,8 @@ impl TuiApp {
                     | AppEvent::ConfirmComplete
                     | AppEvent::CloseConfirmIncomplete
                     | AppEvent::ConfirmIncomplete
+                    | AppEvent::CloseConfirmLinkedFileComplete
+                    | AppEvent::ConfirmLinkedFileComplete
                     | AppEvent::CharInput(_)
                     | AppEvent::Backspace
                     | AppEvent::Delete
@@ -609,10 +625,42 @@ impl TuiApp {
             }
         };
 
-        // If transitioning to Done, check for open subtasks
+        // If transitioning to Done, check for special cases
         if old_status == lash_types::TaskStatus::Open && new_status == lash_types::TaskStatus::Done
         {
-            // Get all descendants of this task
+            // First check if this is a cross-file link task in an index file
+            // This takes priority because it has broader implications
+            if self.is_viewing_index_file() && utils::is_cross_file_link(&self.conn, task_id) {
+                // Get the target file and its open tasks
+                if let Some(target) = utils::get_link_target(&self.conn, task_id) {
+                    // Get the target file record
+                    let file_repo = FileRepository::new(&self.conn);
+                    if let Ok(Some(target_file_record)) = file_repo.get_by_db_id(target.file_id) {
+                        // Get all tasks in the target file
+                        let task_repo = TaskRepository::new(&self.conn);
+                        if let Ok(target_tasks) = task_repo.get_by_file(target.file_id) {
+                            // Filter to only open (incomplete) tasks
+                            let open_tasks: Vec<_> = target_tasks
+                                .into_iter()
+                                .filter(|t| !t.status.is_complete())
+                                .collect();
+
+                            // If there are open tasks in the target file, show confirmation modal
+                            if !open_tasks.is_empty() {
+                                self.state.open_confirm_linked_file_complete_modal(
+                                    task.clone(),
+                                    file_path,
+                                    target_file_record,
+                                    open_tasks,
+                                );
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Then check for open subtasks (within-file cascading)
             let task_repo = TaskRepository::new(&self.conn);
             let descendants = task_repo
                 .get_descendants(task_id)
@@ -784,6 +832,114 @@ impl TuiApp {
         let task_repo = TaskRepository::new(&self.conn);
         self.state.tasks = task_repo
             .get_by_file(file_id)
+            .map_err(|e| TuiError::App(format!("Failed to reload tasks: {e}")))?;
+
+        // Rebuild task tree to reflect updated status
+        self.state.build_task_tree();
+
+        // Restore expansion state after rebuild
+        self.state.restore_expansion_state(&expanded_ids);
+
+        // Refresh project stats to update progress bar
+        self.refresh_project_stats()?;
+
+        Ok(())
+    }
+
+    /// Handle confirmed linked file complete
+    ///
+    /// Called when user confirms marking a cross-file link task as complete.
+    /// Marks the link task in the index file as Done (both DB and markdown),
+    /// and marks all open tasks in the target file as Done (both DB and markdown).
+    fn handle_confirm_linked_file_complete(&mut self) -> TuiResult<()> {
+        // Take the modal state (this also closes the modal)
+        let Some(modal_state) = self.state.confirm_linked_file_complete_modal_state.take() else {
+            return Ok(());
+        };
+
+        let link_task = modal_state.link_task;
+        let index_file_path = modal_state.index_file_path;
+        let target_file = modal_state.target_file;
+        let total_open_count = modal_state.total_open_count;
+
+        // Get file_id for reloading tasks later
+        let index_file_id = link_task.file_id;
+
+        // Update link task to Done in database
+        self.conn
+            .execute(
+                "UPDATE tasks SET status = ?1 WHERE id = ?2",
+                (lash_types::TaskStatus::Done.as_str(), link_task.id),
+            )
+            .map_err(|e| TuiError::App(format!("Failed to update link task: {e}")))?;
+
+        // Update link task in markdown (index file)
+        if let Err(e) = self.update_markdown_task_status(
+            &index_file_path,
+            &link_task.title,
+            lash_types::TaskStatus::Open,
+            lash_types::TaskStatus::Done,
+        ) {
+            self.state.set_warning_message(format!(
+                "Link task DB updated, but markdown update failed: {e}"
+            ));
+        }
+
+        // Get all open tasks from target file (not just the truncated list)
+        let task_repo = TaskRepository::new(&self.conn);
+        let all_target_tasks = task_repo
+            .get_by_file(target_file.id)
+            .map_err(|e| TuiError::App(format!("Failed to get target file tasks: {e}")))?;
+
+        let all_open_tasks: Vec<_> = all_target_tasks
+            .into_iter()
+            .filter(|t| !t.status.is_complete())
+            .collect();
+
+        // Update all open tasks in target file to Done
+        for target_task in &all_open_tasks {
+            // Update in database
+            self.conn
+                .execute(
+                    "UPDATE tasks SET status = ?1 WHERE id = ?2",
+                    (lash_types::TaskStatus::Done.as_str(), target_task.id),
+                )
+                .map_err(|e| TuiError::App(format!("Failed to update target task: {e}")))?;
+
+            // Update in markdown (target file)
+            if let Err(e) = self.update_markdown_task_status(
+                &target_file.path,
+                &target_task.title,
+                target_task.status, // Use actual status (could be Open or Blocked)
+                lash_types::TaskStatus::Done,
+            ) {
+                // Log warning but continue with other tasks
+                self.state.set_warning_message(format!(
+                    "Task '{}' markdown update failed: {e}",
+                    target_task.title
+                ));
+            }
+        }
+
+        // Show success message
+        self.state.set_success_message(format!(
+            "Marked link task and {} task{} in {} as complete",
+            total_open_count,
+            if total_open_count == 1 { "" } else { "s" },
+            target_file
+                .path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("linked file")
+        ));
+
+        // Preserve expansion state before rebuilding tree
+        let expanded_ids = self.state.collect_expansion_state();
+
+        // Reload tasks for the index file (where we are viewing)
+        let task_repo = TaskRepository::new(&self.conn);
+        self.state.tasks = task_repo
+            .get_by_file(index_file_id)
             .map_err(|e| TuiError::App(format!("Failed to reload tasks: {e}")))?;
 
         // Rebuild task tree to reflect updated status

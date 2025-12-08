@@ -2,6 +2,7 @@
 
 mod confirm_complete_modal;
 mod confirm_incomplete_modal;
+mod confirm_linked_file_complete_modal;
 mod detail_pane;
 mod filter_modal;
 mod help;
@@ -100,5 +101,10 @@ pub fn render(frame: &mut Frame, state: &AppState, conn: &Connection) {
     // Render confirm incomplete modal overlay if active
     if state.confirm_incomplete_modal_state.is_some() {
         confirm_incomplete_modal::render(frame, frame.area(), state);
+    }
+
+    // Render confirm linked file complete modal overlay if active
+    if state.confirm_linked_file_complete_modal_state.is_some() {
+        confirm_linked_file_complete_modal::render(frame, frame.area(), state);
     }
 }
