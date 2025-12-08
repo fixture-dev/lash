@@ -88,6 +88,10 @@ pub enum AppEvent {
     CloseConfirmIncomplete,
     /// Confirm cascading incomplete
     ConfirmIncomplete,
+    /// Close confirm linked file complete modal
+    CloseConfirmLinkedFileComplete,
+    /// Confirm linked file complete (marks all open tasks in linked file as complete)
+    ConfirmLinkedFileComplete,
 }
 
 /// Poll for the next event with timeout
@@ -208,6 +212,43 @@ fn handle_confirm_incomplete_key_event(key: KeyEvent) -> AppEvent {
 
         // Cancel with 'n'
         (KeyCode::Char('n'), KeyModifiers::NONE) => AppEvent::CloseConfirmIncomplete,
+
+        _ => AppEvent::None,
+    }
+}
+
+/// Poll for confirm linked file complete modal events
+///
+/// When the confirm linked file complete modal is open:
+/// - Enter confirms marking the link and all open tasks in the linked file as complete
+/// - Escape cancels and closes the modal
+pub fn poll_confirm_linked_file_complete_event(timeout: Duration) -> TuiResult<AppEvent> {
+    if event::poll(timeout)? {
+        match event::read()? {
+            Event::Key(key) => Ok(handle_confirm_linked_file_complete_key_event(key)),
+            Event::Resize(width, height) => Ok(AppEvent::Resize(width, height)),
+            _ => Ok(AppEvent::None),
+        }
+    } else {
+        Ok(AppEvent::None)
+    }
+}
+
+/// Convert key event to application event for confirm linked file complete mode
+fn handle_confirm_linked_file_complete_key_event(key: KeyEvent) -> AppEvent {
+    match (key.code, key.modifiers) {
+        // Close modal (Esc or Ctrl-C)
+        (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+            AppEvent::CloseConfirmLinkedFileComplete
+        }
+
+        // Confirm linked file complete (Enter or 'y')
+        (KeyCode::Enter | KeyCode::Char('y'), KeyModifiers::NONE) => {
+            AppEvent::ConfirmLinkedFileComplete
+        }
+
+        // Cancel with 'n'
+        (KeyCode::Char('n'), KeyModifiers::NONE) => AppEvent::CloseConfirmLinkedFileComplete,
 
         _ => AppEvent::None,
     }

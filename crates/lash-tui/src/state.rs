@@ -177,6 +177,12 @@ pub struct AppState {
     /// Shown when marking a completed subtask as incomplete when parent is complete.
     pub confirm_incomplete_modal_state: Option<ConfirmIncompleteModalState>,
 
+    /// Confirm linked file complete modal state (None = closed, Some = open)
+    ///
+    /// Shown when marking a cross-file link task as complete, which cascades
+    /// to all open tasks in the linked file.
+    pub confirm_linked_file_complete_modal_state: Option<ConfirmLinkedFileCompleteModalState>,
+
     /// Project-level statistics (total tasks, completion, title)
     pub project_stats: ProjectStats,
 
@@ -355,6 +361,28 @@ pub struct ConfirmIncompleteModalState {
     pub completed_ancestors: Vec<TaskRecord>,
 }
 
+/// State for the confirm linked file complete modal
+///
+/// Shown when a user attempts to mark a cross-file link task as complete.
+/// This cascades to all open tasks in the linked file.
+#[derive(Debug)]
+pub struct ConfirmLinkedFileCompleteModalState {
+    /// The cross-file link task in the index file being marked complete
+    pub link_task: TaskRecord,
+
+    /// The index file path containing the link task
+    pub index_file_path: PathBuf,
+
+    /// The target file record (linked file)
+    pub target_file: FileRecord,
+
+    /// Open tasks in the target file that will be marked complete (truncated for display)
+    pub open_tasks: Vec<TaskRecord>,
+
+    /// Total count of open tasks (for display when truncated)
+    pub total_open_count: usize,
+}
+
 /// Information about a selected tree node
 #[derive(Debug, Clone)]
 pub struct SelectedTreeNode {
@@ -425,6 +453,7 @@ impl AppState {
             filter_modal_state: None,
             confirm_complete_modal_state: None,
             confirm_incomplete_modal_state: None,
+            confirm_linked_file_complete_modal_state: None,
             project_stats: ProjectStats::default(),
             status_message: None,
         }
@@ -1630,6 +1659,47 @@ impl AppState {
     #[must_use]
     pub fn is_confirm_incomplete_modal_open(&self) -> bool {
         self.confirm_incomplete_modal_state.is_some()
+    }
+
+    /// Open the confirm linked file complete modal
+    ///
+    /// Called when a user attempts to mark a cross-file link task as complete.
+    /// The modal warns that all open tasks in the linked file will also be marked complete.
+    ///
+    /// # Arguments
+    ///
+    /// * `link_task` - The cross-file link task being marked complete
+    /// * `index_file_path` - Path to the index file containing the link task
+    /// * `target_file` - The target file record (linked file)
+    /// * `open_tasks` - Open tasks in the target file (will be truncated to first 10)
+    pub fn open_confirm_linked_file_complete_modal(
+        &mut self,
+        link_task: TaskRecord,
+        index_file_path: PathBuf,
+        target_file: FileRecord,
+        open_tasks: Vec<TaskRecord>,
+    ) {
+        let total_open_count = open_tasks.len();
+        let truncated_tasks: Vec<TaskRecord> = open_tasks.into_iter().take(10).collect();
+
+        self.confirm_linked_file_complete_modal_state = Some(ConfirmLinkedFileCompleteModalState {
+            link_task,
+            index_file_path,
+            target_file,
+            open_tasks: truncated_tasks,
+            total_open_count,
+        });
+    }
+
+    /// Close confirm linked file complete modal without applying
+    pub fn close_confirm_linked_file_complete_modal(&mut self) {
+        self.confirm_linked_file_complete_modal_state = None;
+    }
+
+    /// Check if confirm linked file complete modal is open
+    #[must_use]
+    pub fn is_confirm_linked_file_complete_modal_open(&self) -> bool {
+        self.confirm_linked_file_complete_modal_state.is_some()
     }
 
     /// Collect the expansion state of all task tree nodes
