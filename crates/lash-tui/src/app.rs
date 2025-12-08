@@ -497,6 +497,26 @@ impl TuiApp {
         Ok(())
     }
 
+    /// Refresh project statistics (total/completed task counts)
+    ///
+    /// Queries the database for current project-wide task counts and updates
+    /// the state. Call this after any operation that changes task status.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if database query fails
+    fn refresh_project_stats(&mut self) -> TuiResult<()> {
+        let task_repo = TaskRepository::new(&self.conn);
+        let (total_tasks, completed_tasks) = task_repo
+            .get_project_counts()
+            .map_err(|e| TuiError::App(format!("Failed to refresh project stats: {e}")))?;
+
+        self.state.project_stats.total_tasks = total_tasks;
+        self.state.project_stats.completed_tasks = completed_tasks;
+
+        Ok(())
+    }
+
     /// Handle opening file in editor
     fn handle_open_editor(&mut self) -> TuiResult<()> {
         // Get the selected file path
@@ -679,6 +699,9 @@ impl TuiApp {
         // Restore expansion state after rebuild
         self.state.restore_expansion_state(&expanded_ids);
 
+        // Refresh project stats to update progress bar
+        self.refresh_project_stats()?;
+
         Ok(())
     }
 
@@ -768,6 +791,9 @@ impl TuiApp {
 
         // Restore expansion state after rebuild
         self.state.restore_expansion_state(&expanded_ids);
+
+        // Refresh project stats to update progress bar
+        self.refresh_project_stats()?;
 
         Ok(())
     }
@@ -862,6 +888,9 @@ impl TuiApp {
 
         // Restore expansion state after rebuild
         self.state.restore_expansion_state(&expanded_ids);
+
+        // Refresh project stats to update progress bar
+        self.refresh_project_stats()?;
 
         Ok(())
     }
