@@ -9,6 +9,26 @@ use crate::schema::{
 };
 use crate::tokens::{distribute_budget, estimate_tokens, truncate_to_budget};
 
+/// Generate CLI commands reference text
+fn generate_cli_commands_text() -> String {
+    r"## CLI Commands
+
+```
+lash lint [PATH...]       Validate task files for format/semantic errors
+lash format [PATH...]     Normalize formatting of task files
+lash index                Rebuild SQLite index from Markdown files
+lash list [FILTERS]       List tasks (--label, --status, --owner, --path)
+lash search <QUERY>       Fuzzy search tasks by keyword
+lash show <ID>            Show details for a task or file
+lash graph                Output dependency graph (--format dot|mermaid|json)
+lash check-links          Find broken @depends-on and @doc references
+lash tui                  Launch interactive terminal UI
+```
+
+"
+    .to_string()
+}
+
 /// A documentation reference for inclusion in agent prompts
 ///
 /// Represents a link to documentation with optional validity status.
@@ -402,6 +422,9 @@ Lash is a minimalist, Markdown-native task tracker where:
             tasks_text.push('\n');
             sections.push(("tasks", tasks_text, 5));
         }
+
+        // CLI commands
+        sections.push(("cli_commands", generate_cli_commands_text(), 9));
 
         // Safety guidelines
         let safety = r"## Safety Guidelines
