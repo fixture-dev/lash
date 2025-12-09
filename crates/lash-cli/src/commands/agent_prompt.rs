@@ -78,7 +78,7 @@ pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
     let config = PromptConfig {
         format: prompt_format,
         include_examples: true,
-        include_tasks: true,
+        include_tasks: false,
         token_budget: args.max_tokens,
         label_filter: args.labels.clone(),
         path_filter: args.path.as_ref().map(|p| p.display().to_string()),
