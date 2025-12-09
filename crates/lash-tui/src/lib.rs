@@ -8,6 +8,7 @@
 
 mod app;
 pub mod colors;
+pub mod components;
 mod error;
 mod event;
 pub mod state;

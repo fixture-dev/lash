@@ -560,5 +560,47 @@ fn run(cli: LashCli) -> Result<()> {
             let exit_code = commands::config::execute(&args)?;
             process::exit(exit_code);
         }
+
+        Commands::Add {
+            title,
+            file,
+            file_title,
+            file_description,
+            parent,
+            after,
+            before,
+            label,
+            owner,
+            estimate,
+            status,
+            id,
+            depends_on,
+            agent_note,
+            format,
+            dry_run,
+            interactive,
+        } => {
+            let args = commands::add::AddArgs {
+                title,
+                file,
+                file_title,
+                file_description,
+                parent,
+                after,
+                before,
+                label,
+                owner,
+                estimate,
+                status,
+                id,
+                depends_on,
+                agent_note,
+                format,
+                dry_run,
+                interactive,
+            };
+            let exit_code = commands::add::execute(&args)?;
+            process::exit(exit_code);
+        }
     }
 }

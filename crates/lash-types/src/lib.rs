@@ -19,6 +19,8 @@
 
 pub mod agent_context;
 pub mod config;
+pub mod creation;
+pub mod creation_errors;
 pub mod dependency;
 pub mod error;
 pub mod error_explanations;
@@ -32,6 +34,11 @@ pub mod task;
 pub mod tree;
 
 pub use config::{ConfigBuilder, LashConfig, TreeViewConfig, UserConfig};
+pub use creation::{
+    FileTarget, InsertPosition, ParentRef, TaskCreationRequest, TaskCreationRequestBuilder,
+    TaskCreationResult,
+};
+pub use creation_errors::TaskCreationError;
 pub use dependency::{
     make_full_id, parse_dependency_ref, parse_doc_ref, parse_full_id, Dependency, DependencyKind,
     DependencyRef, DocRef,

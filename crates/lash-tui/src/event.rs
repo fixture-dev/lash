@@ -92,6 +92,18 @@ pub enum AppEvent {
     CloseConfirmLinkedFileComplete,
     /// Confirm linked file complete (marks all open tasks in linked file as complete)
     ConfirmLinkedFileComplete,
+    /// Open task creation modal
+    OpenTaskCreation,
+    /// Close task creation modal
+    CloseTaskCreation,
+    /// Submit task creation
+    SubmitTaskCreation,
+    /// Navigate to next field in task form
+    TaskFormNextField,
+    /// Navigate to previous field in task form
+    TaskFormPrevField,
+    /// Toggle markdown preview in task form
+    TaskFormTogglePreview,
 }
 
 /// Poll for the next event with timeout
@@ -318,6 +330,71 @@ fn handle_filter_key_event(key: KeyEvent) -> AppEvent {
     }
 }
 
+/// Poll for task creation modal events
+///
+/// When the task creation modal is open:
+/// - Tab/Shift+Tab navigate between fields
+/// - Ctrl+S or Ctrl+Enter submits the form
+/// - Escape closes the modal
+/// - Other keys are routed to the active field
+pub fn poll_task_creation_event(timeout: Duration) -> TuiResult<AppEvent> {
+    if event::poll(timeout)? {
+        match event::read()? {
+            Event::Key(key) => Ok(handle_task_creation_key_event(key)),
+            Event::Resize(width, height) => Ok(AppEvent::Resize(width, height)),
+            _ => Ok(AppEvent::None),
+        }
+    } else {
+        Ok(AppEvent::None)
+    }
+}
+
+/// Convert key event to application event for task creation mode
+fn handle_task_creation_key_event(key: KeyEvent) -> AppEvent {
+    match (key.code, key.modifiers) {
+        // Close modal (Esc or Ctrl-C)
+        (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+            AppEvent::CloseTaskCreation
+        }
+
+        // Submit form (Ctrl+S or Ctrl+Enter)
+        (KeyCode::Char('s') | KeyCode::Enter, KeyModifiers::CONTROL) => {
+            AppEvent::SubmitTaskCreation
+        }
+
+        // Toggle markdown preview (Ctrl+P)
+        (KeyCode::Char('p'), KeyModifiers::CONTROL) => AppEvent::TaskFormTogglePreview,
+
+        // Clear current field (Ctrl+U)
+        (KeyCode::Char('u'), KeyModifiers::CONTROL) => AppEvent::ClearFilters,
+
+        // Show help (F1 or ?)
+        (KeyCode::F(1), _) => AppEvent::Help,
+
+        // Field navigation
+        (KeyCode::Tab, KeyModifiers::SHIFT) => AppEvent::TaskFormPrevField,
+        (KeyCode::Tab, KeyModifiers::NONE) => AppEvent::TaskFormNextField,
+
+        // Navigation keys (for dropdowns and text areas)
+        (KeyCode::Up, _) => AppEvent::Up,
+        (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => AppEvent::Down,
+        (KeyCode::Left, _) => AppEvent::Left,
+        (KeyCode::Right, _) => AppEvent::Right,
+        (KeyCode::Home, _) | (KeyCode::Char('a'), KeyModifiers::CONTROL) => AppEvent::Home,
+        (KeyCode::End, _) | (KeyCode::Char('e'), KeyModifiers::CONTROL) => AppEvent::End,
+
+        // Text editing
+        (KeyCode::Backspace, _) => AppEvent::Backspace,
+        (KeyCode::Delete, _) => AppEvent::Delete,
+        (KeyCode::Enter, KeyModifiers::NONE) => AppEvent::Select, // For selecting in dropdowns
+
+        // Character input
+        (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => AppEvent::CharInput(c),
+
+        _ => AppEvent::None,
+    }
+}
+
 /// Convert key event to application event
 fn handle_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
@@ -354,6 +431,7 @@ fn handle_key_event(key: KeyEvent) -> AppEvent {
         // Actions
         (KeyCode::Char(' '), KeyModifiers::NONE) => AppEvent::Select,
         (KeyCode::Char('e'), KeyModifiers::NONE) => AppEvent::OpenEditor,
+        (KeyCode::Char('a' | 'n'), KeyModifiers::NONE) => AppEvent::OpenTaskCreation,
         (KeyCode::Char('/'), KeyModifiers::NONE) => AppEvent::Search,
         (KeyCode::Char('f'), KeyModifiers::NONE) => AppEvent::OpenFilter,
         (KeyCode::Char('F'), KeyModifiers::SHIFT) => AppEvent::LabelFilter,

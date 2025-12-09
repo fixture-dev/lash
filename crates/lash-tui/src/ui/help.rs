@@ -12,6 +12,16 @@ use crate::state::AppState;
 
 /// Render help overlay
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    // Show different help content based on context
+    if state.is_task_creation_modal_open() {
+        render_task_creation_help(frame, area, state);
+    } else {
+        render_main_help(frame, area, state);
+    }
+}
+
+/// Render help for the main TUI view
+fn render_main_help(frame: &mut Frame, area: Rect, state: &AppState) {
     // Create centered rect
     let popup_area = centered_rect(60, 70, area);
 
@@ -55,6 +65,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         )]),
         Line::from("  Space          Toggle task status"),
         Line::from("  e              Open file in $EDITOR"),
+        Line::from("  a or n         Create new task"),
         Line::from("  /              Search"),
         Line::from("  f              Open label filter selector"),
         Line::from("  F              Toggle Files/Labels view"),
@@ -78,6 +89,91 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         Line::from(""),
         Line::from(vec![Span::styled(
             "Press ? or Esc to close this help",
+            Style::default().fg(Color::DarkGray),
+        )]),
+    ];
+
+    let paragraph = Paragraph::new(help_text)
+        .block(block)
+        .alignment(Alignment::Left);
+
+    frame.render_widget(paragraph, popup_area);
+}
+
+/// Render help for the task creation modal
+fn render_task_creation_help(frame: &mut Frame, area: Rect, state: &AppState) {
+    // Create centered rect
+    let popup_area = centered_rect(65, 75, area);
+
+    // Clear the area
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .title(" Task Creation Help ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black).fg(Color::White));
+
+    let help_text = vec![
+        Line::from(vec![Span::styled(
+            "Create New Task - Keyboard Shortcuts",
+            Style::default()
+                .fg(state.theme.info_color())
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Form Navigation:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  Tab            Next field"),
+        Line::from("  Shift+Tab      Previous field"),
+        Line::from("  Ctrl+S         Submit form"),
+        Line::from("  Ctrl+Enter     Submit form"),
+        Line::from("  Esc            Cancel / Close modal"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Text Input:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  ← / →          Move cursor left/right"),
+        Line::from("  Home / Ctrl+A  Go to beginning of line"),
+        Line::from("  End / Ctrl+E   Go to end of line"),
+        Line::from("  Ctrl+U         Clear current field"),
+        Line::from("  Backspace      Delete character before cursor"),
+        Line::from("  Delete         Delete character at cursor"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Parent Selector:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  ↑ / ↓          Navigate through tasks"),
+        Line::from("  Enter          Select highlighted task"),
+        Line::from("  Ctrl+U         Clear selection (top-level)"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Labels Field:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  Enter          Add typed label as chip"),
+        Line::from("  ,              Add typed label as chip"),
+        Line::from("  Backspace      Delete last chip (when input empty)"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Status Field:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  ← / →          Cycle through status options"),
+        Line::from("  o / d / w / b  Quick select (Open/Done/Waived/Blocked)"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Agent Note (Multi-line):",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  ↑ / ↓          Move cursor up/down"),
+        Line::from("  Enter          Insert new line"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Press F1 or Esc to close this help",
             Style::default().fg(Color::DarkGray),
         )]),
     ];

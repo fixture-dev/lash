@@ -10,6 +10,7 @@ mod logo;
 mod nav_pane;
 mod search_modal;
 mod status_bar;
+mod task_creation_modal;
 mod task_detail;
 mod theme_selector;
 mod themes;
@@ -106,5 +107,10 @@ pub fn render(frame: &mut Frame, state: &AppState, conn: &Connection) {
     // Render confirm linked file complete modal overlay if active
     if state.confirm_linked_file_complete_modal_state.is_some() {
         confirm_linked_file_complete_modal::render(frame, frame.area(), state);
+    }
+
+    // Render task creation modal overlay if active
+    if state.task_creation_modal_state.is_some() {
+        task_creation_modal::render(frame, frame.area(), state);
     }
 }

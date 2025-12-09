@@ -1,0 +1,589 @@
+//! Add command implementation
+//!
+//! The `lash add` command creates a new task in a Lash markdown file.
+
+use anyhow::{Context as AnyhowContext, Result};
+use clap::Args;
+use lash_core::creation::service::TaskCreationService;
+use lash_types::creation::{
+    FileTarget, InsertPosition, ParentRef, TaskCreationRequest, TaskCreationRequestBuilder,
+};
+use lash_types::status::TaskStatus;
+use std::path::PathBuf;
+
+use crate::utils::file_discovery::find_project_root;
+
+/// Arguments for the add command
+#[derive(Args, Debug, Clone)]
+pub struct AddArgs {
+    /// The task title (required)
+    #[arg(required = true)]
+    pub title: String,
+
+    /// Target file path (creates if doesn't exist)
+    #[arg(short, long)]
+    pub file: Option<PathBuf>,
+
+    /// Title for new file header (only used when creating new file)
+    #[arg(long)]
+    pub file_title: Option<String>,
+
+    /// Description for new file's ## Description section
+    #[arg(long)]
+    pub file_description: Option<String>,
+
+    /// Parent task ID
+    #[arg(short, long)]
+    pub parent: Option<String>,
+
+    /// Insert after this task ID
+    #[arg(long)]
+    pub after: Option<String>,
+
+    /// Insert before this task ID
+    #[arg(long)]
+    pub before: Option<String>,
+
+    /// Labels (comma-separated, repeatable: -l backend -l urgent)
+    #[arg(short, long, value_delimiter = ',')]
+    pub label: Vec<String>,
+
+    /// Task owner
+    #[arg(short, long)]
+    pub owner: Option<String>,
+
+    /// Time estimate (e.g., 30m, 2h, 1d, 2w)
+    #[arg(short, long)]
+    pub estimate: Option<String>,
+
+    /// Initial status (open, done, waived, blocked)
+    #[arg(long, default_value = "open")]
+    pub status: String,
+
+    /// Explicit task ID
+    #[arg(long)]
+    pub id: Option<String>,
+
+    /// Dependencies (comma-separated, repeatable)
+    #[arg(long, value_delimiter = ',')]
+    pub depends_on: Vec<String>,
+
+    /// Agent note text
+    #[arg(long)]
+    pub agent_note: Option<String>,
+
+    /// Output format (text, json)
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Validate without creating
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Interactive mode (prompt for missing fields)
+    #[arg(short, long)]
+    pub interactive: bool,
+}
+
+/// Execute the add command
+///
+/// # Arguments
+///
+/// * `args` - Add command arguments
+///
+/// # Returns
+///
+/// Exit code: 0 (success), 1 (validation error), 3 (creation error)
+pub fn execute(args: &AddArgs) -> Result<i32> {
+    // 1. Find project root
+    let project_root = {
+        let cwd = std::env::current_dir().context("Failed to get current directory")?;
+        find_project_root(&cwd)
+    };
+
+    tracing::info!(
+        project_root = %project_root.display(),
+        title = %args.title,
+        "Starting task creation"
+    );
+
+    // 2. Build TaskCreationRequest from args
+    let request = build_request(args, &project_root)?;
+
+    // 3. Handle dry-run mode
+    if args.dry_run {
+        return handle_dry_run(&request, args);
+    }
+
+    // 4. Create service and execute
+    let config = lash_types::config::LashConfig::from_root(&project_root)
+        .unwrap_or_else(|_| lash_types::config::LashConfig::default());
+    let service = TaskCreationService::new(config);
+
+    match service.create_task(&request) {
+        Ok(result) => {
+            output_success(args, &result)?;
+            Ok(0)
+        }
+        Err(errors) => {
+            output_errors(&errors, &args.format)?;
+            Ok(1)
+        }
+    }
+}
+
+/// Build a `TaskCreationRequest` from command-line arguments
+fn build_request(args: &AddArgs, project_root: &std::path::Path) -> Result<TaskCreationRequest> {
+    let mut builder = TaskCreationRequestBuilder::new(&args.title);
+
+    // File target
+    if let Some(ref path) = args.file {
+        let abs_path = if path.is_absolute() {
+            path.clone()
+        } else {
+            project_root.join(path)
+        };
+
+        if abs_path.exists() {
+            builder = builder.file_path(abs_path);
+        } else {
+            builder = builder.new_file(
+                abs_path,
+                args.file_title.clone(),
+                args.file_description.clone(),
+            );
+        }
+    }
+
+    // Parent
+    if let Some(ref parent_id) = args.parent {
+        builder = builder.parent_id(parent_id);
+    }
+
+    // Position
+    if let Some(ref task_id) = args.after {
+        builder = builder.after(task_id);
+    } else if let Some(ref task_id) = args.before {
+        builder = builder.before(task_id);
+    }
+
+    // Labels
+    for label in &args.label {
+        builder = builder.label(label);
+    }
+
+    // Other fields
+    if let Some(ref owner) = args.owner {
+        builder = builder.owner(owner);
+    }
+    if let Some(ref estimate) = args.estimate {
+        builder = builder.estimate(estimate);
+    }
+    if let Some(ref id) = args.id {
+        builder = builder.id(id);
+    }
+    for dep in &args.depends_on {
+        builder = builder.depends_on(dep);
+    }
+    if let Some(ref note) = args.agent_note {
+        builder = builder.agent_note(note);
+    }
+
+    // Status
+    let status = parse_status(&args.status)?;
+    builder = builder.status(status);
+
+    Ok(builder.build())
+}
+
+/// Parse a status string into a `TaskStatus`
+fn parse_status(s: &str) -> Result<TaskStatus> {
+    match s.to_lowercase().as_str() {
+        "open" | "[ ]" => Ok(TaskStatus::Open),
+        "done" | "[x]" => Ok(TaskStatus::Done),
+        "waived" | "[-]" => Ok(TaskStatus::Waived),
+        "blocked" | "[!]" => Ok(TaskStatus::Blocked),
+        _ => Err(anyhow::anyhow!("invalid status: {s}")),
+    }
+}
+
+/// Output success result
+fn output_success(args: &AddArgs, result: &lash_types::creation::TaskCreationResult) -> Result<()> {
+    if args.format == "json" {
+        // Output JSON
+        let json = serde_json::json!({
+            "success": true,
+            "task_id": result.task_id,
+            "file_path": result.file_path,
+            "line_number": result.line_number,
+            "is_new_file": result.is_new_file,
+        });
+        println!("{}", serde_json::to_string_pretty(&json)?);
+    } else {
+        // Text output
+        if result.is_new_file {
+            println!(
+                "Created task '{}' in new file {}",
+                result.task_id,
+                result.file_path.display()
+            );
+        } else {
+            println!(
+                "Created task '{}' at {}:{}",
+                result.task_id,
+                result.file_path.display(),
+                result.line_number
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Output errors
+fn output_errors(
+    errors: &[lash_types::creation_errors::TaskCreationError],
+    format: &str,
+) -> Result<()> {
+    if format == "json" {
+        let json = serde_json::json!({
+            "success": false,
+            "errors": errors.iter().map(|e| {
+                serde_json::json!({
+                    "code": e.error_code(),
+                    "message": e.message(),
+                    "help": e.help(),
+                })
+            }).collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&json)?);
+    } else {
+        for err in errors {
+            eprintln!("Error [{}]: {}", err.error_code(), err.message());
+            eprintln!("  Help: {}", err.help());
+        }
+    }
+    Ok(())
+}
+
+/// Handle dry-run mode
+#[allow(clippy::unnecessary_wraps)]
+fn handle_dry_run(request: &TaskCreationRequest, _args: &AddArgs) -> Result<i32> {
+    // In dry-run mode, we just validate and show what would be created
+    println!("Validation passed. Task would be created:");
+    println!("  Title: {}", request.title);
+
+    // File target
+    match &request.file_target {
+        FileTarget::Current => println!("  File: <current>"),
+        FileTarget::Path(path) => println!("  File: {}", path.display()),
+        FileTarget::NewFile { path, title, .. } => {
+            println!("  File: {} (new)", path.display());
+            if let Some(t) = title {
+                println!("  File Title: {t}");
+            }
+        }
+        FileTarget::ContainingTask(ref_) => println!("  File: containing {ref_}"),
+    }
+
+    // Parent
+    match &request.parent {
+        ParentRef::None => println!("  Parent: <none>"),
+        ParentRef::Id(id) => println!("  Parent: {id}"),
+        ParentRef::FullRef(ref_) => println!("  Parent: {ref_}"),
+        ParentRef::AppendAtDepth(depth) => println!("  Parent: at depth {depth}"),
+    }
+
+    // Position
+    match &request.position {
+        InsertPosition::Append => println!("  Position: append"),
+        InsertPosition::AtIndex(idx) => println!("  Position: at index {idx}"),
+        InsertPosition::Before(id) => println!("  Position: before {id}"),
+        InsertPosition::After(id) => println!("  Position: after {id}"),
+    }
+
+    // Status
+    if let Some(ref status) = request.status {
+        println!("  Status: {status:?}");
+    }
+
+    // ID
+    if let Some(ref id) = request.id {
+        println!("  ID: {id}");
+    }
+
+    // Labels
+    if !request.labels.is_empty() {
+        println!("  Labels: {}", request.labels.join(", "));
+    }
+
+    // Owner
+    if let Some(ref owner) = request.owner {
+        println!("  Owner: {owner}");
+    }
+
+    // Estimate
+    if let Some(ref estimate) = request.estimate {
+        println!("  Estimate: {estimate}");
+    }
+
+    // Dependencies
+    if !request.depends_on.is_empty() {
+        println!("  Depends on: {}", request.depends_on.join(", "));
+    }
+
+    // Agent note
+    if let Some(ref note) = request.agent_note {
+        println!("  Agent note: {note}");
+    }
+
+    Ok(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_status_open() {
+        assert_eq!(parse_status("open").unwrap(), TaskStatus::Open);
+        assert_eq!(parse_status("[ ]").unwrap(), TaskStatus::Open);
+    }
+
+    #[test]
+    fn test_parse_status_done() {
+        assert_eq!(parse_status("done").unwrap(), TaskStatus::Done);
+        assert_eq!(parse_status("[x]").unwrap(), TaskStatus::Done);
+    }
+
+    #[test]
+    fn test_parse_status_waived() {
+        assert_eq!(parse_status("waived").unwrap(), TaskStatus::Waived);
+        assert_eq!(parse_status("[-]").unwrap(), TaskStatus::Waived);
+    }
+
+    #[test]
+    fn test_parse_status_blocked() {
+        assert_eq!(parse_status("blocked").unwrap(), TaskStatus::Blocked);
+        assert_eq!(parse_status("[!]").unwrap(), TaskStatus::Blocked);
+    }
+
+    #[test]
+    fn test_parse_status_invalid() {
+        assert!(parse_status("invalid").is_err());
+    }
+
+    #[test]
+    fn test_build_request_basic() {
+        let args = AddArgs {
+            title: "Test task".to_string(),
+            file: None,
+            file_title: None,
+            file_description: None,
+            parent: None,
+            after: None,
+            before: None,
+            label: vec![],
+            owner: None,
+            estimate: None,
+            status: "open".to_string(),
+            id: None,
+            depends_on: vec![],
+            agent_note: None,
+            format: "text".to_string(),
+            dry_run: false,
+            interactive: false,
+        };
+
+        let project_root = PathBuf::from("/tmp");
+        let request = build_request(&args, &project_root).unwrap();
+
+        assert_eq!(request.title, "Test task");
+        assert_eq!(request.parent, ParentRef::None);
+        assert_eq!(request.position, InsertPosition::Append);
+        assert_eq!(request.status, Some(TaskStatus::Open));
+    }
+
+    #[test]
+    fn test_build_request_with_file() {
+        let args = AddArgs {
+            title: "Test task".to_string(),
+            file: Some(PathBuf::from("test.md")),
+            file_title: None,
+            file_description: None,
+            parent: None,
+            after: None,
+            before: None,
+            label: vec![],
+            owner: None,
+            estimate: None,
+            status: "open".to_string(),
+            id: None,
+            depends_on: vec![],
+            agent_note: None,
+            format: "text".to_string(),
+            dry_run: false,
+            interactive: false,
+        };
+
+        let project_root = PathBuf::from("/tmp");
+        let request = build_request(&args, &project_root).unwrap();
+
+        // Since test.md doesn't exist, it should be NewFile
+        match request.file_target {
+            FileTarget::NewFile { path, .. } => {
+                assert_eq!(path, PathBuf::from("/tmp/test.md"));
+            }
+            _ => panic!("Expected NewFile target"),
+        }
+    }
+
+    #[test]
+    fn test_build_request_with_parent() {
+        let args = AddArgs {
+            title: "Child task".to_string(),
+            file: None,
+            file_title: None,
+            file_description: None,
+            parent: Some("parent-task".to_string()),
+            after: None,
+            before: None,
+            label: vec![],
+            owner: None,
+            estimate: None,
+            status: "open".to_string(),
+            id: None,
+            depends_on: vec![],
+            agent_note: None,
+            format: "text".to_string(),
+            dry_run: false,
+            interactive: false,
+        };
+
+        let project_root = PathBuf::from("/tmp");
+        let request = build_request(&args, &project_root).unwrap();
+
+        assert_eq!(request.parent, ParentRef::Id("parent-task".to_string()));
+    }
+
+    #[test]
+    fn test_build_request_with_labels() {
+        let args = AddArgs {
+            title: "Test task".to_string(),
+            file: None,
+            file_title: None,
+            file_description: None,
+            parent: None,
+            after: None,
+            before: None,
+            label: vec!["backend".to_string(), "urgent".to_string()],
+            owner: None,
+            estimate: None,
+            status: "open".to_string(),
+            id: None,
+            depends_on: vec![],
+            agent_note: None,
+            format: "text".to_string(),
+            dry_run: false,
+            interactive: false,
+        };
+
+        let project_root = PathBuf::from("/tmp");
+        let request = build_request(&args, &project_root).unwrap();
+
+        assert_eq!(request.labels, vec!["backend", "urgent"]);
+    }
+
+    #[test]
+    fn test_build_request_with_position_after() {
+        let args = AddArgs {
+            title: "Test task".to_string(),
+            file: None,
+            file_title: None,
+            file_description: None,
+            parent: None,
+            after: Some("task-1".to_string()),
+            before: None,
+            label: vec![],
+            owner: None,
+            estimate: None,
+            status: "open".to_string(),
+            id: None,
+            depends_on: vec![],
+            agent_note: None,
+            format: "text".to_string(),
+            dry_run: false,
+            interactive: false,
+        };
+
+        let project_root = PathBuf::from("/tmp");
+        let request = build_request(&args, &project_root).unwrap();
+
+        assert_eq!(
+            request.position,
+            InsertPosition::After("task-1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_build_request_with_position_before() {
+        let args = AddArgs {
+            title: "Test task".to_string(),
+            file: None,
+            file_title: None,
+            file_description: None,
+            parent: None,
+            after: None,
+            before: Some("task-1".to_string()),
+            label: vec![],
+            owner: None,
+            estimate: None,
+            status: "open".to_string(),
+            id: None,
+            depends_on: vec![],
+            agent_note: None,
+            format: "text".to_string(),
+            dry_run: false,
+            interactive: false,
+        };
+
+        let project_root = PathBuf::from("/tmp");
+        let request = build_request(&args, &project_root).unwrap();
+
+        assert_eq!(
+            request.position,
+            InsertPosition::Before("task-1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_build_request_with_metadata() {
+        let args = AddArgs {
+            title: "Test task".to_string(),
+            file: None,
+            file_title: None,
+            file_description: None,
+            parent: None,
+            after: None,
+            before: None,
+            label: vec![],
+            owner: Some("alice".to_string()),
+            estimate: Some("2h".to_string()),
+            status: "open".to_string(),
+            id: Some("custom-id".to_string()),
+            depends_on: vec!["dep1".to_string(), "dep2".to_string()],
+            agent_note: Some("Important note".to_string()),
+            format: "text".to_string(),
+            dry_run: false,
+            interactive: false,
+        };
+
+        let project_root = PathBuf::from("/tmp");
+        let request = build_request(&args, &project_root).unwrap();
+
+        assert_eq!(request.owner, Some("alice".to_string()));
+        assert_eq!(request.estimate, Some("2h".to_string()));
+        assert_eq!(request.id, Some("custom-id".to_string()));
+        assert_eq!(request.depends_on, vec!["dep1", "dep2"]);
+        assert_eq!(request.agent_note, Some("Important note".to_string()));
+    }
+}

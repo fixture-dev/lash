@@ -117,6 +117,7 @@ pub struct LashCli {
 }
 
 #[derive(Subcommand, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum Commands {
     /// Validate Lash task files for errors
     #[command(alias = "check")]
@@ -361,6 +362,77 @@ pub enum Commands {
     Config {
         #[command(subcommand)]
         command: ConfigCommand,
+    },
+
+    /// Create a new task
+    Add {
+        /// The task title (required)
+        #[arg(required = true)]
+        title: String,
+
+        /// Target file path (creates if doesn't exist)
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Title for new file header (only used when creating new file)
+        #[arg(long)]
+        file_title: Option<String>,
+
+        /// Description for new file's ## Description section
+        #[arg(long)]
+        file_description: Option<String>,
+
+        /// Parent task ID
+        #[arg(short, long)]
+        parent: Option<String>,
+
+        /// Insert after this task ID
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert before this task ID
+        #[arg(long)]
+        before: Option<String>,
+
+        /// Labels (comma-separated, repeatable: -l backend -l urgent)
+        #[arg(short, long, value_delimiter = ',')]
+        label: Vec<String>,
+
+        /// Task owner
+        #[arg(short, long)]
+        owner: Option<String>,
+
+        /// Time estimate (e.g., 30m, 2h, 1d, 2w)
+        #[arg(short, long)]
+        estimate: Option<String>,
+
+        /// Initial status (open, done, waived, blocked)
+        #[arg(long, default_value = "open")]
+        status: String,
+
+        /// Explicit task ID
+        #[arg(long)]
+        id: Option<String>,
+
+        /// Dependencies (comma-separated, repeatable)
+        #[arg(long, value_delimiter = ',')]
+        depends_on: Vec<String>,
+
+        /// Agent note text
+        #[arg(long)]
+        agent_note: Option<String>,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Validate without creating
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Interactive mode (prompt for missing fields)
+        #[arg(short, long)]
+        interactive: bool,
     },
 }
 
@@ -739,5 +811,80 @@ mod tests {
         assert!(cli.tree_view);
         assert_eq!(cli.max_depth, Some(7));
         assert!(cli.ascii);
+    }
+
+    #[test]
+    fn test_cli_parse_add_basic() {
+        let cli = LashCli::try_parse_from(["lash", "add", "Test task"]).unwrap();
+        if let Commands::Add { title, .. } = cli.command {
+            assert_eq!(title, "Test task");
+        } else {
+            panic!("Expected Add command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_add_with_options() {
+        let cli = LashCli::try_parse_from([
+            "lash",
+            "add",
+            "Test task",
+            "--file",
+            "tasks.md",
+            "--label",
+            "backend",
+            "--owner",
+            "alice",
+        ])
+        .unwrap();
+        if let Commands::Add {
+            title,
+            file,
+            label,
+            owner,
+            ..
+        } = cli.command
+        {
+            assert_eq!(title, "Test task");
+            assert_eq!(file, Some(PathBuf::from("tasks.md")));
+            assert_eq!(label, vec!["backend"]);
+            assert_eq!(owner, Some("alice".to_string()));
+        } else {
+            panic!("Expected Add command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_add_with_parent() {
+        let cli = LashCli::try_parse_from(["lash", "add", "Child task", "--parent", "parent-id"])
+            .unwrap();
+        if let Commands::Add { title, parent, .. } = cli.command {
+            assert_eq!(title, "Child task");
+            assert_eq!(parent, Some("parent-id".to_string()));
+        } else {
+            panic!("Expected Add command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_add_with_position() {
+        let cli = LashCli::try_parse_from(["lash", "add", "Task", "--after", "task-1"]).unwrap();
+        if let Commands::Add { title, after, .. } = cli.command {
+            assert_eq!(title, "Task");
+            assert_eq!(after, Some("task-1".to_string()));
+        } else {
+            panic!("Expected Add command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_add_dry_run() {
+        let cli = LashCli::try_parse_from(["lash", "add", "Task", "--dry-run"]).unwrap();
+        if let Commands::Add { title, dry_run, .. } = cli.command {
+            assert_eq!(title, "Task");
+            assert!(dry_run);
+        } else {
+            panic!("Expected Add command");
+        }
     }
 }
