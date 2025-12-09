@@ -3,11 +3,18 @@
 #![allow(dead_code)] // Some fields/variants reserved for future features
 
 use crate::colors::Theme;
+use crate::components::{
+    ChipInputState, RadioOption, RadioSelectState, TextAreaState, TextInputState, TreeSelectItem,
+    TreeSelectState,
+};
 use lash_db::repository::dependencies::DependencyRecord;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::labels::LabelStats;
 use lash_db::repository::tasks::TaskRecord;
+use lash_types::creation::TaskCreationRequest;
 use lash_types::tree::{TreeChars, TreeNode};
+use lash_types::TaskStatus;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Represents a directory or file node in the file tree
@@ -188,6 +195,9 @@ pub struct AppState {
 
     /// Status message to display (transient feedback)
     pub status_message: Option<StatusMessage>,
+
+    /// Task creation modal state (None = closed, Some = open)
+    pub task_creation_modal_state: Option<TaskCreationModalState>,
 }
 
 /// A transient status message displayed in the UI
@@ -415,6 +425,316 @@ pub struct SelectedTaskNode {
     pub path: Vec<usize>,
 }
 
+/// Which field is currently focused in the task creation form
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TaskFormField {
+    /// Title input
+    Title,
+    /// Parent task selector
+    Parent,
+    /// Labels input
+    Labels,
+    /// Status selector
+    Status,
+    /// Owner input
+    Owner,
+    /// Estimate input
+    Estimate,
+    /// Agent note input
+    AgentNote,
+}
+
+/// State for the task creation modal
+#[derive(Debug, Clone)]
+pub struct TaskCreationModalState {
+    /// Currently focused field
+    pub focused_field: TaskFormField,
+    /// Title input
+    pub title: TextInputState,
+    /// Parent task selector
+    pub parent_selector: TreeSelectState,
+    /// Labels input
+    pub labels: ChipInputState,
+    /// Status selector
+    pub status: RadioSelectState<TaskStatus>,
+    /// Owner input
+    pub owner: TextInputState,
+    /// Estimate input
+    pub estimate: TextInputState,
+    /// Agent note input
+    pub agent_note: TextAreaState,
+    /// Validation errors by field
+    pub errors: HashMap<TaskFormField, String>,
+    /// Target file path (set from context when opening modal)
+    pub target_file: PathBuf,
+    /// Show markdown preview panel
+    pub show_preview: bool,
+}
+
+impl TaskCreationModalState {
+    /// Create new modal state with context
+    #[must_use]
+    pub fn new(target_file: PathBuf, available_tasks: Vec<TreeSelectItem>) -> Self {
+        // Create status radio options
+        let status_options = vec![
+            RadioOption {
+                label: "Open".to_string(),
+                value: TaskStatus::Open,
+                key: 'o',
+            },
+            RadioOption {
+                label: "Done".to_string(),
+                value: TaskStatus::Done,
+                key: 'd',
+            },
+            RadioOption {
+                label: "Waived".to_string(),
+                value: TaskStatus::Waived,
+                key: 'w',
+            },
+            RadioOption {
+                label: "Blocked".to_string(),
+                value: TaskStatus::Blocked,
+                key: 'b',
+            },
+        ];
+
+        Self {
+            focused_field: TaskFormField::Title,
+            title: TextInputState::with_placeholder("Enter task title...").with_max_length(200),
+            parent_selector: TreeSelectState::new(available_tasks),
+            labels: ChipInputState::new(),
+            status: RadioSelectState::new(status_options),
+            owner: TextInputState::with_placeholder("Optional"),
+            estimate: TextInputState::with_placeholder("e.g., 2h, 1d"),
+            agent_note: TextAreaState::new(),
+            errors: HashMap::new(),
+            target_file,
+            show_preview: false,
+        }
+    }
+
+    /// Navigate to next field (Tab)
+    pub fn next_field(&mut self) {
+        self.focused_field = match self.focused_field {
+            TaskFormField::Title => TaskFormField::Parent,
+            TaskFormField::Parent => TaskFormField::Labels,
+            TaskFormField::Labels => TaskFormField::Status,
+            TaskFormField::Status => TaskFormField::Owner,
+            TaskFormField::Owner => TaskFormField::Estimate,
+            TaskFormField::Estimate => TaskFormField::AgentNote,
+            TaskFormField::AgentNote => TaskFormField::Title,
+        };
+    }
+
+    /// Navigate to previous field (Shift+Tab)
+    pub fn prev_field(&mut self) {
+        self.focused_field = match self.focused_field {
+            TaskFormField::Title => TaskFormField::AgentNote,
+            TaskFormField::Parent => TaskFormField::Title,
+            TaskFormField::Labels => TaskFormField::Parent,
+            TaskFormField::Status => TaskFormField::Labels,
+            TaskFormField::Owner => TaskFormField::Status,
+            TaskFormField::Estimate => TaskFormField::Owner,
+            TaskFormField::AgentNote => TaskFormField::Estimate,
+        };
+    }
+
+    /// Build `TaskCreationRequest` from current form state
+    #[must_use]
+    pub fn to_request(&self) -> TaskCreationRequest {
+        use lash_types::creation::{FileTarget, InsertPosition, ParentRef};
+
+        TaskCreationRequest {
+            title: self.title.value().to_string(),
+            file_target: FileTarget::Path(self.target_file.clone()),
+            parent: if let Some(parent_id) = self
+                .parent_selector
+                .selected_item
+                .as_ref()
+                .map(|item| item.id.clone())
+            {
+                ParentRef::Id(parent_id)
+            } else {
+                ParentRef::None
+            },
+            position: InsertPosition::Append,
+            status: Some(self.status.selected_value()),
+            id: None, // Auto-generated
+            labels: self.labels.chips.clone(),
+            owner: if self.owner.value().is_empty() {
+                None
+            } else {
+                Some(self.owner.value().to_string())
+            },
+            estimate: if self.estimate.value().is_empty() {
+                None
+            } else {
+                Some(self.estimate.value().to_string())
+            },
+            depends_on: Vec::new(), // TODO: implement dependencies picker
+            agent_note: if self.agent_note.lines.is_empty() {
+                None
+            } else {
+                Some(self.agent_note.get_text())
+            },
+        }
+    }
+
+    /// Toggle markdown preview panel
+    pub fn toggle_preview(&mut self) {
+        self.show_preview = !self.show_preview;
+    }
+
+    /// Check if form has blocking errors
+    #[must_use]
+    pub fn can_submit(&self) -> bool {
+        // Title is required and must not be empty
+        if self.title.value().trim().is_empty() {
+            return false;
+        }
+        // No blocking errors present
+        !self.errors.values().any(|e| e.starts_with("Error:"))
+    }
+
+    /// Validate all form fields and update errors map
+    pub fn validate(&mut self) {
+        self.errors.clear();
+
+        // Validate title (required)
+        let title = self.title.value().trim();
+        if title.is_empty() {
+            self.errors
+                .insert(TaskFormField::Title, "Error: Title is required".to_string());
+        } else if title.len() > 200 {
+            self.errors.insert(
+                TaskFormField::Title,
+                format!("Warning: Title is very long ({}/200 chars)", title.len()),
+            );
+        }
+
+        // Validate labels (format check)
+        for label in &self.labels.chips {
+            if label.contains(' ') {
+                self.errors.insert(
+                    TaskFormField::Labels,
+                    "Error: Labels cannot contain spaces".to_string(),
+                );
+                break;
+            }
+            if !label
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            {
+                self.errors.insert(
+                    TaskFormField::Labels,
+                    "Error: Labels can only contain letters, numbers, hyphens, and underscores"
+                        .to_string(),
+                );
+                break;
+            }
+        }
+
+        // Validate estimate format
+        let estimate = self.estimate.value().trim();
+        if !estimate.is_empty() && !Self::is_valid_estimate(estimate) {
+            self.errors.insert(
+                TaskFormField::Estimate,
+                "Warning: Invalid format (use 2h, 1d, 30m, etc.)".to_string(),
+            );
+        }
+    }
+
+    /// Check if estimate format is valid
+    fn is_valid_estimate(estimate: &str) -> bool {
+        // Match patterns like: 2h, 1d, 30m, 1.5h, 2d 4h, etc.
+        let estimate = estimate.trim().to_lowercase();
+        if estimate.is_empty() {
+            return true;
+        }
+
+        // Simple regex-like pattern matching
+        let valid_units = ['m', 'h', 'd', 'w'];
+        let parts: Vec<&str> = estimate.split_whitespace().collect();
+
+        for part in parts {
+            if part.is_empty() {
+                continue;
+            }
+            let last_char = part.chars().last().unwrap_or(' ');
+            if !valid_units.contains(&last_char) {
+                return false;
+            }
+            let num_part = &part[..part.len() - 1];
+            if num_part.parse::<f32>().is_err() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Get field-specific error message
+    #[must_use]
+    pub fn get_field_error(&self, field: TaskFormField) -> Option<&str> {
+        self.errors.get(&field).map(String::as_str)
+    }
+
+    /// Check if a field has an error
+    #[must_use]
+    pub fn has_error(&self, field: TaskFormField) -> bool {
+        self.errors.contains_key(&field)
+    }
+
+    /// Check if a field has a blocking error
+    #[must_use]
+    pub fn has_blocking_error(&self, field: TaskFormField) -> bool {
+        self.errors
+            .get(&field)
+            .is_some_and(|e| e.starts_with("Error:"))
+    }
+
+    /// Check if a field is valid (has content if required, no blocking errors)
+    #[must_use]
+    pub fn is_field_valid(&self, field: TaskFormField) -> bool {
+        match field {
+            TaskFormField::Title => {
+                !self.title.value().trim().is_empty() && !self.has_blocking_error(field)
+            }
+            _ => !self.has_blocking_error(field),
+        }
+    }
+}
+
+/// Helper methods for accessing component state
+impl TaskCreationModalState {
+    /// Get the selected parent label for display
+    #[must_use]
+    pub fn selected_label(&self) -> Option<String> {
+        self.parent_selector
+            .selected_item
+            .as_ref()
+            .map(|item| item.title.clone())
+    }
+
+    /// Get the selected parent value (task ID)
+    #[must_use]
+    pub fn selected_value(&self) -> Option<String> {
+        self.parent_selector
+            .selected_item
+            .as_ref()
+            .map(|item| item.id.clone())
+    }
+}
+
+/// Helper methods for `RadioSelectState`
+impl<T: Clone> RadioSelectState<T> {
+    /// Get the selected value
+    #[must_use]
+    pub fn selected_value(&self) -> T {
+        self.options[self.selected_index].value.clone()
+    }
+}
+
 impl AppState {
     /// Create new application state with default theme
     ///
@@ -456,6 +776,7 @@ impl AppState {
             confirm_linked_file_complete_modal_state: None,
             project_stats: ProjectStats::default(),
             status_message: None,
+            task_creation_modal_state: None,
         }
     }
 
@@ -1938,10 +2259,246 @@ impl AppState {
         let roots = build_subtree(None, &children_map, default_expanded, max_depth);
         self.task_tree = Some(roots);
     }
+
+    /// Open task creation modal
+    ///
+    /// Opens the task creation modal with the given target file and available tasks
+    /// for parent selection.
+    pub fn open_task_creation_modal(&mut self, target_file: PathBuf, tasks: Vec<TreeSelectItem>) {
+        self.task_creation_modal_state = Some(TaskCreationModalState::new(target_file, tasks));
+    }
+
+    /// Close task creation modal
+    pub fn close_task_creation_modal(&mut self) {
+        self.task_creation_modal_state = None;
+    }
+
+    /// Check if task creation modal is open
+    #[must_use]
+    pub fn is_task_creation_modal_open(&self) -> bool {
+        self.task_creation_modal_state.is_some()
+    }
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// Create a test modal state with minimal setup
+    fn create_test_modal() -> TaskCreationModalState {
+        TaskCreationModalState::new(PathBuf::from("test.md"), vec![])
+    }
+
+    /// Create a test modal with a valid title already set
+    fn create_test_modal_with_title(title: &str) -> TaskCreationModalState {
+        let mut modal = create_test_modal();
+        for c in title.chars() {
+            modal.title.input_char(c);
+        }
+        modal
+    }
+
+    mod validation {
+        use super::*;
+
+        #[test]
+        fn validate_title_required() {
+            let mut modal = create_test_modal();
+            modal.title = TextInputState::new();
+            modal.validate();
+
+            assert!(modal.has_error(TaskFormField::Title));
+            assert!(modal.has_blocking_error(TaskFormField::Title));
+            assert_eq!(
+                modal.get_field_error(TaskFormField::Title),
+                Some("Error: Title is required")
+            );
+        }
+
+        #[test]
+        fn validate_title_whitespace_only() {
+            let mut modal = create_test_modal();
+            modal.title = TextInputState::new();
+            modal.title.input_char(' ');
+            modal.title.input_char(' ');
+            modal.validate();
+
+            assert!(modal.has_error(TaskFormField::Title));
+            assert!(modal.has_blocking_error(TaskFormField::Title));
+        }
+
+        #[test]
+        fn validate_title_valid() {
+            let mut modal = create_test_modal();
+            modal.title = TextInputState::new();
+            for c in "My valid title".chars() {
+                modal.title.input_char(c);
+            }
+            modal.validate();
+
+            assert!(!modal.has_error(TaskFormField::Title));
+            assert!(modal.is_field_valid(TaskFormField::Title));
+        }
+
+        #[test]
+        fn validate_title_too_long() {
+            let mut modal = create_test_modal();
+            modal.title = TextInputState::new();
+            // Create a title > 200 chars
+            for _ in 0..210 {
+                modal.title.input_char('a');
+            }
+            modal.validate();
+
+            assert!(modal.has_error(TaskFormField::Title));
+            // Long title is a warning, not blocking
+            assert!(!modal.has_blocking_error(TaskFormField::Title));
+            assert!(modal
+                .get_field_error(TaskFormField::Title)
+                .unwrap()
+                .contains("Warning"));
+        }
+
+        #[test]
+        fn validate_label_with_spaces() {
+            let mut modal = create_test_modal_with_title("Valid title");
+            modal.labels.chips = vec!["invalid label".to_string()];
+            modal.validate();
+
+            assert!(modal.has_error(TaskFormField::Labels));
+            assert!(modal.has_blocking_error(TaskFormField::Labels));
+        }
+
+        #[test]
+        fn validate_label_with_special_chars() {
+            let mut modal = create_test_modal_with_title("Valid title");
+            modal.labels.chips = vec!["label@special".to_string()];
+            modal.validate();
+
+            assert!(modal.has_error(TaskFormField::Labels));
+        }
+
+        #[test]
+        fn validate_label_valid() {
+            let mut modal = create_test_modal_with_title("Valid title");
+            modal.labels.chips = vec![
+                "backend".to_string(),
+                "high-priority".to_string(),
+                "v2_feature".to_string(),
+            ];
+            modal.validate();
+
+            assert!(!modal.has_error(TaskFormField::Labels));
+        }
+
+        #[test]
+        fn validate_estimate_valid_formats() {
+            let valid_estimates = ["2h", "1d", "30m", "1.5h", "2w", "2d 4h"];
+            for estimate in valid_estimates {
+                let mut modal = create_test_modal_with_title("Valid title");
+                modal.estimate = TextInputState::new();
+                for c in estimate.chars() {
+                    modal.estimate.input_char(c);
+                }
+                modal.validate();
+                assert!(
+                    !modal.has_error(TaskFormField::Estimate),
+                    "Expected '{estimate}' to be valid"
+                );
+            }
+        }
+
+        #[test]
+        fn validate_estimate_invalid_formats() {
+            let invalid_estimates = ["2", "hours", "2hours", "abc", "2x"];
+            for estimate in invalid_estimates {
+                let mut modal = create_test_modal_with_title("Valid title");
+                modal.estimate = TextInputState::new();
+                for c in estimate.chars() {
+                    modal.estimate.input_char(c);
+                }
+                modal.validate();
+                assert!(
+                    modal.has_error(TaskFormField::Estimate),
+                    "Expected '{estimate}' to be invalid"
+                );
+                // Estimate errors are warnings, not blocking
+                assert!(!modal.has_blocking_error(TaskFormField::Estimate));
+            }
+        }
+
+        #[test]
+        fn validate_estimate_empty_is_valid() {
+            let mut modal = create_test_modal_with_title("Valid title");
+            modal.estimate = TextInputState::new();
+            modal.validate();
+
+            assert!(!modal.has_error(TaskFormField::Estimate));
+        }
+
+        #[test]
+        fn is_field_valid_title() {
+            let mut modal = create_test_modal_with_title("Valid title");
+            modal.validate();
+
+            assert!(modal.is_field_valid(TaskFormField::Title));
+        }
+
+        #[test]
+        fn is_field_valid_empty_title() {
+            let mut modal = create_test_modal();
+            modal.title = TextInputState::new();
+            modal.validate();
+
+            assert!(!modal.is_field_valid(TaskFormField::Title));
+        }
+    }
+
+    mod estimate_validation {
+        use super::*;
+
+        #[test]
+        fn test_is_valid_estimate_basic_units() {
+            assert!(TaskCreationModalState::is_valid_estimate("2h"));
+            assert!(TaskCreationModalState::is_valid_estimate("1d"));
+            assert!(TaskCreationModalState::is_valid_estimate("30m"));
+            assert!(TaskCreationModalState::is_valid_estimate("1w"));
+        }
+
+        #[test]
+        fn test_is_valid_estimate_decimal() {
+            assert!(TaskCreationModalState::is_valid_estimate("1.5h"));
+            assert!(TaskCreationModalState::is_valid_estimate("0.5d"));
+            assert!(TaskCreationModalState::is_valid_estimate("2.25h"));
+        }
+
+        #[test]
+        fn test_is_valid_estimate_combined() {
+            assert!(TaskCreationModalState::is_valid_estimate("2d 4h"));
+            assert!(TaskCreationModalState::is_valid_estimate("1w 2d"));
+            assert!(TaskCreationModalState::is_valid_estimate("1h 30m"));
+        }
+
+        #[test]
+        fn test_is_valid_estimate_empty() {
+            assert!(TaskCreationModalState::is_valid_estimate(""));
+            assert!(TaskCreationModalState::is_valid_estimate("  "));
+        }
+
+        #[test]
+        fn test_is_valid_estimate_invalid() {
+            assert!(!TaskCreationModalState::is_valid_estimate("2"));
+            assert!(!TaskCreationModalState::is_valid_estimate("hours"));
+            assert!(!TaskCreationModalState::is_valid_estimate("2x"));
+            assert!(!TaskCreationModalState::is_valid_estimate("abc"));
+            assert!(!TaskCreationModalState::is_valid_estimate("2hours"));
+        }
     }
 }

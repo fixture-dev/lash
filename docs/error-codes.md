@@ -326,6 +326,195 @@ Invalid TOML syntax in `.lash/config.toml`
 
 ---
 
+## Creation Errors (E_CREATE_*)
+
+### E_CREATE_EMPTY_TITLE
+
+**Description:** Task title is empty or whitespace-only
+
+**Example:**
+```bash
+lash add ""
+```
+
+**How to fix:** Provide a non-empty title for the task
+
+---
+
+### E_CREATE_TITLE_TOO_LONG
+
+**Description:** Task title exceeds maximum allowed length (default 256 characters)
+
+**Example:**
+```bash
+lash add "Very long title that exceeds the limit..."
+```
+
+**How to fix:** Shorten the title to the maximum allowed characters
+
+---
+
+### E_CREATE_FILE_NOT_FOUND
+
+**Description:** Target file specified with `--file` does not exist and auto-creation is not enabled
+
+**Example:**
+```bash
+lash add "Task" --file nonexistent.md
+```
+
+**How to fix:** Create the file first, or use `--file` which creates automatically if the file doesn't exist
+
+---
+
+### E_CREATE_FILE_NOT_WRITABLE
+
+**Description:** Target file exists but cannot be written to
+
+**Example:**
+Attempting to add a task to a read-only file
+
+**How to fix:** Check file permissions and ensure the file is writable
+
+---
+
+### E_CREATE_FILE_PARSE_FAILED
+
+**Description:** Target file exists but failed to parse as a valid Lash task file
+
+**Example:**
+```bash
+lash add "Task" --file malformed.md
+```
+
+**How to fix:** Run `lash lint <file>` to identify and fix parsing errors
+
+---
+
+### E_CREATE_PARENT_NOT_FOUND
+
+**Description:** Specified parent task ID does not exist in the target file
+
+**Example:**
+```bash
+lash add "Subtask" --parent nonexistent-id
+```
+
+**How to fix:** Ensure the parent task exists, or omit `--parent` for a top-level task
+
+---
+
+### E_CREATE_DEPTH_LIMIT_EXCEEDED
+
+**Description:** Creating the task would exceed the maximum nesting depth
+
+**Example:**
+Adding a subtask to a task already at maximum depth
+
+**How to fix:** Choose a parent task at a shallower depth (default max is 3)
+
+---
+
+### E_CREATE_DUPLICATE_ID
+
+**Description:** Specified task ID is already in use in the target file
+
+**Example:**
+```bash
+lash add "Task" --id existing-id
+```
+
+**How to fix:** Choose a different ID, or omit `--id` for auto-generated ID
+
+---
+
+### E_CREATE_INVALID_ID_FORMAT
+
+**Description:** Task ID format is invalid
+
+**Example:**
+```bash
+lash add "Task" --id "invalid id!"
+```
+
+**How to fix:** Use only alphanumeric characters, hyphens, underscores, and colons
+
+---
+
+### E_CREATE_INVALID_LABEL
+
+**Description:** Label format is invalid
+
+**Example:**
+```bash
+lash add "Task" --label "bad label!"
+```
+
+**How to fix:** Labels must be alphanumeric with hyphens, no spaces or special characters
+
+---
+
+### E_CREATE_INVALID_ESTIMATE
+
+**Description:** Time estimate format is invalid
+
+**Example:**
+```bash
+lash add "Task" --estimate "invalid"
+```
+
+**How to fix:** Use format like `30m`, `2h`, `1d`, `2w`
+
+---
+
+### E_CREATE_DEPENDENCY_NOT_FOUND
+
+**Description:** Specified dependency target does not exist
+
+**Example:**
+```bash
+lash add "Task" --depends-on "path/to/nonexistent.md#task:id"
+```
+
+**How to fix:** Ensure the referenced task exists before adding the dependency
+
+---
+
+### E_CREATE_WOULD_CREATE_CYCLE
+
+**Description:** Creating the task with specified dependencies would create a circular dependency
+
+**Example:**
+Task A depends on B, B depends on A
+
+**How to fix:** Remove the cyclic dependency or restructure the task hierarchy
+
+---
+
+### E_CREATE_INVALID_POSITION
+
+**Description:** Specified insert position is invalid
+
+**Example:**
+```bash
+lash add "Task" --before nonexistent-task
+```
+
+**How to fix:** Use a valid task ID for `--before` or `--after` position
+
+---
+
+### E_CREATE_IO_ERROR
+
+**Description:** I/O error occurred during file operations
+
+**Example:**
+Disk full when trying to write the task
+
+**How to fix:** Check disk space and file permissions
+
+---
+
 ## Exit Codes
 
 Lash uses the following exit codes:

@@ -561,6 +561,26 @@ impl<'conn> TaskRepository<'conn> {
         Ok((total as usize, completed as usize))
     }
 
+    /// Get distinct owners from all tasks
+    ///
+    /// Returns a sorted list of unique owner names (excluding NULL values).
+    /// Useful for autocomplete suggestions when creating tasks.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails
+    pub fn get_distinct_owners(&self) -> DbResult<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT owner FROM tasks WHERE owner IS NOT NULL ORDER BY owner")?;
+
+        let owners = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+
+        Ok(owners)
+    }
+
     /// Helper to convert a row to `TaskRecord`
     fn row_to_task_record(row: &rusqlite::Row) -> rusqlite::Result<TaskRecord> {
         let metadata_json: String = row.get(12)?;

@@ -1,0 +1,503 @@
+//! Tree-based task selection component
+
+/// An item in the tree select
+///
+/// Represents a task that can be selected as a parent.
+///
+/// # Examples
+///
+/// ```
+/// use lash_tui::components::TreeSelectItem;
+///
+/// let item = TreeSelectItem {
+///     id: "task-1".to_string(),
+///     title: "Parent task".to_string(),
+///     depth: 0,
+///     status_indicator: ' ',
+/// };
+/// assert_eq!(item.depth, 0);
+/// ```
+#[derive(Debug, Clone)]
+pub struct TreeSelectItem {
+    /// Task ID
+    pub id: String,
+    /// Task title
+    pub title: String,
+    /// Depth level in the hierarchy
+    pub depth: u8,
+    /// Status indicator character (' ', 'x', '-', '!')
+    pub status_indicator: char,
+}
+
+/// State for tree-based task selection
+///
+/// Provides a searchable dropdown for selecting a parent task from a hierarchical list.
+/// Supports filtering and keyboard navigation.
+///
+/// # Examples
+///
+/// ```
+/// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+///
+/// let items = vec![
+///     TreeSelectItem {
+///         id: "task-1".to_string(),
+///         title: "Parent task".to_string(),
+///         depth: 0,
+///         status_indicator: ' ',
+///     },
+/// ];
+/// let mut tree_select = TreeSelectState::new(items);
+/// assert!(!tree_select.is_expanded);
+/// tree_select.toggle_expand();
+/// assert!(tree_select.is_expanded);
+/// ```
+#[derive(Debug, Clone)]
+pub struct TreeSelectState {
+    /// Search/filter input
+    pub input: String,
+    /// All available items
+    pub all_items: Vec<TreeSelectItem>,
+    /// Filtered items (indices into `all_items`)
+    pub filtered_indices: Vec<usize>,
+    /// Currently highlighted index in filtered list
+    pub selected_index: usize,
+    /// Committed selection (None for top-level)
+    pub selected_item: Option<TreeSelectItem>,
+    /// Whether dropdown is expanded
+    pub is_expanded: bool,
+}
+
+impl TreeSelectState {
+    /// Create a new tree select with the given items
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Task 1".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let tree_select = TreeSelectState::new(items);
+    /// assert_eq!(tree_select.all_items.len(), 1);
+    /// ```
+    #[must_use]
+    pub fn new(items: Vec<TreeSelectItem>) -> Self {
+        let filtered_indices: Vec<usize> = (0..items.len()).collect();
+        Self {
+            input: String::new(),
+            all_items: items,
+            filtered_indices,
+            selected_index: 0,
+            selected_item: None,
+            is_expanded: false,
+        }
+    }
+
+    /// Filter items based on current input
+    ///
+    /// Updates `filtered_indices` to match items whose titles contain
+    /// the input string (case-insensitive).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Backend task".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    ///     TreeSelectItem {
+    ///         id: "2".to_string(),
+    ///         title: "Frontend task".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// tree_select.input = "back".to_string();
+    /// tree_select.filter();
+    /// assert_eq!(tree_select.filtered_indices.len(), 1);
+    /// ```
+    pub fn filter(&mut self) {
+        if self.input.is_empty() {
+            // Show all items when input is empty
+            self.filtered_indices = (0..self.all_items.len()).collect();
+        } else {
+            let input_lower = self.input.to_lowercase();
+            self.filtered_indices = self
+                .all_items
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| item.title.to_lowercase().contains(&input_lower))
+                .map(|(idx, _)| idx)
+                .collect();
+        }
+
+        // Reset selection if current selection is out of bounds
+        if self.selected_index >= self.filtered_indices.len() {
+            self.selected_index = 0;
+        }
+    }
+
+    /// Select the next item in the filtered list
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Task 1".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    ///     TreeSelectItem {
+    ///         id: "2".to_string(),
+    ///         title: "Task 2".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// tree_select.select_next();
+    /// assert_eq!(tree_select.selected_index, 1);
+    /// ```
+    pub fn select_next(&mut self) {
+        if !self.filtered_indices.is_empty()
+            && self.selected_index + 1 < self.filtered_indices.len()
+        {
+            self.selected_index += 1;
+        }
+    }
+
+    /// Select the previous item in the filtered list
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Task 1".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    ///     TreeSelectItem {
+    ///         id: "2".to_string(),
+    ///         title: "Task 2".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// tree_select.selected_index = 1;
+    /// tree_select.select_prev();
+    /// assert_eq!(tree_select.selected_index, 0);
+    /// ```
+    pub fn select_prev(&mut self) {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+        }
+    }
+
+    /// Confirm the currently highlighted item as the selection
+    ///
+    /// Closes the dropdown and commits the selection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Task 1".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// tree_select.toggle_expand();
+    /// tree_select.confirm_selection();
+    /// assert!(tree_select.selected_item.is_some());
+    /// assert!(!tree_select.is_expanded);
+    /// ```
+    pub fn confirm_selection(&mut self) {
+        if !self.filtered_indices.is_empty() && self.selected_index < self.filtered_indices.len() {
+            let item_index = self.filtered_indices[self.selected_index];
+            self.selected_item = Some(self.all_items[item_index].clone());
+            self.is_expanded = false;
+        }
+    }
+
+    /// Clear the selection (select "None" / top-level)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Task 1".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// tree_select.confirm_selection();
+    /// tree_select.clear_selection();
+    /// assert!(tree_select.selected_item.is_none());
+    /// ```
+    pub fn clear_selection(&mut self) {
+        self.selected_item = None;
+        self.is_expanded = false;
+    }
+
+    /// Toggle dropdown expansion
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Task 1".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// assert!(!tree_select.is_expanded);
+    /// tree_select.toggle_expand();
+    /// assert!(tree_select.is_expanded);
+    /// tree_select.toggle_expand();
+    /// assert!(!tree_select.is_expanded);
+    /// ```
+    pub fn toggle_expand(&mut self) {
+        self.is_expanded = !self.is_expanded;
+    }
+
+    /// Insert a character into the input field
+    ///
+    /// Automatically filters items after inserting.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Task 1".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// tree_select.input_char('t');
+    /// tree_select.input_char('a');
+    /// assert_eq!(tree_select.input, "ta");
+    /// ```
+    pub fn input_char(&mut self, c: char) {
+        self.input.push(c);
+        self.filter();
+    }
+
+    /// Delete character before cursor (backspace)
+    ///
+    /// Automatically filters items after deleting.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Task 1".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// tree_select.input_char('a');
+    /// tree_select.input_char('b');
+    /// tree_select.backspace();
+    /// assert_eq!(tree_select.input, "a");
+    /// ```
+    pub fn backspace(&mut self) {
+        if !self.input.is_empty() {
+            self.input.pop();
+            self.filter();
+        }
+    }
+}
+
+impl Default for TreeSelectState {
+    fn default() -> Self {
+        Self::new(Vec::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_items() -> Vec<TreeSelectItem> {
+        vec![
+            TreeSelectItem {
+                id: "1".to_string(),
+                title: "Backend tasks".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+            TreeSelectItem {
+                id: "2".to_string(),
+                title: "Frontend tasks".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+            TreeSelectItem {
+                id: "3".to_string(),
+                title: "Database migration".to_string(),
+                depth: 1,
+                status_indicator: 'x',
+            },
+        ]
+    }
+
+    #[test]
+    fn test_new() {
+        let items = create_test_items();
+        let tree_select = TreeSelectState::new(items.clone());
+        assert_eq!(tree_select.all_items.len(), 3);
+        assert_eq!(tree_select.filtered_indices.len(), 3);
+        assert!(!tree_select.is_expanded);
+        assert!(tree_select.selected_item.is_none());
+    }
+
+    #[test]
+    fn test_filter() {
+        let items = create_test_items();
+        let mut tree_select = TreeSelectState::new(items);
+
+        tree_select.input = "backend".to_string();
+        tree_select.filter();
+        assert_eq!(tree_select.filtered_indices.len(), 1);
+
+        tree_select.input.clear();
+        tree_select.filter();
+        assert_eq!(tree_select.filtered_indices.len(), 3);
+    }
+
+    #[test]
+    fn test_select_navigation() {
+        let items = create_test_items();
+        let mut tree_select = TreeSelectState::new(items);
+
+        assert_eq!(tree_select.selected_index, 0);
+        tree_select.select_next();
+        assert_eq!(tree_select.selected_index, 1);
+        tree_select.select_next();
+        assert_eq!(tree_select.selected_index, 2);
+        tree_select.select_next(); // Should stay at 2
+        assert_eq!(tree_select.selected_index, 2);
+
+        tree_select.select_prev();
+        assert_eq!(tree_select.selected_index, 1);
+    }
+
+    #[test]
+    fn test_confirm_selection() {
+        let items = create_test_items();
+        let mut tree_select = TreeSelectState::new(items);
+        tree_select.is_expanded = true;
+        tree_select.selected_index = 1;
+
+        tree_select.confirm_selection();
+        assert!(tree_select.selected_item.is_some());
+        assert_eq!(tree_select.selected_item.as_ref().unwrap().id, "2");
+        assert!(!tree_select.is_expanded);
+    }
+
+    #[test]
+    fn test_clear_selection() {
+        let items = create_test_items();
+        let mut tree_select = TreeSelectState::new(items);
+        tree_select.selected_index = 1;
+        tree_select.confirm_selection();
+
+        tree_select.clear_selection();
+        assert!(tree_select.selected_item.is_none());
+    }
+
+    #[test]
+    fn test_toggle_expand() {
+        let items = create_test_items();
+        let mut tree_select = TreeSelectState::new(items);
+
+        assert!(!tree_select.is_expanded);
+        tree_select.toggle_expand();
+        assert!(tree_select.is_expanded);
+        tree_select.toggle_expand();
+        assert!(!tree_select.is_expanded);
+    }
+
+    #[test]
+    fn test_input_char() {
+        let items = create_test_items();
+        let mut tree_select = TreeSelectState::new(items);
+
+        tree_select.input_char('b');
+        tree_select.input_char('a');
+        tree_select.input_char('c');
+        tree_select.input_char('k');
+        assert_eq!(tree_select.input, "back");
+        assert_eq!(tree_select.filtered_indices.len(), 1);
+    }
+
+    #[test]
+    fn test_backspace() {
+        let items = create_test_items();
+        let mut tree_select = TreeSelectState::new(items);
+
+        tree_select.input_char('a');
+        tree_select.input_char('b');
+        tree_select.backspace();
+        assert_eq!(tree_select.input, "a");
+    }
+
+    #[test]
+    fn test_filter_resets_selection() {
+        let items = create_test_items();
+        let mut tree_select = TreeSelectState::new(items);
+
+        tree_select.selected_index = 2;
+        tree_select.input = "backend".to_string();
+        tree_select.filter();
+        // Only 1 item matches, so selected_index should be reset to 0
+        assert_eq!(tree_select.selected_index, 0);
+    }
+}

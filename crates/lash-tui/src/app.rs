@@ -11,11 +11,12 @@ use lash_db::repository::files::FileRepository;
 use lash_db::repository::labels::LabelRepository;
 use lash_db::repository::tasks::TaskRepository;
 
+use crate::components::TreeSelectItem;
 use crate::error::{TuiError, TuiResult};
 use crate::event::{
     poll_confirm_complete_event, poll_confirm_incomplete_event,
     poll_confirm_linked_file_complete_event, poll_event, poll_filter_event, poll_search_event,
-    AppEvent,
+    poll_task_creation_event, AppEvent,
 };
 use crate::state::AppState;
 use crate::terminal;
@@ -147,7 +148,9 @@ impl TuiApp {
                 .draw(|frame| ui::render(frame, &self.state, &self.conn))?;
 
             // Handle events - use different polling depending on modal state
-            let event = if self.state.is_search_modal_open() {
+            let event = if self.state.is_task_creation_modal_open() {
+                poll_task_creation_event(Duration::from_millis(100))?
+            } else if self.state.is_search_modal_open() {
                 poll_search_event(Duration::from_millis(100))?
             } else if self.state.is_filter_modal_open() {
                 poll_filter_event(Duration::from_millis(100))?
@@ -163,7 +166,75 @@ impl TuiApp {
 
             // Route events based on active modal
             #[allow(clippy::match_same_arms)] // Placeholder arms for future features
-            if self.state.is_search_modal_open() {
+            if self.state.is_task_creation_modal_open() {
+                // Task creation modal is open - route events to it
+                match event {
+                    AppEvent::CloseTaskCreation => {
+                        self.state.close_task_creation_modal();
+                    }
+                    AppEvent::SubmitTaskCreation => {
+                        self.handle_submit_task_creation()?;
+                    }
+                    AppEvent::TaskFormNextField => {
+                        if let Some(modal) = &mut self.state.task_creation_modal_state {
+                            modal.next_field();
+                        }
+                    }
+                    AppEvent::TaskFormPrevField => {
+                        if let Some(modal) = &mut self.state.task_creation_modal_state {
+                            modal.prev_field();
+                        }
+                    }
+                    AppEvent::TaskFormTogglePreview => {
+                        if let Some(modal) = &mut self.state.task_creation_modal_state {
+                            modal.toggle_preview();
+                        }
+                    }
+                    AppEvent::CharInput(c) => {
+                        self.handle_char_input_in_modal(c);
+                        self.validate_modal();
+                    }
+                    AppEvent::Backspace => {
+                        self.handle_backspace_in_modal();
+                        self.validate_modal();
+                    }
+                    AppEvent::Delete => {
+                        self.handle_delete_in_modal();
+                        self.validate_modal();
+                    }
+                    AppEvent::Left => {
+                        self.handle_left_in_modal();
+                    }
+                    AppEvent::Right => {
+                        self.handle_right_in_modal();
+                    }
+                    AppEvent::Up => {
+                        self.handle_up_in_modal();
+                    }
+                    AppEvent::Down => {
+                        self.handle_down_in_modal();
+                    }
+                    AppEvent::Home => {
+                        self.handle_home_in_modal();
+                    }
+                    AppEvent::End => {
+                        self.handle_end_in_modal();
+                    }
+                    AppEvent::Select => {
+                        self.handle_select_in_modal();
+                        self.validate_modal();
+                    }
+                    AppEvent::ClearFilters => {
+                        self.handle_clear_field_in_modal();
+                        self.validate_modal();
+                    }
+                    AppEvent::Help => {
+                        // Toggle help overlay within modal
+                        self.state.show_help = !self.state.show_help;
+                    }
+                    _ => {} // Ignore other events when task creation modal is open
+                }
+            } else if self.state.is_search_modal_open() {
                 // Search modal is open - route events to it
                 match event {
                     AppEvent::CloseSearch => {
@@ -318,6 +389,7 @@ impl TuiApp {
                     AppEvent::LabelFilter => self.handle_label_toggle()?,
                     AppEvent::ClearFilters => self.state.clear_label_filter(),
 
+                    AppEvent::OpenTaskCreation => self.handle_open_task_creation()?,
                     AppEvent::Search => self.state.open_search_modal(),
                     AppEvent::OpenFilter => self.handle_open_filter()?,
 
@@ -338,6 +410,11 @@ impl TuiApp {
                     | AppEvent::ConfirmIncomplete
                     | AppEvent::CloseConfirmLinkedFileComplete
                     | AppEvent::ConfirmLinkedFileComplete
+                    | AppEvent::CloseTaskCreation
+                    | AppEvent::SubmitTaskCreation
+                    | AppEvent::TaskFormNextField
+                    | AppEvent::TaskFormPrevField
+                    | AppEvent::TaskFormTogglePreview
                     | AppEvent::CharInput(_)
                     | AppEvent::Backspace
                     | AppEvent::Delete
@@ -1536,6 +1613,302 @@ impl TuiApp {
         self.state.focused_pane = crate::state::FocusedPane::Detail;
 
         Ok(())
+    }
+
+    /// Handle opening task creation modal
+    #[allow(clippy::unnecessary_wraps)]
+    fn handle_open_task_creation(&mut self) -> TuiResult<()> {
+        // Get currently selected file
+        let target_file = if let Some(selected) = self.state.selected_tree_node() {
+            selected.file_record.map(|f| f.path)
+        } else {
+            self.state.selected_file().map(|f| f.path.clone())
+        };
+
+        let Some(target_file) = target_file else {
+            self.state.set_warning_message("No file selected");
+            return Ok(());
+        };
+
+        // Get tasks from current file for parent selection
+        let tasks: Vec<TreeSelectItem> = self
+            .state
+            .tasks
+            .iter()
+            .map(|t| TreeSelectItem {
+                id: t.local_id.clone(),
+                title: t.title.clone(),
+                depth: t.depth,
+                status_indicator: match t.status {
+                    lash_types::TaskStatus::Done => 'x',
+                    lash_types::TaskStatus::Waived => '-',
+                    lash_types::TaskStatus::Blocked => '!',
+                    lash_types::TaskStatus::Open => ' ',
+                },
+            })
+            .collect();
+
+        self.state.open_task_creation_modal(target_file, tasks);
+        Ok(())
+    }
+
+    /// Handle submitting task creation
+    fn handle_submit_task_creation(&mut self) -> TuiResult<()> {
+        use lash_core::creation::TaskCreationService;
+        use lash_types::LashConfig;
+
+        let Some(modal_state) = &self.state.task_creation_modal_state else {
+            return Ok(());
+        };
+
+        // Check if form can be submitted
+        if !modal_state.can_submit() {
+            self.state
+                .set_error_message("Please fill in all required fields");
+            return Ok(());
+        }
+
+        let request = modal_state.to_request();
+        let config = LashConfig::default();
+        let service = TaskCreationService::new(config);
+
+        match service.create_task(&request) {
+            Ok(result) => {
+                self.state.close_task_creation_modal();
+                self.state
+                    .set_success_message(format!("Created task: {}", result.task_id));
+
+                // Reload tasks for the file
+                let file_repo = FileRepository::new(&self.conn);
+                if let Ok(Some(file_record)) = file_repo.get_by_path(&result.file_path) {
+                    let task_repo = TaskRepository::new(&self.conn);
+                    if let Ok(tasks) = task_repo.get_by_file(file_record.id) {
+                        self.state.tasks = tasks;
+                        self.state.build_task_tree();
+                    }
+                }
+
+                // Refresh project stats
+                self.refresh_project_stats()?;
+            }
+            Err(errors) => {
+                // Display first error
+                let error_msg = errors.first().map_or_else(
+                    || "Unknown error".to_string(),
+                    lash_types::TaskCreationError::message,
+                );
+                self.state.set_error_message(error_msg);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle character input in modal
+    fn handle_char_input_in_modal(&mut self, c: char) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Title => modal.title.input_char(c),
+            TaskFormField::Labels => modal.labels.input_char(c),
+            TaskFormField::Owner => modal.owner.input_char(c),
+            TaskFormField::Estimate => modal.estimate.input_char(c),
+            TaskFormField::AgentNote => modal.agent_note.input_char(c),
+            _ => {}
+        }
+    }
+
+    /// Handle backspace in modal
+    fn handle_backspace_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Title => modal.title.backspace(),
+            TaskFormField::Labels => modal.labels.backspace(),
+            TaskFormField::Owner => modal.owner.backspace(),
+            TaskFormField::Estimate => modal.estimate.backspace(),
+            TaskFormField::AgentNote => modal.agent_note.backspace(),
+            _ => {}
+        }
+    }
+
+    /// Handle delete in modal
+    fn handle_delete_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Title => modal.title.delete(),
+            TaskFormField::Labels => {
+                // ChipInputState doesn't have delete, only backspace
+                modal.labels.backspace();
+            }
+            TaskFormField::Owner => modal.owner.delete(),
+            TaskFormField::Estimate => modal.estimate.delete(),
+            TaskFormField::AgentNote => modal.agent_note.delete(),
+            _ => {}
+        }
+    }
+
+    /// Handle left arrow in modal
+    fn handle_left_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Title => modal.title.cursor_left(),
+            TaskFormField::Owner => modal.owner.cursor_left(),
+            TaskFormField::Estimate => modal.estimate.cursor_left(),
+            TaskFormField::AgentNote => modal.agent_note.cursor_left(),
+            TaskFormField::Status => modal.status.select_prev(),
+            _ => {}
+        }
+    }
+
+    /// Handle right arrow in modal
+    fn handle_right_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Title => modal.title.cursor_right(),
+            TaskFormField::Owner => modal.owner.cursor_right(),
+            TaskFormField::Estimate => modal.estimate.cursor_right(),
+            TaskFormField::AgentNote => modal.agent_note.cursor_right(),
+            TaskFormField::Status => modal.status.select_next(),
+            _ => {}
+        }
+    }
+
+    /// Handle up arrow in modal
+    fn handle_up_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Parent => modal.parent_selector.select_prev(),
+            TaskFormField::AgentNote => modal.agent_note.cursor_up(),
+            _ => {}
+        }
+    }
+
+    /// Handle down arrow in modal
+    fn handle_down_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Parent => modal.parent_selector.select_next(),
+            TaskFormField::AgentNote => modal.agent_note.cursor_down(),
+            _ => {}
+        }
+    }
+
+    /// Handle home key in modal
+    fn handle_home_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Title => modal.title.home(),
+            TaskFormField::Owner => modal.owner.home(),
+            TaskFormField::Estimate => modal.estimate.home(),
+            TaskFormField::AgentNote => modal.agent_note.home(),
+            _ => {}
+        }
+    }
+
+    /// Handle end key in modal
+    fn handle_end_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Title => modal.title.end(),
+            TaskFormField::Owner => modal.owner.end(),
+            TaskFormField::Estimate => modal.estimate.end(),
+            TaskFormField::AgentNote => modal.agent_note.end(),
+            _ => {}
+        }
+    }
+
+    /// Handle select/enter in modal
+    fn handle_select_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Parent => modal.parent_selector.confirm_selection(),
+            TaskFormField::Labels => modal.labels.add_chip(),
+            TaskFormField::AgentNote => modal.agent_note.newline(),
+            _ => {}
+        }
+    }
+
+    /// Handle clear field (Ctrl+U) in modal
+    fn handle_clear_field_in_modal(&mut self) {
+        use crate::state::TaskFormField;
+
+        let Some(modal) = &mut self.state.task_creation_modal_state else {
+            return;
+        };
+
+        match modal.focused_field {
+            TaskFormField::Title => modal.title.clear(),
+            TaskFormField::Labels => {
+                modal.labels.input.clear();
+                modal.labels.cursor_position = 0;
+            }
+            TaskFormField::Owner => modal.owner.clear(),
+            TaskFormField::Estimate => modal.estimate.clear(),
+            TaskFormField::AgentNote => modal.agent_note.clear(),
+            TaskFormField::Parent => {
+                modal.parent_selector.clear_selection();
+            }
+            TaskFormField::Status => {
+                // Reset to first option (Open)
+                modal.status.selected_index = 0;
+            }
+        }
+    }
+
+    /// Validate the modal form fields
+    fn validate_modal(&mut self) {
+        if let Some(modal) = &mut self.state.task_creation_modal_state {
+            modal.validate();
+        }
     }
 }
 
