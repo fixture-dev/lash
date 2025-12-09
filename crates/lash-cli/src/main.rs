@@ -279,6 +279,7 @@ fn run(cli: LashCli) -> Result<()> {
             blocked,
             owner,
             docs,
+            show_descriptions,
             format,
         } => {
             // Convert status to lash_types::TaskStatus
@@ -319,6 +320,7 @@ fn run(cli: LashCli) -> Result<()> {
                 blocked,
                 owner,
                 docs,
+                show_descriptions,
                 format: output_format,
                 project_root,
                 theme: theme.clone(),
@@ -457,6 +459,7 @@ fn run(cli: LashCli) -> Result<()> {
             label,
             path,
             max_tokens,
+            include_descriptions,
         } => {
             // Global --json flag overrides command-specific format
             let agent_format = if cli.json {
@@ -473,6 +476,7 @@ fn run(cli: LashCli) -> Result<()> {
                 project_root: None,
                 json: cli.json,
                 no_color: cli.no_color,
+                include_descriptions,
             };
             let exit_code = commands::agent_prompt::execute(&args)?;
             process::exit(exit_code);

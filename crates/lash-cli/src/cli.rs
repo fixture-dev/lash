@@ -213,6 +213,10 @@ pub enum Commands {
         #[arg(long, value_name = "DOC_PATH")]
         docs: Option<String>,
 
+        /// Show file descriptions (truncated to 100 chars)
+        #[arg(long)]
+        show_descriptions: bool,
+
         /// Output format
         #[arg(long, value_name = "FORMAT", value_enum, default_value = "text")]
         format: OutputFormat,
@@ -309,6 +313,10 @@ pub enum Commands {
         /// Maximum token budget (approximate)
         #[arg(long)]
         max_tokens: Option<usize>,
+
+        /// Include file descriptions in the prompt (default: true)
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        include_descriptions: bool,
     },
 
     /// Launch the terminal UI

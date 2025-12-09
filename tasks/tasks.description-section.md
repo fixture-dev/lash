@@ -256,14 +256,17 @@ Update CLI commands (`list`, `show`, `search`) to display file descriptions wher
   - [x] Display description section after metadata, before tasks
   - [x] Format with appropriate heading and indentation
   - [x] Respect `--format=json` (include description in JSON output)
-- [ ] Update `lash list` command
-  - [ ] Add `--show-descriptions` flag
-  - [ ] Show first 100 chars of description for each file
-  - [ ] Truncate with "..." if longer
-- [ ] Update `lash agent-prompt` command
-  - [ ] Include descriptions in generated prompts
-  - [ ] Use descriptions for context-minimized prompts
-  - [ ] Add `--include-descriptions` flag (default: true)
+- [x] Update `lash list` command
+  - [x] Add `--show-descriptions` flag
+  - [x] Show first 100 chars of description for each file
+  - [x] Truncate with "..." if longer
+  - [x] Support both flat and tree view display modes
+  - [x] Support JSON output format (include/exclude based on flag)
+  - [x] Handle multi-byte UTF-8 characters correctly in truncation
+- [x] Update `lash agent-prompt` command
+  - [x] Include descriptions in generated prompts
+  - [x] Use descriptions for context-minimized prompts
+  - [x] Add `--include-descriptions` flag (default: true)
 
 **Success Criteria:**
 - Commands display descriptions appropriately

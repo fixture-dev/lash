@@ -92,6 +92,8 @@ pub struct TaskFileSummary {
     pub blocked: usize,
     /// Documentation references associated with this file
     pub doc_refs: Vec<DocRefInfo>,
+    /// File description (optional)
+    pub description: Option<String>,
 }
 
 impl TaskFileSummary {
@@ -105,6 +107,7 @@ impl TaskFileSummary {
             open: 0,
             blocked: 0,
             doc_refs: Vec::new(),
+            description: None,
         }
     }
 
@@ -131,6 +134,13 @@ impl TaskFileSummary {
         self
     }
 
+    /// Set description
+    #[must_use]
+    pub fn with_description(mut self, description: Option<String>) -> Self {
+        self.description = description;
+        self
+    }
+
     /// Format as a compact summary string
     #[must_use]
     pub fn to_summary_string(&self) -> String {
@@ -150,9 +160,33 @@ impl TaskFileSummary {
     }
 
     /// Format with inline doc refs for agent prompt output
+    ///
+    /// # Arguments
+    ///
+    /// * `include_description` - Whether to include the file description
     #[must_use]
-    pub fn format_with_docs(&self) -> String {
+    pub fn format_with_docs(&self, include_description: bool) -> String {
         let mut output = format!("- {}\n", self.to_summary_string());
+
+        // Add description if available and requested
+        if include_description {
+            if let Some(ref desc) = self.description {
+                // Indent description text
+                let desc_lines: Vec<&str> = desc.lines().collect();
+                if !desc_lines.is_empty() {
+                    output.push_str("  Description: ");
+                    // First line on same line as label
+                    output.push_str(desc_lines[0]);
+                    output.push('\n');
+                    // Subsequent lines indented
+                    for line in &desc_lines[1..] {
+                        output.push_str("               ");
+                        output.push_str(line);
+                        output.push('\n');
+                    }
+                }
+            }
+        }
 
         for doc_ref in &self.doc_refs {
             output.push_str(&format!("  - Doc: {}\n", doc_ref.display()));
@@ -184,6 +218,8 @@ pub struct PromptConfig {
     pub include_examples: bool,
     /// Include current project tasks
     pub include_tasks: bool,
+    /// Include file descriptions in the prompt
+    pub include_descriptions: bool,
     /// Token budget (None = unlimited)
     pub token_budget: Option<usize>,
     /// Labels to filter tasks by
@@ -198,6 +234,7 @@ impl Default for PromptConfig {
             format: PromptFormat::Plain,
             include_examples: true,
             include_tasks: true,
+            include_descriptions: true,
             token_budget: None,
             label_filter: Vec::new(),
             path_filter: None,
@@ -416,7 +453,8 @@ Lash is a minimalist, Markdown-native task tracker where:
                 }
             } else {
                 for summary in &self.task_file_summaries {
-                    tasks_text.push_str(&summary.format_with_docs());
+                    tasks_text
+                        .push_str(&summary.format_with_docs(self.config.include_descriptions));
                 }
             }
             tasks_text.push('\n');
@@ -487,7 +525,7 @@ When working with Lash files:
                 self.task_file_summaries
                     .iter()
                     .map(|s| {
-                        serde_json::json!({
+                        let mut obj = serde_json::json!({
                             "path": s.path,
                             "total": s.total,
                             "completed": s.completed,
@@ -505,7 +543,14 @@ When working with Lash files:
                                 }
                                 obj
                             }).collect::<Vec<_>>(),
-                        })
+                        });
+                        // Include description if requested and available
+                        if self.config.include_descriptions {
+                            if let Some(ref desc) = s.description {
+                                obj["description"] = serde_json::json!(desc);
+                            }
+                        }
+                        obj
                     })
                     .collect()
             } else {
@@ -880,7 +925,7 @@ mod tests {
                 DocRefInfo::new("../docs/missing.md", None).with_validity(false),
             ]);
 
-        let formatted = summary.format_with_docs();
+        let formatted = summary.format_with_docs(false);
 
         assert!(formatted.contains("features/auth.md: 10 tasks"));
         assert!(formatted.contains("../docs/auth-spec.md#oauth"));
@@ -956,5 +1001,122 @@ mod tests {
         let prompt = builder.build();
 
         assert!(prompt.content.contains("Keep `@doc` references valid"));
+    }
+
+    #[test]
+    fn test_task_file_summary_with_description() {
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_description(Some(
+                "This is the authentication module.\nIt handles OAuth.".to_string(),
+            ));
+
+        // Test with descriptions enabled
+        let formatted_with_desc = summary.format_with_docs(true);
+        assert!(formatted_with_desc.contains("features/auth.md: 10 tasks"));
+        assert!(formatted_with_desc.contains("Description: This is the authentication module."));
+        assert!(formatted_with_desc.contains("It handles OAuth."));
+
+        // Test with descriptions disabled
+        let formatted_no_desc = summary.format_with_docs(false);
+        assert!(formatted_no_desc.contains("features/auth.md: 10 tasks"));
+        assert!(!formatted_no_desc.contains("Description:"));
+        assert!(!formatted_no_desc.contains("authentication module"));
+    }
+
+    #[test]
+    fn test_prompt_config_include_descriptions_default() {
+        let config = PromptConfig::default();
+        assert!(config.include_descriptions);
+    }
+
+    #[test]
+    fn test_prompt_builder_with_descriptions() {
+        let config = PromptConfig {
+            include_descriptions: true,
+            ..Default::default()
+        };
+        let mut builder = PromptBuilder::new(config);
+
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_description(Some("OAuth authentication module".to_string()));
+
+        builder.add_task_file_summary(summary);
+        let prompt = builder.build();
+
+        assert!(prompt.content.contains("features/auth.md"));
+        assert!(prompt
+            .content
+            .contains("Description: OAuth authentication module"));
+    }
+
+    #[test]
+    fn test_prompt_builder_without_descriptions() {
+        let config = PromptConfig {
+            include_descriptions: false,
+            ..Default::default()
+        };
+        let mut builder = PromptBuilder::new(config);
+
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_description(Some("OAuth authentication module".to_string()));
+
+        builder.add_task_file_summary(summary);
+        let prompt = builder.build();
+
+        assert!(prompt.content.contains("features/auth.md"));
+        assert!(!prompt.content.contains("Description:"));
+        assert!(!prompt.content.contains("OAuth authentication module"));
+    }
+
+    #[test]
+    fn test_json_output_with_descriptions() {
+        let config = PromptConfig {
+            format: PromptFormat::Json,
+            include_descriptions: true,
+            ..Default::default()
+        };
+        let mut builder = PromptBuilder::new(config);
+
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_description(Some("OAuth authentication module".to_string()));
+
+        builder.add_task_file_summary(summary);
+        let prompt = builder.build();
+
+        // Parse JSON and verify description is included
+        let parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
+        let task_files = parsed["task_files"].as_array().unwrap();
+        assert_eq!(task_files.len(), 1);
+        assert_eq!(
+            task_files[0]["description"],
+            serde_json::json!("OAuth authentication module")
+        );
+    }
+
+    #[test]
+    fn test_json_output_without_descriptions() {
+        let config = PromptConfig {
+            format: PromptFormat::Json,
+            include_descriptions: false,
+            ..Default::default()
+        };
+        let mut builder = PromptBuilder::new(config);
+
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_description(Some("OAuth authentication module".to_string()));
+
+        builder.add_task_file_summary(summary);
+        let prompt = builder.build();
+
+        // Parse JSON and verify description is NOT included
+        let parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
+        let task_files = parsed["task_files"].as_array().unwrap();
+        assert_eq!(task_files.len(), 1);
+        assert!(task_files[0]["description"].is_null());
     }
 }
