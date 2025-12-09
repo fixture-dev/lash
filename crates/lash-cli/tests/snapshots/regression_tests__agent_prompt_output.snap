@@ -12,6 +12,7 @@ expression: normalized
 Lash is a minimalist, Markdown-native task tracker where:
 - Markdown files are the single source of truth
 - Tasks are hierarchical checkbox lists with annotations
+- Directory structure provides implicit hierarchy (parent directories depend on children)
 - SQLite provides fast indexing and search (fully reconstructible from Markdown)
 - Format is strictly enforced by linting for predictability
 
