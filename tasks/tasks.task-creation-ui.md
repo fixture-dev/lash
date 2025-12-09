@@ -35,7 +35,7 @@ Archived tasks:
 **Priority:** MEDIUM
 **Effort:** 2-3 days
 **Depends on:** Task 7, Task 8
-**Status:** Partially Complete
+**Status:** Complete
 
 ### Description
 
@@ -66,10 +66,10 @@ Implement autocomplete for labels, owners, and task references.
   - [x] Show file path + task title
   - [x] Multi-select with checkboxes
   - [x] Prevent selecting self or descendants
-- [ ] Performance optimization
-  - [ ] Cache loaded options
-  - [ ] Limit displayed suggestions (max 10-15)
-  - [ ] Fuzzy matching for better results
+- [x] Performance optimization
+  - [x] Cache loaded options (label and owner caching in TaskCreationModalState)
+  - [x] Limit displayed suggestions (MAX_SUGGESTIONS = 15)
+  - [x] Fuzzy matching for better results (hybrid substring + fuzzy matching)
 
 ### Success Criteria
 
@@ -80,9 +80,9 @@ Implement autocomplete for labels, owners, and task references.
 
 ### Tests
 
-- [ ] Unit: Label filtering
-- [ ] Unit: Fuzzy matching
-- [ ] Integration: Load options from populated database
+- [x] Unit: Label filtering
+- [x] Unit: Fuzzy matching
+- [x] Integration: Load options from populated database
 - [ ] Manual: Autocomplete UX testing
 
 ---
