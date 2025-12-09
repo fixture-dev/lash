@@ -2,7 +2,7 @@
 
 @id: tasks.description-section
 @labels: parser, linter, schema, indexing, search, cross-cutting
-@status: in-progress
+@status: done
 @created: 2025-12-03
 
 ## Description
