@@ -320,6 +320,11 @@ pub fn generate_minimal_example() -> String {
 @status: in-progress
 @owner: alice
 
+## Description
+
+Implement secure user authentication using industry-standard practices.
+This includes password hashing with bcrypt and JWT tokens for session management.
+
 ## Tasks
 
 - [ ] Implement login endpoint
