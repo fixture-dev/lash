@@ -40,6 +40,8 @@ pub struct ListArgs {
     pub owner: Option<String>,
     /// Filter by files/tasks that reference a specific document
     pub docs: Option<String>,
+    /// Show file descriptions (truncated to 100 chars)
+    pub show_descriptions: bool,
     /// Output format
     pub format: OutputFormat,
     /// Project root (detected automatically if None)
@@ -216,13 +218,13 @@ pub fn execute(args: ListArgs) -> Result<i32> {
 
     // Output results
     match args.format {
-        OutputFormat::Json => output_json_files(&files)?,
-        OutputFormat::JsonPretty => output_json_pretty_files(&files)?,
+        OutputFormat::Json => output_json_files(&files, args.show_descriptions)?,
+        OutputFormat::JsonPretty => output_json_pretty_files(&files, args.show_descriptions)?,
         OutputFormat::Text => {
             if use_tree_view {
                 output_text_tree(&files, &args);
             } else {
-                output_text_flat(&files, args.theme.as_ref());
+                output_text_flat(&files, args.theme.as_ref(), args.show_descriptions);
             }
         }
     }
@@ -233,6 +235,39 @@ pub fn execute(args: ListArgs) -> Result<i32> {
 /// Get the database path for a project
 fn get_database_path(project_root: &Path) -> PathBuf {
     project_root.join(".lash/lash.db")
+}
+
+/// Truncate a description to a maximum length, adding "..." if truncated
+///
+/// # Arguments
+///
+/// * `description` - The description text to truncate
+/// * `max_len` - Maximum length (default: 100 characters)
+///
+/// # Returns
+///
+/// Truncated string with "..." appended if original was longer than `max_len`
+fn truncate_description(description: &str, max_len: usize) -> String {
+    if description.is_empty() {
+        return String::new();
+    }
+
+    // Replace newlines with spaces for single-line display
+    let single_line = description.replace('\n', " ").replace('\r', "");
+
+    // Collapse multiple spaces into single spaces
+    let collapsed = single_line.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    if collapsed.len() <= max_len {
+        collapsed
+    } else {
+        // Find a valid char boundary at or before max_len
+        let mut boundary = max_len;
+        while !collapsed.is_char_boundary(boundary) && boundary > 0 {
+            boundary -= 1;
+        }
+        format!("{}...", &collapsed[..boundary])
+    }
 }
 
 /// Determine if tree view should be enabled
@@ -407,12 +442,36 @@ fn output_json_diagnostic(diagnostic: &lash_types::error::Diagnostic) -> Result<
 }
 
 /// Output files as compact JSON
-fn output_json_files(files: &[FileRecord]) -> Result<()> {
+fn output_json_files(files: &[FileRecord], show_descriptions: bool) -> Result<()> {
     use serde_json::json;
+
+    // Optionally filter out descriptions from the JSON output
+    let files_json: Vec<serde_json::Value> = if show_descriptions {
+        // Include descriptions in JSON output
+        files.iter().map(|f| json!(f)).collect()
+    } else {
+        // Exclude descriptions from JSON output - create custom JSON without description field
+        files
+            .iter()
+            .map(|f| {
+                json!({
+                    "id": f.id,
+                    "path": f.path,
+                    "file_id": f.file_id,
+                    "title": f.title,
+                    "hash": f.hash,
+                    "mtime": f.mtime,
+                    "status": f.status,
+                    "metadata": f.metadata,
+                    "indexed_at": f.indexed_at,
+                })
+            })
+            .collect()
+    };
 
     let output = json!({
         "count": files.len(),
-        "files": files
+        "files": files_json
     });
 
     println!("{}", serde_json::to_string(&output)?);
@@ -420,12 +479,36 @@ fn output_json_files(files: &[FileRecord]) -> Result<()> {
 }
 
 /// Output files as pretty-printed JSON
-fn output_json_pretty_files(files: &[FileRecord]) -> Result<()> {
+fn output_json_pretty_files(files: &[FileRecord], show_descriptions: bool) -> Result<()> {
     use serde_json::json;
+
+    // Optionally filter out descriptions from the JSON output
+    let files_json: Vec<serde_json::Value> = if show_descriptions {
+        // Include descriptions in JSON output
+        files.iter().map(|f| json!(f)).collect()
+    } else {
+        // Exclude descriptions from JSON output - create custom JSON without description field
+        files
+            .iter()
+            .map(|f| {
+                json!({
+                    "id": f.id,
+                    "path": f.path,
+                    "file_id": f.file_id,
+                    "title": f.title,
+                    "hash": f.hash,
+                    "mtime": f.mtime,
+                    "status": f.status,
+                    "metadata": f.metadata,
+                    "indexed_at": f.indexed_at,
+                })
+            })
+            .collect()
+    };
 
     let output = json!({
         "count": files.len(),
-        "files": files
+        "files": files_json
     });
 
     println!("{}", serde_json::to_string_pretty(&output)?);
@@ -433,7 +516,7 @@ fn output_json_pretty_files(files: &[FileRecord]) -> Result<()> {
 }
 
 /// Output files as human-readable flat list
-fn output_text_flat(files: &[FileRecord], theme: Option<&CliTheme>) {
+fn output_text_flat(files: &[FileRecord], theme: Option<&CliTheme>, show_descriptions: bool) {
     if files.is_empty() {
         let msg = "No files found";
         if let Some(theme) = theme {
@@ -466,6 +549,16 @@ fn output_text_flat(files: &[FileRecord], theme: Option<&CliTheme>) {
             println!("{status_styled} {path}");
         } else {
             println!("{} {}", status_indicator, file.path.display());
+        }
+
+        // Show description if requested and available
+        if show_descriptions && !file.description.is_empty() {
+            let truncated = truncate_description(&file.description, 100);
+            if let Some(theme) = theme {
+                println!("  {}", theme.style_muted(&truncated));
+            } else {
+                println!("  {truncated}");
+            }
         }
     }
 
@@ -517,7 +610,7 @@ fn output_text_tree(files: &[FileRecord], args: &ListArgs) {
                 lash_types::FileStatus::Empty => "·",
             };
 
-            if let Some(theme) = fmt.theme() {
+            let mut output = if let Some(theme) = fmt.theme() {
                 let status_styled = match file.status {
                     lash_types::FileStatus::Complete => theme.style_success(status_indicator),
                     lash_types::FileStatus::Blocked => theme.style_error(status_indicator),
@@ -527,7 +620,22 @@ fn output_text_tree(files: &[FileRecord], args: &ListArgs) {
                 format!("{status_styled} {}", theme.style_label(&node.name))
             } else {
                 format!("{status_indicator} {}", node.name)
+            };
+
+            // Add description if requested and available
+            if args.show_descriptions && !file.description.is_empty() {
+                let truncated = truncate_description(&file.description, 100);
+                if let Some(theme) = fmt.theme() {
+                    output.push('\n');
+                    output.push_str("    ");
+                    output.push_str(&theme.style_muted(&truncated));
+                } else {
+                    output.push_str("\n    ");
+                    output.push_str(&truncated);
+                }
             }
+
+            output
         } else {
             // Fallback for nodes without file records
             node.name.clone()
@@ -557,6 +665,7 @@ mod tests {
             blocked: false,
             owner: None,
             docs: None,
+            show_descriptions: false,
             format: OutputFormat::Text,
             project_root: None,
             theme: None,
@@ -580,6 +689,7 @@ mod tests {
             blocked: false,
             owner: None,
             docs: None,
+            show_descriptions: false,
             format: OutputFormat::Text,
             project_root: None,
             theme: None,
@@ -597,5 +707,49 @@ mod tests {
         let files = vec![];
         let trees = build_file_tree(&files, 5, false);
         assert!(trees.is_empty());
+    }
+
+    #[test]
+    fn test_truncate_description_empty() {
+        let result = truncate_description("", 100);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_truncate_description_short() {
+        let desc = "This is a short description.";
+        let result = truncate_description(desc, 100);
+        assert_eq!(result, desc);
+    }
+
+    #[test]
+    fn test_truncate_description_long() {
+        let desc = "a".repeat(150);
+        let result = truncate_description(&desc, 100);
+        assert_eq!(result.len(), 103); // 100 chars + "..."
+        assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn test_truncate_description_with_newlines() {
+        let desc = "Line one\nLine two\nLine three";
+        let result = truncate_description(desc, 100);
+        assert_eq!(result, "Line one Line two Line three");
+        assert!(!result.contains('\n'));
+    }
+
+    #[test]
+    fn test_truncate_description_with_multiple_spaces() {
+        let desc = "Too    many     spaces";
+        let result = truncate_description(desc, 100);
+        assert_eq!(result, "Too many spaces");
+    }
+
+    #[test]
+    fn test_truncate_description_exact_length() {
+        let desc = "a".repeat(100);
+        let result = truncate_description(&desc, 100);
+        assert_eq!(result, desc);
+        assert!(!result.ends_with("..."));
     }
 }

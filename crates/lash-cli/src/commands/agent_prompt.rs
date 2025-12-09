@@ -33,6 +33,8 @@ pub struct AgentPromptArgs {
     /// Disable colored output
     #[allow(dead_code)] // Reserved for future colored output
     pub no_color: bool,
+    /// Include file descriptions in the prompt
+    pub include_descriptions: bool,
 }
 
 /// Execute the agent-prompt command
@@ -79,6 +81,7 @@ pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
         format: prompt_format,
         include_examples: true,
         include_tasks: false,
+        include_descriptions: args.include_descriptions,
         token_budget: args.max_tokens,
         label_filter: args.labels.clone(),
         path_filter: args.path.as_ref().map(|p| p.display().to_string()),
@@ -86,7 +89,12 @@ pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
 
     // Load task file summaries with doc refs
     let task_file_summaries = if config.include_tasks {
-        load_task_file_summaries(&project_root, &args.labels, args.path.as_deref())?
+        load_task_file_summaries(
+            &project_root,
+            &args.labels,
+            args.path.as_deref(),
+            args.include_descriptions,
+        )?
     } else {
         Vec::new()
     };
@@ -124,6 +132,7 @@ fn load_task_file_summaries(
     project_root: &Path,
     label_filter: &[String],
     path_filter: Option<&Path>,
+    include_descriptions: bool,
 ) -> Result<Vec<TaskFileSummary>> {
     let db_path = get_database_path(project_root);
 
@@ -194,10 +203,22 @@ fn load_task_file_summaries(
             })
             .collect();
 
+        // Extract description if requested
+        let description = if include_descriptions {
+            if file.description.is_empty() {
+                None
+            } else {
+                Some(file.description.clone())
+            }
+        } else {
+            None
+        };
+
         // Build task file summary
         let summary = TaskFileSummary::new(file.path.display().to_string())
             .with_counts(total, completed, open, blocked)
-            .with_doc_refs(doc_refs);
+            .with_doc_refs(doc_refs)
+            .with_description(description);
 
         summaries.push(summary);
     }
@@ -224,10 +245,12 @@ mod tests {
             project_root: None,
             json: false,
             no_color: false,
+            include_descriptions: true,
         };
 
         assert_eq!(args.max_tokens, Some(1000));
         assert_eq!(args.labels.len(), 1);
+        assert!(args.include_descriptions);
     }
 
     #[test]
