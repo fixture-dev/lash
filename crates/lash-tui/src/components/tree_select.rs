@@ -1,5 +1,10 @@
 //! Tree-based task selection component
 
+use lash_core::fuzzy::FuzzyMatcher;
+
+/// Maximum number of suggestions to show in filtered results
+const MAX_SUGGESTIONS: usize = 15;
+
 /// An item in the tree select
 ///
 /// Represents a task that can be selected as a parent.
@@ -131,15 +136,61 @@ impl TreeSelectState {
     /// ```
     pub fn filter(&mut self) {
         if self.input.is_empty() {
-            // Show all items when input is empty
-            self.filtered_indices = (0..self.all_items.len()).collect();
+            // Show all items when input is empty (limited to MAX_SUGGESTIONS)
+            self.filtered_indices = (0..self.all_items.len().min(MAX_SUGGESTIONS)).collect();
         } else {
+            // Hybrid approach: substring matching + fuzzy matching for better results
             let input_lower = self.input.to_lowercase();
-            self.filtered_indices = self
+
+            // First, collect substring matches (these get priority)
+            let mut substring_matches: Vec<(usize, f64)> = self
                 .all_items
                 .iter()
                 .enumerate()
-                .filter(|(_, item)| item.title.to_lowercase().contains(&input_lower))
+                .filter_map(|(idx, item)| {
+                    if item.title.to_lowercase().contains(&input_lower) {
+                        // Boost score based on match position (earlier = better)
+                        let pos = item.title.to_lowercase().find(&input_lower).unwrap_or(0);
+                        #[allow(clippy::cast_precision_loss)]
+                        let score = 1.0 - (pos as f64 / item.title.len() as f64) * 0.2;
+                        Some((idx, score))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Then, use fuzzy matching for additional results
+            let search_engine = FuzzyMatcher::new(0.4, MAX_SUGGESTIONS);
+            let titles: Vec<String> = self
+                .all_items
+                .iter()
+                .map(|item| item.title.clone())
+                .collect();
+            let search_results = search_engine.find_matches(&self.input, &titles);
+
+            // Add fuzzy matches that aren't already in substring matches
+            let substring_indices: std::collections::HashSet<usize> =
+                substring_matches.iter().map(|(idx, _)| *idx).collect();
+
+            for candidate in search_results {
+                if let Some(idx) = self
+                    .all_items
+                    .iter()
+                    .position(|item| item.title == candidate.task_id)
+                {
+                    if !substring_indices.contains(&idx) {
+                        substring_matches.push((idx, candidate.score));
+                    }
+                }
+            }
+
+            // Sort by score (descending) and limit to MAX_SUGGESTIONS
+            substring_matches
+                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            self.filtered_indices = substring_matches
+                .into_iter()
+                .take(MAX_SUGGESTIONS)
                 .map(|(idx, _)| idx)
                 .collect();
         }

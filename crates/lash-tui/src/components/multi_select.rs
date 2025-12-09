@@ -1,6 +1,10 @@
 //! Multi-select list component for choosing dependencies
 
+use lash_core::fuzzy::FuzzyMatcher;
 use std::collections::HashSet;
+
+/// Maximum number of suggestions to show in filtered results
+const MAX_SUGGESTIONS: usize = 15;
 
 /// A selectable option in a multi-select list
 ///
@@ -64,6 +68,8 @@ pub struct MultiSelectState {
     pub selected_indices: HashSet<usize>,
     /// Currently highlighted index in filtered list
     pub highlighted_index: usize,
+    /// Disabled indices that cannot be selected (in `all_options`)
+    pub disabled_indices: HashSet<usize>,
 }
 
 impl MultiSelectState {
@@ -94,6 +100,7 @@ impl MultiSelectState {
             filtered_indices,
             selected_indices: HashSet::new(),
             highlighted_index: 0,
+            disabled_indices: HashSet::new(),
         }
     }
 
@@ -126,14 +133,61 @@ impl MultiSelectState {
     /// ```
     pub fn filter(&mut self) {
         if self.input.is_empty() {
-            self.filtered_indices = (0..self.all_options.len()).collect();
+            // Show all options when input is empty (limited to MAX_SUGGESTIONS)
+            self.filtered_indices = (0..self.all_options.len().min(MAX_SUGGESTIONS)).collect();
         } else {
+            // Hybrid approach: substring matching + fuzzy matching for better results
             let input_lower = self.input.to_lowercase();
-            self.filtered_indices = self
+
+            // First, collect substring matches (these get priority)
+            let mut substring_matches: Vec<(usize, f64)> = self
                 .all_options
                 .iter()
                 .enumerate()
-                .filter(|(_, opt)| opt.label.to_lowercase().contains(&input_lower))
+                .filter_map(|(idx, opt)| {
+                    if opt.label.to_lowercase().contains(&input_lower) {
+                        // Boost score based on match position (earlier = better)
+                        let pos = opt.label.to_lowercase().find(&input_lower).unwrap_or(0);
+                        #[allow(clippy::cast_precision_loss)]
+                        let score = 1.0 - (pos as f64 / opt.label.len() as f64) * 0.2;
+                        Some((idx, score))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Then, use fuzzy matching for additional results
+            let search_engine = FuzzyMatcher::new(0.4, MAX_SUGGESTIONS);
+            let labels: Vec<String> = self
+                .all_options
+                .iter()
+                .map(|opt| opt.label.clone())
+                .collect();
+            let search_results = search_engine.find_matches(&self.input, &labels);
+
+            // Add fuzzy matches that aren't already in substring matches
+            let substring_indices: std::collections::HashSet<usize> =
+                substring_matches.iter().map(|(idx, _)| *idx).collect();
+
+            for candidate in search_results {
+                if let Some(idx) = self
+                    .all_options
+                    .iter()
+                    .position(|opt| opt.label == candidate.task_id)
+                {
+                    if !substring_indices.contains(&idx) {
+                        substring_matches.push((idx, candidate.score));
+                    }
+                }
+            }
+
+            // Sort by score (descending) and limit to MAX_SUGGESTIONS
+            substring_matches
+                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            self.filtered_indices = substring_matches
+                .into_iter()
+                .take(MAX_SUGGESTIONS)
                 .map(|(idx, _)| idx)
                 .collect();
         }
@@ -207,6 +261,8 @@ impl MultiSelectState {
 
     /// Toggle selection of the currently highlighted item
     ///
+    /// Does nothing if the item is disabled.
+    ///
     /// # Examples
     ///
     /// ```
@@ -229,6 +285,12 @@ impl MultiSelectState {
         if !self.filtered_indices.is_empty() && self.highlighted_index < self.filtered_indices.len()
         {
             let option_index = self.filtered_indices[self.highlighted_index];
+
+            // Skip disabled items
+            if self.disabled_indices.contains(&option_index) {
+                return;
+            }
+
             if self.selected_indices.contains(&option_index) {
                 self.selected_indices.remove(&option_index);
             } else {
@@ -332,6 +394,30 @@ impl MultiSelectState {
             self.input.pop();
             self.filter();
         }
+    }
+
+    /// Check if an option is disabled
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{MultiSelectState, MultiSelectOption};
+    /// use std::collections::HashSet;
+    ///
+    /// let options = vec![
+    ///     MultiSelectOption {
+    ///         id: "1".to_string(),
+    ///         label: "Task 1".to_string(),
+    ///         description: None,
+    ///     },
+    /// ];
+    /// let mut multi_select = MultiSelectState::new(options);
+    /// multi_select.disabled_indices.insert(0);
+    /// assert!(multi_select.is_disabled(0));
+    /// ```
+    #[must_use]
+    pub fn is_disabled(&self, index: usize) -> bool {
+        self.disabled_indices.contains(&index)
     }
 }
 
@@ -492,5 +578,63 @@ mod tests {
         multi_select.filter();
         // Only 1 item matches, so highlighted_index should be reset to 0
         assert_eq!(multi_select.highlighted_index, 0);
+    }
+
+    #[test]
+    fn test_disabled_indices() {
+        let options = create_test_options();
+        let mut multi_select = MultiSelectState::new(options);
+
+        // Mark first option as disabled
+        multi_select.disabled_indices.insert(0);
+
+        // Try to select disabled item
+        multi_select.toggle_highlighted();
+        assert_eq!(multi_select.selected_indices.len(), 0);
+
+        // Verify is_disabled returns true
+        assert!(multi_select.is_disabled(0));
+        assert!(!multi_select.is_disabled(1));
+
+        // Select non-disabled item
+        multi_select.highlight_next();
+        multi_select.toggle_highlighted();
+        assert_eq!(multi_select.selected_indices.len(), 1);
+        assert!(multi_select.selected_indices.contains(&1));
+    }
+
+    #[test]
+    fn test_disabled_indices_multiple() {
+        let options = create_test_options();
+        let mut multi_select = MultiSelectState::new(options);
+
+        // Disable first and last items
+        multi_select.disabled_indices.insert(0);
+        multi_select.disabled_indices.insert(2);
+
+        // Try to select first (disabled)
+        multi_select.toggle_highlighted();
+        assert_eq!(multi_select.selected_indices.len(), 0);
+
+        // Select middle (enabled)
+        multi_select.highlight_next();
+        multi_select.toggle_highlighted();
+        assert_eq!(multi_select.selected_indices.len(), 1);
+
+        // Try to select last (disabled)
+        multi_select.highlight_next();
+        multi_select.toggle_highlighted();
+        assert_eq!(multi_select.selected_indices.len(), 1); // Should still be 1
+    }
+
+    #[test]
+    fn test_disabled_indices_empty() {
+        let options = create_test_options();
+        let multi_select = MultiSelectState::new(options);
+
+        // No indices disabled by default
+        assert!(!multi_select.is_disabled(0));
+        assert!(!multi_select.is_disabled(1));
+        assert!(!multi_select.is_disabled(2));
     }
 }
