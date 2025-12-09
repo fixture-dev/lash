@@ -134,9 +134,99 @@ lash index
    lash index
    ```
 
-### Workflow 3: Creating a New Task File
+### Workflow 3: Creating Tasks with `lash add`
 
-**Goal**: Add a new feature area with its own task file.
+**Goal**: Programmatically create tasks using the CLI.
+
+The `lash add` command is the recommended way for agents to create tasks. It provides:
+- Automatic validation before writing
+- JSON output for parsing results
+- Support for all task metadata
+- Automatic file creation when needed
+
+1. **Create a simple task**:
+   ```bash
+   lash add "Implement user authentication" --file features/auth.md --format json
+   ```
+
+   **JSON Response (success)**:
+   ```json
+   {
+     "success": true,
+     "task_id": "implement-user-authentication",
+     "file_path": "/project/features/auth.md",
+     "line_number": 15,
+     "is_new_file": false
+   }
+   ```
+
+2. **Create a task with full metadata**:
+   ```bash
+   lash add "Design API schema" \
+     --file api/design.md \
+     --label backend \
+     --label api \
+     --owner agent \
+     --estimate 4h \
+     --agent-note "Use OpenAPI 3.0 spec format" \
+     --format json
+   ```
+
+3. **Create subtasks under a parent**:
+   ```bash
+   # First create parent task
+   lash add "Build authentication system" \
+     --file auth.md \
+     --id auth-system \
+     --format json
+
+   # Then add subtasks
+   lash add "Design database schema" \
+     --file auth.md \
+     --parent auth-system \
+     --format json
+
+   lash add "Implement login endpoint" \
+     --file auth.md \
+     --parent auth-system \
+     --format json
+   ```
+
+4. **Create a new task file**:
+   ```bash
+   lash add "Initial setup" \
+     --file features/profile.md \
+     --file-title "User Profile Feature" \
+     --file-description "Tasks for implementing user profile management" \
+     --format json
+   ```
+
+5. **Validate before creating (dry run)**:
+   ```bash
+   lash add "Test task" --file tasks.md --dry-run --format json
+   ```
+
+**Error Handling**:
+
+JSON error response:
+```json
+{
+  "success": false,
+  "errors": [
+    {
+      "code": "E_CREATE_PARENT_NOT_FOUND",
+      "message": "parent task not found: 'nonexistent-id'",
+      "help": "ensure parent task 'nonexistent-id' exists in the target file"
+    }
+  ]
+}
+```
+
+Run `lash explain <ERROR_CODE>` for detailed help on any error.
+
+### Workflow 4: Creating a New Task File (Manual)
+
+**Goal**: Add a new feature area with its own task file by editing Markdown directly.
 
 1. **Get the file format**:
    ```bash
@@ -182,7 +272,7 @@ lash index
    lash index
    ```
 
-### Workflow 4: Adding Cross-File Dependencies
+### Workflow 5: Adding Cross-File Dependencies
 
 **Goal**: Link a task to work in another file.
 
@@ -215,7 +305,7 @@ lash index
    lash index
    ```
 
-### Workflow 5: Token-Optimized Context Generation
+### Workflow 6: Token-Optimized Context Generation
 
 **Goal**: Generate a minimal prompt for a specific task area.
 
@@ -629,6 +719,7 @@ lash agent-prompt --labels specific-area  # Narrow scope
 
 | Command | Purpose | Example |
 |---------|---------|---------|
+| `lash add` | Create a new task | `lash add "Fix bug" --file bugs.md --format json` |
 | `lash agent-prompt` | Generate agent instructions | `lash agent-prompt --format plain` |
 | `lash lint` | Validate task files | `lash lint path/to/file.md` |
 | `lash format` | Auto-format task files | `lash format --fix` |
@@ -636,6 +727,7 @@ lash agent-prompt --labels specific-area  # Narrow scope
 | `lash list` | List tasks with filters | `lash list --labels backend` |
 | `lash search` | Full-text search | `lash search "auth"` |
 | `lash show` | Display task details | `lash show file.md#task:id` |
+| `lash explain` | Explain an error code | `lash explain E_CREATE_EMPTY_TITLE` |
 | `lash graph` | Export dependency graph | `lash graph --format mermaid` |
 | `lash check-links` | Find broken dependencies | `lash check-links --fix` |
 | `lash tui` | Launch interactive UI | `lash tui` |
