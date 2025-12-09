@@ -187,6 +187,20 @@ This includes password hashing with bcrypt and JWT tokens for session management
 - [x] Set up billing database schema
 ```
 
+## CLI Commands
+
+```
+lash lint [PATH...]       Validate task files for format/semantic errors
+lash format [PATH...]     Normalize formatting of task files
+lash index                Rebuild SQLite index from Markdown files
+lash list [FILTERS]       List tasks (--label, --status, --owner, --path)
+lash search <QUERY>       Fuzzy search tasks by keyword
+lash show <ID>            Show details for a task or file
+lash graph                Output dependency graph (--format dot|mermaid|json)
+lash check-links          Find broken @depends-on and @doc references
+lash tui                  Launch interactive terminal UI
+```
+
 ## Safety Guidelines
 
 When working with Lash files:
