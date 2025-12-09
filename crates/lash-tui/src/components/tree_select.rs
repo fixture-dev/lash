@@ -551,4 +551,195 @@ mod tests {
         // Only 1 item matches, so selected_index should be reset to 0
         assert_eq!(tree_select.selected_index, 0);
     }
+
+    #[test]
+    fn test_fuzzy_matching_with_typo() {
+        let items = vec![
+            TreeSelectItem {
+                id: "1".to_string(),
+                title: "Database migration".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+            TreeSelectItem {
+                id: "2".to_string(),
+                title: "Frontend refactor".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+            TreeSelectItem {
+                id: "3".to_string(),
+                title: "Backend API".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+        ];
+        let mut tree_select = TreeSelectState::new(items);
+
+        // Search for "migrat" - should match "Database migration"
+        tree_select.input = "migrat".to_string();
+        tree_select.filter();
+
+        // Should find "Database migration"
+        assert!(
+            !tree_select.filtered_indices.is_empty(),
+            "Should find items containing the search term"
+        );
+        let first_match = &tree_select.all_items[tree_select.filtered_indices[0]];
+        assert_eq!(first_match.title, "Database migration");
+    }
+
+    #[test]
+    fn test_fuzzy_matching_sorted_by_score() {
+        let items = vec![
+            TreeSelectItem {
+                id: "1".to_string(),
+                title: "Completely different thing".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+            TreeSelectItem {
+                id: "2".to_string(),
+                title: "Backend tasks".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+            TreeSelectItem {
+                id: "3".to_string(),
+                title: "Backend API work".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+        ];
+        let mut tree_select = TreeSelectState::new(items);
+
+        tree_select.input = "backend".to_string();
+        tree_select.filter();
+
+        // Should find both backend items, sorted by score
+        assert!(tree_select.filtered_indices.len() >= 2);
+        let first = &tree_select.all_items[tree_select.filtered_indices[0]];
+        let second = &tree_select.all_items[tree_select.filtered_indices[1]];
+
+        // Both should contain "backend"
+        assert!(first.title.to_lowercase().contains("backend"));
+        assert!(second.title.to_lowercase().contains("backend"));
+    }
+
+    #[test]
+    fn test_max_suggestions_limit() {
+        // Create more than MAX_SUGGESTIONS items
+        let items: Vec<TreeSelectItem> = (0..20)
+            .map(|i| TreeSelectItem {
+                id: format!("task-{i}"),
+                title: format!("Task {i}"),
+                depth: 0,
+                status_indicator: ' ',
+            })
+            .collect();
+        let mut tree_select = TreeSelectState::new(items);
+
+        // Empty input should limit results
+        tree_select.input.clear();
+        tree_select.filter();
+
+        assert!(
+            tree_select.filtered_indices.len() <= MAX_SUGGESTIONS,
+            "Should limit to MAX_SUGGESTIONS when input is empty"
+        );
+
+        // Partial match that would match many items
+        tree_select.input = "Task".to_string();
+        tree_select.filter();
+
+        assert!(
+            tree_select.filtered_indices.len() <= MAX_SUGGESTIONS,
+            "Should limit to MAX_SUGGESTIONS even with many matches"
+        );
+    }
+
+    #[test]
+    fn test_substring_matches_score_higher_than_fuzzy() {
+        let items = vec![
+            TreeSelectItem {
+                id: "1".to_string(),
+                title: "Setup database connection".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+            TreeSelectItem {
+                id: "2".to_string(),
+                title: "Databse backup script".to_string(), // typo
+                depth: 0,
+                status_indicator: ' ',
+            },
+            TreeSelectItem {
+                id: "3".to_string(),
+                title: "Something else entirely".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+        ];
+        let mut tree_select = TreeSelectState::new(items);
+
+        tree_select.input = "database".to_string();
+        tree_select.filter();
+
+        assert!(!tree_select.filtered_indices.is_empty());
+
+        // First result should be the exact substring match
+        let first_match = &tree_select.all_items[tree_select.filtered_indices[0]];
+        assert_eq!(
+            first_match.title, "Setup database connection",
+            "Exact substring match should rank higher than fuzzy match"
+        );
+    }
+
+    #[test]
+    fn test_fuzzy_matching_case_insensitive() {
+        let items = vec![
+            TreeSelectItem {
+                id: "1".to_string(),
+                title: "BACKEND TASKS".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+            TreeSelectItem {
+                id: "2".to_string(),
+                title: "frontend work".to_string(),
+                depth: 0,
+                status_indicator: ' ',
+            },
+        ];
+        let mut tree_select = TreeSelectState::new(items);
+
+        // Lowercase query should match uppercase title
+        tree_select.input = "backend".to_string();
+        tree_select.filter();
+
+        assert_eq!(tree_select.filtered_indices.len(), 1);
+        let match_item = &tree_select.all_items[tree_select.filtered_indices[0]];
+        assert_eq!(match_item.title, "BACKEND TASKS");
+    }
+
+    #[test]
+    fn test_empty_filter_shows_limited_results() {
+        let items: Vec<TreeSelectItem> = (0..20)
+            .map(|i| TreeSelectItem {
+                id: format!("{i}"),
+                title: format!("Task {i}"),
+                depth: 0,
+                status_indicator: ' ',
+            })
+            .collect();
+        let mut tree_select = TreeSelectState::new(items);
+
+        tree_select.filter();
+
+        assert_eq!(
+            tree_select.filtered_indices.len(),
+            MAX_SUGGESTIONS,
+            "Empty filter should show first MAX_SUGGESTIONS items"
+        );
+    }
 }

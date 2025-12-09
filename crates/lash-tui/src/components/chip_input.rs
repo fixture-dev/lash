@@ -30,6 +30,8 @@ pub struct ChipInputState {
     pub cursor_position: usize,
     /// Currently focused chip for deletion (None if input focused)
     pub focused_chip: Option<usize>,
+    /// Usage counts for suggestions (label name -> task count)
+    pub suggestion_counts: std::collections::HashMap<String, i64>,
 }
 
 impl ChipInputState {
@@ -51,6 +53,7 @@ impl ChipInputState {
             input: String::new(),
             cursor_position: 0,
             focused_chip: None,
+            suggestion_counts: std::collections::HashMap::new(),
         }
     }
 
@@ -238,6 +241,83 @@ impl ChipInputState {
         &self.chips
     }
 
+    /// Set usage counts for autocomplete suggestions
+    ///
+    /// This allows displaying how many tasks use each label when showing suggestions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::ChipInputState;
+    /// use std::collections::HashMap;
+    ///
+    /// let mut chip_input = ChipInputState::new();
+    /// let mut counts = HashMap::new();
+    /// counts.insert("backend".to_string(), 15);
+    /// counts.insert("frontend".to_string(), 8);
+    /// chip_input.set_suggestion_counts(counts);
+    /// assert_eq!(chip_input.get_suggestion_count("backend"), Some(15));
+    /// assert_eq!(chip_input.get_suggestion_count("frontend"), Some(8));
+    /// ```
+    pub fn set_suggestion_counts(&mut self, counts: std::collections::HashMap<String, i64>) {
+        self.suggestion_counts = counts;
+    }
+
+    /// Get the usage count for a specific suggestion
+    ///
+    /// Returns `None` if the label has no associated count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::ChipInputState;
+    /// use std::collections::HashMap;
+    ///
+    /// let mut chip_input = ChipInputState::new();
+    /// let mut counts = HashMap::new();
+    /// counts.insert("backend".to_string(), 15);
+    /// chip_input.set_suggestion_counts(counts);
+    /// assert_eq!(chip_input.get_suggestion_count("backend"), Some(15));
+    /// assert_eq!(chip_input.get_suggestion_count("frontend"), None);
+    /// ```
+    #[must_use]
+    pub fn get_suggestion_count(&self, label: &str) -> Option<i64> {
+        self.suggestion_counts.get(label).copied()
+    }
+
+    /// Get all available suggestions with counts
+    ///
+    /// Returns a vector of (label, count) tuples, sorted by label name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::ChipInputState;
+    /// use std::collections::HashMap;
+    ///
+    /// let mut chip_input = ChipInputState::new();
+    /// let mut counts = HashMap::new();
+    /// counts.insert("backend".to_string(), 15);
+    /// counts.insert("frontend".to_string(), 8);
+    /// chip_input.set_suggestion_counts(counts);
+    ///
+    /// let suggestions = chip_input.get_suggestions_with_counts();
+    /// assert_eq!(suggestions.len(), 2);
+    /// // Results are sorted alphabetically
+    /// assert_eq!(suggestions[0].0, "backend");
+    /// assert_eq!(suggestions[1].0, "frontend");
+    /// ```
+    #[must_use]
+    pub fn get_suggestions_with_counts(&self) -> Vec<(String, i64)> {
+        let mut suggestions: Vec<_> = self
+            .suggestion_counts
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        suggestions.sort_by(|a, b| a.0.cmp(&b.0));
+        suggestions
+    }
+
     /// Convert character position to byte index
     ///
     /// Helper for working with Unicode strings.
@@ -363,5 +443,126 @@ mod tests {
         chip_input.input = "  tag1  ".to_string();
         chip_input.add_chip();
         assert_eq!(chip_input.get_chips(), &["tag1"]);
+    }
+
+    #[test]
+    fn test_get_suggestions_with_counts() {
+        let mut chip_input = ChipInputState::new();
+        let mut counts = std::collections::HashMap::new();
+        counts.insert("backend".to_string(), 15);
+        counts.insert("frontend".to_string(), 8);
+        counts.insert("database".to_string(), 12);
+        chip_input.set_suggestion_counts(counts);
+
+        let suggestions = chip_input.get_suggestions_with_counts();
+        assert_eq!(suggestions.len(), 3);
+
+        // Should be sorted alphabetically
+        assert_eq!(suggestions[0].0, "backend");
+        assert_eq!(suggestions[0].1, 15);
+        assert_eq!(suggestions[1].0, "database");
+        assert_eq!(suggestions[1].1, 12);
+        assert_eq!(suggestions[2].0, "frontend");
+        assert_eq!(suggestions[2].1, 8);
+    }
+
+    #[test]
+    fn test_filter_suggestions_by_prefix() {
+        let mut chip_input = ChipInputState::new();
+        let mut counts = std::collections::HashMap::new();
+        counts.insert("backend".to_string(), 15);
+        counts.insert("frontend".to_string(), 8);
+        counts.insert("database".to_string(), 12);
+        counts.insert("better".to_string(), 3);
+        chip_input.set_suggestion_counts(counts);
+
+        chip_input.input = "back".to_string();
+
+        // Get all suggestions and filter by prefix
+        let all_suggestions = chip_input.get_suggestions_with_counts();
+        let input_lower = chip_input.input.to_lowercase();
+        let filtered: Vec<_> = all_suggestions
+            .into_iter()
+            .filter(|(label, _)| label.to_lowercase().starts_with(&input_lower))
+            .collect();
+
+        assert_eq!(
+            filtered.len(),
+            1,
+            "Should find 1 label starting with 'back'"
+        );
+        assert_eq!(filtered[0].0, "backend");
+    }
+
+    #[test]
+    fn test_filter_suggestions_case_insensitive() {
+        let mut chip_input = ChipInputState::new();
+        let mut counts = std::collections::HashMap::new();
+        counts.insert("Backend".to_string(), 15);
+        counts.insert("FRONTEND".to_string(), 8);
+        counts.insert("DataBase".to_string(), 12);
+        chip_input.set_suggestion_counts(counts);
+
+        chip_input.input = "back".to_string();
+
+        // Get all suggestions and filter case-insensitively
+        let all_suggestions = chip_input.get_suggestions_with_counts();
+        let filtered: Vec<_> = all_suggestions
+            .into_iter()
+            .filter(|(label, _)| {
+                label
+                    .to_lowercase()
+                    .contains(&chip_input.input.to_lowercase())
+            })
+            .collect();
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].0, "Backend");
+    }
+
+    #[test]
+    fn test_exclude_added_chips_from_suggestions() {
+        let mut chip_input = ChipInputState::new();
+        let mut counts = std::collections::HashMap::new();
+        counts.insert("backend".to_string(), 15);
+        counts.insert("frontend".to_string(), 8);
+        counts.insert("database".to_string(), 12);
+        chip_input.set_suggestion_counts(counts);
+
+        // Add some chips
+        chip_input.input = "backend".to_string();
+        chip_input.add_chip();
+        chip_input.input = "frontend".to_string();
+        chip_input.add_chip();
+
+        // Get suggestions excluding already-added chips
+        let all_suggestions = chip_input.get_suggestions_with_counts();
+        let filtered: Vec<_> = all_suggestions
+            .into_iter()
+            .filter(|(label, _)| !chip_input.chips.contains(label))
+            .collect();
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].0, "database");
+    }
+
+    #[test]
+    fn test_suggestion_count_retrieval() {
+        let mut chip_input = ChipInputState::new();
+        let mut counts = std::collections::HashMap::new();
+        counts.insert("backend".to_string(), 42);
+        counts.insert("frontend".to_string(), 17);
+        chip_input.set_suggestion_counts(counts);
+
+        assert_eq!(chip_input.get_suggestion_count("backend"), Some(42));
+        assert_eq!(chip_input.get_suggestion_count("frontend"), Some(17));
+        assert_eq!(chip_input.get_suggestion_count("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_empty_suggestions() {
+        let chip_input = ChipInputState::new();
+        let suggestions = chip_input.get_suggestions_with_counts();
+        assert!(suggestions.is_empty());
     }
 }

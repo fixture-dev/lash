@@ -612,3 +612,271 @@ fn test_file_tree_with_intermediate_directories() -> TuiResult<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_load_label_stats_for_autocomplete() -> TuiResult<()> {
+    let (_temp_dir, db_path) = setup_test_db()?;
+    let conn = lash_db::open_database(&db_path)?;
+
+    // Add some labels to the database
+    let file_repo = lash_db::repository::FileRepository::new(&conn);
+    let files = file_repo.list_all()?;
+    let test_file = files
+        .iter()
+        .find(|f| f.title == "Test File")
+        .expect("Test File should exist");
+
+    let task_repo = lash_db::repository::TaskRepository::new(&conn);
+    let tasks = task_repo.get_by_file(test_file.id)?;
+
+    let label_repo = lash_db::repository::LabelRepository::new(&conn);
+
+    // Add labels to tasks
+    label_repo.set_task_labels(tasks[0].id, &["backend".to_string(), "rust".to_string()])?;
+    label_repo.set_task_labels(tasks[1].id, &["backend".to_string()])?;
+    label_repo.set_task_labels(tasks[2].id, &["frontend".to_string()])?;
+
+    // Get label stats
+    let stats = label_repo.get_label_stats()?;
+
+    assert!(!stats.is_empty(), "Should have label statistics");
+
+    // Find backend label
+    let backend_stat = stats.iter().find(|s| s.name == "backend");
+    assert!(backend_stat.is_some(), "Should find backend label");
+    let backend_stat = backend_stat.unwrap();
+    assert_eq!(backend_stat.task_count, 2, "Backend should have 2 tasks");
+
+    // Find rust label
+    let rust_stat = stats.iter().find(|s| s.name == "rust");
+    assert!(rust_stat.is_some(), "Should find rust label");
+    let rust_stat = rust_stat.unwrap();
+    assert_eq!(rust_stat.task_count, 1, "Rust should have 1 task");
+
+    // Find frontend label
+    let frontend_stat = stats.iter().find(|s| s.name == "frontend");
+    assert!(frontend_stat.is_some(), "Should find frontend label");
+    let frontend_stat = frontend_stat.unwrap();
+    assert_eq!(frontend_stat.task_count, 1, "Frontend should have 1 task");
+
+    Ok(())
+}
+
+#[test]
+fn test_load_distinct_owners_for_autocomplete() -> TuiResult<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let db_path = temp_dir.path().join("test.db");
+
+    // Initialize database
+    let conn = lash_db::init_database(&db_path)?;
+
+    // Manually insert test data with owners
+    // (Note: The indexer doesn't currently populate task.owner from file metadata,
+    // so we test the database query directly)
+    use lash_db::DbError;
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, hash, mtime, status) VALUES (?, ?, ?, ?, ?, ?)",
+        ("test1.md", "test1", "Test 1", "hash1", 0, "empty"),
+    )
+    .map_err(DbError::from)?;
+    let file1_id = conn.last_insert_rowid();
+
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, hash, mtime, status) VALUES (?, ?, ?, ?, ?, ?)",
+        ("test2.md", "test2", "Test 2", "hash2", 0, "empty"),
+    )
+    .map_err(DbError::from)?;
+    let file2_id = conn.last_insert_rowid();
+
+    // Insert tasks with different owners
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, owner)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            file1_id,
+            "task1",
+            "test1#task1",
+            "Task 1",
+            "open",
+            0,
+            0,
+            "alice",
+        ),
+    )
+    .map_err(DbError::from)?;
+
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, owner)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            file1_id,
+            "task2",
+            "test1#task2",
+            "Task 2",
+            "open",
+            0,
+            1,
+            "bob",
+        ),
+    )
+    .map_err(DbError::from)?;
+
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, owner)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            file2_id,
+            "task3",
+            "test2#task3",
+            "Task 3",
+            "open",
+            0,
+            0,
+            "alice",
+        ),
+    )
+    .map_err(DbError::from)?;
+
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, owner)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            file2_id,
+            "task4",
+            "test2#task4",
+            "Task 4",
+            "open",
+            0,
+            1,
+            "charlie",
+        ),
+    )
+    .map_err(DbError::from)?;
+
+    // Get distinct owners
+    let task_repo = lash_db::repository::TaskRepository::new(&conn);
+    let owners = task_repo.get_distinct_owners()?;
+
+    assert_eq!(owners.len(), 3, "Should have 3 distinct owners");
+    assert!(owners.contains(&"alice".to_string()));
+    assert!(owners.contains(&"bob".to_string()));
+    assert!(owners.contains(&"charlie".to_string()));
+
+    // Verify they're sorted
+    assert_eq!(owners[0], "alice");
+    assert_eq!(owners[1], "bob");
+    assert_eq!(owners[2], "charlie");
+
+    Ok(())
+}
+
+#[test]
+fn test_label_stats_with_file_labels() -> TuiResult<()> {
+    let (_temp_dir, db_path) = setup_test_db()?;
+    let conn = lash_db::open_database(&db_path)?;
+
+    // Get the test file
+    let file_repo = lash_db::repository::FileRepository::new(&conn);
+    let files = file_repo.list_all()?;
+    let test_file = files
+        .iter()
+        .find(|f| f.title == "Test File")
+        .expect("Test File should exist");
+
+    let task_repo = lash_db::repository::TaskRepository::new(&conn);
+    let tasks = task_repo.get_by_file(test_file.id)?;
+
+    let label_repo = lash_db::repository::LabelRepository::new(&conn);
+
+    // Add file-level label
+    let doc_label_id = label_repo.get_or_create("documentation")?;
+    label_repo.add_file_label(test_file.id, doc_label_id)?;
+
+    // Add task-level label
+    let urgent_label_id = label_repo.get_or_create("urgent")?;
+    if !tasks.is_empty() {
+        label_repo.add_task_label(tasks[0].id, urgent_label_id)?;
+    }
+
+    // Get label stats
+    let stats = label_repo.get_label_stats()?;
+
+    // Find documentation label (file-level, should apply to all tasks in file)
+    let doc_stat = stats.iter().find(|s| s.name == "documentation");
+    assert!(doc_stat.is_some(), "Should find documentation label");
+    let doc_stat = doc_stat.unwrap();
+    assert_eq!(doc_stat.file_count, 1, "Documentation should be on 1 file");
+    assert!(
+        doc_stat.task_count >= 1,
+        "Documentation should apply to tasks via file inheritance"
+    );
+
+    // Find urgent label (task-level)
+    let urgent_stat = stats.iter().find(|s| s.name == "urgent");
+    assert!(urgent_stat.is_some(), "Should find urgent label");
+    let urgent_stat = urgent_stat.unwrap();
+    assert_eq!(urgent_stat.file_count, 0, "Urgent should be on 0 files");
+    assert_eq!(urgent_stat.task_count, 1, "Urgent should be on 1 task");
+
+    Ok(())
+}
+
+#[test]
+fn test_empty_database_returns_empty_options() -> TuiResult<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let project_root = temp_dir.path().to_path_buf();
+    let db_path = project_root.join(".lash").join("db.sqlite");
+
+    std::fs::create_dir_all(db_path.parent().unwrap())?;
+
+    let conn = lash_db::init_database(&db_path)?;
+
+    // Get label stats from empty database
+    let label_repo = lash_db::repository::LabelRepository::new(&conn);
+    let stats = label_repo.get_label_stats()?;
+    assert!(
+        stats.is_empty(),
+        "Empty database should have no label stats"
+    );
+
+    // Get distinct owners from empty database
+    let task_repo = lash_db::repository::TaskRepository::new(&conn);
+    let owners = task_repo.get_distinct_owners()?;
+    assert!(owners.is_empty(), "Empty database should have no owners");
+
+    Ok(())
+}
+
+#[test]
+fn test_label_stats_usage_counts() -> TuiResult<()> {
+    let (_temp_dir, db_path) = setup_test_db()?;
+    let conn = lash_db::open_database(&db_path)?;
+
+    let file_repo = lash_db::repository::FileRepository::new(&conn);
+    let files = file_repo.list_all()?;
+    let test_file = files
+        .iter()
+        .find(|f| f.title == "Test File")
+        .expect("Test File should exist");
+
+    let task_repo = lash_db::repository::TaskRepository::new(&conn);
+    let tasks = task_repo.get_by_file(test_file.id)?;
+
+    let label_repo = lash_db::repository::LabelRepository::new(&conn);
+
+    // Add backend label to multiple tasks
+    let backend_label_id = label_repo.get_or_create("backend")?;
+    for task in &tasks[0..3.min(tasks.len())] {
+        label_repo.add_task_label(task.id, backend_label_id)?;
+    }
+
+    // Get label stats
+    let stats = label_repo.get_label_stats()?;
+
+    let backend_stat = stats.iter().find(|s| s.name == "backend");
+    assert!(backend_stat.is_some(), "Should find backend label");
+    let backend_stat = backend_stat.unwrap();
+    assert_eq!(backend_stat.task_count, 3, "Backend should have 3 tasks");
+
+    Ok(())
+}

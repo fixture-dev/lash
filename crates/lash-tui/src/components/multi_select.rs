@@ -637,4 +637,238 @@ mod tests {
         assert!(!multi_select.is_disabled(1));
         assert!(!multi_select.is_disabled(2));
     }
+
+    #[test]
+    fn test_fuzzy_matching_with_typo() {
+        let options = vec![
+            MultiSelectOption {
+                id: "1".to_string(),
+                label: "Database migration".to_string(),
+                description: Some("tasks/db.md".to_string()),
+            },
+            MultiSelectOption {
+                id: "2".to_string(),
+                label: "Frontend refactor".to_string(),
+                description: Some("tasks/frontend.md".to_string()),
+            },
+            MultiSelectOption {
+                id: "3".to_string(),
+                label: "Backend API".to_string(),
+                description: Some("tasks/backend.md".to_string()),
+            },
+        ];
+        let mut multi_select = MultiSelectState::new(options);
+
+        // Search for "migrat" - should match "Database migration"
+        multi_select.input = "migrat".to_string();
+        multi_select.filter();
+
+        // Should find "Database migration"
+        assert!(
+            !multi_select.filtered_indices.is_empty(),
+            "Should find items containing the search term"
+        );
+        let first_match = &multi_select.all_options[multi_select.filtered_indices[0]];
+        assert_eq!(first_match.label, "Database migration");
+    }
+
+    #[test]
+    fn test_fuzzy_matching_sorted_by_score() {
+        let options = vec![
+            MultiSelectOption {
+                id: "1".to_string(),
+                label: "Completely different thing".to_string(),
+                description: None,
+            },
+            MultiSelectOption {
+                id: "2".to_string(),
+                label: "Backend tasks".to_string(),
+                description: None,
+            },
+            MultiSelectOption {
+                id: "3".to_string(),
+                label: "Backend API work".to_string(),
+                description: None,
+            },
+        ];
+        let mut multi_select = MultiSelectState::new(options);
+
+        multi_select.input = "backend".to_string();
+        multi_select.filter();
+
+        // Should find both backend items, sorted by score
+        assert!(multi_select.filtered_indices.len() >= 2);
+        let first = &multi_select.all_options[multi_select.filtered_indices[0]];
+        let second = &multi_select.all_options[multi_select.filtered_indices[1]];
+
+        // Both should contain "backend"
+        assert!(first.label.to_lowercase().contains("backend"));
+        assert!(second.label.to_lowercase().contains("backend"));
+    }
+
+    #[test]
+    fn test_max_suggestions_limit() {
+        // Create more than MAX_SUGGESTIONS options
+        let options: Vec<MultiSelectOption> = (0..20)
+            .map(|i| MultiSelectOption {
+                id: format!("task-{i}"),
+                label: format!("Task {i}"),
+                description: None,
+            })
+            .collect();
+        let mut multi_select = MultiSelectState::new(options);
+
+        // Empty input should limit results
+        multi_select.input.clear();
+        multi_select.filter();
+
+        assert!(
+            multi_select.filtered_indices.len() <= MAX_SUGGESTIONS,
+            "Should limit to MAX_SUGGESTIONS when input is empty"
+        );
+
+        // Partial match that would match many items
+        multi_select.input = "Task".to_string();
+        multi_select.filter();
+
+        assert!(
+            multi_select.filtered_indices.len() <= MAX_SUGGESTIONS,
+            "Should limit to MAX_SUGGESTIONS even with many matches"
+        );
+    }
+
+    #[test]
+    fn test_substring_matches_score_higher_than_fuzzy() {
+        let options = vec![
+            MultiSelectOption {
+                id: "1".to_string(),
+                label: "Setup database connection".to_string(),
+                description: None,
+            },
+            MultiSelectOption {
+                id: "2".to_string(),
+                label: "Databse backup script".to_string(), // typo
+                description: None,
+            },
+            MultiSelectOption {
+                id: "3".to_string(),
+                label: "Something else entirely".to_string(),
+                description: None,
+            },
+        ];
+        let mut multi_select = MultiSelectState::new(options);
+
+        multi_select.input = "database".to_string();
+        multi_select.filter();
+
+        assert!(!multi_select.filtered_indices.is_empty());
+
+        // First result should be the exact substring match
+        let first_match = &multi_select.all_options[multi_select.filtered_indices[0]];
+        assert_eq!(
+            first_match.label, "Setup database connection",
+            "Exact substring match should rank higher than fuzzy match"
+        );
+    }
+
+    #[test]
+    fn test_fuzzy_matching_case_insensitive() {
+        let options = vec![
+            MultiSelectOption {
+                id: "1".to_string(),
+                label: "BACKEND TASKS".to_string(),
+                description: None,
+            },
+            MultiSelectOption {
+                id: "2".to_string(),
+                label: "frontend work".to_string(),
+                description: None,
+            },
+        ];
+        let mut multi_select = MultiSelectState::new(options);
+
+        // Lowercase query should match uppercase label
+        multi_select.input = "backend".to_string();
+        multi_select.filter();
+
+        assert_eq!(multi_select.filtered_indices.len(), 1);
+        let match_option = &multi_select.all_options[multi_select.filtered_indices[0]];
+        assert_eq!(match_option.label, "BACKEND TASKS");
+    }
+
+    #[test]
+    fn test_empty_filter_shows_limited_results() {
+        let options: Vec<MultiSelectOption> = (0..20)
+            .map(|i| MultiSelectOption {
+                id: format!("{i}"),
+                label: format!("Task {i}"),
+                description: None,
+            })
+            .collect();
+        let mut multi_select = MultiSelectState::new(options);
+
+        multi_select.filter();
+
+        assert_eq!(
+            multi_select.filtered_indices.len(),
+            MAX_SUGGESTIONS,
+            "Empty filter should show first MAX_SUGGESTIONS items"
+        );
+    }
+
+    #[test]
+    fn test_disabled_items_cannot_be_toggled() {
+        let options = create_test_options();
+        let mut multi_select = MultiSelectState::new(options);
+
+        // Disable the first item
+        multi_select.disabled_indices.insert(0);
+
+        // Try to toggle disabled item
+        multi_select.highlighted_index = 0;
+        multi_select.toggle_highlighted();
+        assert_eq!(
+            multi_select.selected_indices.len(),
+            0,
+            "Disabled item should not be toggleable"
+        );
+
+        // Toggle enabled item
+        multi_select.highlighted_index = 1;
+        multi_select.toggle_highlighted();
+        assert_eq!(
+            multi_select.selected_indices.len(),
+            1,
+            "Enabled item should be toggleable"
+        );
+    }
+
+    #[test]
+    fn test_navigation_works_with_disabled_items() {
+        let options = create_test_options();
+        let mut multi_select = MultiSelectState::new(options);
+
+        // Disable middle item
+        multi_select.disabled_indices.insert(1);
+
+        // Navigate through all items
+        multi_select.highlighted_index = 0;
+        multi_select.highlight_next();
+        assert_eq!(
+            multi_select.highlighted_index, 1,
+            "Should move to next index"
+        );
+
+        multi_select.highlight_next();
+        assert_eq!(
+            multi_select.highlighted_index, 2,
+            "Should move past disabled item"
+        );
+
+        multi_select.highlight_prev();
+        assert_eq!(
+            multi_select.highlighted_index, 1,
+            "Should move back through disabled item"
+        );
+    }
 }

@@ -18,6 +18,7 @@ regex = { workspace = true }
 walkdir = { workspace = true }
 pulldown-cmark = "0.12"
 chrono = { workspace = true }
+strsim = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

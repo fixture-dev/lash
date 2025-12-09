@@ -50,8 +50,8 @@ Implement autocomplete for labels, owners, and task references.
   - [x] Existing file paths (for dependencies)
 - [x] Implement label autocomplete
   - [x] Filter as user types
-  - [ ] Show usage count next to label
-  - [ ] Highlight matching characters
+  - [x] Show usage count next to label
+  - [x] Highlight matching characters
   - [x] Allow creating new labels
 - [x] Implement owner autocomplete
   - [x] Show existing owners from project
@@ -65,7 +65,7 @@ Implement autocomplete for labels, owners, and task references.
   - [x] Search across all files and tasks
   - [x] Show file path + task title
   - [x] Multi-select with checkboxes
-  - [ ] Prevent selecting self or descendants
+  - [x] Prevent selecting self or descendants
 - [ ] Performance optimization
   - [ ] Cache loaded options
   - [ ] Limit displayed suggestions (max 10-15)

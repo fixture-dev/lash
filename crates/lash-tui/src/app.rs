@@ -1618,6 +1618,8 @@ impl TuiApp {
     /// Handle opening task creation modal
     #[allow(clippy::unnecessary_wraps)]
     fn handle_open_task_creation(&mut self) -> TuiResult<()> {
+        use lash_db::repository::LabelRepository;
+
         // Get currently selected file
         let target_file = if let Some(selected) = self.state.selected_tree_node() {
             selected.file_record.map(|f| f.path)
@@ -1649,6 +1651,20 @@ impl TuiApp {
             .collect();
 
         self.state.open_task_creation_modal(target_file, tasks);
+
+        // Fetch label stats for autocomplete
+        if let Some(modal_state) = &mut self.state.task_creation_modal_state {
+            let label_repo = LabelRepository::new(&self.conn);
+            match label_repo.get_label_stats() {
+                Ok(label_stats) => {
+                    modal_state.set_label_suggestions(label_stats);
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to load label stats: {e}");
+                }
+            }
+        }
+
         Ok(())
     }
 
