@@ -42,7 +42,7 @@ Tasks are organized by major module/component. Each task file contains:
 
 ### User Interfaces
 - [x] [tasks.tui.md](tasks.tui.md) - Terminal UI implementation ✅
-- [ ] [tasks.task-creation-ui.md](tasks.task-creation-ui.md) - Task creation via CLI (`lash add`) and TUI form modal
+- [x] [tasks.task-creation-ui.md](tasks.task-creation-ui.md) - Task creation via CLI (`lash add`) and TUI form modal (Tasks 1-12 complete) ✅
 
 ### Advanced Features
 - [x] [tasks.agent-integration.md](tasks.agent-integration.md) - Agent prompts, token minimization (Tasks 1-6 complete) ✅
