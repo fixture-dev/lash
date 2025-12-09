@@ -97,6 +97,7 @@ fn list_error_codes(args: &ExplainArgs) -> Result<i32> {
         let mut query_errors = Vec::new();
         let mut config_errors = Vec::new();
         let mut io_errors = Vec::new();
+        let mut create_errors = Vec::new();
         let mut internal_errors = Vec::new();
 
         for code in &codes {
@@ -114,6 +115,8 @@ fn list_error_codes(args: &ExplainArgs) -> Result<i32> {
                 config_errors.push(*code);
             } else if code.starts_with("E_IO") {
                 io_errors.push(*code);
+            } else if code.starts_with("E_CREATE") {
+                create_errors.push(*code);
             } else if code.starts_with("E_INTERNAL") {
                 internal_errors.push(*code);
             }
@@ -126,6 +129,7 @@ fn list_error_codes(args: &ExplainArgs) -> Result<i32> {
         print_category("Query Errors", &query_errors, use_color);
         print_category("Config Errors", &config_errors, use_color);
         print_category("IO Errors", &io_errors, use_color);
+        print_category("Task Creation Errors", &create_errors, use_color);
         print_category("Internal Errors", &internal_errors, use_color);
 
         println!();

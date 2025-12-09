@@ -1174,6 +1174,38 @@ pub mod codes {
     /// Unexpected internal error
     pub const E_INTERNAL: &str = "E_INTERNAL";
 
+    // Task creation errors (E_CREATE_*)
+    /// Task title is empty or whitespace-only
+    pub const E_CREATE_EMPTY_TITLE: &str = "E_CREATE_EMPTY_TITLE";
+    /// Task title exceeds maximum length
+    pub const E_CREATE_TITLE_TOO_LONG: &str = "E_CREATE_TITLE_TOO_LONG";
+    /// Target file does not exist
+    pub const E_CREATE_FILE_NOT_FOUND: &str = "E_CREATE_FILE_NOT_FOUND";
+    /// Target file is not writable
+    pub const E_CREATE_FILE_NOT_WRITABLE: &str = "E_CREATE_FILE_NOT_WRITABLE";
+    /// Target file failed to parse
+    pub const E_CREATE_FILE_PARSE_FAILED: &str = "E_CREATE_FILE_PARSE_FAILED";
+    /// Parent task not found
+    pub const E_CREATE_PARENT_NOT_FOUND: &str = "E_CREATE_PARENT_NOT_FOUND";
+    /// Task would exceed maximum nesting depth
+    pub const E_CREATE_DEPTH_LIMIT_EXCEEDED: &str = "E_CREATE_DEPTH_LIMIT_EXCEEDED";
+    /// Task ID is already in use
+    pub const E_CREATE_DUPLICATE_ID: &str = "E_CREATE_DUPLICATE_ID";
+    /// Task ID format is invalid
+    pub const E_CREATE_INVALID_ID_FORMAT: &str = "E_CREATE_INVALID_ID_FORMAT";
+    /// Label format is invalid
+    pub const E_CREATE_INVALID_LABEL: &str = "E_CREATE_INVALID_LABEL";
+    /// Time estimate format is invalid
+    pub const E_CREATE_INVALID_ESTIMATE: &str = "E_CREATE_INVALID_ESTIMATE";
+    /// Dependency reference not found
+    pub const E_CREATE_DEPENDENCY_NOT_FOUND: &str = "E_CREATE_DEPENDENCY_NOT_FOUND";
+    /// Would create circular dependency
+    pub const E_CREATE_WOULD_CREATE_CYCLE: &str = "E_CREATE_WOULD_CREATE_CYCLE";
+    /// Insert position is invalid
+    pub const E_CREATE_INVALID_POSITION: &str = "E_CREATE_INVALID_POSITION";
+    /// I/O error during task creation
+    pub const E_CREATE_IO_ERROR: &str = "E_CREATE_IO_ERROR";
+
     // Legacy error code aliases (for backward compatibility with existing code)
     // These should be removed once all code is updated to use the new naming
     #[deprecated(note = "Use E_PARSE_INVALID_CHECKBOX instead")]

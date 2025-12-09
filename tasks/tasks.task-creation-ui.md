@@ -92,7 +92,7 @@ Implement autocomplete for labels, owners, and task references.
 **Priority:** MEDIUM
 **Effort:** 1-2 days
 **Depends on:** Task 6, Task 8
-**Status:** Partially Complete
+**Status:** Complete
 
 ### Description
 
@@ -108,31 +108,31 @@ Document the task creation feature for users and update help text.
   - [x] Add task creation section
   - [x] Document `a` or `n` keybinding
   - [x] List form navigation keys
-- [ ] Add to user documentation
-  - [ ] Create `docs/task-creation.md`
-  - [ ] CLI usage examples
-  - [ ] TUI walkthrough with screenshots
-  - [ ] Common workflows
-- [ ] Add to agent documentation
-  - [ ] Update `lash agent-prompt` output
-  - [ ] Document JSON output format
-  - [ ] Add task creation to allowed operations
+- [x] Add to user documentation
+  - [x] Create `docs/task-creation.md`
+  - [x] CLI usage examples
+  - [x] TUI walkthrough (keyboard navigation documented)
+  - [x] Common workflows
+- [x] Add to agent documentation
+  - [x] Update `docs/agent-workflows.md` with task creation workflow
+  - [x] Document JSON output format
+  - [x] Add task creation to allowed operations
 - [x] Error code documentation
   - [x] List all E_CREATE_* codes
   - [x] Explain causes and fixes
-  - [ ] Add to `lash explain` command
+  - [x] Add to `lash explain` command
 
 ### Success Criteria
 
 - [x] Users can learn feature from --help
-- [ ] Documentation is complete and accurate
-- [ ] Agents understand how to create tasks
+- [x] Documentation is complete and accurate
+- [x] Agents understand how to create tasks
 - [x] Error codes are explained
 
 ### Tests
 
 - [x] Review: Help text accuracy
-- [ ] Review: Documentation completeness
+- [x] Review: Documentation completeness
 
 ---
 
