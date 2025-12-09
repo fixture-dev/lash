@@ -48,7 +48,7 @@ Tasks are organized by major module/component. Each task file contains:
 - [x] [tasks.agent-integration.md](tasks.agent-integration.md) - Agent prompts, token minimization (Tasks 1-6 complete) ✅
 
 ### Content Features
-- [ ] [tasks.description-section.md](tasks.description-section.md) - `## Description` section support (Tasks 1-6, 8 complete; Task 7 CLI in progress)
+- [x] [tasks.description-section.md](tasks.description-section.md) - `## Description` section support (Tasks 1-8 complete) ✅
 
 ### Quality & Documentation
 - [x] [tasks.testing.md](tasks.testing.md) - Test strategy, integration tests, benchmarks, CI/CD (Tasks 1-9 complete) ✅
@@ -132,15 +132,15 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** Production-ready v1.0 release
 **Status:** Testing complete with 1,604+ tests, >80% coverage, CI/CD configured. Documentation tasks not yet started.
 
-### Phase 9: Content Features (Week 14) - IN PROGRESS ⚙️
+### Phase 9: Content Features (Week 14) - COMPLETE ✅
 **Goal:** Add description section feature for richer file context
 
 1. ✅ tasks.description-section#1-6 (design doc, parser, linter, schema, indexing, FTS5 search) - Complete
-2. ⚙️ tasks.description-section#7 (CLI commands) - In progress (`show` done; `list`, `agent-prompt` pending)
+2. ✅ tasks.description-section#7 (CLI commands: show, list --show-descriptions, agent-prompt --include-descriptions) - Complete
 3. ✅ tasks.description-section#8 (TUI display) - Complete
 
 **Deliverable:** Task files support optional `## Description` section with length validation and full-text search
-**Status:** Core functionality complete. CLI enhancements for `list` and `agent-prompt` pending.
+**Status:** Complete. All description section features implemented and tested.
 
 ## Critical Path
 
@@ -177,7 +177,7 @@ Parallelization opportunities exist within each phase (see individual task files
 - ⚠️ Advanced agent views (deferred to future)
 - ✅ Fuzzy link fixing (`check-links --fix` with suggestions)
 - ⚠️ Archive command
-- ⚙️ `## Description` section for task files (core complete; CLI enhancements pending)
+- ✅ `## Description` section for task files (all features complete)
 
 ## Supporting Documentation
 
