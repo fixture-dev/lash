@@ -469,6 +469,10 @@ pub struct TaskCreationModalState {
     pub target_file: PathBuf,
     /// Show markdown preview panel
     pub show_preview: bool,
+    /// Cached label options (loaded once when modal opens)
+    pub cached_label_options: Vec<String>,
+    /// Cached owner options (loaded once when modal opens)
+    pub cached_owner_options: Vec<String>,
 }
 
 impl TaskCreationModalState {
@@ -511,7 +515,31 @@ impl TaskCreationModalState {
             errors: HashMap::new(),
             target_file,
             show_preview: false,
+            cached_label_options: Vec::new(),
+            cached_owner_options: Vec::new(),
         }
+    }
+
+    /// Set cached label options (loaded from database)
+    pub fn set_cached_label_options(&mut self, labels: Vec<String>) {
+        self.cached_label_options = labels;
+    }
+
+    /// Set cached owner options (loaded from database)
+    pub fn set_cached_owner_options(&mut self, owners: Vec<String>) {
+        self.cached_owner_options = owners;
+    }
+
+    /// Get cached label options
+    #[must_use]
+    pub fn cached_label_options(&self) -> &[String] {
+        &self.cached_label_options
+    }
+
+    /// Get cached owner options
+    #[must_use]
+    pub fn cached_owner_options(&self) -> &[String] {
+        &self.cached_owner_options
     }
 
     /// Navigate to next field (Tab)
@@ -702,6 +730,33 @@ impl TaskCreationModalState {
             }
             _ => !self.has_blocking_error(field),
         }
+    }
+
+    /// Set label suggestions with usage counts
+    ///
+    /// Updates the labels chip input to show usage counts for available labels.
+    /// This should be called when opening the modal to populate autocomplete data.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use lash_tui::state::TaskCreationModalState;
+    /// use lash_db::repository::labels::LabelStats;
+    /// use std::path::PathBuf;
+    ///
+    /// let mut modal = TaskCreationModalState::new(PathBuf::from("test.md"), vec![]);
+    /// let label_stats = vec![
+    ///     LabelStats { name: "backend".to_string(), task_count: 15, file_count: 3 },
+    ///     LabelStats { name: "frontend".to_string(), task_count: 8, file_count: 2 },
+    /// ];
+    /// modal.set_label_suggestions(label_stats);
+    /// ```
+    pub fn set_label_suggestions(&mut self, label_stats: Vec<LabelStats>) {
+        let counts: std::collections::HashMap<String, i64> = label_stats
+            .into_iter()
+            .map(|stat| (stat.name, stat.task_count))
+            .collect();
+        self.labels.set_suggestion_counts(counts);
     }
 }
 
