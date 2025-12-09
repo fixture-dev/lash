@@ -62,7 +62,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, conn: &Connection
         let text = if state.files.is_empty() {
             "No files indexed. Run 'lash index' to index your project."
         } else {
-            "No tasks in this file."
+            "No tasks at this level."
         };
         let paragraph = Paragraph::new(text).block(block);
         frame.render_widget(paragraph, content_area);
