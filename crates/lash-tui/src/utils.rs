@@ -1,9 +1,11 @@
-//! Utility functions for TUI navigation and link detection.
+//! Utility functions for TUI navigation, link detection, and text highlighting.
 
 use lash_core::display::extract_link_path;
 use lash_db::repository::{DependencyRepository, FileRepository, TaskRepository};
 use lash_types::file::synthesize_file_id;
 use lash_types::DependencyKind;
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 use std::path::Path;
 
@@ -274,6 +276,116 @@ pub fn get_link_target(conn: &Connection, task_id: i64) -> Option<LinkTarget> {
 /// ```
 pub fn get_target_file_id(conn: &Connection, task_id: i64) -> Option<i64> {
     get_link_target(conn, task_id).map(|target| target.file_id)
+}
+
+/// Highlight matching characters in text for autocomplete suggestions.
+///
+/// Takes a query string and text, and returns a `Line` with matching portions
+/// highlighted using bold styling. Supports both substring and fuzzy matching.
+///
+/// For substring matches, the entire contiguous match is highlighted.
+/// For fuzzy matches, individual matching characters are highlighted.
+///
+/// # Arguments
+///
+/// * `query` - The search query to match against
+/// * `text` - The text to highlight matches in
+/// * `highlight_style` - The style to use for highlighted portions (typically bold)
+/// * `normal_style` - The style to use for non-highlighted portions
+///
+/// # Examples
+///
+/// ```
+/// use lash_tui::utils::highlight_match;
+/// use ratatui::style::{Modifier, Style};
+///
+/// let style = Style::default().add_modifier(Modifier::BOLD);
+/// let normal = Style::default();
+/// let line = highlight_match("feat", "feature", style, normal);
+/// // Returns a Line with "feat" in bold and "ure" in normal style
+/// ```
+#[must_use]
+pub fn highlight_match(
+    query: &str,
+    text: &str,
+    highlight_style: Style,
+    normal_style: Style,
+) -> Line<'static> {
+    if query.is_empty() {
+        return Line::from(Span::styled(text.to_string(), normal_style));
+    }
+
+    let query_lower = query.to_lowercase();
+    let text_lower = text.to_lowercase();
+
+    // Try substring match first (case-insensitive)
+    if let Some(start) = text_lower.find(&query_lower) {
+        let end = start + query.len();
+        let mut spans = Vec::new();
+
+        if start > 0 {
+            spans.push(Span::styled(text[..start].to_string(), normal_style));
+        }
+        spans.push(Span::styled(text[start..end].to_string(), highlight_style));
+        if end < text.len() {
+            spans.push(Span::styled(text[end..].to_string(), normal_style));
+        }
+
+        return Line::from(spans);
+    }
+
+    // Fallback to fuzzy character-by-character matching
+    let mut spans = Vec::new();
+    let mut query_chars = query_lower.chars().peekable();
+    let mut current_segment = String::new();
+    let mut in_match = false;
+
+    for ch in text.chars() {
+        let ch_lower = ch.to_lowercase().next().unwrap_or(ch);
+        let should_highlight = if let Some(&next_query_char) = query_chars.peek() {
+            if ch_lower == next_query_char {
+                query_chars.next();
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if should_highlight != in_match {
+            // Transition: flush current segment
+            if !current_segment.is_empty() {
+                let style = if in_match {
+                    highlight_style
+                } else {
+                    normal_style
+                };
+                spans.push(Span::styled(current_segment.clone(), style));
+                current_segment.clear();
+            }
+            in_match = should_highlight;
+        }
+
+        current_segment.push(ch);
+    }
+
+    // Flush remaining segment
+    if !current_segment.is_empty() {
+        let style = if in_match {
+            highlight_style
+        } else {
+            normal_style
+        };
+        spans.push(Span::styled(current_segment, style));
+    }
+
+    // If no spans were created, return the whole text unhighlighted
+    if spans.is_empty() {
+        Line::from(Span::styled(text.to_string(), normal_style))
+    } else {
+        Line::from(spans)
+    }
 }
 
 #[cfg(test)]

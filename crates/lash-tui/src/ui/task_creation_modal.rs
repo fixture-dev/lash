@@ -11,6 +11,7 @@ use ratatui::{
 
 use crate::colors::Theme;
 use crate::state::{AppState, TaskCreationModalState, TaskFormField};
+use crate::utils::highlight_match;
 
 /// Render the task creation modal
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -215,6 +216,86 @@ fn render_labels_field(
         let cursor_y = area.y + 1;
         frame.set_cursor_position((cursor_x.min(area.x + area.width - 2), cursor_y));
     }
+
+    // Show autocomplete suggestions when focused and typing
+    if is_focused && !state.labels.input.is_empty() {
+        render_label_suggestions(frame, area, state, theme);
+    }
+}
+
+/// Render label autocomplete suggestions with usage counts
+fn render_label_suggestions(
+    frame: &mut Frame,
+    area: Rect,
+    state: &TaskCreationModalState,
+    theme: &Theme,
+) {
+    // Get filtered suggestions based on current input
+    let input_lower = state.labels.input.to_lowercase();
+    let suggestions: Vec<(String, i64)> = state
+        .labels
+        .get_suggestions_with_counts()
+        .into_iter()
+        .filter(|(label, _)| {
+            // Filter by input prefix and exclude already added chips
+            label.to_lowercase().starts_with(&input_lower) && !state.labels.chips.contains(label)
+        })
+        .take(5) // Limit to 5 suggestions
+        .collect();
+
+    if suggestions.is_empty() {
+        return;
+    }
+
+    // Position dropdown below the input field
+    let dropdown_y = area.y + 3;
+    if dropdown_y >= area.bottom() {
+        return; // Not enough space
+    }
+
+    let dropdown_height = (suggestions.len() as u16).min(5) + 2; // +2 for borders
+    let dropdown_area = Rect {
+        x: area.x + 1,
+        y: dropdown_y,
+        width: area.width.saturating_sub(2).min(40),
+        height: dropdown_height.min(area.bottom().saturating_sub(dropdown_y)),
+    };
+
+    // Render dropdown background
+    frame.render_widget(Clear, dropdown_area);
+
+    // Build suggestion lines with highlighting
+    let highlight_style = Style::default()
+        .fg(theme.label_color())
+        .add_modifier(Modifier::BOLD)
+        .add_modifier(Modifier::UNDERLINED);
+    let normal_style = Style::default().fg(theme.label_color());
+
+    let mut lines = Vec::new();
+    for (label, count) in suggestions {
+        // Create highlighted label
+        let mut label_line =
+            highlight_match(&state.labels.input, &label, highlight_style, normal_style);
+
+        // Append count to the line
+        label_line.spans.push(Span::styled(
+            format!(" ({count})"),
+            Style::default().fg(theme.muted_color()),
+        ));
+
+        lines.push(label_line);
+    }
+
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.muted_color()))
+                .title(" Suggestions "),
+        )
+        .style(Style::default().fg(theme.foreground()));
+
+    frame.render_widget(paragraph, dropdown_area);
 }
 
 /// Render the status radio selector

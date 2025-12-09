@@ -29,3 +29,6 @@ pub mod display;
 
 // Task creation validation and placement
 pub mod creation;
+
+// Fuzzy matching utilities
+pub mod fuzzy;
