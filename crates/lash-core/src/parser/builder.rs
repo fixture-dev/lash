@@ -208,6 +208,7 @@ impl TaskTreeBuilder {
             depth,
             parent_id,
             order_index,
+            line_number: line.line_num,
             metadata,
             body: None,
         };

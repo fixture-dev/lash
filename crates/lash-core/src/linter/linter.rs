@@ -309,6 +309,7 @@ mod tests {
                 depth: 0,
                 parent_id: None,
                 order_index: i,
+                line_number: 0,
                 metadata: TaskMetadata::default(),
                 body: None,
             };

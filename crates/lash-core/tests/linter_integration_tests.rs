@@ -53,6 +53,7 @@ fn make_task(id: &str, title: &str, depth: u8) -> Task {
         depth,
         parent_id: None,
         order_index: 0,
+        line_number: 0,
         metadata: TaskMetadata::default(),
         body: None,
     }

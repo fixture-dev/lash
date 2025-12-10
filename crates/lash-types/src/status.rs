@@ -14,10 +14,11 @@ use crate::error::{codes, LashError, Result};
 /// - `[x]` - Done (completed successfully)
 /// - `[-]` - Waived (marked as not applicable)
 /// - `[!]` - Blocked (cannot proceed due to dependencies or other issues)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
     /// Task not yet started
+    #[default]
     Open,
     /// Task completed successfully
     Done,

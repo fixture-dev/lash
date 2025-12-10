@@ -15,7 +15,7 @@ use crate::status::TaskStatus;
 /// - A status (open, done, waived, blocked)
 /// - Optional metadata (labels, owner, estimates, etc.)
 /// - Position information (depth, parent, order)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Task {
     /// Unique ID within the file (synthesized if not provided)
     pub id: String,
@@ -34,6 +34,10 @@ pub struct Task {
 
     /// Position among siblings (0-indexed)
     pub order_index: usize,
+
+    /// Line number in the source file (1-indexed, 0 if unknown)
+    #[serde(default)]
+    pub line_number: usize,
 
     /// Optional metadata
     pub metadata: TaskMetadata,
@@ -192,6 +196,7 @@ pub struct TaskBuilder {
     depth: u8,
     parent_id: Option<String>,
     order_index: usize,
+    line_number: usize,
     id: Option<String>,
     metadata: TaskMetadata,
     body: Option<String>,
@@ -207,6 +212,7 @@ impl TaskBuilder {
             depth: 0,
             parent_id: None,
             order_index: 0,
+            line_number: 0,
             id: None,
             metadata: TaskMetadata::default(),
             body: None,
@@ -238,6 +244,13 @@ impl TaskBuilder {
     #[must_use]
     pub fn order_index(mut self, index: usize) -> Self {
         self.order_index = index;
+        self
+    }
+
+    /// Set the line number in the source file
+    #[must_use]
+    pub fn line_number(mut self, line_number: usize) -> Self {
+        self.line_number = line_number;
         self
     }
 
@@ -294,6 +307,7 @@ impl TaskBuilder {
             depth: self.depth,
             parent_id: self.parent_id,
             order_index: self.order_index,
+            line_number: self.line_number,
             metadata: self.metadata,
             body: self.body,
         };

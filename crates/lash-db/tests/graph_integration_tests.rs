@@ -38,6 +38,7 @@ fn create_test_task(
         depth,
         parent_id,
         order_index: order,
+        line_number: 0,
         metadata: TaskMetadata::default(),
         body: None,
     }
