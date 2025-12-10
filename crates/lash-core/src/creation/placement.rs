@@ -119,8 +119,10 @@ impl PlacementResolver {
         let line_number = if let Some(last_sibling) = siblings.last() {
             Self::find_end_of_task_subtree(&ctx.resolved_file, last_sibling) + 1
         } else if let Some(parent) = &ctx.parent_task {
-            // No siblings, insert right after parent
-            Self::estimate_task_line(&ctx.resolved_file, parent) + 1
+            // No siblings, insert right after parent (accounting for annotations)
+            let parent_line = Self::get_task_line(&ctx.resolved_file, parent);
+            let annotation_lines = Self::count_annotation_lines(parent);
+            parent_line + annotation_lines + 1
         } else {
             // No siblings and no parent - append at end of tasks section
             Self::find_end_of_tasks_section(&ctx.resolved_file)
@@ -154,7 +156,7 @@ impl PlacementResolver {
 
         // Insert before the task at this index
         let target = siblings[index];
-        let line_number = Self::estimate_task_line(&ctx.resolved_file, target);
+        let line_number = Self::get_task_line(&ctx.resolved_file, target);
 
         Ok(PlacementInfo {
             line_number,
@@ -183,7 +185,7 @@ impl PlacementResolver {
                 reason: format!("task '{task_id}' is not a sibling at the target level"),
             })?;
 
-        let line_number = Self::estimate_task_line(&ctx.resolved_file, task);
+        let line_number = Self::get_task_line(&ctx.resolved_file, task);
 
         Ok(PlacementInfo {
             line_number,
@@ -254,28 +256,61 @@ impl PlacementResolver {
     /// Find the end of a task's subtree (last descendant line number)
     ///
     /// Returns the line number where the task and all its descendants end.
+    /// This accounts for annotation lines that may follow the last task.
     fn find_end_of_task_subtree(file: &TaskFile, task: &Task) -> usize {
         let descendants = file.tasks.get_descendants(&task.id);
 
-        if descendants.is_empty() {
-            // No children - task ends on its own line
-            Self::estimate_task_line(file, task)
+        let last_task = if descendants.is_empty() {
+            task
         } else {
-            // Find the last descendant (by order_index within each depth)
-            let last_descendant = descendants.last().unwrap();
-            Self::estimate_task_line(file, last_descendant)
+            // Find the last descendant by line number
+            descendants
+                .iter()
+                .max_by_key(|t| t.line_number)
+                .unwrap_or(&task)
+        };
+
+        // Use actual line number, accounting for potential annotation lines
+        // We add lines for any annotations that follow the task
+        let annotation_lines = Self::count_annotation_lines(last_task);
+        last_task.line_number + annotation_lines
+    }
+
+    /// Count the number of annotation lines that follow a task
+    ///
+    /// Task annotations like @depends-on and @agent-note appear on separate lines
+    /// after the task checkbox line.
+    fn count_annotation_lines(task: &Task) -> usize {
+        let mut count = 0;
+
+        // Each dependency gets its own line
+        count += task.metadata.depends_on.len();
+
+        // Agent note gets one line if present
+        if task.metadata.agent_note.is_some() {
+            count += 1;
+        }
+
+        count
+    }
+
+    /// Get a task's actual line number
+    ///
+    /// Uses the line number stored during parsing. Falls back to estimation
+    /// only if `line_number` is 0 (unknown).
+    fn get_task_line(file: &TaskFile, task: &Task) -> usize {
+        if task.line_number > 0 {
+            task.line_number
+        } else {
+            // Fallback for tasks without stored line numbers
+            Self::estimate_task_line(file, task)
         }
     }
 
     /// Estimate a task's line number based on its position in the tree
     ///
-    /// Since tasks don't store line numbers, we estimate based on:
-    /// - File header (assume ~10 lines)
-    /// - ## Tasks section header (1 line + 1 blank)
-    /// - Position in task tree (order of tasks)
-    ///
-    /// This is a simplified heuristic. In the future, we should store
-    /// line numbers during parsing or reparse the file to get accurate positions.
+    /// This is a fallback for when line numbers are not available.
+    /// Used only for backwards compatibility with older parsed files.
     fn estimate_task_line(file: &TaskFile, task: &Task) -> usize {
         const HEADER_LINES: usize = 10;
         const TASKS_SECTION_HEADER: usize = 2;
@@ -781,5 +816,105 @@ mod tests {
         let ctx = validator.validate(&request, Some(&file)).unwrap();
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
         assert_eq!(placement.indent_level, 6);
+    }
+
+    /// Helper to add children to a parent task in the test
+    fn add_children(tasks: &mut TaskTree, parent_id: &str, start_line: usize, count: usize) {
+        for i in 0..count {
+            tasks
+                .add_task(
+                    TaskBuilder::new(format!("Subtask {}", i + 1))
+                        .id(format!("{parent_id}-child-{}", i + 1))
+                        .parent(parent_id)
+                        .depth(1)
+                        .order_index(i)
+                        .line_number(start_line + i)
+                        .build()
+                        .unwrap(),
+                )
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn test_multiline_task_placement_uses_line_numbers() {
+        // Regression test: tasks were placed incorrectly because line numbers were
+        // estimated (1 line per task) rather than using actual line numbers
+        let config = ConfigBuilder::new().build().unwrap();
+        let validator = TaskValidator::new(config);
+
+        let mut tasks = TaskTree::new();
+        // Structure: Level 1-1 (line 17, 4 children), Level 1-2 (line 23, 4 children),
+        // Level 1-3 (line 29, 4 children), Level 1-4 (line 35, 1 child)
+
+        // Level 1-1 with 4 children (lines 17-21)
+        tasks
+            .add_task(
+                TaskBuilder::new("Level 1-1")
+                    .id("level-1-1")
+                    .order_index(0)
+                    .line_number(17)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        add_children(&mut tasks, "level-1-1", 18, 4);
+
+        // Level 1-2 with 4 children (lines 23-27)
+        tasks
+            .add_task(
+                TaskBuilder::new("Level 1-2")
+                    .id("level-1-2")
+                    .order_index(1)
+                    .line_number(23)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        add_children(&mut tasks, "level-1-2", 24, 4);
+
+        // Level 1-3 with 4 children (lines 29-33)
+        tasks
+            .add_task(
+                TaskBuilder::new("Level 1-3")
+                    .id("level-1-3")
+                    .order_index(2)
+                    .line_number(29)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        add_children(&mut tasks, "level-1-3", 30, 4);
+
+        // Level 1-4 with 1 child (lines 35-36)
+        tasks
+            .add_task(
+                TaskBuilder::new("Level 1-4")
+                    .id("level-1-4")
+                    .order_index(3)
+                    .line_number(35)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        add_children(&mut tasks, "level-1-4", 36, 1);
+
+        let file = create_test_file(tasks);
+
+        // Test: append after Level 1-4 should go on line 37
+        let request = TaskCreationRequestBuilder::new("Level 1-5").build();
+        let ctx = validator.validate(&request, Some(&file)).unwrap();
+        let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
+        assert_eq!(placement.line_number, 37);
+        assert_eq!(placement.order_index, 4);
+
+        // Test: insert after Level 1-3 should go on line 34
+        let request = TaskCreationRequestBuilder::new("Level 1-3.5")
+            .after("level-1-3")
+            .build();
+        let ctx = validator.validate(&request, Some(&file)).unwrap();
+        let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
+        assert_eq!(placement.line_number, 34);
+        assert_eq!(placement.order_index, 3);
     }
 }

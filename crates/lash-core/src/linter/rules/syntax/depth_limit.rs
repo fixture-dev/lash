@@ -118,6 +118,7 @@ mod tests {
             depth,
             parent_id: None,
             order_index: 0,
+            line_number: 0,
             metadata: TaskMetadata::default(),
             body: None,
         }

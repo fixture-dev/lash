@@ -171,6 +171,7 @@ mod tests {
             depth: u8::from(parent.is_some()),
             parent_id: parent.map(std::string::ToString::to_string),
             order_index: 0,
+            line_number: 0,
             metadata: TaskMetadata::default(),
             body: None,
         }
