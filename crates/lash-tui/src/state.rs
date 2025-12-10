@@ -1692,6 +1692,14 @@ impl AppState {
         }
     }
 
+    /// Check if search has been executed and has results to select from
+    #[must_use]
+    pub fn search_has_selectable_results(&self) -> bool {
+        self.search_modal_state
+            .as_ref()
+            .is_some_and(|modal| modal.has_searched && !modal.results.is_empty())
+    }
+
     /// Get currently selected search result
     #[must_use]
     pub fn selected_search_result(&self) -> Option<&lash_db::search::SearchResult> {
@@ -2245,6 +2253,125 @@ impl AppState {
         // This node was counted but not a match
         let _ = this_index;
         None
+    }
+
+    /// Find the visual index of a task in the task tree by its task ID.
+    ///
+    /// This walks the flattened visible task tree (accounting for expand/collapse state)
+    /// and returns the visual position of the task. Returns `None` if:
+    /// - No task tree exists
+    /// - The task is not visible (parent task collapsed)
+    /// - The task is not in the tree
+    #[must_use]
+    pub fn visual_index_of_task(&self, task_id: i64) -> Option<usize> {
+        let trees = self.task_tree.as_ref()?;
+
+        let mut current_index = 0;
+        for tree in trees {
+            if let Some(index) = Self::find_task_visual_index(tree, task_id, &mut current_index) {
+                return Some(index);
+            }
+        }
+        None
+    }
+
+    /// Recursively find the visual index of a task node by its task ID
+    fn find_task_visual_index(
+        node: &TreeNode<TaskRecord>,
+        target_task_id: i64,
+        current_index: &mut usize,
+    ) -> Option<usize> {
+        // Check if this node is the target task
+        if node.data.id == target_task_id {
+            return Some(*current_index);
+        }
+
+        *current_index += 1;
+
+        // Only search children if expanded
+        if node.expanded {
+            for child in &node.children {
+                if let Some(index) =
+                    Self::find_task_visual_index(child, target_task_id, current_index)
+                {
+                    return Some(index);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Expand all ancestor tasks to make a target task visible.
+    ///
+    /// This finds the target task in the task tree and expands all of its
+    /// ancestor nodes so the task becomes visible in the tree view.
+    ///
+    /// Returns `true` if the task was found and ancestors were expanded,
+    /// `false` if the task was not found or no tree exists.
+    pub fn expand_ancestors_to_task(&mut self, task_id: i64) -> bool {
+        // First, find the path to the target task
+        let Some(trees) = &self.task_tree else {
+            return false;
+        };
+
+        // Find the path (indices) to the target task
+        let mut path = Vec::new();
+        let mut found = false;
+        for (root_idx, tree) in trees.iter().enumerate() {
+            if Self::find_task_path(tree, task_id, &mut path) {
+                path.insert(0, root_idx);
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            return false;
+        }
+
+        // Now expand all ancestors (all indices except the last one, which is the task itself)
+        let Some(trees) = &mut self.task_tree else {
+            return false;
+        };
+
+        // Navigate through the path and expand each ancestor
+        // path[0] is the root index, path[1..n-1] are ancestors, path[n] is the target
+        if path.len() <= 1 {
+            // Task is a root node, nothing to expand
+            return true;
+        }
+
+        let mut current_children = trees;
+        for &idx in &path[..path.len() - 1] {
+            if idx < current_children.len() {
+                current_children[idx].expand();
+                current_children = &mut current_children[idx].children;
+            } else {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Recursively find the path (child indices) to a task in the tree.
+    ///
+    /// Appends the path indices to `path` and returns `true` if found.
+    fn find_task_path(node: &TreeNode<TaskRecord>, target_id: i64, path: &mut Vec<usize>) -> bool {
+        if node.data.id == target_id {
+            return true;
+        }
+
+        for (child_idx, child) in node.children.iter().enumerate() {
+            path.push(child_idx);
+            if Self::find_task_path(child, target_id, path) {
+                return true;
+            }
+            path.pop();
+        }
+
+        false
     }
 
     /// Build task tree from flat task list
