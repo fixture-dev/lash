@@ -245,8 +245,18 @@ fn render_parent_dropdown(
     let total_items = filtered_items.len();
 
     // Calculate scroll offset to keep highlighted item in view
-    let scroll_offset = if selector.selected_index >= max_visible {
-        (selector.selected_index - max_visible + 1).min(total_items.saturating_sub(max_visible))
+    // We need to account for the space taken by scroll indicators
+    let needs_top_indicator = selector.selected_index >= max_visible;
+    let effective_visible = if needs_top_indicator {
+        max_visible - 1 // Reserve one line for "N more above"
+    } else {
+        max_visible
+    };
+
+    let scroll_offset = if selector.selected_index >= effective_visible {
+        // Scroll so selected item is at the bottom of visible area
+        (selector.selected_index - effective_visible + 1)
+            .min(total_items.saturating_sub(effective_visible))
     } else {
         0
     };
@@ -264,15 +274,16 @@ fn render_parent_dropdown(
     let mut lines = Vec::new();
 
     // Show scroll indicator at top if scrolled
-    if scroll_offset > 0 {
+    let show_top_indicator = scroll_offset > 0;
+    if show_top_indicator {
         lines.push(Line::from(Span::styled(
             format!("  ↑ {scroll_offset} more above"),
             Style::default().fg(theme.muted_color()),
         )));
     }
 
-    // Calculate visible window
-    let visible_count = if scroll_offset > 0 {
+    // Calculate how many items we can show
+    let visible_count = if show_top_indicator {
         max_visible - 1
     } else {
         max_visible
