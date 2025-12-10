@@ -108,7 +108,7 @@ impl PlacementResolver {
             return PlacementInfo {
                 line_number: 0, // Signal for new file
                 order_index: 0,
-                indent_level: ctx.computed_depth as usize * 2,
+                indent_level: ctx.computed_depth as usize,
             };
         }
 
@@ -131,7 +131,7 @@ impl PlacementResolver {
         PlacementInfo {
             line_number,
             order_index,
-            indent_level: ctx.computed_depth as usize * 2,
+            indent_level: ctx.computed_depth as usize,
         }
     }
 
@@ -161,7 +161,7 @@ impl PlacementResolver {
         Ok(PlacementInfo {
             line_number,
             order_index: index,
-            indent_level: ctx.computed_depth as usize * 2,
+            indent_level: ctx.computed_depth as usize,
         })
     }
 
@@ -190,7 +190,7 @@ impl PlacementResolver {
         Ok(PlacementInfo {
             line_number,
             order_index,
-            indent_level: ctx.computed_depth as usize * 2,
+            indent_level: ctx.computed_depth as usize,
         })
     }
 
@@ -223,7 +223,7 @@ impl PlacementResolver {
         Ok(PlacementInfo {
             line_number,
             order_index,
-            indent_level: ctx.computed_depth as usize * 2,
+            indent_level: ctx.computed_depth as usize,
         })
     }
 
@@ -453,7 +453,7 @@ mod tests {
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
 
         assert_eq!(placement.order_index, 1); // After 1 existing child
-        assert_eq!(placement.indent_level, 2); // Depth 1 = 2 spaces
+        assert_eq!(placement.indent_level, 1); // Depth 1
         assert!(placement.line_number > 0);
     }
 
@@ -482,7 +482,7 @@ mod tests {
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
 
         assert_eq!(placement.order_index, 0); // First child
-        assert_eq!(placement.indent_level, 2); // Depth 1 = 2 spaces
+        assert_eq!(placement.indent_level, 1); // Depth 1
     }
 
     #[test]
@@ -799,7 +799,7 @@ mod tests {
             .build();
         let ctx = validator.validate(&request, Some(&file)).unwrap();
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
-        assert_eq!(placement.indent_level, 2);
+        assert_eq!(placement.indent_level, 1);
 
         // Test depth 2
         let request = TaskCreationRequestBuilder::new("New task")
@@ -807,7 +807,7 @@ mod tests {
             .build();
         let ctx = validator.validate(&request, Some(&file)).unwrap();
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
-        assert_eq!(placement.indent_level, 4);
+        assert_eq!(placement.indent_level, 2);
 
         // Test depth 3
         let request = TaskCreationRequestBuilder::new("New task")
@@ -815,7 +815,7 @@ mod tests {
             .build();
         let ctx = validator.validate(&request, Some(&file)).unwrap();
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
-        assert_eq!(placement.indent_level, 6);
+        assert_eq!(placement.indent_level, 3);
     }
 
     /// Helper to add children to a parent task in the test
