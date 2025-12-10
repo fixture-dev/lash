@@ -172,6 +172,38 @@ fn render_parent_field(
     frame.render_widget(paragraph, area);
 }
 
+/// Build a single line for a dropdown item
+fn build_dropdown_item_line<'a>(
+    item: &'a crate::components::TreeSelectItem,
+    is_highlighted: bool,
+    theme: &'a Theme,
+) -> Line<'a> {
+    let indent = "  ".repeat(item.depth as usize);
+    let marker = if is_highlighted { "▸ " } else { "  " };
+    let status = format!("[{}] ", item.status_indicator);
+
+    let line_style = if is_highlighted {
+        Style::default()
+            .fg(theme.border_focused())
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.foreground())
+    };
+
+    let status_style = Style::default().fg(match item.status_indicator {
+        'x' => theme.task_done(),
+        '-' => theme.task_waived(),
+        '!' => theme.task_blocked(),
+        _ => theme.foreground(),
+    });
+
+    Line::from(vec![
+        Span::styled(format!("{marker}{indent}"), line_style),
+        Span::styled(status, status_style),
+        Span::styled(&item.title, line_style),
+    ])
+}
+
 /// Render the parent task dropdown when expanded
 fn render_parent_dropdown(
     frame: &mut Frame,
@@ -203,15 +235,23 @@ fn render_parent_dropdown(
         return;
     }
 
-    // Position dropdown below the parent field (area is the parent field area)
+    // Position dropdown below the parent field
     let dropdown_y = area.y + 3;
     if dropdown_y >= area.bottom() + 10 {
-        return; // Not enough space
+        return;
     }
 
-    // Show up to 8 items in dropdown
     let max_visible: usize = 8;
-    let dropdown_height = ((filtered_items.len() + 1).min(max_visible + 1) + 2) as u16; // +1 for "None" option, +2 for borders
+    let total_items = filtered_items.len();
+
+    // Calculate scroll offset to keep highlighted item in view
+    let scroll_offset = if selector.selected_index >= max_visible {
+        (selector.selected_index - max_visible + 1).min(total_items.saturating_sub(max_visible))
+    } else {
+        0
+    };
+
+    let dropdown_height = (total_items.min(max_visible) + 2) as u16;
     let dropdown_area = Rect {
         x: area.x,
         y: dropdown_y,
@@ -219,64 +259,44 @@ fn render_parent_dropdown(
         height: dropdown_height.min(12),
     };
 
-    // Render dropdown background
     frame.render_widget(Clear, dropdown_area);
 
-    // Build lines with current selection highlighted
     let mut lines = Vec::new();
 
-    // Add "None (top-level)" option at the top
-    let none_selected = selector.selected_index == 0 && selector.selected_item.is_none();
-    let none_style = if none_selected {
-        Style::default()
-            .fg(theme.border_focused())
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(theme.muted_color())
-    };
-    lines.push(Line::from(Span::styled(
-        "  None (top-level task)",
-        none_style,
-    )));
-
-    // Add task items with indentation based on depth
-    for (display_idx, item) in filtered_items.iter().take(max_visible) {
-        let is_highlighted = *display_idx == selector.selected_index;
-
-        // Create indentation based on depth (2 spaces per level)
-        let indent = "  ".repeat(item.depth as usize);
-        let marker = if is_highlighted { "▸ " } else { "  " };
-        let status = format!("[{}] ", item.status_indicator);
-
-        let line_style = if is_highlighted {
-            Style::default()
-                .fg(theme.border_focused())
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.foreground())
-        };
-
-        let status_style = Style::default().fg(match item.status_indicator {
-            'x' => theme.task_done(),
-            '-' => theme.task_waived(),
-            '!' => theme.task_blocked(),
-            _ => theme.foreground(),
-        });
-
-        lines.push(Line::from(vec![
-            Span::styled(format!("{marker}{indent}"), line_style),
-            Span::styled(status, status_style),
-            Span::styled(&item.title, line_style),
-        ]));
+    // Show scroll indicator at top if scrolled
+    if scroll_offset > 0 {
+        lines.push(Line::from(Span::styled(
+            format!("  ↑ {scroll_offset} more above"),
+            Style::default().fg(theme.muted_color()),
+        )));
     }
 
-    // Show indicator if there are more items
-    if filtered_items.len() > max_visible {
+    // Calculate visible window
+    let visible_count = if scroll_offset > 0 {
+        max_visible - 1
+    } else {
+        max_visible
+    };
+
+    // Add visible items
+    for (display_idx, item) in filtered_items
+        .iter()
+        .skip(scroll_offset)
+        .take(visible_count)
+    {
+        lines.push(build_dropdown_item_line(
+            item,
+            *display_idx == selector.selected_index,
+            theme,
+        ));
+    }
+
+    // Show scroll indicator at bottom if more items below
+    let items_shown_end = scroll_offset + visible_count;
+    if items_shown_end < total_items {
+        let remaining = total_items - items_shown_end;
         lines.push(Line::from(Span::styled(
-            format!(
-                "  ... and {} more (type to filter)",
-                filtered_items.len() - max_visible
-            ),
+            format!("  ↓ {remaining} more below"),
             Style::default().fg(theme.muted_color()),
         )));
     }
