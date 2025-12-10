@@ -136,8 +136,8 @@ impl TreeSelectState {
     /// ```
     pub fn filter(&mut self) {
         if self.input.is_empty() {
-            // Show all items when input is empty (limited to MAX_SUGGESTIONS)
-            self.filtered_indices = (0..self.all_items.len().min(MAX_SUGGESTIONS)).collect();
+            // Show all items when input is empty (no limit - let UI handle scrolling)
+            self.filtered_indices = (0..self.all_items.len()).collect();
         } else {
             // Hybrid approach: substring matching + fuzzy matching for better results
             let input_lower = self.input.to_lowercase();
@@ -346,6 +346,87 @@ impl TreeSelectState {
     /// ```
     pub fn toggle_expand(&mut self) {
         self.is_expanded = !self.is_expanded;
+    }
+
+    /// Select an item by its ID
+    ///
+    /// Finds the item with the given ID and sets it as the selected item.
+    /// Returns true if an item was found and selected, false otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "task-1".to_string(),
+    ///         title: "First task".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    ///     TreeSelectItem {
+    ///         id: "task-2".to_string(),
+    ///         title: "Second task".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// assert!(tree_select.select_by_id("task-2"));
+    /// assert_eq!(tree_select.selected_item.as_ref().unwrap().id, "task-2");
+    /// assert!(!tree_select.select_by_id("nonexistent"));
+    /// ```
+    pub fn select_by_id(&mut self, id: &str) -> bool {
+        if let Some(idx) = self.all_items.iter().position(|item| item.id == id) {
+            self.selected_item = Some(self.all_items[idx].clone());
+            // Also update selected_index to match if it's in filtered list
+            if let Some(filtered_pos) = self.filtered_indices.iter().position(|&i| i == idx) {
+                self.selected_index = filtered_pos;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Get the currently highlighted item (before confirmation)
+    ///
+    /// Returns the item at the current `selected_index` in the filtered list.
+    /// This is useful for showing what item would be selected if the user confirms.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::components::{TreeSelectState, TreeSelectItem};
+    ///
+    /// let items = vec![
+    ///     TreeSelectItem {
+    ///         id: "1".to_string(),
+    ///         title: "Task 1".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    ///     TreeSelectItem {
+    ///         id: "2".to_string(),
+    ///         title: "Task 2".to_string(),
+    ///         depth: 0,
+    ///         status_indicator: ' ',
+    ///     },
+    /// ];
+    /// let mut tree_select = TreeSelectState::new(items);
+    /// tree_select.select_next();
+    /// let highlighted = tree_select.highlighted_item();
+    /// assert!(highlighted.is_some());
+    /// assert_eq!(highlighted.unwrap().id, "2");
+    /// ```
+    #[must_use]
+    pub fn highlighted_item(&self) -> Option<&TreeSelectItem> {
+        if self.filtered_indices.is_empty() {
+            return None;
+        }
+        let idx = self.filtered_indices.get(self.selected_index)?;
+        self.all_items.get(*idx)
     }
 
     /// Insert a character into the input field
@@ -627,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn test_max_suggestions_limit() {
+    fn test_max_suggestions_limit_with_typed_input() {
         // Create more than MAX_SUGGESTIONS items
         let items: Vec<TreeSelectItem> = (0..20)
             .map(|i| TreeSelectItem {
@@ -639,22 +720,23 @@ mod tests {
             .collect();
         let mut tree_select = TreeSelectState::new(items);
 
-        // Empty input should limit results
+        // Empty input should show ALL results (UI handles scrolling/pagination)
         tree_select.input.clear();
         tree_select.filter();
 
-        assert!(
-            tree_select.filtered_indices.len() <= MAX_SUGGESTIONS,
-            "Should limit to MAX_SUGGESTIONS when input is empty"
+        assert_eq!(
+            tree_select.filtered_indices.len(),
+            20,
+            "Empty input should show all items"
         );
 
-        // Partial match that would match many items
+        // Partial match that would match many items - still limited
         tree_select.input = "Task".to_string();
         tree_select.filter();
 
         assert!(
             tree_select.filtered_indices.len() <= MAX_SUGGESTIONS,
-            "Should limit to MAX_SUGGESTIONS even with many matches"
+            "Typed input should limit to MAX_SUGGESTIONS"
         );
     }
 
@@ -723,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_filter_shows_limited_results() {
+    fn test_empty_filter_shows_all_results() {
         let items: Vec<TreeSelectItem> = (0..20)
             .map(|i| TreeSelectItem {
                 id: format!("{i}"),
@@ -738,8 +820,8 @@ mod tests {
 
         assert_eq!(
             tree_select.filtered_indices.len(),
-            MAX_SUGGESTIONS,
-            "Empty filter should show first MAX_SUGGESTIONS items"
+            20,
+            "Empty filter should show all items"
         );
     }
 }

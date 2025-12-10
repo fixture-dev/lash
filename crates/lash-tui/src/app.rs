@@ -1624,6 +1624,17 @@ impl TuiApp {
             return Ok(());
         };
 
+        // Get the currently selected task to determine parent context
+        let selected_task = self.state.selected_task().cloned();
+
+        // Build a map from task database ID to local_id for parent lookup
+        let id_to_local: std::collections::HashMap<i64, String> = self
+            .state
+            .tasks
+            .iter()
+            .map(|t| (t.id, t.local_id.clone()))
+            .collect();
+
         // Get tasks from current file for parent selection
         let tasks: Vec<TreeSelectItem> = self
             .state
@@ -1643,6 +1654,19 @@ impl TuiApp {
             .collect();
 
         self.state.open_task_creation_modal(target_file, tasks);
+
+        // Pre-select the parent of the currently selected task (if any)
+        // This way, when creating a sibling task, the parent is already set correctly
+        if let Some(modal_state) = &mut self.state.task_creation_modal_state {
+            if let Some(task) = &selected_task {
+                if let Some(parent_db_id) = task.parent_id {
+                    // Look up the parent's local_id
+                    if let Some(parent_local_id) = id_to_local.get(&parent_db_id) {
+                        modal_state.parent_selector.select_by_id(parent_local_id);
+                    }
+                }
+            }
+        }
 
         // Fetch label stats for autocomplete
         if let Some(modal_state) = &mut self.state.task_creation_modal_state {
@@ -1746,7 +1770,14 @@ impl TuiApp {
             TaskFormField::Owner => modal.owner.input_char(c),
             TaskFormField::Estimate => modal.estimate.input_char(c),
             TaskFormField::AgentNote => modal.agent_note.input_char(c),
-            _ => {}
+            TaskFormField::Parent => {
+                // Auto-expand dropdown when typing
+                if !modal.parent_selector.is_expanded {
+                    modal.parent_selector.is_expanded = true;
+                }
+                modal.parent_selector.input_char(c);
+            }
+            TaskFormField::Status => {}
         }
     }
 
@@ -1764,7 +1795,8 @@ impl TuiApp {
             TaskFormField::Owner => modal.owner.backspace(),
             TaskFormField::Estimate => modal.estimate.backspace(),
             TaskFormField::AgentNote => modal.agent_note.backspace(),
-            _ => {}
+            TaskFormField::Parent => modal.parent_selector.backspace(),
+            TaskFormField::Status => {}
         }
     }
 
@@ -1898,7 +1930,15 @@ impl TuiApp {
         };
 
         match modal.focused_field {
-            TaskFormField::Parent => modal.parent_selector.confirm_selection(),
+            TaskFormField::Parent => {
+                if modal.parent_selector.is_expanded {
+                    // Confirm selection and close dropdown
+                    modal.parent_selector.confirm_selection();
+                } else {
+                    // Open dropdown
+                    modal.parent_selector.is_expanded = true;
+                }
+            }
             TaskFormField::Labels => modal.labels.add_chip(),
             TaskFormField::AgentNote => modal.agent_note.newline(),
             _ => {}
