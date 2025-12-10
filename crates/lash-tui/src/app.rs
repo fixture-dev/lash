@@ -1671,6 +1671,7 @@ impl TuiApp {
     /// Handle submitting task creation
     fn handle_submit_task_creation(&mut self) -> TuiResult<()> {
         use lash_core::creation::TaskCreationService;
+        use lash_db::{Indexer, IndexerConfig};
         use lash_types::LashConfig;
 
         let Some(modal_state) = &self.state.task_creation_modal_state else {
@@ -1686,15 +1687,27 @@ impl TuiApp {
 
         let request = modal_state.to_request();
         let config = LashConfig::default();
-        let service = TaskCreationService::new(config);
+        let service = TaskCreationService::new(config.clone());
 
         match service.create_task(&request) {
             Ok(result) => {
                 self.state.close_task_creation_modal();
-                self.state
-                    .set_success_message(format!("Created task: {}", result.task_id));
 
-                // Reload tasks for the file
+                // Re-index to update the database with the new task
+                // Use incremental indexing for efficiency
+                let indexer_config =
+                    IndexerConfig::new(self.project_root.clone()).with_incremental(true);
+                let mut indexer = Indexer::new(&self.conn, indexer_config, &config);
+
+                if let Err(e) = indexer.index_project() {
+                    self.state
+                        .set_warning_message(format!("Task created but indexing failed: {e}"));
+                } else {
+                    self.state
+                        .set_success_message(format!("Created task: {}", result.task_id));
+                }
+
+                // Reload tasks for the file (now that it's indexed)
                 let file_repo = FileRepository::new(&self.conn);
                 if let Ok(Some(file_record)) = file_repo.get_by_path(&result.file_path) {
                     let task_repo = TaskRepository::new(&self.conn);
@@ -1706,6 +1719,13 @@ impl TuiApp {
 
                 // Refresh project stats
                 self.refresh_project_stats()?;
+
+                // Also refresh the file list in case a new file was created
+                let file_repo = FileRepository::new(&self.conn);
+                if let Ok(files) = file_repo.list_all() {
+                    self.state.files = files;
+                    self.state.build_file_tree();
+                }
             }
             Err(errors) => {
                 // Display first error
