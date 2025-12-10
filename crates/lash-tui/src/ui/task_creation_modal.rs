@@ -56,6 +56,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     render_owner_estimate_fields(frame, chunks[4], modal_state, &state.theme);
     render_agent_note_field(frame, chunks[5], modal_state, &state.theme);
     render_help_line(frame, chunks[6], &state.theme);
+
+    // Render dropdowns on top (after all fields)
+    // Parent dropdown uses popup_area for positioning context
+    render_parent_dropdown(frame, chunks[1], modal_state, &state.theme);
 }
 
 /// Render the title input field with validation indicator
@@ -128,6 +132,7 @@ fn render_parent_field(
     theme: &Theme,
 ) {
     let is_focused = state.focused_field == TaskFormField::Parent;
+    let is_expanded = state.parent_selector.is_expanded;
     let label = "Parent Task";
 
     let style = if is_focused {
@@ -136,7 +141,14 @@ fn render_parent_field(
         Style::default().fg(theme.foreground())
     };
 
-    let value = if let Some(selected_label) = &state.parent_selector.selected_item {
+    // When expanded and focused, show the search input
+    let value = if is_expanded && is_focused {
+        if state.parent_selector.input.is_empty() {
+            "Type to search... [▲]".to_string()
+        } else {
+            format!("{} [▲]", state.parent_selector.input)
+        }
+    } else if let Some(selected_label) = &state.parent_selector.selected_item {
         format!("{} [▼]", selected_label.title)
     } else {
         "None (top-level task) [▼]".to_string()
@@ -149,9 +161,142 @@ fn render_parent_field(
                 .borders(Borders::ALL)
                 .border_style(style),
         )
-        .style(Style::default().fg(theme.foreground()));
+        .style(Style::default().fg(
+            if is_expanded && is_focused && state.parent_selector.input.is_empty() {
+                Color::DarkGray
+            } else {
+                theme.foreground()
+            },
+        ));
 
     frame.render_widget(paragraph, area);
+}
+
+/// Render the parent task dropdown when expanded
+fn render_parent_dropdown(
+    frame: &mut Frame,
+    area: Rect,
+    state: &TaskCreationModalState,
+    theme: &Theme,
+) {
+    // Only render if parent field is focused and dropdown is expanded
+    if state.focused_field != TaskFormField::Parent || !state.parent_selector.is_expanded {
+        return;
+    }
+
+    let selector = &state.parent_selector;
+
+    // Get filtered items to display
+    let filtered_items: Vec<(usize, &crate::components::TreeSelectItem)> = selector
+        .filtered_indices
+        .iter()
+        .enumerate()
+        .filter_map(|(display_idx, &item_idx)| {
+            selector
+                .all_items
+                .get(item_idx)
+                .map(|item| (display_idx, item))
+        })
+        .collect();
+
+    if filtered_items.is_empty() && selector.input.is_empty() {
+        return;
+    }
+
+    // Position dropdown below the parent field (area is the parent field area)
+    let dropdown_y = area.y + 3;
+    if dropdown_y >= area.bottom() + 10 {
+        return; // Not enough space
+    }
+
+    // Show up to 8 items in dropdown
+    let max_visible: usize = 8;
+    let dropdown_height = ((filtered_items.len() + 1).min(max_visible + 1) + 2) as u16; // +1 for "None" option, +2 for borders
+    let dropdown_area = Rect {
+        x: area.x,
+        y: dropdown_y,
+        width: area.width.min(60),
+        height: dropdown_height.min(12),
+    };
+
+    // Render dropdown background
+    frame.render_widget(Clear, dropdown_area);
+
+    // Build lines with current selection highlighted
+    let mut lines = Vec::new();
+
+    // Add "None (top-level)" option at the top
+    let none_selected = selector.selected_index == 0 && selector.selected_item.is_none();
+    let none_style = if none_selected {
+        Style::default()
+            .fg(theme.border_focused())
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.muted_color())
+    };
+    lines.push(Line::from(Span::styled(
+        "  None (top-level task)",
+        none_style,
+    )));
+
+    // Add task items with indentation based on depth
+    for (display_idx, item) in filtered_items.iter().take(max_visible) {
+        let is_highlighted = *display_idx == selector.selected_index;
+
+        // Create indentation based on depth (2 spaces per level)
+        let indent = "  ".repeat(item.depth as usize);
+        let marker = if is_highlighted { "▸ " } else { "  " };
+        let status = format!("[{}] ", item.status_indicator);
+
+        let line_style = if is_highlighted {
+            Style::default()
+                .fg(theme.border_focused())
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.foreground())
+        };
+
+        let status_style = Style::default().fg(match item.status_indicator {
+            'x' => theme.task_done(),
+            '-' => theme.task_waived(),
+            '!' => theme.task_blocked(),
+            _ => theme.foreground(),
+        });
+
+        lines.push(Line::from(vec![
+            Span::styled(format!("{marker}{indent}"), line_style),
+            Span::styled(status, status_style),
+            Span::styled(&item.title, line_style),
+        ]));
+    }
+
+    // Show indicator if there are more items
+    if filtered_items.len() > max_visible {
+        lines.push(Line::from(Span::styled(
+            format!(
+                "  ... and {} more (type to filter)",
+                filtered_items.len() - max_visible
+            ),
+            Style::default().fg(theme.muted_color()),
+        )));
+    }
+
+    let title = if selector.input.is_empty() {
+        " Select Parent (↑↓ navigate, Enter select, Esc close) "
+    } else {
+        " Filtered Results "
+    };
+
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.border_focused()))
+                .title(title),
+        )
+        .style(Style::default().fg(theme.foreground()));
+
+    frame.render_widget(paragraph, dropdown_area);
 }
 
 /// Render the labels chip input field with validation indicator
