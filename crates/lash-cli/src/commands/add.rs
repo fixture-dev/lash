@@ -118,10 +118,14 @@ pub fn execute(args: &AddArgs) -> Result<i32> {
     // 4. Create service and execute
     let config = lash_types::config::LashConfig::from_root(&project_root)
         .unwrap_or_else(|_| lash_types::config::LashConfig::default());
-    let service = TaskCreationService::new(config);
+    let service = TaskCreationService::new(config.clone());
 
     match service.create_task(&request) {
         Ok(result) => {
+            // 5. Re-index to update the database with the new task
+            // This ensures subsequent queries (lash list, lash show) see the new task
+            reindex_project(&project_root, &config)?;
+
             output_success(args, &result)?;
             Ok(0)
         }
@@ -130,6 +134,26 @@ pub fn execute(args: &AddArgs) -> Result<i32> {
             Ok(1)
         }
     }
+}
+
+/// Re-index the project after task creation
+fn reindex_project(
+    project_root: &std::path::Path,
+    config: &lash_types::config::LashConfig,
+) -> Result<()> {
+    use lash_db::{init_database, Indexer, IndexerConfig};
+
+    let db_path = project_root.join(".lash").join("lash.db");
+    let conn = init_database(&db_path).context("Failed to open database for re-indexing")?;
+
+    let indexer_config = IndexerConfig::new(project_root.to_path_buf()).with_incremental(true);
+    let mut indexer = Indexer::new(&conn, indexer_config, config);
+
+    indexer
+        .index_project()
+        .context("Failed to re-index after task creation")?;
+
+    Ok(())
 }
 
 /// Build a `TaskCreationRequest` from command-line arguments
