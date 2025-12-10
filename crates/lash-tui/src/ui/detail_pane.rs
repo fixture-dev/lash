@@ -303,6 +303,7 @@ fn render_task_node(
     let prefix = build_tree_prefix(node.depth, is_last, ancestors_is_last, chars);
 
     // Add expand/collapse indicator
+    // Use 2-space padding for leaf nodes to align with expand/collapse indicators
     let expand_indicator = if node.has_children() {
         if node.expanded {
             chars.expanded()
@@ -310,7 +311,7 @@ fn render_task_node(
             chars.collapsed()
         }
     } else {
-        ""
+        "  " // Match width of ▸/▾ indicators for alignment
     };
 
     // Get checkbox character
