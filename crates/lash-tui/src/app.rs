@@ -241,7 +241,7 @@ impl TuiApp {
                         self.state.close_search_modal();
                     }
                     AppEvent::ExecuteSearch => {
-                        self.handle_execute_search();
+                        self.handle_execute_search()?;
                     }
                     AppEvent::Up => self.state.search_modal_up(),
                     AppEvent::Down => self.state.search_modal_down(),
@@ -1315,10 +1315,17 @@ impl TuiApp {
         // Build task tree if tree view enabled
         self.state.build_task_tree();
 
-        // If target_task_id provided, find and select that task index
+        // If target_task_id provided, expand ancestors and select that task
         if let Some(task_id) = target_task_id {
-            if let Some(task_index) = self.state.tasks.iter().position(|t| t.id == task_id) {
-                self.state.selected_task_index = task_index;
+            // Expand ancestors so the task becomes visible in the tree
+            self.state.expand_ancestors_to_task(task_id);
+
+            // Get the visual index in the tree (after expansion)
+            if let Some(visual_index) = self.state.visual_index_of_task(task_id) {
+                self.state.selected_task_index = visual_index;
+            } else if let Some(flat_index) = self.state.tasks.iter().position(|t| t.id == task_id) {
+                // Fallback to flat index if tree view not active
+                self.state.selected_task_index = flat_index;
             }
         } else {
             // No specific task - select first task
@@ -1482,18 +1489,23 @@ impl TuiApp {
         Ok(())
     }
 
-    /// Execute search with the current query
-    fn handle_execute_search(&mut self) {
+    /// Execute search with the current query, or select result if results exist
+    fn handle_execute_search(&mut self) -> TuiResult<()> {
         use lash_db::search::{search, SearchQuery};
 
+        // If search has been executed and has results, select the highlighted result
+        if self.state.search_has_selectable_results() {
+            return self.handle_search_result_select();
+        }
+
         let Some(query_str) = self.state.search_query() else {
-            return;
+            return Ok(());
         };
 
         // Skip if query is empty
         if query_str.trim().is_empty() {
             self.state.search_modal_set_results(Vec::new(), 0);
-            return;
+            return Ok(());
         }
 
         // Build search query with reasonable defaults
@@ -1510,6 +1522,8 @@ impl TuiApp {
                     .search_modal_set_error(format!("Search failed: {e}"));
             }
         }
+
+        Ok(())
     }
 
     /// Handle selecting a search result
@@ -1541,32 +1555,10 @@ impl TuiApp {
 
         let file_id = file_record.id;
 
-        // Find file index for selection
-        if let Some(file_index) = self
-            .state
-            .files
-            .iter()
-            .position(|f| f.path.to_string_lossy() == file_path)
-        {
-            self.state.selected_file_index = file_index;
-        }
+        // Use navigate_to_file to properly expand file tree and navigate to task
+        self.navigate_to_file(file_id, Some(task_id))?;
 
-        // Load tasks for this file
-        let task_repo = TaskRepository::new(&self.conn);
-        self.state.tasks = task_repo
-            .get_by_file(file_id)
-            .map_err(|e| TuiError::App(format!("Failed to load tasks: {e}")))?;
-
-        // Build task tree
-        self.state.build_task_tree();
-
-        // Find and select the task
-        if let Some(task_index) = self.state.tasks.iter().position(|t| t.id == task_id) {
-            self.state.selected_task_index = task_index;
-        }
-
-        // Switch to detail pane and file view
-        self.state.focused_pane = crate::state::FocusedPane::Detail;
+        // Switch to file mode and clear label filter
         self.state.nav_mode = crate::state::NavMode::Files;
         self.state.current_label_filter = None;
 
