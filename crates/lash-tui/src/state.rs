@@ -2422,13 +2422,24 @@ impl AppState {
         let default_expanded = config.tree_view.default_expanded;
         let max_depth = config.tree_view.max_depth;
 
-        // Group tasks by parent_id
+        // Build a set of task IDs in the current task list for lookup
+        let task_ids: std::collections::HashSet<i64> = self.tasks.iter().map(|t| t.id).collect();
+
+        // Group tasks by parent_id, but treat tasks whose parent is not in the
+        // current set as roots. This handles label filtering where a subtask
+        // has the label but its parent doesn't.
         let mut children_map: std::collections::HashMap<Option<i64>, Vec<TaskRecord>> =
             std::collections::HashMap::new();
 
         for task in &self.tasks {
+            // If the parent is in our task set, group under parent
+            // Otherwise treat as a root (parent_id = None)
+            let effective_parent = match task.parent_id {
+                Some(pid) if task_ids.contains(&pid) => Some(pid),
+                _ => None,
+            };
             children_map
-                .entry(task.parent_id)
+                .entry(effective_parent)
                 .or_default()
                 .push(task.clone());
         }
