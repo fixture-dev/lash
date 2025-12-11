@@ -239,6 +239,17 @@ pub struct ThemeSelectorState {
     pub scheme_names: Vec<String>,
 }
 
+/// Navigable sections within the task detail modal
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskDetailSection {
+    /// Metadata section (file path is actionable)
+    Metadata,
+    /// Labels section with selected label index
+    Labels(usize),
+    /// Parent/Dependencies section with selected dependency index
+    Parent(usize),
+}
+
 /// State for the task detail modal
 #[derive(Debug)]
 pub struct TaskDetailState {
@@ -262,6 +273,9 @@ pub struct TaskDetailState {
 
     /// Total content height for scroll bounds
     pub content_height: usize,
+
+    /// Currently selected section for navigation
+    pub selected_section: Option<TaskDetailSection>,
 }
 
 /// State for the search modal
@@ -1204,6 +1218,7 @@ impl AppState {
             dependencies,
             subtasks,
             content_height,
+            selected_section: None,
         });
     }
 
@@ -1239,6 +1254,146 @@ impl AppState {
                 detail.scroll_offset += 1;
             }
         }
+    }
+
+    /// Move to next navigable section in task detail view
+    pub fn task_detail_select_next_section(&mut self) {
+        let Some(detail) = &mut self.task_detail_state else {
+            return;
+        };
+
+        let next_section = match detail.selected_section {
+            None => {
+                // Start with Metadata if available
+                Some(TaskDetailSection::Metadata)
+            }
+            Some(TaskDetailSection::Metadata) => {
+                // Move to Labels if available
+                if !detail.labels.is_empty() {
+                    Some(TaskDetailSection::Labels(0))
+                } else if !detail.dependencies.is_empty() {
+                    Some(TaskDetailSection::Parent(0))
+                } else {
+                    Some(TaskDetailSection::Metadata)
+                }
+            }
+            Some(TaskDetailSection::Labels(_)) => {
+                // Move to Parent if available
+                if detail.dependencies.is_empty() {
+                    Some(TaskDetailSection::Metadata)
+                } else {
+                    Some(TaskDetailSection::Parent(0))
+                }
+            }
+            Some(TaskDetailSection::Parent(_)) => {
+                // Wrap back to Metadata
+                Some(TaskDetailSection::Metadata)
+            }
+        };
+
+        detail.selected_section = next_section;
+    }
+
+    /// Move to previous navigable section in task detail view
+    pub fn task_detail_select_prev_section(&mut self) {
+        let Some(detail) = &mut self.task_detail_state else {
+            return;
+        };
+
+        let prev_section = match detail.selected_section {
+            None => {
+                // Start with last available section
+                if !detail.dependencies.is_empty() {
+                    Some(TaskDetailSection::Parent(0))
+                } else if !detail.labels.is_empty() {
+                    Some(TaskDetailSection::Labels(0))
+                } else {
+                    Some(TaskDetailSection::Metadata)
+                }
+            }
+            Some(TaskDetailSection::Metadata) => {
+                // Move to Parent if available, else Labels
+                if !detail.dependencies.is_empty() {
+                    Some(TaskDetailSection::Parent(0))
+                } else if !detail.labels.is_empty() {
+                    Some(TaskDetailSection::Labels(0))
+                } else {
+                    Some(TaskDetailSection::Metadata)
+                }
+            }
+            Some(TaskDetailSection::Labels(_)) => {
+                // Move back to Metadata
+                Some(TaskDetailSection::Metadata)
+            }
+            Some(TaskDetailSection::Parent(_)) => {
+                // Move to Labels if available, else Metadata
+                if detail.labels.is_empty() {
+                    Some(TaskDetailSection::Metadata)
+                } else {
+                    Some(TaskDetailSection::Labels(0))
+                }
+            }
+        };
+
+        detail.selected_section = prev_section;
+    }
+
+    /// Move to next item within current section (Labels or Parent)
+    pub fn task_detail_select_next_item(&mut self) {
+        let Some(detail) = &mut self.task_detail_state else {
+            return;
+        };
+
+        let next_section = match detail.selected_section {
+            Some(TaskDetailSection::Labels(index)) => {
+                let next_index = if index + 1 < detail.labels.len() {
+                    index + 1
+                } else {
+                    0 // Wrap around
+                };
+                Some(TaskDetailSection::Labels(next_index))
+            }
+            Some(TaskDetailSection::Parent(index)) => {
+                let next_index = if index + 1 < detail.dependencies.len() {
+                    index + 1
+                } else {
+                    0 // Wrap around
+                };
+                Some(TaskDetailSection::Parent(next_index))
+            }
+            _ => detail.selected_section, // No change for Metadata or None
+        };
+
+        detail.selected_section = next_section;
+    }
+
+    /// Move to previous item within current section (Labels or Parent)
+    pub fn task_detail_select_prev_item(&mut self) {
+        let Some(detail) = &mut self.task_detail_state else {
+            return;
+        };
+
+        let prev_section = match detail.selected_section {
+            Some(TaskDetailSection::Labels(index)) => {
+                let prev_index = if index > 0 {
+                    index - 1
+                } else {
+                    detail.labels.len().saturating_sub(1)
+                };
+                Some(TaskDetailSection::Labels(prev_index))
+            }
+            Some(TaskDetailSection::Parent(index)) => {
+                let prev_index = if index > 0 {
+                    index - 1
+                } else {
+                    detail.dependencies.len().saturating_sub(1)
+                };
+                Some(TaskDetailSection::Parent(prev_index))
+            }
+            _ => detail.selected_section, // No change for Metadata or None
+        };
+
+        detail.selected_section = prev_section;
     }
 
     /// Get currently selected file

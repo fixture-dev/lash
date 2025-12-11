@@ -315,14 +315,29 @@ impl TuiApp {
                     AppEvent::Quit | AppEvent::CloseThemeSelector => {
                         self.state.close_task_detail();
                     }
-                    AppEvent::Up => self.state.task_detail_scroll_up(),
+                    AppEvent::SwitchPane => {
+                        // Tab: navigate to next section
+                        self.state.task_detail_select_next_section();
+                    }
+                    AppEvent::Up => {
+                        // k or up arrow: navigate to previous section
+                        self.state.task_detail_select_prev_section();
+                    }
                     AppEvent::Down => {
-                        // Calculate visible height (popup height - borders and padding)
-                        // Popup is 85% of screen height, minus 2 for borders, minus 2 for padding
-                        let screen_height = self.terminal.size()?.height as usize;
-                        let popup_height = (screen_height * 85) / 100;
-                        let visible_height = popup_height.saturating_sub(4);
-                        self.state.task_detail_scroll_down(visible_height);
+                        // j or down arrow: navigate to next section
+                        self.state.task_detail_select_next_section();
+                    }
+                    AppEvent::Left => {
+                        // h: previous item within section (for Labels/Parent)
+                        self.state.task_detail_select_prev_item();
+                    }
+                    AppEvent::Right => {
+                        // l: next item within section (for Labels/Parent)
+                        self.state.task_detail_select_next_item();
+                    }
+                    AppEvent::Select => {
+                        // Enter: activate the selected section
+                        self.handle_task_detail_activate()?;
                     }
                     _ => {} // Ignore other events when detail is open
                 }
@@ -1338,6 +1353,106 @@ impl TuiApp {
 
         // Switch focus to detail pane
         self.state.focused_pane = crate::state::FocusedPane::Detail;
+
+        Ok(())
+    }
+
+    /// Handle activation (Enter key) on selected section in task detail modal
+    ///
+    /// Actions:
+    /// - Metadata: Navigate to file in file tree
+    /// - Labels: Filter tasks by selected label and switch to Labels nav mode
+    /// - Parent: Navigate to parent task in file tree
+    fn handle_task_detail_activate(&mut self) -> TuiResult<()> {
+        use crate::state::TaskDetailSection;
+
+        // Get the selected section from the task detail state
+        let Some(detail_state) = &self.state.task_detail_state else {
+            return Ok(());
+        };
+
+        let Some(selected_section) = detail_state.selected_section else {
+            // No section selected - do nothing
+            return Ok(());
+        };
+
+        match selected_section {
+            TaskDetailSection::Metadata => {
+                // Navigate to the file containing this task
+                let file_id = detail_state.task.file_id;
+                let task_id = Some(detail_state.task.id);
+
+                // Close the modal first
+                self.state.close_task_detail();
+
+                // Navigate to the file and select the task
+                self.navigate_to_file(file_id, task_id)?;
+            }
+            TaskDetailSection::Labels(index) => {
+                // Filter by the selected label
+                if let Some(label) = detail_state.labels.get(index) {
+                    let label_name = label.clone();
+
+                    // Close the modal first
+                    self.state.close_task_detail();
+
+                    // Load tasks with this label from the database
+                    let task_repo = TaskRepository::new(&self.conn);
+                    self.state.tasks = task_repo.find_by_label(&label_name).map_err(|e| {
+                        TuiError::App(format!("Failed to load tasks for label: {e}"))
+                    })?;
+
+                    // Set current filter and reset selection
+                    self.state.current_label_filter = Some(label_name.clone());
+                    self.state.selected_task_index = 0;
+                    self.state.build_task_tree();
+
+                    // Switch to Labels nav mode and detail pane to show filtered tasks
+                    self.state.nav_mode = crate::state::NavMode::Labels;
+                    self.state.focused_pane = crate::state::FocusedPane::Detail;
+
+                    self.state
+                        .set_success_message(format!("Filtered by label: #{label_name}"));
+                }
+            }
+            TaskDetailSection::Parent(index) => {
+                // Navigate to the parent task in the file tree
+                if let Some(dep) = detail_state.dependencies.get(index) {
+                    // We need to find the parent task by its ID
+                    // The dependency record has to_task_id which is the parent
+                    if let Some(parent_task_id) = dep.to_task_id {
+                        let task_repo = TaskRepository::new(&self.conn);
+
+                        // Get the parent task to find its file_id
+                        let parent_task = match task_repo.get_by_db_id(parent_task_id) {
+                            Ok(Some(task)) => task,
+                            Ok(None) => {
+                                self.state
+                                    .set_error_message("Parent task not found in database");
+                                return Ok(());
+                            }
+                            Err(e) => {
+                                self.state
+                                    .set_error_message(format!("Failed to load parent task: {e}"));
+                                return Ok(());
+                            }
+                        };
+
+                        let file_id = parent_task.file_id;
+
+                        // Close the modal first
+                        self.state.close_task_detail();
+
+                        // Clear any label filter since we're navigating to a specific file
+                        self.state.current_label_filter = None;
+                        self.state.nav_mode = crate::state::NavMode::Files;
+
+                        // Navigate to the file and select the parent task
+                        self.navigate_to_file(file_id, Some(parent_task_id))?;
+                    }
+                }
+            }
+        }
 
         Ok(())
     }

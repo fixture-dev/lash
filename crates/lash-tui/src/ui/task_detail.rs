@@ -46,16 +46,33 @@ fn build_content_lines(
     state: &AppState,
     detail_state: &crate::state::TaskDetailState,
 ) -> Vec<Line<'static>> {
+    use crate::state::TaskDetailSection;
+
     let mut content_lines = Vec::new();
 
     // Header section
     add_header_section(&mut content_lines, state, detail_state);
 
     // Metadata section
-    add_metadata_section(&mut content_lines, state, detail_state);
+    let metadata_selected = matches!(
+        detail_state.selected_section,
+        Some(TaskDetailSection::Metadata)
+    );
+    add_metadata_section(&mut content_lines, state, detail_state, metadata_selected);
 
     // Labels section
-    add_labels_section(&mut content_lines, state, detail_state);
+    let selected_label_index =
+        if let Some(TaskDetailSection::Labels(idx)) = detail_state.selected_section {
+            Some(idx)
+        } else {
+            None
+        };
+    add_labels_section(
+        &mut content_lines,
+        state,
+        detail_state,
+        selected_label_index,
+    );
 
     // Description section
     add_description_section(&mut content_lines, state, detail_state);
@@ -64,7 +81,13 @@ fn build_content_lines(
     add_subtasks_section(&mut content_lines, state, detail_state);
 
     // Dependencies section
-    add_dependencies_section(&mut content_lines, state, detail_state);
+    let selected_dep_index =
+        if let Some(TaskDetailSection::Parent(idx)) = detail_state.selected_section {
+            Some(idx)
+        } else {
+            None
+        };
+    add_dependencies_section(&mut content_lines, state, detail_state, selected_dep_index);
 
     // Footer
     add_footer_section(&mut content_lines, state);
@@ -106,21 +129,35 @@ fn add_metadata_section(
     lines: &mut Vec<Line<'static>>,
     state: &AppState,
     detail_state: &crate::state::TaskDetailState,
+    is_selected: bool,
 ) {
-    lines.push(Line::from(vec![Span::styled(
-        "Metadata",
+    let section_style = if is_selected {
+        state.theme.selected_style()
+    } else {
         Style::default()
             .fg(state.theme.info_color())
-            .add_modifier(Modifier::BOLD),
-    )]));
+            .add_modifier(Modifier::BOLD)
+    };
 
-    // File path
+    lines.push(Line::from(vec![Span::styled("Metadata", section_style)]));
+
+    // File path - use selected style if this section is selected
+    let file_style = if is_selected {
+        state.theme.selected_style()
+    } else {
+        Style::default()
+    };
+
     lines.push(Line::from(vec![
         Span::styled(
             "  File: ",
-            Style::default().fg(state.theme.emphasis_color()),
+            if is_selected {
+                state.theme.selected_style()
+            } else {
+                Style::default().fg(state.theme.emphasis_color())
+            },
         ),
-        Span::raw(detail_state.file_path.display().to_string()),
+        Span::styled(detail_state.file_path.display().to_string(), file_style),
     ]));
 
     // Owner (if present)
@@ -153,28 +190,38 @@ fn add_labels_section(
     lines: &mut Vec<Line<'static>>,
     state: &AppState,
     detail_state: &crate::state::TaskDetailState,
+    selected_label_index: Option<usize>,
 ) {
     if detail_state.labels.is_empty() {
         return;
     }
 
-    lines.push(Line::from(vec![Span::styled(
-        "Labels",
+    let section_selected = selected_label_index.is_some();
+    let section_style = if section_selected {
+        state.theme.selected_style()
+    } else {
         Style::default()
             .fg(state.theme.info_color())
-            .add_modifier(Modifier::BOLD),
-    )]));
+            .add_modifier(Modifier::BOLD)
+    };
+
+    lines.push(Line::from(vec![Span::styled("Labels", section_style)]));
 
     let label_spans: Vec<Span> = detail_state
         .labels
         .iter()
-        .flat_map(|label| {
+        .enumerate()
+        .flat_map(|(idx, label)| {
+            let is_this_label_selected = selected_label_index == Some(idx);
+            let label_style = if is_this_label_selected {
+                state.theme.selected_style()
+            } else {
+                Style::default().fg(state.theme.label_color())
+            };
+
             vec![
                 Span::raw("  "),
-                Span::styled(
-                    format!("#{label}"),
-                    Style::default().fg(state.theme.label_color()),
-                ),
+                Span::styled(format!("#{label}"), label_style),
             ]
         })
         .collect();
@@ -212,6 +259,7 @@ fn add_dependencies_section(
     lines: &mut Vec<Line<'static>>,
     state: &AppState,
     detail_state: &crate::state::TaskDetailState,
+    selected_dep_index: Option<usize>,
 ) {
     use lash_types::DependencyKind;
 
@@ -219,15 +267,20 @@ fn add_dependencies_section(
         return;
     }
 
-    // Use "Parent" as label since hierarchy deps show parent task
-    lines.push(Line::from(vec![Span::styled(
-        "Parent",
+    let section_selected = selected_dep_index.is_some();
+    let section_style = if section_selected {
+        state.theme.selected_style()
+    } else {
         Style::default()
             .fg(state.theme.info_color())
-            .add_modifier(Modifier::BOLD),
-    )]));
+            .add_modifier(Modifier::BOLD)
+    };
 
-    for dep in &detail_state.dependencies {
+    // Use "Parent" as label since hierarchy deps show parent task
+    lines.push(Line::from(vec![Span::styled("Parent", section_style)]));
+
+    for (idx, dep) in detail_state.dependencies.iter().enumerate() {
+        let is_this_dep_selected = selected_dep_index == Some(idx);
         // Display the dependency with its kind
         // Prefer to_full_id if available, otherwise use raw_ref
         let dep_id = dep
@@ -244,12 +297,24 @@ fn add_dependencies_section(
         };
 
         // Build the line with ID and optional title
+        // Use selected style if this dependency is selected
         let mut spans = vec![
             Span::raw("  "),
-            Span::styled("← ", Style::default().fg(state.theme.muted_color())),
+            Span::styled(
+                "← ",
+                if is_this_dep_selected {
+                    state.theme.selected_style()
+                } else {
+                    Style::default().fg(state.theme.muted_color())
+                },
+            ),
             Span::styled(
                 dep_id.to_string(),
-                Style::default().fg(state.theme.emphasis_color()),
+                if is_this_dep_selected {
+                    state.theme.selected_style()
+                } else {
+                    Style::default().fg(state.theme.emphasis_color())
+                },
             ),
         ];
 
@@ -257,18 +322,30 @@ fn add_dependencies_section(
         if let Some(title) = &dep.to_title {
             spans.push(Span::styled(
                 " | ",
-                Style::default().fg(state.theme.muted_color()),
+                if is_this_dep_selected {
+                    state.theme.selected_style()
+                } else {
+                    Style::default().fg(state.theme.muted_color())
+                },
             ));
             spans.push(Span::styled(
                 title.clone(),
-                Style::default().fg(state.theme.label_color()),
+                if is_this_dep_selected {
+                    state.theme.selected_style()
+                } else {
+                    Style::default().fg(state.theme.label_color())
+                },
             ));
         }
 
         spans.push(Span::raw(" "));
         spans.push(Span::styled(
             format!("({kind_label})"),
-            Style::default().fg(state.theme.muted_color()),
+            if is_this_dep_selected {
+                state.theme.selected_style()
+            } else {
+                Style::default().fg(state.theme.muted_color())
+            },
         ));
 
         lines.push(Line::from(spans));
@@ -313,7 +390,7 @@ fn add_subtasks_section(
 fn add_footer_section(lines: &mut Vec<Line<'static>>, state: &AppState) {
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
-        "Press Esc to close • j/k to scroll",
+        "Tab/Shift+Tab to navigate sections • h/l to select items • Enter to activate • Esc to close",
         Style::default().fg(state.theme.muted_color()),
     )]));
 }
