@@ -143,10 +143,19 @@ impl TaskTreeBuilder {
             .filter(|t| t.parent_id == parent_id)
             .count();
 
-        // Generate task ID (synthetic if not provided)
-        // For now, we don't have explicit @id in CheckboxLine, so always generate
+        // Generate task ID (use explicit @id from annotation if provided)
         let task_index = self.tasks.len();
-        let task_id = self.generate_synthetic_id(&line.title, task_index);
+        let explicit_id = line
+            .annotations
+            .as_ref()
+            .and_then(|a| a.get_single("id"))
+            .map(String::from);
+
+        let task_id = if let Some(id) = explicit_id {
+            id
+        } else {
+            self.generate_synthetic_id(&line.title, task_index)
+        };
 
         // Check for duplicate ID
         if self.is_id_used(&task_id) {

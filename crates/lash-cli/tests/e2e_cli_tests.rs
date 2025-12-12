@@ -668,7 +668,9 @@ fn test_agent_prompt_json_output() {
 fn test_format_command() {
     let temp = tempfile::tempdir().unwrap();
 
-    // Create file with inconsistent formatting
+    // Create file with inconsistent annotation formatting (but valid checkboxes)
+    // Note: Malformed checkboxes like "-  [ ]" are now detected as errors to prevent
+    // silent data loss - use valid checkboxes here
     let content = r#"# Test
 
 
@@ -678,8 +680,8 @@ fn test_format_command() {
 
 ## Tasks
 
--  [ ]   Task 1
-- [x]Task 2
+- [ ] Task 1
+- [x] Task 2
 "#;
     let file_path = temp.path().join("lash.index.md");
     fs::write(&file_path, content).unwrap();
@@ -702,17 +704,44 @@ fn test_format_command() {
 }
 
 #[test]
+fn test_format_rejects_malformed_checkboxes() {
+    let temp = tempfile::tempdir().unwrap();
+
+    // Create file with malformed checkbox (extra space after dash)
+    let content = r#"# Test
+
+@id: test
+
+## Tasks
+
+-  [ ] Task with malformed spacing
+"#;
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    // Format should fail because malformed checkboxes are detected as errors
+    // to prevent silent data loss
+    let mut cmd = create_lash_command();
+    cmd.arg("--root")
+        .arg(temp.path())
+        .arg("format")
+        .arg(&file_path)
+        .assert()
+        .failure(); // Should fail, not succeed
+}
+
+#[test]
 fn test_format_check_mode() {
     let temp = tempfile::tempdir().unwrap();
 
-    // Create file with inconsistent formatting
+    // Create file with inconsistent annotation formatting (but valid checkboxes)
     let content = r#"# Test
 
 @id:   test
 
 ## Tasks
 
--  [ ]   Task 1
+- [ ] Task 1
 "#;
     let file_path = temp.path().join("lash.index.md");
     fs::write(&file_path, content).unwrap();
@@ -724,7 +753,7 @@ fn test_format_check_mode() {
         .arg("--check")
         .arg(&file_path)
         .assert()
-        .failure(); // Should fail because file needs formatting
+        .failure(); // Should fail because file needs formatting (annotation spacing)
 
     // File should not be modified
     let unchanged = fs::read_to_string(&file_path).unwrap();
