@@ -635,8 +635,8 @@ impl TuiApp {
             None => return Ok(()),
         };
 
-        // Get editor from environment
-        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
+        // Get editor from environment with cross-platform fallbacks
+        let editor = Self::detect_editor();
 
         // Restore terminal
         terminal::restore()?;
@@ -660,6 +660,70 @@ impl TuiApp {
         // TODO: Reload file if modified
 
         Ok(())
+    }
+
+    /// Detect the best available editor for the current platform
+    ///
+    /// Checks environment variables first (VISUAL, EDITOR), then falls back
+    /// to platform-specific defaults, verifying each candidate exists.
+    fn detect_editor() -> String {
+        // First, check standard environment variables
+        if let Ok(editor) = std::env::var("VISUAL") {
+            if !editor.is_empty() {
+                return editor;
+            }
+        }
+        if let Ok(editor) = std::env::var("EDITOR") {
+            if !editor.is_empty() {
+                return editor;
+            }
+        }
+
+        // Platform-specific fallback candidates
+        #[cfg(target_os = "windows")]
+        let candidates = ["code.cmd", "notepad++.exe", "notepad.exe"];
+
+        #[cfg(target_os = "macos")]
+        let candidates = ["code", "vim", "nano", "vi"];
+
+        #[cfg(target_os = "linux")]
+        let candidates = ["code", "vim", "nano", "vi"];
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+        let candidates = ["vim", "nano", "vi"];
+
+        // Check if each candidate is available in PATH
+        for candidate in candidates {
+            if Self::command_exists(candidate) {
+                return candidate.to_string();
+            }
+        }
+
+        // Ultimate fallback (may fail, but provides a clear error message)
+        #[cfg(target_os = "windows")]
+        return "notepad.exe".to_string();
+
+        #[cfg(not(target_os = "windows"))]
+        "vi".to_string()
+    }
+
+    /// Check if a command exists in PATH
+    fn command_exists(cmd: &str) -> bool {
+        #[cfg(target_os = "windows")]
+        let check = std::process::Command::new("where")
+            .arg(cmd)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        #[cfg(not(target_os = "windows"))]
+        let check = std::process::Command::new("which")
+            .arg(cmd)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        check.is_ok_and(|s| s.success())
     }
 
     /// Handle toggling task status with Space bar
