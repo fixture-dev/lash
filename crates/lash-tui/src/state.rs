@@ -1397,9 +1397,19 @@ impl AppState {
     }
 
     /// Get currently selected file
+    ///
+    /// When in tree view mode, this returns the file from the selected tree node
+    /// (which correctly maps to the visual selection). Falls back to the flat
+    /// file list if tree view is not available.
     #[must_use]
-    pub fn selected_file(&self) -> Option<&FileRecord> {
-        self.files.get(self.selected_file_index)
+    pub fn selected_file(&self) -> Option<FileRecord> {
+        // In tree view mode, get file from the selected tree node
+        if let Some(node) = self.selected_tree_node() {
+            return node.file_record;
+        }
+
+        // Fall back to flat file list
+        self.files.get(self.selected_file_index).cloned()
     }
 
     /// Get the title of the currently selected file in the navigation pane.
