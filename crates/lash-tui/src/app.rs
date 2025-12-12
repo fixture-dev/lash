@@ -1,6 +1,6 @@
 //! Main TUI application
 
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{backend::Backend, backend::CrosstermBackend, Terminal};
 use rusqlite::Connection;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -13,20 +13,25 @@ use lash_db::repository::tasks::TaskRepository;
 
 use crate::components::TreeSelectItem;
 use crate::error::{TuiError, TuiResult};
-use crate::event::{
-    poll_confirm_complete_event, poll_confirm_incomplete_event,
-    poll_confirm_linked_file_complete_event, poll_event, poll_filter_event, poll_search_event,
-    poll_task_creation_event, poll_task_detail_event, AppEvent,
-};
+use crate::event::{translate_event, AppEvent};
+use crate::event_source::{EventSource, TerminalEventSource};
 use crate::state::AppState;
 use crate::terminal;
 use crate::ui;
 use crate::utils;
 
-/// Main TUI application
-pub struct TuiApp {
+/// Generic TUI application core that can work with any backend and event source
+///
+/// This struct is generic over both the terminal backend (B) and event source (E),
+/// allowing it to be used with real terminal I/O or with synthetic test events.
+///
+/// For normal usage, use the `TuiApp` type alias which provides the concrete types.
+pub struct TuiAppCore<B: Backend, E: EventSource> {
     /// Terminal instance
-    terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    terminal: Terminal<B>,
+
+    /// Event source
+    event_source: E,
 
     /// Database connection
     conn: Connection,
@@ -37,6 +42,12 @@ pub struct TuiApp {
     /// Project root directory (parent of .lash/)
     project_root: PathBuf,
 }
+
+/// Concrete TUI application type for production use
+///
+/// This is a type alias for `TuiAppCore` with real terminal I/O.
+/// Use this type for normal operation of the TUI.
+pub type TuiApp = TuiAppCore<CrosstermBackend<io::Stdout>, TerminalEventSource>;
 
 impl TuiApp {
     /// Create a new TUI application
@@ -60,6 +71,7 @@ impl TuiApp {
     /// - Color scheme is invalid
     pub fn new_with_scheme(db_path: &Path, color_scheme: Option<&str>) -> TuiResult<Self> {
         let terminal = terminal::setup()?;
+        let event_source = TerminalEventSource::new();
         let conn = lash_db::open_database(db_path)?;
 
         // Calculate project root from db_path (db is at .lash/lash.db)
@@ -126,6 +138,7 @@ impl TuiApp {
 
         Ok(Self {
             terminal,
+            event_source,
             conn,
             state,
             project_root,
@@ -140,314 +153,485 @@ impl TuiApp {
     #[allow(clippy::too_many_lines)]
     pub fn run(&mut self) -> TuiResult<()> {
         loop {
-            // Check for expired status messages
-            self.state.check_status_expiry();
-
-            // Render
-            self.terminal
-                .draw(|frame| ui::render(frame, &self.state, &self.conn))?;
-
-            // Handle events - use different polling depending on modal state
-            let event = if self.state.is_task_creation_modal_open() {
-                poll_task_creation_event(Duration::from_millis(100))?
-            } else if self.state.is_search_modal_open() {
-                poll_search_event(Duration::from_millis(100))?
-            } else if self.state.is_filter_modal_open() {
-                poll_filter_event(Duration::from_millis(100))?
-            } else if self.state.is_confirm_complete_modal_open() {
-                poll_confirm_complete_event(Duration::from_millis(100))?
-            } else if self.state.is_confirm_incomplete_modal_open() {
-                poll_confirm_incomplete_event(Duration::from_millis(100))?
-            } else if self.state.is_confirm_linked_file_complete_modal_open() {
-                poll_confirm_linked_file_complete_event(Duration::from_millis(100))?
-            } else if self.state.is_task_detail_open() {
-                poll_task_detail_event(Duration::from_millis(100))?
-            } else {
-                poll_event(Duration::from_millis(100))?
-            };
-
-            // Route events based on active modal
-            #[allow(clippy::match_same_arms)] // Placeholder arms for future features
-            if self.state.is_task_creation_modal_open() {
-                // Task creation modal is open - route events to it
-                match event {
-                    AppEvent::CloseTaskCreation => {
-                        self.state.close_task_creation_modal();
-                    }
-                    AppEvent::SubmitTaskCreation => {
-                        self.handle_submit_task_creation()?;
-                    }
-                    AppEvent::TaskFormNextField => {
-                        if let Some(modal) = &mut self.state.task_creation_modal_state {
-                            modal.next_field();
-                        }
-                    }
-                    AppEvent::TaskFormPrevField => {
-                        if let Some(modal) = &mut self.state.task_creation_modal_state {
-                            modal.prev_field();
-                        }
-                    }
-                    AppEvent::TaskFormTogglePreview => {
-                        if let Some(modal) = &mut self.state.task_creation_modal_state {
-                            modal.toggle_preview();
-                        }
-                    }
-                    AppEvent::CharInput(c) => {
-                        self.handle_char_input_in_modal(c);
-                        self.validate_modal();
-                    }
-                    AppEvent::Backspace => {
-                        self.handle_backspace_in_modal();
-                        self.validate_modal();
-                    }
-                    AppEvent::Delete => {
-                        self.handle_delete_in_modal();
-                        self.validate_modal();
-                    }
-                    AppEvent::Left => {
-                        self.handle_left_in_modal();
-                    }
-                    AppEvent::Right => {
-                        self.handle_right_in_modal();
-                    }
-                    AppEvent::Up => {
-                        self.handle_up_in_modal();
-                    }
-                    AppEvent::Down => {
-                        self.handle_down_in_modal();
-                    }
-                    AppEvent::Home => {
-                        self.handle_home_in_modal();
-                    }
-                    AppEvent::End => {
-                        self.handle_end_in_modal();
-                    }
-                    AppEvent::Select => {
-                        self.handle_select_in_modal();
-                        self.validate_modal();
-                    }
-                    AppEvent::ClearFilters => {
-                        self.handle_clear_field_in_modal();
-                        self.validate_modal();
-                    }
-                    AppEvent::Help => {
-                        // Toggle help overlay within modal
-                        self.state.show_help = !self.state.show_help;
-                    }
-                    _ => {} // Ignore other events when task creation modal is open
-                }
-            } else if self.state.is_search_modal_open() {
-                // Search modal is open - route events to it
-                match event {
-                    AppEvent::CloseSearch => {
-                        self.state.close_search_modal();
-                    }
-                    AppEvent::ExecuteSearch => {
-                        self.handle_execute_search()?;
-                    }
-                    AppEvent::Up => self.state.search_modal_up(),
-                    AppEvent::Down => self.state.search_modal_down(),
-                    AppEvent::Left => self.state.search_modal_cursor_left(),
-                    AppEvent::Right => self.state.search_modal_cursor_right(),
-                    AppEvent::Home => self.state.search_modal_cursor_home(),
-                    AppEvent::End => self.state.search_modal_cursor_end(),
-                    AppEvent::Backspace => self.state.search_modal_backspace(),
-                    AppEvent::Delete => self.state.search_modal_delete(),
-                    AppEvent::ClearFilters => self.state.search_modal_clear(),
-                    AppEvent::CharInput(c) => self.state.search_modal_input(c),
-                    AppEvent::Select => {
-                        // Select current result and navigate to it
-                        self.handle_search_result_select()?;
-                    }
-                    _ => {} // Ignore other events when search is open
-                }
-            } else if self.state.is_filter_modal_open() {
-                // Filter modal is open - route events to it
-                match event {
-                    AppEvent::CloseFilter => {
-                        self.state.close_filter_modal();
-                    }
-                    AppEvent::ApplyFilter => {
-                        self.handle_apply_filter()?;
-                    }
-                    AppEvent::Up => self.state.filter_modal_up(),
-                    AppEvent::Down => self.state.filter_modal_down(),
-                    AppEvent::Backspace => self.state.filter_modal_backspace(),
-                    AppEvent::Delete => self.state.filter_modal_delete(),
-                    AppEvent::ClearFilters => self.state.filter_modal_clear(),
-                    AppEvent::CharInput(c) => self.state.filter_modal_input(c),
-                    _ => {} // Ignore other events when filter is open
-                }
-            } else if self.state.is_confirm_complete_modal_open() {
-                // Confirm complete modal is open - route events to it
-                match event {
-                    AppEvent::CloseConfirmComplete => {
-                        self.state.close_confirm_complete_modal();
-                    }
-                    AppEvent::ConfirmComplete => {
-                        self.handle_confirm_cascading_complete()?;
-                    }
-                    _ => {} // Ignore other events when confirm modal is open
-                }
-            } else if self.state.is_confirm_incomplete_modal_open() {
-                // Confirm incomplete modal is open - route events to it
-                match event {
-                    AppEvent::CloseConfirmIncomplete => {
-                        self.state.close_confirm_incomplete_modal();
-                    }
-                    AppEvent::ConfirmIncomplete => {
-                        self.handle_confirm_cascading_incomplete()?;
-                    }
-                    _ => {} // Ignore other events when confirm modal is open
-                }
-            } else if self.state.is_confirm_linked_file_complete_modal_open() {
-                // Confirm linked file complete modal is open - route events to it
-                match event {
-                    AppEvent::CloseConfirmLinkedFileComplete => {
-                        self.state.close_confirm_linked_file_complete_modal();
-                    }
-                    AppEvent::ConfirmLinkedFileComplete => {
-                        self.handle_confirm_linked_file_complete()?;
-                    }
-                    _ => {} // Ignore other events when confirm modal is open
-                }
-            } else if self.state.is_task_detail_open() {
-                // Task detail is open - route events to it
-                match event {
-                    AppEvent::Quit | AppEvent::CloseThemeSelector => {
-                        self.state.close_task_detail();
-                    }
-                    AppEvent::SwitchPane => {
-                        // Tab: navigate to next section
-                        self.state.task_detail_select_next_section();
-                    }
-                    AppEvent::Up => {
-                        // k or up arrow: navigate to previous section
-                        self.state.task_detail_select_prev_section();
-                    }
-                    AppEvent::Down => {
-                        // j or down arrow: navigate to next section
-                        self.state.task_detail_select_next_section();
-                    }
-                    AppEvent::Left => {
-                        // h: previous item within section (for Labels/Parent)
-                        self.state.task_detail_select_prev_item();
-                    }
-                    AppEvent::Right => {
-                        // l: next item within section (for Labels/Parent)
-                        self.state.task_detail_select_next_item();
-                    }
-                    AppEvent::Select => {
-                        // Enter: activate the selected section
-                        self.handle_task_detail_activate()?;
-                    }
-                    _ => {} // Ignore other events when detail is open
-                }
-            } else if self.state.theme_selector_state.is_some() {
-                // Theme selector is open - route events to it
-                match event {
-                    AppEvent::CloseThemeSelector | AppEvent::Quit => {
-                        self.state.close_theme_selector();
-                    }
-                    AppEvent::Up => self.state.theme_selector_up(),
-                    AppEvent::Down => self.state.theme_selector_down(),
-                    AppEvent::Right | AppEvent::Select => {
-                        if let Err(e) = self.state.apply_selected_theme() {
-                            eprintln!("Failed to apply theme: {e}");
-                        }
-                    }
-                    _ => {} // Ignore other events when selector is open
-                }
-            } else if self.state.show_help {
-                // Help is open - only handle close events
-                match event {
-                    AppEvent::Help | AppEvent::CloseThemeSelector => {
-                        self.state.toggle_help();
-                    }
-                    _ => {} // Ignore other events when help is shown
-                }
-            } else {
-                // Normal event handling
-                // Calculate description visible height for scrolling
-                let screen_height = self.terminal.size().map(|s| s.height).unwrap_or(24) as usize;
-                // Description pane is roughly 30% of screen height minus borders
-                let description_visible_height = (screen_height * 30 / 100).saturating_sub(2);
-
-                match event {
-                    AppEvent::Quit => {
-                        self.state.should_quit = true;
-                    }
-                    AppEvent::Up => {
-                        self.state.move_up();
-                        self.load_tasks_for_selected_file()?;
-                    }
-                    AppEvent::Down => {
-                        self.state.move_down(description_visible_height);
-                        self.load_tasks_for_selected_file()?;
-                    }
-                    AppEvent::Right => self.handle_select()?,
-                    AppEvent::Select => self.handle_toggle_status()?,
-                    AppEvent::SwitchPane => self.state.switch_pane(),
-                    AppEvent::GoTop => {
-                        self.state.go_top();
-                        self.load_tasks_for_selected_file()?;
-                    }
-                    AppEvent::GoBottom => {
-                        self.state.go_bottom(description_visible_height);
-                        self.load_tasks_for_selected_file()?;
-                    }
-                    AppEvent::Help => self.state.toggle_help(),
-                    AppEvent::OpenEditor => self.handle_open_editor()?,
-                    AppEvent::OpenThemeSelector => self.state.open_theme_selector(),
-                    AppEvent::Left => self.handle_left(),
-                    AppEvent::ExpandAll => self.handle_expand_all(),
-                    AppEvent::CollapseAll => self.handle_collapse_all(),
-
-                    AppEvent::LabelFilter => self.handle_label_toggle()?,
-                    AppEvent::ClearFilters => self.state.clear_label_filter(),
-
-                    AppEvent::OpenTaskCreation => self.handle_open_task_creation()?,
-                    AppEvent::Search => self.state.open_search_modal(),
-                    AppEvent::OpenFilter => self.handle_open_filter()?,
-
-                    // TODO: implement these features
-                    AppEvent::ExpandNode
-                    | AppEvent::CollapseNode
-                    | AppEvent::DependencyGraph
-                    | AppEvent::PrevTask
-                    | AppEvent::NextTask
-                    | AppEvent::CloseThemeSelector
-                    | AppEvent::CloseSearch
-                    | AppEvent::ExecuteSearch
-                    | AppEvent::CloseFilter
-                    | AppEvent::ApplyFilter
-                    | AppEvent::CloseConfirmComplete
-                    | AppEvent::ConfirmComplete
-                    | AppEvent::CloseConfirmIncomplete
-                    | AppEvent::ConfirmIncomplete
-                    | AppEvent::CloseConfirmLinkedFileComplete
-                    | AppEvent::ConfirmLinkedFileComplete
-                    | AppEvent::CloseTaskCreation
-                    | AppEvent::SubmitTaskCreation
-                    | AppEvent::TaskFormNextField
-                    | AppEvent::TaskFormPrevField
-                    | AppEvent::TaskFormTogglePreview
-                    | AppEvent::CharInput(_)
-                    | AppEvent::Backspace
-                    | AppEvent::Delete
-                    | AppEvent::Home
-                    | AppEvent::End
-                    | AppEvent::Resize(_, _)
-                    | AppEvent::None => {}
-                }
-            }
-
-            if self.state.should_quit {
+            if !self.tick()? {
                 break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle opening file in editor (real terminal implementation)
+    ///
+    /// This method is specific to the concrete `TuiApp` type because it needs
+    /// to restore and re-setup the real terminal around the editor invocation.
+    #[allow(dead_code)] // Used when OpenEditor event is wired up
+    fn handle_open_editor(&mut self) -> TuiResult<()> {
+        // Get the selected file path
+        let file_path = match self.state.selected_file() {
+            Some(file) => file.path.clone(),
+            None => return Ok(()),
+        };
+
+        // Get editor from environment with cross-platform fallbacks
+        let editor = Self::detect_editor();
+
+        // Restore terminal
+        terminal::restore()?;
+
+        // Run editor
+        let status = std::process::Command::new(&editor)
+            .arg(&file_path)
+            .status()
+            .map_err(|e| TuiError::App(format!("Failed to launch editor: {e}")))?;
+
+        if !status.success() {
+            terminal::setup()?;
+            return Err(TuiError::App(format!(
+                "Editor exited with non-zero status: {status}"
+            )));
+        }
+
+        // Re-setup terminal
+        self.terminal = terminal::setup()?;
+
+        // TODO: Reload file if modified
+
+        Ok(())
+    }
+
+    /// Detect the best available editor for the current platform
+    ///
+    /// Checks environment variables first (VISUAL, EDITOR), then falls back
+    /// to platform-specific defaults, verifying each candidate exists.
+    #[allow(dead_code)] // Used by handle_open_editor
+    fn detect_editor() -> String {
+        // First, check standard environment variables
+        if let Ok(editor) = std::env::var("VISUAL") {
+            if !editor.is_empty() {
+                return editor;
+            }
+        }
+        if let Ok(editor) = std::env::var("EDITOR") {
+            if !editor.is_empty() {
+                return editor;
+            }
+        }
+
+        // Platform-specific fallback candidates
+        #[cfg(target_os = "windows")]
+        let candidates = ["code.cmd", "notepad++.exe", "notepad.exe"];
+
+        #[cfg(target_os = "macos")]
+        let candidates = ["code", "vim", "nano", "vi"];
+
+        #[cfg(target_os = "linux")]
+        let candidates = ["code", "vim", "nano", "vi"];
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+        let candidates = ["vim", "nano", "vi"];
+
+        // Check if each candidate is available in PATH
+        for candidate in candidates {
+            if Self::command_exists(candidate) {
+                return candidate.to_string();
+            }
+        }
+
+        // Ultimate fallback (may fail, but provides a clear error message)
+        #[cfg(target_os = "windows")]
+        return "notepad.exe".to_string();
+
+        #[cfg(not(target_os = "windows"))]
+        "vi".to_string()
+    }
+
+    /// Check if a command exists in PATH
+    #[allow(dead_code)] // Used by detect_editor
+    fn command_exists(cmd: &str) -> bool {
+        #[cfg(target_os = "windows")]
+        let check = std::process::Command::new("where")
+            .arg(cmd)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        #[cfg(not(target_os = "windows"))]
+        let check = std::process::Command::new("which")
+            .arg(cmd)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        check.is_ok_and(|s| s.success())
+    }
+}
+
+// Generic implementation for all backend and event source combinations
+impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
+    /// Create a new TUI app core with explicit components
+    ///
+    /// This is mainly useful for testing where you need full control over
+    /// the backend and event source.
+    #[must_use]
+    pub fn new_core(
+        terminal: Terminal<B>,
+        event_source: E,
+        conn: Connection,
+        state: AppState,
+        project_root: PathBuf,
+    ) -> Self {
+        Self {
+            terminal,
+            event_source,
+            conn,
+            state,
+            project_root,
+        }
+    }
+
+    /// Execute a single iteration of the event loop
+    ///
+    /// Returns `Ok(true)` to continue running, `Ok(false)` to quit.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if rendering or event handling fails
+    pub fn tick(&mut self) -> TuiResult<bool> {
+        // Check for expired status messages
+        self.state.check_status_expiry();
+
+        // Render
+        self.terminal
+            .draw(|frame| ui::render(frame, &self.state, &self.conn))?;
+
+        // Poll for events using the event source
+        let timeout = Duration::from_millis(100);
+        let raw_event = self.event_source.poll_event(timeout)?;
+
+        // If no event occurred within timeout, continue loop
+        let Some(raw_event) = raw_event else {
+            return Ok(!self.state.should_quit);
+        };
+
+        // Translate raw event to AppEvent based on current context
+        let context = self.state.event_context();
+        let event = translate_event(&raw_event, context);
+
+        // Handle the translated event
+        self.handle_event(event)?;
+
+        Ok(!self.state.should_quit)
+    }
+
+    /// Handle a single application event
+    ///
+    /// This method contains all the event routing logic, dispatching events
+    /// to the appropriate handlers based on the current modal state.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if event handling encounters an unrecoverable error
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::needless_pass_by_value)] // Match arms are cleaner with owned values
+    pub fn handle_event(&mut self, event: AppEvent) -> TuiResult<()> {
+        // Route events based on active modal
+        #[allow(clippy::match_same_arms)] // Placeholder arms for future features
+        if self.state.is_task_creation_modal_open() {
+            // Task creation modal is open - route events to it
+            match event {
+                AppEvent::CloseTaskCreation => {
+                    self.state.close_task_creation_modal();
+                }
+                AppEvent::SubmitTaskCreation => {
+                    self.handle_submit_task_creation()?;
+                }
+                AppEvent::TaskFormNextField => {
+                    if let Some(modal) = &mut self.state.task_creation_modal_state {
+                        modal.next_field();
+                    }
+                }
+                AppEvent::TaskFormPrevField => {
+                    if let Some(modal) = &mut self.state.task_creation_modal_state {
+                        modal.prev_field();
+                    }
+                }
+                AppEvent::TaskFormTogglePreview => {
+                    if let Some(modal) = &mut self.state.task_creation_modal_state {
+                        modal.toggle_preview();
+                    }
+                }
+                AppEvent::CharInput(c) => {
+                    self.handle_char_input_in_modal(c);
+                    self.validate_modal();
+                }
+                AppEvent::Backspace => {
+                    self.handle_backspace_in_modal();
+                    self.validate_modal();
+                }
+                AppEvent::Delete => {
+                    self.handle_delete_in_modal();
+                    self.validate_modal();
+                }
+                AppEvent::Left => {
+                    self.handle_left_in_modal();
+                }
+                AppEvent::Right => {
+                    self.handle_right_in_modal();
+                }
+                AppEvent::Up => {
+                    self.handle_up_in_modal();
+                }
+                AppEvent::Down => {
+                    self.handle_down_in_modal();
+                }
+                AppEvent::Home => {
+                    self.handle_home_in_modal();
+                }
+                AppEvent::End => {
+                    self.handle_end_in_modal();
+                }
+                AppEvent::Select => {
+                    self.handle_select_in_modal();
+                    self.validate_modal();
+                }
+                AppEvent::ClearFilters => {
+                    self.handle_clear_field_in_modal();
+                    self.validate_modal();
+                }
+                AppEvent::Help => {
+                    // Toggle help overlay within modal
+                    self.state.show_help = !self.state.show_help;
+                }
+                _ => {} // Ignore other events when task creation modal is open
+            }
+        } else if self.state.is_search_modal_open() {
+            // Search modal is open - route events to it
+            match event {
+                AppEvent::CloseSearch => {
+                    self.state.close_search_modal();
+                }
+                AppEvent::ExecuteSearch => {
+                    self.handle_execute_search()?;
+                }
+                AppEvent::Up => self.state.search_modal_up(),
+                AppEvent::Down => self.state.search_modal_down(),
+                AppEvent::Left => self.state.search_modal_cursor_left(),
+                AppEvent::Right => self.state.search_modal_cursor_right(),
+                AppEvent::Home => self.state.search_modal_cursor_home(),
+                AppEvent::End => self.state.search_modal_cursor_end(),
+                AppEvent::Backspace => self.state.search_modal_backspace(),
+                AppEvent::Delete => self.state.search_modal_delete(),
+                AppEvent::ClearFilters => self.state.search_modal_clear(),
+                AppEvent::CharInput(c) => self.state.search_modal_input(c),
+                AppEvent::Select => {
+                    // Select current result and navigate to it
+                    self.handle_search_result_select()?;
+                }
+                _ => {} // Ignore other events when search is open
+            }
+        } else if self.state.is_filter_modal_open() {
+            // Filter modal is open - route events to it
+            match event {
+                AppEvent::CloseFilter => {
+                    self.state.close_filter_modal();
+                }
+                AppEvent::ApplyFilter => {
+                    self.handle_apply_filter()?;
+                }
+                AppEvent::Up => self.state.filter_modal_up(),
+                AppEvent::Down => self.state.filter_modal_down(),
+                AppEvent::Backspace => self.state.filter_modal_backspace(),
+                AppEvent::Delete => self.state.filter_modal_delete(),
+                AppEvent::ClearFilters => self.state.filter_modal_clear(),
+                AppEvent::CharInput(c) => self.state.filter_modal_input(c),
+                _ => {} // Ignore other events when filter is open
+            }
+        } else if self.state.is_confirm_complete_modal_open() {
+            // Confirm complete modal is open - route events to it
+            match event {
+                AppEvent::CloseConfirmComplete => {
+                    self.state.close_confirm_complete_modal();
+                }
+                AppEvent::ConfirmComplete => {
+                    self.handle_confirm_cascading_complete()?;
+                }
+                _ => {} // Ignore other events when confirm modal is open
+            }
+        } else if self.state.is_confirm_incomplete_modal_open() {
+            // Confirm incomplete modal is open - route events to it
+            match event {
+                AppEvent::CloseConfirmIncomplete => {
+                    self.state.close_confirm_incomplete_modal();
+                }
+                AppEvent::ConfirmIncomplete => {
+                    self.handle_confirm_cascading_incomplete()?;
+                }
+                _ => {} // Ignore other events when confirm modal is open
+            }
+        } else if self.state.is_confirm_linked_file_complete_modal_open() {
+            // Confirm linked file complete modal is open - route events to it
+            match event {
+                AppEvent::CloseConfirmLinkedFileComplete => {
+                    self.state.close_confirm_linked_file_complete_modal();
+                }
+                AppEvent::ConfirmLinkedFileComplete => {
+                    self.handle_confirm_linked_file_complete()?;
+                }
+                _ => {} // Ignore other events when confirm modal is open
+            }
+        } else if self.state.is_task_detail_open() {
+            // Task detail is open - route events to it
+            match event {
+                AppEvent::Quit | AppEvent::CloseThemeSelector => {
+                    self.state.close_task_detail();
+                }
+                AppEvent::SwitchPane => {
+                    // Tab: navigate to next section
+                    self.state.task_detail_select_next_section();
+                }
+                AppEvent::Up => {
+                    // k or up arrow: navigate to previous section
+                    self.state.task_detail_select_prev_section();
+                }
+                AppEvent::Down => {
+                    // j or down arrow: navigate to next section
+                    self.state.task_detail_select_next_section();
+                }
+                AppEvent::Left => {
+                    // h: previous item within section (for Labels/Parent)
+                    self.state.task_detail_select_prev_item();
+                }
+                AppEvent::Right => {
+                    // l: next item within section (for Labels/Parent)
+                    self.state.task_detail_select_next_item();
+                }
+                AppEvent::Select => {
+                    // Enter: activate the selected section
+                    self.handle_task_detail_activate()?;
+                }
+                _ => {} // Ignore other events when detail is open
+            }
+        } else if self.state.theme_selector_state.is_some() {
+            // Theme selector is open - route events to it
+            match event {
+                AppEvent::CloseThemeSelector | AppEvent::Quit => {
+                    self.state.close_theme_selector();
+                }
+                AppEvent::Up => self.state.theme_selector_up(),
+                AppEvent::Down => self.state.theme_selector_down(),
+                AppEvent::Right | AppEvent::Select => {
+                    if let Err(e) = self.state.apply_selected_theme() {
+                        eprintln!("Failed to apply theme: {e}");
+                    }
+                }
+                _ => {} // Ignore other events when selector is open
+            }
+        } else if self.state.show_help {
+            // Help is open - only handle close events
+            match event {
+                AppEvent::Help | AppEvent::CloseThemeSelector => {
+                    self.state.toggle_help();
+                }
+                _ => {} // Ignore other events when help is shown
+            }
+        } else {
+            // Normal event handling
+            // Calculate description visible height for scrolling
+            let screen_height = self.terminal.size().map(|s| s.height).unwrap_or(24) as usize;
+            // Description pane is roughly 30% of screen height minus borders
+            let description_visible_height = (screen_height * 30 / 100).saturating_sub(2);
+
+            match event {
+                AppEvent::Quit => {
+                    self.state.should_quit = true;
+                }
+                AppEvent::Up => {
+                    self.state.move_up();
+                    self.load_tasks_for_selected_file()?;
+                }
+                AppEvent::Down => {
+                    self.state.move_down(description_visible_height);
+                    self.load_tasks_for_selected_file()?;
+                }
+                AppEvent::Right => self.handle_select()?,
+                AppEvent::Select => self.handle_toggle_status()?,
+                AppEvent::SwitchPane => self.state.switch_pane(),
+                AppEvent::GoTop => {
+                    self.state.go_top();
+                    self.load_tasks_for_selected_file()?;
+                }
+                AppEvent::GoBottom => {
+                    self.state.go_bottom(description_visible_height);
+                    self.load_tasks_for_selected_file()?;
+                }
+                AppEvent::Help => self.state.toggle_help(),
+                AppEvent::OpenEditor => {
+                    // Editor functionality only available in TuiApp concrete type
+                    // For test apps, this is a no-op
+                }
+                AppEvent::OpenThemeSelector => self.state.open_theme_selector(),
+                AppEvent::Left => self.handle_left(),
+                AppEvent::ExpandAll => self.handle_expand_all(),
+                AppEvent::CollapseAll => self.handle_collapse_all(),
+
+                AppEvent::LabelFilter => self.handle_label_toggle()?,
+                AppEvent::ClearFilters => self.state.clear_label_filter(),
+
+                AppEvent::OpenTaskCreation => self.handle_open_task_creation()?,
+                AppEvent::Search => self.state.open_search_modal(),
+                AppEvent::OpenFilter => self.handle_open_filter()?,
+
+                // TODO: implement these features
+                AppEvent::ExpandNode
+                | AppEvent::CollapseNode
+                | AppEvent::DependencyGraph
+                | AppEvent::PrevTask
+                | AppEvent::NextTask
+                | AppEvent::CloseThemeSelector
+                | AppEvent::CloseSearch
+                | AppEvent::ExecuteSearch
+                | AppEvent::CloseFilter
+                | AppEvent::ApplyFilter
+                | AppEvent::CloseConfirmComplete
+                | AppEvent::ConfirmComplete
+                | AppEvent::CloseConfirmIncomplete
+                | AppEvent::ConfirmIncomplete
+                | AppEvent::CloseConfirmLinkedFileComplete
+                | AppEvent::ConfirmLinkedFileComplete
+                | AppEvent::CloseTaskCreation
+                | AppEvent::SubmitTaskCreation
+                | AppEvent::TaskFormNextField
+                | AppEvent::TaskFormPrevField
+                | AppEvent::TaskFormTogglePreview
+                | AppEvent::CharInput(_)
+                | AppEvent::Backspace
+                | AppEvent::Delete
+                | AppEvent::Home
+                | AppEvent::End
+                | AppEvent::Resize(_, _)
+                | AppEvent::None => {}
             }
         }
 
         Ok(())
+    }
+
+    /// Access the application state (read-only)
+    #[must_use]
+    pub fn state(&self) -> &AppState {
+        &self.state
+    }
+
+    /// Access the application state (mutable)
+    #[must_use]
+    pub fn state_mut(&mut self) -> &mut AppState {
+        &mut self.state
+    }
+
+    /// Access the terminal instance
+    #[must_use]
+    pub fn terminal(&self) -> &Terminal<B> {
+        &self.terminal
     }
 
     /// Open task detail view for the currently selected task
@@ -625,105 +809,6 @@ impl TuiApp {
         self.state.project_stats.completed_tasks = completed_tasks;
 
         Ok(())
-    }
-
-    /// Handle opening file in editor
-    fn handle_open_editor(&mut self) -> TuiResult<()> {
-        // Get the selected file path
-        let file_path = match self.state.selected_file() {
-            Some(file) => file.path.clone(),
-            None => return Ok(()),
-        };
-
-        // Get editor from environment with cross-platform fallbacks
-        let editor = Self::detect_editor();
-
-        // Restore terminal
-        terminal::restore()?;
-
-        // Run editor
-        let status = std::process::Command::new(&editor)
-            .arg(&file_path)
-            .status()
-            .map_err(|e| TuiError::App(format!("Failed to launch editor: {e}")))?;
-
-        if !status.success() {
-            terminal::setup()?;
-            return Err(TuiError::App(format!(
-                "Editor exited with non-zero status: {status}"
-            )));
-        }
-
-        // Re-setup terminal
-        self.terminal = terminal::setup()?;
-
-        // TODO: Reload file if modified
-
-        Ok(())
-    }
-
-    /// Detect the best available editor for the current platform
-    ///
-    /// Checks environment variables first (VISUAL, EDITOR), then falls back
-    /// to platform-specific defaults, verifying each candidate exists.
-    fn detect_editor() -> String {
-        // First, check standard environment variables
-        if let Ok(editor) = std::env::var("VISUAL") {
-            if !editor.is_empty() {
-                return editor;
-            }
-        }
-        if let Ok(editor) = std::env::var("EDITOR") {
-            if !editor.is_empty() {
-                return editor;
-            }
-        }
-
-        // Platform-specific fallback candidates
-        #[cfg(target_os = "windows")]
-        let candidates = ["code.cmd", "notepad++.exe", "notepad.exe"];
-
-        #[cfg(target_os = "macos")]
-        let candidates = ["code", "vim", "nano", "vi"];
-
-        #[cfg(target_os = "linux")]
-        let candidates = ["code", "vim", "nano", "vi"];
-
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        let candidates = ["vim", "nano", "vi"];
-
-        // Check if each candidate is available in PATH
-        for candidate in candidates {
-            if Self::command_exists(candidate) {
-                return candidate.to_string();
-            }
-        }
-
-        // Ultimate fallback (may fail, but provides a clear error message)
-        #[cfg(target_os = "windows")]
-        return "notepad.exe".to_string();
-
-        #[cfg(not(target_os = "windows"))]
-        "vi".to_string()
-    }
-
-    /// Check if a command exists in PATH
-    fn command_exists(cmd: &str) -> bool {
-        #[cfg(target_os = "windows")]
-        let check = std::process::Command::new("where")
-            .arg(cmd)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-
-        #[cfg(not(target_os = "windows"))]
-        let check = std::process::Command::new("which")
-            .arg(cmd)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-
-        check.is_ok_and(|s| s.success())
     }
 
     /// Handle toggling task status with Space bar
@@ -2166,9 +2251,6 @@ impl TuiApp {
     }
 }
 
-impl Drop for TuiApp {
-    fn drop(&mut self) {
-        // Ensure terminal is restored even if app panics
-        let _ = terminal::restore();
-    }
-}
+// Note: Terminal restoration is handled by `terminal::restore()` being called
+// in TuiApp methods and the terminal setup/restore pattern. For test apps with
+// different backends, no special cleanup is needed.

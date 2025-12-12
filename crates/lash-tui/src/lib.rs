@@ -10,13 +10,15 @@ mod app;
 pub mod colors;
 pub mod components;
 mod error;
-mod event;
+pub mod event;
+pub mod event_source;
 pub mod state;
 mod terminal;
+pub mod testing;
 mod ui;
 pub mod utils;
 
-pub use app::TuiApp;
+pub use app::{TuiApp, TuiAppCore};
 pub use error::{TuiError, TuiResult};
 
 /// Run the TUI application
