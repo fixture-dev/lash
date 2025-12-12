@@ -519,14 +519,13 @@ Some text between tasks.
 }
 
 #[test]
-fn test_parse_file_with_malformed_checkboxes() {
+fn test_parse_file_ignores_non_checkbox_lines() {
     let content = r"# Test
 
 ## Tasks
 
 - [ ] Valid task
-- [X] Invalid (wrong case - should work with uppercase)
-- [] Empty checkbox
+- [X] Uppercase X is valid
 not a task line
 - [ ] Another valid task
 ";
@@ -534,12 +533,31 @@ not a task line
     let config = default_config();
     let result = parse_file_from_string(content, &config);
 
-    // Should parse and skip malformed lines
+    // Should parse and skip non-checkbox lines
     assert!(result.is_ok());
     let file = result.unwrap();
 
-    // Should have at least the valid tasks
-    assert!(file.tasks.tasks().len() >= 2);
+    // Should have all 3 valid tasks
+    assert_eq!(file.tasks.tasks().len(), 3);
+}
+
+#[test]
+fn test_parse_file_errors_on_malformed_checkboxes() {
+    let content = r"# Test
+
+## Tasks
+
+- [ ] Valid task
+- [] Empty checkbox should cause error
+- [ ] Another valid task
+";
+
+    let config = default_config();
+    let result = parse_file_from_string(content, &config);
+
+    // Should fail because "- [] Empty checkbox" looks like a checkbox attempt
+    // but has malformed brackets - this prevents silent data loss
+    assert!(result.is_err());
 }
 
 // ==================== Round-trip Tests ====================

@@ -110,26 +110,63 @@ impl CheckboxLine {
         let indent = count_leading_spaces(line)?;
         let rest = &line[indent..];
 
-        // Check if it starts like a checkbox
-        if !rest.starts_with("- [") {
+        // First check if this looks like a checkbox attempt (starts with dash,
+        // has brackets somewhere). This catches malformed checkboxes with extra spacing.
+        if !rest.starts_with('-') {
             return None;
         }
 
-        // Find the closing bracket
-        let Some(close_bracket_pos) = rest.find(']') else {
-            return None; // Missing closing bracket - could be markdown, ignore
-        };
+        // Find opening and closing brackets
+        let open_bracket_pos = rest.find('[')?;
+        let close_bracket_pos = rest.find(']')?;
 
-        // Only report errors for well-formed checkbox patterns with invalid status
-        // Checkboxes should have exactly 1 character between [ and ]
-        if close_bracket_pos != 4 {
-            return None; // Wrong spacing - could be markdown, ignore
+        // Must have brackets in reasonable positions (within first 10 chars)
+        // and closing must be after opening
+        if open_bracket_pos > 8 || close_bracket_pos <= open_bracket_pos {
+            return None;
         }
 
-        // Extract status character
+        // Check if this is a Markdown link: "- [Link Text](url)"
+        // If the character after the closing bracket is '(', it's a link, not a checkbox
+        let after_close = rest.get(close_bracket_pos + 1..close_bracket_pos + 2);
+        if after_close == Some("(") {
+            return None;
+        }
+
+        // Now check for specific malformed patterns
+
+        // Pattern 1: Extra space(s) between dash and bracket: "-  [" or "-   ["
+        // Valid format requires exactly "- [" (dash, single space, bracket)
+        if open_bracket_pos != 2 {
+            // Check there's actually content after to distinguish from random markdown
+            let content_start = close_bracket_pos + 1;
+            if rest.len() > content_start && !rest[content_start..].trim().is_empty() {
+                let extra_chars = &rest[2..=open_bracket_pos];
+                return Some(format!(
+                    "Malformed checkbox: extra space between '-' and '['. Expected '- [' but found '- {extra_chars}'"
+                ));
+            }
+            return None;
+        }
+
+        // Pattern 2: Wrong number of characters in brackets: "- [  ]" or "- [xx]"
+        // Valid format has exactly 1 character between [ and ]
+        let bracket_content_len = close_bracket_pos - open_bracket_pos - 1;
+        if bracket_content_len != 1 {
+            let content_start = close_bracket_pos + 1;
+            if rest.len() > content_start && !rest[content_start..].trim().is_empty() {
+                let bracket_content = &rest[open_bracket_pos + 1..close_bracket_pos];
+                return Some(format!(
+                    "Malformed checkbox: expected single character in brackets but found '{bracket_content}'. Valid formats: [ ], [x], [X], [-], [!]"
+                ));
+            }
+            return None;
+        }
+
+        // Extract status character (at position 3 for "- [X]")
         let status_char = rest.chars().nth(3)?;
 
-        // Only report error if it looks like a checkbox but has invalid status
+        // Pattern 3: Invalid status character
         if lash_types::TaskStatus::from_checkbox_char(status_char).is_err() {
             // Check if there's text after it (looks like a real checkbox attempt)
             let after_bracket = 5; // Length of "- [X]"
@@ -673,7 +710,18 @@ mod tests {
     fn test_detect_malformed_too_many_chars() {
         let line = "- [xx] Too many chars";
         let error = CheckboxLine::detect_malformed(line);
-        // Conservative: wrong spacing could be markdown, so we ignore it
+        // With content after brackets, this looks like a checkbox attempt and should error
+        assert!(error.is_some());
+        assert!(error
+            .unwrap()
+            .contains("expected single character in brackets"));
+    }
+
+    #[test]
+    fn test_detect_malformed_too_many_chars_no_content() {
+        // Without content after, could be markdown so we ignore
+        let line = "- [xx]";
+        let error = CheckboxLine::detect_malformed(line);
         assert!(error.is_none());
     }
 
@@ -693,8 +741,50 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_malformed_extra_space_after_dash() {
+        let line = "-  [ ] Task with extra space";
+        let error = CheckboxLine::detect_malformed(line);
+        assert!(error.is_some());
+        assert!(error.unwrap().contains("extra space between '-' and '['"));
+    }
+
+    #[test]
+    fn test_detect_malformed_multiple_extra_spaces_after_dash() {
+        let line = "-   [ ] Task with multiple spaces";
+        let error = CheckboxLine::detect_malformed(line);
+        assert!(error.is_some());
+        assert!(error.unwrap().contains("extra space between '-' and '['"));
+    }
+
+    #[test]
+    fn test_detect_malformed_extra_space_in_brackets() {
+        let line = "- [  ] Task with extra space in brackets";
+        let error = CheckboxLine::detect_malformed(line);
+        assert!(error.is_some());
+        assert!(error
+            .unwrap()
+            .contains("expected single character in brackets"));
+    }
+
+    #[test]
     fn test_detect_malformed_not_checkbox() {
         let line = "Just regular text";
+        let error = CheckboxLine::detect_malformed(line);
+        assert!(error.is_none());
+    }
+
+    #[test]
+    fn test_detect_malformed_markdown_link() {
+        // Markdown links should NOT be detected as malformed checkboxes
+        let line = "- [Features](features/tasks.md)";
+        let error = CheckboxLine::detect_malformed(line);
+        assert!(error.is_none());
+    }
+
+    #[test]
+    fn test_detect_malformed_markdown_link_with_spaces() {
+        // Markdown links with multi-word text should NOT be detected as malformed
+        let line = "- [My Feature List](features.md)";
         let error = CheckboxLine::detect_malformed(line);
         assert!(error.is_none());
     }

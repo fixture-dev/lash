@@ -141,10 +141,10 @@ fn reindex_project(
     project_root: &std::path::Path,
     config: &lash_types::config::LashConfig,
 ) -> Result<()> {
-    use lash_db::{init_database, Indexer, IndexerConfig};
+    use lash_db::{open_database, Indexer, IndexerConfig};
 
     let db_path = project_root.join(".lash").join("lash.db");
-    let conn = init_database(&db_path).context("Failed to open database for re-indexing")?;
+    let conn = open_database(&db_path).context("Failed to open database for re-indexing")?;
 
     let indexer_config = IndexerConfig::new(project_root.to_path_buf()).with_incremental(true);
     let mut indexer = Indexer::new(&conn, indexer_config, config);

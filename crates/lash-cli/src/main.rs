@@ -171,8 +171,19 @@ fn run(cli: LashCli) -> Result<()> {
     // - Not in quiet mode
     // - Not suppressed with --no-logo
     // - Not launching TUI (TUI has its own logo display)
-    let show_logo =
-        !cli.json && !cli.quiet && !cli.no_logo && !matches!(cli.command, Commands::Tui);
+    // - Not using machine-readable graph formats (DOT, Mermaid, JSON)
+    let uses_machine_readable_graph_format = matches!(
+        &cli.command,
+        Commands::Graph { format, .. }
+            if matches!(format, lash_cli::cli::GraphFormat::Dot
+                               | lash_cli::cli::GraphFormat::Mermaid
+                               | lash_cli::cli::GraphFormat::Json)
+    );
+    let show_logo = !cli.json
+        && !cli.quiet
+        && !cli.no_logo
+        && !matches!(cli.command, Commands::Tui)
+        && !uses_machine_readable_graph_format;
     if show_logo {
         print!("{}", TextFormatter::logo_banner());
     }
