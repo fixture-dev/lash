@@ -55,31 +55,26 @@ pub fn render(
 
         if info_width > 4 {
             // Only show info if we have enough space
-            match i {
-                0 => {
-                    // First line: project title
-                    spans.push(Span::raw("  ")); // padding after logo
-                    if let Some(title) = &project_stats.title {
-                        let truncated = truncate_title(title, info_width);
-                        spans.push(Span::styled(truncated, info_style));
-                    }
+            if i == 0 {
+                // First line: project title
+                spans.push(Span::raw("  ")); // padding after logo
+                if let Some(title) = &project_stats.title {
+                    let truncated = truncate_title(title, info_width);
+                    spans.push(Span::styled(truncated, info_style));
                 }
-                1 => {
-                    // Second line: progress bar
-                    spans.push(Span::raw("  ")); // padding after logo
-                    let progress_spans = build_progress_bar(
-                        project_stats,
-                        info_width,
-                        progress_style,
-                        progress_empty_style,
-                        info_style,
-                    );
-                    spans.extend(progress_spans);
-                }
-                _ => {
-                    // Third line: empty (just logo)
-                }
+            } else if i == 2 {
+                // Third line: progress bar (line 1 is empty for padding)
+                spans.push(Span::raw("  ")); // padding after logo
+                let progress_spans = build_progress_bar(
+                    project_stats,
+                    info_width,
+                    progress_style,
+                    progress_empty_style,
+                    info_style,
+                );
+                spans.extend(progress_spans);
             }
+            // Line 1 intentionally empty for visual spacing
         }
 
         lines.push(Line::from(spans));
