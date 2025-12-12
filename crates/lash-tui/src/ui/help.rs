@@ -33,9 +33,11 @@ fn render_main_help(frame: &mut Frame, area: Rect, state: &AppState) {
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::Black).fg(Color::White));
 
+    let version = env!("CARGO_PKG_VERSION");
+    let title = format!("Lash TUI v{version} - Keyboard Commands");
     let help_text = vec![
         Line::from(vec![Span::styled(
-            "Lash TUI - Keyboard Commands",
+            title,
             Style::default()
                 .fg(state.theme.info_color())
                 .add_modifier(Modifier::BOLD),
