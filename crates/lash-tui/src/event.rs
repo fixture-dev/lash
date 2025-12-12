@@ -266,6 +266,57 @@ fn handle_confirm_linked_file_complete_key_event(key: KeyEvent) -> AppEvent {
     }
 }
 
+/// Poll for task detail modal events
+///
+/// When the task detail modal is open:
+/// - Tab navigates between sections
+/// - j/k or up/down arrows navigate between sections
+/// - h/l or left/right arrows navigate items within a section
+/// - Enter activates the selected section
+/// - Escape closes the modal
+pub fn poll_task_detail_event(timeout: Duration) -> TuiResult<AppEvent> {
+    if event::poll(timeout)? {
+        match event::read()? {
+            Event::Key(key) => Ok(handle_task_detail_key_event(key)),
+            Event::Resize(width, height) => Ok(AppEvent::Resize(width, height)),
+            _ => Ok(AppEvent::None),
+        }
+    } else {
+        Ok(AppEvent::None)
+    }
+}
+
+/// Convert key event to application event for task detail mode
+fn handle_task_detail_key_event(key: KeyEvent) -> AppEvent {
+    match (key.code, key.modifiers) {
+        // Close modal (Esc, Ctrl-C, or q)
+        (KeyCode::Esc, _)
+        | (KeyCode::Char('c'), KeyModifiers::CONTROL)
+        | (KeyCode::Char('q'), KeyModifiers::NONE) => AppEvent::Quit,
+
+        // Navigate sections (up/down/j/k, Shift+Tab also goes up)
+        (KeyCode::Up | KeyCode::BackTab, _)
+        | (KeyCode::Char('k'), KeyModifiers::NONE)
+        | (KeyCode::Tab, KeyModifiers::SHIFT) => AppEvent::Up,
+        (KeyCode::Down, _) | (KeyCode::Char('j'), KeyModifiers::NONE) => AppEvent::Down,
+
+        // Navigate items within section (left/right/h/l)
+        (KeyCode::Left, _) | (KeyCode::Char('h'), KeyModifiers::NONE) => AppEvent::Left,
+        (KeyCode::Right, _) | (KeyCode::Char('l'), KeyModifiers::NONE) => AppEvent::Right,
+
+        // Tab to next section
+        (KeyCode::Tab, KeyModifiers::NONE) => AppEvent::SwitchPane,
+
+        // Activate selected section (Enter or Space)
+        (KeyCode::Enter | KeyCode::Char(' '), KeyModifiers::NONE) => AppEvent::Select,
+
+        // Help
+        (KeyCode::Char('?'), _) => AppEvent::Help,
+
+        _ => AppEvent::None,
+    }
+}
+
 /// Convert key event to application event for search mode
 fn handle_search_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {

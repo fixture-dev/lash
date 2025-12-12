@@ -16,7 +16,7 @@ use crate::error::{TuiError, TuiResult};
 use crate::event::{
     poll_confirm_complete_event, poll_confirm_incomplete_event,
     poll_confirm_linked_file_complete_event, poll_event, poll_filter_event, poll_search_event,
-    poll_task_creation_event, AppEvent,
+    poll_task_creation_event, poll_task_detail_event, AppEvent,
 };
 use crate::state::AppState;
 use crate::terminal;
@@ -160,6 +160,8 @@ impl TuiApp {
                 poll_confirm_incomplete_event(Duration::from_millis(100))?
             } else if self.state.is_confirm_linked_file_complete_modal_open() {
                 poll_confirm_linked_file_complete_event(Duration::from_millis(100))?
+            } else if self.state.is_task_detail_open() {
+                poll_task_detail_event(Duration::from_millis(100))?
             } else {
                 poll_event(Duration::from_millis(100))?
             };
