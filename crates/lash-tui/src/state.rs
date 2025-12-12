@@ -2636,6 +2636,53 @@ impl AppState {
     pub fn is_task_creation_modal_open(&self) -> bool {
         self.task_creation_modal_state.is_some()
     }
+
+    /// Determine the current event context based on modal state
+    ///
+    /// This method maps the application's modal state to an `EventContext`
+    /// which is used to translate raw terminal events to appropriate application events.
+    ///
+    /// The priority order matches the event handling logic in `TuiApp::run()`:
+    /// 1. Task creation modal
+    /// 2. Search modal
+    /// 3. Filter modal
+    /// 4. Confirm complete modal
+    /// 5. Confirm incomplete modal
+    /// 6. Confirm linked file complete modal
+    /// 7. Task detail modal
+    /// 8. Normal mode (no modals)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_tui::state::AppState;
+    /// use lash_tui::event::EventContext;
+    ///
+    /// let state = AppState::new();
+    /// assert_eq!(state.event_context(), EventContext::Normal);
+    /// ```
+    #[must_use]
+    pub fn event_context(&self) -> crate::event::EventContext {
+        use crate::event::EventContext;
+
+        if self.is_task_creation_modal_open() {
+            EventContext::TaskCreation
+        } else if self.is_search_modal_open() {
+            EventContext::Search
+        } else if self.is_filter_modal_open() {
+            EventContext::Filter
+        } else if self.is_confirm_complete_modal_open() {
+            EventContext::ConfirmComplete
+        } else if self.is_confirm_incomplete_modal_open() {
+            EventContext::ConfirmIncomplete
+        } else if self.is_confirm_linked_file_complete_modal_open() {
+            EventContext::ConfirmLinkedFileComplete
+        } else if self.is_task_detail_open() {
+            EventContext::TaskDetail
+        } else {
+            EventContext::Normal
+        }
+    }
 }
 
 impl Default for AppState {

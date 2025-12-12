@@ -1,11 +1,34 @@
 //! Event handling for TUI
 
 #![allow(dead_code)] // Some variants reserved for future features
+#![allow(clippy::missing_errors_doc)] // Poll functions have consistent error behavior
+#![allow(clippy::must_use_candidate)] // Pure event handlers are obviously must-use
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use std::time::Duration;
 
 use crate::error::TuiResult;
+
+/// Event context determines which modal or view is currently active
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventContext {
+    /// Normal navigation mode
+    Normal,
+    /// Search modal is open
+    Search,
+    /// Filter modal is open
+    Filter,
+    /// Confirm complete modal is open
+    ConfirmComplete,
+    /// Confirm incomplete modal is open
+    ConfirmIncomplete,
+    /// Confirm linked file complete modal is open
+    ConfirmLinkedFileComplete,
+    /// Task detail modal is open
+    TaskDetail,
+    /// Task creation modal is open
+    TaskCreation,
+}
 
 /// Application events
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,7 +200,7 @@ pub fn poll_confirm_complete_event(timeout: Duration) -> TuiResult<AppEvent> {
 }
 
 /// Convert key event to application event for confirm complete mode
-fn handle_confirm_complete_key_event(key: KeyEvent) -> AppEvent {
+pub fn handle_confirm_complete_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
         // Close modal (Esc or Ctrl-C)
         (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
@@ -212,7 +235,7 @@ pub fn poll_confirm_incomplete_event(timeout: Duration) -> TuiResult<AppEvent> {
 }
 
 /// Convert key event to application event for confirm incomplete mode
-fn handle_confirm_incomplete_key_event(key: KeyEvent) -> AppEvent {
+pub fn handle_confirm_incomplete_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
         // Close modal (Esc or Ctrl-C)
         (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
@@ -247,7 +270,7 @@ pub fn poll_confirm_linked_file_complete_event(timeout: Duration) -> TuiResult<A
 }
 
 /// Convert key event to application event for confirm linked file complete mode
-fn handle_confirm_linked_file_complete_key_event(key: KeyEvent) -> AppEvent {
+pub fn handle_confirm_linked_file_complete_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
         // Close modal (Esc or Ctrl-C)
         (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
@@ -287,7 +310,7 @@ pub fn poll_task_detail_event(timeout: Duration) -> TuiResult<AppEvent> {
 }
 
 /// Convert key event to application event for task detail mode
-fn handle_task_detail_key_event(key: KeyEvent) -> AppEvent {
+pub fn handle_task_detail_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
         // Close modal (Esc, Ctrl-C, or q)
         (KeyCode::Esc, _)
@@ -318,7 +341,7 @@ fn handle_task_detail_key_event(key: KeyEvent) -> AppEvent {
 }
 
 /// Convert key event to application event for search mode
-fn handle_search_key_event(key: KeyEvent) -> AppEvent {
+pub fn handle_search_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
         // Close search (Esc or Ctrl-C)
         (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => AppEvent::CloseSearch,
@@ -351,7 +374,7 @@ fn handle_search_key_event(key: KeyEvent) -> AppEvent {
 }
 
 /// Convert key event to application event for filter mode
-fn handle_filter_key_event(key: KeyEvent) -> AppEvent {
+pub fn handle_filter_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
         // Close filter (Esc or Ctrl-C)
         (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => AppEvent::CloseFilter,
@@ -401,7 +424,7 @@ pub fn poll_task_creation_event(timeout: Duration) -> TuiResult<AppEvent> {
 }
 
 /// Convert key event to application event for task creation mode
-fn handle_task_creation_key_event(key: KeyEvent) -> AppEvent {
+pub fn handle_task_creation_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
         // Close modal (Esc or Ctrl-C)
         (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
@@ -447,7 +470,7 @@ fn handle_task_creation_key_event(key: KeyEvent) -> AppEvent {
 }
 
 /// Convert key event to application event
-fn handle_key_event(key: KeyEvent) -> AppEvent {
+pub fn handle_key_event(key: KeyEvent) -> AppEvent {
     match (key.code, key.modifiers) {
         // Quit
         (KeyCode::Char('q'), KeyModifiers::NONE) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
@@ -492,6 +515,49 @@ fn handle_key_event(key: KeyEvent) -> AppEvent {
         (KeyCode::Char('t'), KeyModifiers::NONE) => AppEvent::OpenThemeSelector,
         (KeyCode::Esc, _) => AppEvent::CloseThemeSelector,
 
+        _ => AppEvent::None,
+    }
+}
+
+/// Translate a crossterm `Event` to an `AppEvent` based on the current context
+///
+/// This is the pure event translation layer that maps raw terminal events
+/// to application-specific events based on which modal or view is active.
+///
+/// # Examples
+///
+/// ```
+/// use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+/// use lash_tui::event::{translate_event, EventContext, AppEvent};
+///
+/// // Normal mode: 'j' key moves down
+/// let key_event = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+/// let event = Event::Key(key_event);
+/// let app_event = translate_event(&event, EventContext::Normal);
+/// assert_eq!(app_event, AppEvent::Down);
+///
+/// // Search mode: 'j' key is character input (need separate event)
+/// let key_event2 = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+/// let event2 = Event::Key(key_event2);
+/// let app_event = translate_event(&event2, EventContext::Search);
+/// assert_eq!(app_event, AppEvent::CharInput('j'));
+/// ```
+#[must_use]
+pub fn translate_event(event: &Event, context: EventContext) -> AppEvent {
+    match event {
+        Event::Key(key) => match context {
+            EventContext::Normal => handle_key_event(*key),
+            EventContext::Search => handle_search_key_event(*key),
+            EventContext::Filter => handle_filter_key_event(*key),
+            EventContext::ConfirmComplete => handle_confirm_complete_key_event(*key),
+            EventContext::ConfirmIncomplete => handle_confirm_incomplete_key_event(*key),
+            EventContext::ConfirmLinkedFileComplete => {
+                handle_confirm_linked_file_complete_key_event(*key)
+            }
+            EventContext::TaskDetail => handle_task_detail_key_event(*key),
+            EventContext::TaskCreation => handle_task_creation_key_event(*key),
+        },
+        Event::Resize(width, height) => AppEvent::Resize(*width, *height),
         _ => AppEvent::None,
     }
 }
