@@ -1413,6 +1413,11 @@ impl TuiApp {
                     self.state.nav_mode = crate::state::NavMode::Labels;
                     self.state.focused_pane = crate::state::FocusedPane::Detail;
 
+                    // Update selected_label_index to match the filtered label
+                    if let Some(idx) = self.state.labels.iter().position(|l| l.name == label_name) {
+                        self.state.selected_label_index = idx;
+                    }
+
                     self.state
                         .set_success_message(format!("Filtered by label: #{label_name}"));
                 }
