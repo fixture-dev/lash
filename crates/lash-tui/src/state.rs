@@ -1199,6 +1199,11 @@ impl AppState {
             content_height += 2 + body.lines().count();
         }
 
+        // Contextual notes: header + count + blank (if not empty)
+        if !task.contextual_notes.is_empty() {
+            content_height += 2 + task.contextual_notes.len();
+        }
+
         // Subtasks: header + count + blank (if not empty)
         if !subtasks.is_empty() {
             content_height += 2 + subtasks.len();
