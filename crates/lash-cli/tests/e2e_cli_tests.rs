@@ -1023,3 +1023,176 @@ fn test_playground_full_workflow() {
     // 8. Verify index was created (in .lash directory)
     assert!(playground_path.join(".lash/lash.db").exists());
 }
+
+// --- LIST COMMAND WITH CONTEXTUAL NOTES TESTS ---
+
+#[test]
+fn test_list_with_show_notes() {
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let root = temp_dir.path();
+
+    // Create a task file with contextual notes
+    let task_content = r#"# Tasks with Notes
+
+@id: tasks.notes
+@labels: example
+@status: in-progress
+
+## Tasks
+
+- [ ] Integrate procedural level generation
+  - Use Foo library to generate 2D map layouts
+  - Ensure levels have an appropriate size constraint
+  - Use foo, bar, baz and quux
+  - [ ] Research generation algorithms
+  - [ ] Implement basic generator
+
+- [ ] Add multiplayer support
+  - Must support 2-4 players
+  - Consider peer-to-peer vs client-server architecture
+  - [ ] Design network protocol
+
+- [x] Complete initial setup
+  - Already configured dev environment
+  - Database schema created
+"#;
+    fs::write(root.join("lash.index.md"), task_content).expect("Failed to write task file");
+
+    // Index the project
+    create_lash_command()
+        .arg("--root")
+        .arg(root)
+        .arg("index")
+        .assert()
+        .success();
+
+    // Test list with --show-notes flag
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(root)
+        .arg("list")
+        .arg("--show-notes")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Verify notes are displayed
+    assert!(stdout.contains("Integrate procedural level generation"));
+    assert!(stdout.contains("Use Foo library to generate 2D map layouts"));
+    assert!(stdout.contains("Add multiplayer support"));
+    assert!(stdout.contains("Must support 2-4 players"));
+}
+
+#[test]
+fn test_list_without_show_notes() {
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let root = temp_dir.path();
+
+    // Create a task file with contextual notes
+    let task_content = r#"# Tasks with Notes
+
+@id: tasks.notes
+@labels: example
+@status: in-progress
+
+## Tasks
+
+- [ ] Integrate procedural level generation
+  - Use Foo library to generate 2D map layouts
+  - Ensure levels have an appropriate size constraint
+  - [ ] Research generation algorithms
+
+- [ ] Add multiplayer support
+  - Must support 2-4 players
+  - [ ] Design network protocol
+"#;
+    fs::write(root.join("lash.index.md"), task_content).expect("Failed to write task file");
+
+    // Index the project
+    create_lash_command()
+        .arg("--root")
+        .arg(root)
+        .arg("index")
+        .assert()
+        .success();
+
+    // Test list without --show-notes flag (default behavior)
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(root)
+        .arg("list")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Verify notes are NOT displayed (unless they leak through file description)
+    // The notes should not appear as individual lines
+    let note_lines = stdout.matches("Use Foo library").count();
+    assert_eq!(
+        note_lines, 0,
+        "Notes should not be displayed without --show-notes flag"
+    );
+}
+
+#[test]
+fn test_list_show_notes_json_output() {
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let root = temp_dir.path();
+
+    // Create a task file with contextual notes
+    let task_content = r#"# Tasks with Notes
+
+@id: tasks.notes
+@labels: example
+@status: in-progress
+
+## Tasks
+
+- [ ] Integrate procedural level generation
+  - Use Foo library to generate 2D map layouts
+  - Ensure levels have an appropriate size constraint
+  - [ ] Research generation algorithms
+"#;
+    fs::write(root.join("lash.index.md"), task_content).expect("Failed to write task file");
+
+    // Index the project
+    create_lash_command()
+        .arg("--root")
+        .arg(root)
+        .arg("index")
+        .assert()
+        .success();
+
+    // Test list with --show-notes and JSON output
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(root)
+        .arg("--json")
+        .arg("list")
+        .arg("--show-notes")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
+    // Verify JSON structure includes tasks_with_notes
+    assert!(json["files"].is_array());
+    let files = json["files"].as_array().unwrap();
+    assert!(!files.is_empty());
+
+    // Check if any file has tasks_with_notes field
+    let has_tasks_with_notes = files
+        .iter()
+        .any(|file| file.get("tasks_with_notes").is_some());
+    assert!(
+        has_tasks_with_notes,
+        "At least one file should have tasks_with_notes when --show-notes is used"
+    );
+}

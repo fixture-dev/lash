@@ -131,13 +131,13 @@ Key semantic distinction:
 
 ### Phase 7: CLI Commands
 
-- [ ] Task 7.1: Update `lash show` command
+- [x] Task 7.1: Update `lash show` command
   - Display notes under parent task in detail view
   - Render notes with dimmed color or special marker (`·` or `○`)
   - Indent notes at parent task depth + 1
   - Add CLI integration tests
 
-- [ ] Task 7.2: Update `lash list` command
+- [x] Task 7.2: Update `lash list` command
   - Add `--show-notes` flag
   - Format notes as sub-items with special marker
   - Default to hidden for concise output

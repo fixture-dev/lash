@@ -8,7 +8,8 @@ use lash_cli::formatter::{OutputFormat as OutputFormatTrait, Verbosity};
 use lash_cli::theme::CliTheme;
 use lash_cli::tree_formatter::TreeFormatter;
 use lash_db::repository::files::FileRecord;
-use lash_db::{open_database, DocRefRepository, FileRepository};
+use lash_db::repository::tasks::TaskRecord;
+use lash_db::{open_database, DocRefRepository, FileRepository, TaskRepository};
 use lash_types::error::LashError;
 use lash_types::tree::TreeNode;
 use std::collections::{HashMap, HashSet};
@@ -27,6 +28,7 @@ pub enum OutputFormat {
 /// Arguments for the list command
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ListArgs {
     /// Filter by label (can be specified multiple times) - currently unused in file view
     pub labels: Vec<String>,
@@ -42,6 +44,8 @@ pub struct ListArgs {
     pub docs: Option<String>,
     /// Show file descriptions (truncated to 100 chars)
     pub show_descriptions: bool,
+    /// Show contextual notes for tasks
+    pub show_notes: bool,
     /// Output format
     pub format: OutputFormat,
     /// Project root (detected automatically if None)
@@ -216,15 +220,45 @@ pub fn execute(args: ListArgs) -> Result<i32> {
 
     tracing::debug!(file_count = files.len(), "Retrieved files");
 
+    // Fetch tasks if show_notes is enabled
+    let file_tasks: HashMap<i64, Vec<TaskRecord>> = if args.show_notes {
+        let task_repo = TaskRepository::new(&conn);
+        let mut tasks_map = HashMap::new();
+        for file in &files {
+            match task_repo.get_by_file(file.id) {
+                Ok(tasks) => {
+                    tasks_map.insert(file.id, tasks);
+                }
+                Err(e) => {
+                    tracing::warn!(file_id = file.id, error = %e, "Failed to fetch tasks for file");
+                    tasks_map.insert(file.id, Vec::new());
+                }
+            }
+        }
+        tasks_map
+    } else {
+        HashMap::new()
+    };
+
     // Output results
     match args.format {
-        OutputFormat::Json => output_json_files(&files, args.show_descriptions)?,
-        OutputFormat::JsonPretty => output_json_pretty_files(&files, args.show_descriptions)?,
+        OutputFormat::Json => {
+            output_json_files(&files, &file_tasks, args.show_descriptions, args.show_notes)?;
+        }
+        OutputFormat::JsonPretty => {
+            output_json_pretty_files(&files, &file_tasks, args.show_descriptions, args.show_notes)?;
+        }
         OutputFormat::Text => {
             if use_tree_view {
-                output_text_tree(&files, &args);
+                output_text_tree(&files, &file_tasks, &args);
             } else {
-                output_text_flat(&files, args.theme.as_ref(), args.show_descriptions);
+                output_text_flat(
+                    &files,
+                    &file_tasks,
+                    args.theme.as_ref(),
+                    args.show_descriptions,
+                    args.show_notes,
+                );
             }
         }
     }
@@ -442,18 +476,21 @@ fn output_json_diagnostic(diagnostic: &lash_types::error::Diagnostic) -> Result<
 }
 
 /// Output files as compact JSON
-fn output_json_files(files: &[FileRecord], show_descriptions: bool) -> Result<()> {
+fn output_json_files(
+    files: &[FileRecord],
+    file_tasks: &HashMap<i64, Vec<TaskRecord>>,
+    show_descriptions: bool,
+    show_notes: bool,
+) -> Result<()> {
     use serde_json::json;
 
-    // Optionally filter out descriptions from the JSON output
-    let files_json: Vec<serde_json::Value> = if show_descriptions {
-        // Include descriptions in JSON output
-        files.iter().map(|f| json!(f)).collect()
-    } else {
-        // Exclude descriptions from JSON output - create custom JSON without description field
-        files
-            .iter()
-            .map(|f| {
+    // Build JSON for each file
+    let files_json: Vec<serde_json::Value> = files
+        .iter()
+        .map(|f| {
+            let mut file_json = if show_descriptions {
+                json!(f)
+            } else {
                 json!({
                     "id": f.id,
                     "path": f.path,
@@ -465,9 +502,34 @@ fn output_json_files(files: &[FileRecord], show_descriptions: bool) -> Result<()
                     "metadata": f.metadata,
                     "indexed_at": f.indexed_at,
                 })
-            })
-            .collect()
-    };
+            };
+
+            // Add tasks with notes if show_notes is enabled
+            if show_notes {
+                if let Some(tasks) = file_tasks.get(&f.id) {
+                    let tasks_with_notes: Vec<serde_json::Value> = tasks
+                        .iter()
+                        .filter(|t| !t.contextual_notes.is_empty())
+                        .map(|t| {
+                            json!({
+                                "id": t.full_id,
+                                "title": t.title,
+                                "notes": t.contextual_notes.iter().map(lash_types::ContextualNote::text).collect::<Vec<_>>()
+                            })
+                        })
+                        .collect();
+
+                    if !tasks_with_notes.is_empty() {
+                        if let serde_json::Value::Object(ref mut map) = file_json {
+                            map.insert("tasks_with_notes".to_string(), json!(tasks_with_notes));
+                        }
+                    }
+                }
+            }
+
+            file_json
+        })
+        .collect();
 
     let output = json!({
         "count": files.len(),
@@ -479,18 +541,21 @@ fn output_json_files(files: &[FileRecord], show_descriptions: bool) -> Result<()
 }
 
 /// Output files as pretty-printed JSON
-fn output_json_pretty_files(files: &[FileRecord], show_descriptions: bool) -> Result<()> {
+fn output_json_pretty_files(
+    files: &[FileRecord],
+    file_tasks: &HashMap<i64, Vec<TaskRecord>>,
+    show_descriptions: bool,
+    show_notes: bool,
+) -> Result<()> {
     use serde_json::json;
 
-    // Optionally filter out descriptions from the JSON output
-    let files_json: Vec<serde_json::Value> = if show_descriptions {
-        // Include descriptions in JSON output
-        files.iter().map(|f| json!(f)).collect()
-    } else {
-        // Exclude descriptions from JSON output - create custom JSON without description field
-        files
-            .iter()
-            .map(|f| {
+    // Build JSON for each file
+    let files_json: Vec<serde_json::Value> = files
+        .iter()
+        .map(|f| {
+            let mut file_json = if show_descriptions {
+                json!(f)
+            } else {
                 json!({
                     "id": f.id,
                     "path": f.path,
@@ -502,9 +567,34 @@ fn output_json_pretty_files(files: &[FileRecord], show_descriptions: bool) -> Re
                     "metadata": f.metadata,
                     "indexed_at": f.indexed_at,
                 })
-            })
-            .collect()
-    };
+            };
+
+            // Add tasks with notes if show_notes is enabled
+            if show_notes {
+                if let Some(tasks) = file_tasks.get(&f.id) {
+                    let tasks_with_notes: Vec<serde_json::Value> = tasks
+                        .iter()
+                        .filter(|t| !t.contextual_notes.is_empty())
+                        .map(|t| {
+                            json!({
+                                "id": t.full_id,
+                                "title": t.title,
+                                "notes": t.contextual_notes.iter().map(lash_types::ContextualNote::text).collect::<Vec<_>>()
+                            })
+                        })
+                        .collect();
+
+                    if !tasks_with_notes.is_empty() {
+                        if let serde_json::Value::Object(ref mut map) = file_json {
+                            map.insert("tasks_with_notes".to_string(), json!(tasks_with_notes));
+                        }
+                    }
+                }
+            }
+
+            file_json
+        })
+        .collect();
 
     let output = json!({
         "count": files.len(),
@@ -516,7 +606,13 @@ fn output_json_pretty_files(files: &[FileRecord], show_descriptions: bool) -> Re
 }
 
 /// Output files as human-readable flat list
-fn output_text_flat(files: &[FileRecord], theme: Option<&CliTheme>, show_descriptions: bool) {
+fn output_text_flat(
+    files: &[FileRecord],
+    file_tasks: &HashMap<i64, Vec<TaskRecord>>,
+    theme: Option<&CliTheme>,
+    show_descriptions: bool,
+    show_notes: bool,
+) {
     if files.is_empty() {
         let msg = "No files found";
         if let Some(theme) = theme {
@@ -560,6 +656,39 @@ fn output_text_flat(files: &[FileRecord], theme: Option<&CliTheme>, show_descrip
                 println!("  {truncated}");
             }
         }
+
+        // Show notes if requested
+        if show_notes {
+            if let Some(tasks) = file_tasks.get(&file.id) {
+                for task in tasks {
+                    if !task.contextual_notes.is_empty() {
+                        // Show task title first
+                        let task_indent = "  ";
+                        if let Some(theme) = theme {
+                            println!("{}{}", task_indent, theme.style_label(&task.title));
+                        } else {
+                            println!("{}{}", task_indent, task.title);
+                        }
+
+                        // Show each note with special marker
+                        for note in &task.contextual_notes {
+                            let note_indent = "    ";
+                            let note_marker = "·";
+                            if let Some(theme) = theme {
+                                println!(
+                                    "{}{} {}",
+                                    note_indent,
+                                    theme.style_muted(note_marker),
+                                    theme.style_muted(note.text())
+                                );
+                            } else {
+                                println!("{}{} {}", note_indent, note_marker, note.text());
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Print summary
@@ -568,7 +697,11 @@ fn output_text_flat(files: &[FileRecord], theme: Option<&CliTheme>, show_descrip
 }
 
 /// Output files as human-readable tree view
-fn output_text_tree(files: &[FileRecord], args: &ListArgs) {
+fn output_text_tree(
+    files: &[FileRecord],
+    file_tasks: &HashMap<i64, Vec<TaskRecord>>,
+    args: &ListArgs,
+) {
     if files.is_empty() {
         let msg = "No files found";
         if let Some(theme) = args.theme.as_ref() {
@@ -635,6 +768,35 @@ fn output_text_tree(files: &[FileRecord], args: &ListArgs) {
                 }
             }
 
+            // Add notes if requested
+            if args.show_notes {
+                if let Some(tasks) = file_tasks.get(&file.id) {
+                    for task in tasks {
+                        if !task.contextual_notes.is_empty() {
+                            // Add task title
+                            output.push('\n');
+                            output.push_str("    ");
+                            if let Some(theme) = fmt.theme() {
+                                output.push_str(&theme.style_label(&task.title));
+                            } else {
+                                output.push_str(&task.title);
+                            }
+
+                            // Add each note with marker
+                            for note in &task.contextual_notes {
+                                output.push('\n');
+                                output.push_str("      · ");
+                                if let Some(theme) = fmt.theme() {
+                                    output.push_str(&theme.style_muted(note.text()));
+                                } else {
+                                    output.push_str(note.text());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             output
         } else {
             // Fallback for nodes without file records
@@ -666,6 +828,7 @@ mod tests {
             owner: None,
             docs: None,
             show_descriptions: false,
+            show_notes: false,
             format: OutputFormat::Text,
             project_root: None,
             theme: None,
@@ -690,6 +853,7 @@ mod tests {
             owner: None,
             docs: None,
             show_descriptions: false,
+            show_notes: false,
             format: OutputFormat::Text,
             project_root: None,
             theme: None,

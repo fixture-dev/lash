@@ -633,6 +633,22 @@ fn output_text_file(
                     task.full_id
                 );
             }
+
+            // Print contextual notes for this task
+            if !task.contextual_notes.is_empty() {
+                let note_indent = "  ".repeat(task.depth as usize + 2);
+                for note in &task.contextual_notes {
+                    if let Some(theme) = theme {
+                        println!(
+                            "{}{}",
+                            note_indent,
+                            theme.style_muted(&format!("· {}", note.text()))
+                        );
+                    } else {
+                        println!("{}· {}", note_indent, note.text());
+                    }
+                }
+            }
         }
     }
 }
@@ -646,6 +662,8 @@ struct TaskTreeNode {
     full_id: String,
     /// Task status
     status: lash_types::TaskStatus,
+    /// Contextual notes
+    contextual_notes: Vec<lash_types::task::ContextualNote>,
 }
 
 /// Output tasks as a tree view
@@ -665,6 +683,7 @@ fn output_tasks_as_tree(tasks: &[TaskRecord], theme: Option<&CliTheme>, args: &S
                 title: task.title.clone(),
                 full_id: task.full_id.clone(),
                 status: task.status,
+                contextual_notes: task.contextual_notes.clone(),
             },
             task.depth as usize,
         );
@@ -719,8 +738,50 @@ fn output_tasks_as_tree(tasks: &[TaskRecord], theme: Option<&CliTheme>, args: &S
         }
     });
 
-    for line in lines {
-        println!("  {line}");
+    // Print tree lines and contextual notes
+    let mut line_index = 0;
+    for root in &roots {
+        print_tree_with_notes(root, &lines, &mut line_index, theme);
+    }
+}
+
+/// Recursively print tree nodes with contextual notes
+fn print_tree_with_notes(
+    node: &TreeNode<TaskTreeNode>,
+    lines: &[String],
+    line_index: &mut usize,
+    theme: Option<&CliTheme>,
+) {
+    // Print the task line
+    if *line_index < lines.len() {
+        println!("  {}", lines[*line_index]);
+        *line_index += 1;
+    }
+
+    // Print contextual notes for this task
+    if !node.data.contextual_notes.is_empty() {
+        // Calculate indentation based on depth
+        // Each level adds one tree character width (typically 4 spaces or "│   ")
+        let indent_per_level = 4;
+        let base_indent = node.depth * indent_per_level;
+        let note_indent = " ".repeat(base_indent + indent_per_level);
+
+        for note in &node.data.contextual_notes {
+            if let Some(theme) = theme {
+                println!(
+                    "  {}{}",
+                    note_indent,
+                    theme.style_muted(&format!("· {}", note.text()))
+                );
+            } else {
+                println!("  {}· {}", note_indent, note.text());
+            }
+        }
+    }
+
+    // Recursively print children
+    for child in &node.children {
+        print_tree_with_notes(child, lines, line_index, theme);
     }
 }
 
@@ -818,6 +879,27 @@ fn output_text_task(
         }
         for line in body.lines() {
             println!("  {line}");
+        }
+    }
+
+    // Contextual Notes
+    if !task.contextual_notes.is_empty() {
+        println!();
+        if let Some(theme) = theme {
+            println!("{}", theme.style_info("Notes:"));
+        } else {
+            println!("Notes:");
+        }
+        for note in &task.contextual_notes {
+            if let Some(theme) = theme {
+                println!(
+                    "  {} {}",
+                    theme.style_muted("·"),
+                    theme.style_muted(note.text())
+                );
+            } else {
+                println!("  · {}", note.text());
+            }
         }
     }
 
