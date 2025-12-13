@@ -2272,6 +2272,61 @@ impl AppState {
         self.confirm_linked_file_complete_modal_state.is_some()
     }
 
+    /// Collect the expansion state of all file tree nodes
+    ///
+    /// Returns a set of directory paths that are currently expanded.
+    /// Use with `restore_file_tree_expansion_state()` to preserve expansion state
+    /// across tree rebuilds.
+    #[must_use]
+    pub fn collect_file_tree_expansion_state(&self) -> std::collections::HashSet<PathBuf> {
+        fn collect_from_nodes(
+            nodes: &[TreeNode<DirectoryNode>],
+            expanded_paths: &mut std::collections::HashSet<PathBuf>,
+        ) {
+            for node in nodes {
+                if node.expanded && node.data.is_directory {
+                    expanded_paths.insert(node.data.path.clone());
+                }
+                collect_from_nodes(&node.children, expanded_paths);
+            }
+        }
+
+        let mut expanded_paths = std::collections::HashSet::new();
+        if let Some(tree) = &self.file_tree {
+            collect_from_nodes(tree, &mut expanded_paths);
+        }
+        expanded_paths
+    }
+
+    /// Restore expansion state to file tree nodes
+    ///
+    /// Takes a set of directory paths that should be expanded and sets the
+    /// expansion state accordingly. Used after rebuilding the tree
+    /// to preserve user's manual expansion choices.
+    pub fn restore_file_tree_expansion_state(
+        &mut self,
+        expanded_paths: &std::collections::HashSet<PathBuf>,
+    ) {
+        fn restore_to_nodes(
+            nodes: &mut [TreeNode<DirectoryNode>],
+            expanded_paths: &std::collections::HashSet<PathBuf>,
+        ) {
+            for node in nodes {
+                if node.data.is_directory
+                    && expanded_paths.contains(&node.data.path)
+                    && !node.children.is_empty()
+                {
+                    node.expanded = true;
+                }
+                restore_to_nodes(&mut node.children, expanded_paths);
+            }
+        }
+
+        if let Some(tree) = &mut self.file_tree {
+            restore_to_nodes(tree, expanded_paths);
+        }
+    }
+
     /// Collect the expansion state of all task tree nodes
     ///
     /// Returns a set of task IDs that are currently expanded.

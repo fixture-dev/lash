@@ -2007,11 +2007,33 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
                 // Refresh project stats
                 self.refresh_project_stats()?;
 
+                // Save current file selection and tree expansion state before rebuilding
+                let selected_file_id = if let Some(selected) = self.state.selected_tree_node() {
+                    selected.file_record.as_ref().map(|f| f.id)
+                } else {
+                    self.state.selected_file().map(|f| f.id)
+                };
+                let expanded_paths = self.state.collect_file_tree_expansion_state();
+
                 // Also refresh the file list in case a new file was created
                 let file_repo = FileRepository::new(&self.conn);
                 if let Ok(files) = file_repo.list_all() {
                     self.state.files = files;
                     self.state.build_file_tree();
+
+                    // Restore expansion state
+                    self.state
+                        .restore_file_tree_expansion_state(&expanded_paths);
+
+                    // Restore selection to the same file
+                    if let Some(file_id) = selected_file_id {
+                        // expand_path_to_file ensures the file's ancestors are expanded
+                        let _ = self.state.expand_path_to_file(file_id);
+                        // Update selected index to point to the same file in tree view
+                        if let Some(visual_idx) = self.state.visual_index_of_file(file_id) {
+                            self.state.selected_file_index = visual_idx;
+                        }
+                    }
                 }
             }
             Err(errors) => {
