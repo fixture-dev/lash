@@ -44,5 +44,10 @@ pub fn run(db_path: &std::path::Path) -> TuiResult<()> {
 /// - Color scheme is invalid
 pub fn run_with_scheme(db_path: &std::path::Path, color_scheme: Option<&str>) -> TuiResult<()> {
     let mut app = TuiApp::new_with_scheme(db_path, color_scheme)?;
-    app.run()
+    let result = app.run();
+
+    // Always restore terminal, even if run() returned an error
+    terminal::restore()?;
+
+    result
 }
