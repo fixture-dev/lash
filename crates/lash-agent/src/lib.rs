@@ -23,5 +23,8 @@ pub use context::{ContextBuilder, ContextFormat, InclusionRules, SparseContext};
 pub use prompt::{
     AgentPrompt, DocRefInfo, PromptBuilder, PromptConfig, PromptFormat, TaskFileSummary,
 };
-pub use schema::{generate_schema, generate_schema_text};
+pub use schema::{
+    generate_contextual_notes_example, generate_dependency_example, generate_doc_reference_example,
+    generate_minimal_example, generate_schema, generate_schema_text,
+};
 pub use tokens::{estimate_tokens, truncate_to_budget};

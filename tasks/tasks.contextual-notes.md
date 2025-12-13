@@ -158,12 +158,12 @@ Key semantic distinction:
 
 ### Phase 9: Agent Integration
 
-- [ ] Task 9.1: Update agent schema
+- [x] Task 9.1: Update agent schema
   - Document contextual note syntax in schema
   - Add examples showing notes usage
   - Document nesting rules and guidelines
 
-- [ ] Task 9.2: Update `lash agent-prompt`
+- [x] Task 9.2: Update `lash agent-prompt`
   - Add `--include-notes` flag
   - Include notes in sparse context when flag set
   - Adjust token budget calculation for notes

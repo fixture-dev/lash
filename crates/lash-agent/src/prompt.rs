@@ -94,6 +94,8 @@ pub struct TaskFileSummary {
     pub doc_refs: Vec<DocRefInfo>,
     /// File description (optional)
     pub description: Option<String>,
+    /// Contextual notes from tasks in this file (optional)
+    pub contextual_notes: Vec<String>,
 }
 
 impl TaskFileSummary {
@@ -108,6 +110,7 @@ impl TaskFileSummary {
             blocked: 0,
             doc_refs: Vec::new(),
             description: None,
+            contextual_notes: Vec::new(),
         }
     }
 
@@ -141,6 +144,13 @@ impl TaskFileSummary {
         self
     }
 
+    /// Set contextual notes
+    #[must_use]
+    pub fn with_notes(mut self, notes: Vec<String>) -> Self {
+        self.contextual_notes = notes;
+        self
+    }
+
     /// Format as a compact summary string
     #[must_use]
     pub fn to_summary_string(&self) -> String {
@@ -164,8 +174,9 @@ impl TaskFileSummary {
     /// # Arguments
     ///
     /// * `include_description` - Whether to include the file description
+    /// * `include_notes` - Whether to include contextual notes
     #[must_use]
-    pub fn format_with_docs(&self, include_description: bool) -> String {
+    pub fn format_with_docs(&self, include_description: bool, include_notes: bool) -> String {
         let mut output = format!("- {}\n", self.to_summary_string());
 
         // Add description if available and requested
@@ -192,6 +203,14 @@ impl TaskFileSummary {
             output.push_str(&format!("  - Doc: {}\n", doc_ref.display()));
         }
 
+        // Add contextual notes if available and requested
+        if include_notes && !self.contextual_notes.is_empty() {
+            output.push_str("  Notes:\n");
+            for note in &self.contextual_notes {
+                output.push_str(&format!("    · {note}\n"));
+            }
+        }
+
         output
     }
 }
@@ -211,6 +230,7 @@ pub enum PromptFormat {
 
 /// Configuration for prompt generation
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)] // Configuration structs naturally have many boolean flags
 pub struct PromptConfig {
     /// Output format
     pub format: PromptFormat,
@@ -220,6 +240,8 @@ pub struct PromptConfig {
     pub include_tasks: bool,
     /// Include file descriptions in the prompt
     pub include_descriptions: bool,
+    /// Include contextual notes in the prompt
+    pub include_notes: bool,
     /// Token budget (None = unlimited)
     pub token_budget: Option<usize>,
     /// Labels to filter tasks by
@@ -235,6 +257,7 @@ impl Default for PromptConfig {
             include_examples: true,
             include_tasks: true,
             include_descriptions: true,
+            include_notes: false,
             token_budget: None,
             label_filter: Vec::new(),
             path_filter: None,
@@ -453,8 +476,10 @@ Lash is a minimalist, Markdown-native task tracker where:
                 }
             } else {
                 for summary in &self.task_file_summaries {
-                    tasks_text
-                        .push_str(&summary.format_with_docs(self.config.include_descriptions));
+                    tasks_text.push_str(&summary.format_with_docs(
+                        self.config.include_descriptions,
+                        self.config.include_notes,
+                    ));
                 }
             }
             tasks_text.push('\n');
@@ -925,7 +950,7 @@ mod tests {
                 DocRefInfo::new("../docs/missing.md", None).with_validity(false),
             ]);
 
-        let formatted = summary.format_with_docs(false);
+        let formatted = summary.format_with_docs(false, false);
 
         assert!(formatted.contains("features/auth.md: 10 tasks"));
         assert!(formatted.contains("../docs/auth-spec.md#oauth"));
@@ -1012,13 +1037,13 @@ mod tests {
             ));
 
         // Test with descriptions enabled
-        let formatted_with_desc = summary.format_with_docs(true);
+        let formatted_with_desc = summary.format_with_docs(true, false);
         assert!(formatted_with_desc.contains("features/auth.md: 10 tasks"));
         assert!(formatted_with_desc.contains("Description: This is the authentication module."));
         assert!(formatted_with_desc.contains("It handles OAuth."));
 
         // Test with descriptions disabled
-        let formatted_no_desc = summary.format_with_docs(false);
+        let formatted_no_desc = summary.format_with_docs(false, false);
         assert!(formatted_no_desc.contains("features/auth.md: 10 tasks"));
         assert!(!formatted_no_desc.contains("Description:"));
         assert!(!formatted_no_desc.contains("authentication module"));
@@ -1028,6 +1053,77 @@ mod tests {
     fn test_prompt_config_include_descriptions_default() {
         let config = PromptConfig::default();
         assert!(config.include_descriptions);
+    }
+
+    #[test]
+    fn test_prompt_config_include_notes_default() {
+        let config = PromptConfig::default();
+        assert!(!config.include_notes);
+    }
+
+    #[test]
+    fn test_task_file_summary_with_notes() {
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_notes(vec![
+                "Use argon2id for password hashing".to_string(),
+                "Session tokens expire after 12 hours".to_string(),
+            ]);
+
+        // Test with notes enabled
+        let formatted_with_notes = summary.format_with_docs(false, true);
+        assert!(formatted_with_notes.contains("features/auth.md: 10 tasks"));
+        assert!(formatted_with_notes.contains("Notes:"));
+        assert!(formatted_with_notes.contains("· Use argon2id for password hashing"));
+        assert!(formatted_with_notes.contains("· Session tokens expire after 12 hours"));
+
+        // Test with notes disabled
+        let formatted_no_notes = summary.format_with_docs(false, false);
+        assert!(formatted_no_notes.contains("features/auth.md: 10 tasks"));
+        assert!(!formatted_no_notes.contains("Notes:"));
+        assert!(!formatted_no_notes.contains("argon2id"));
+    }
+
+    #[test]
+    fn test_prompt_builder_with_notes() {
+        let config = PromptConfig {
+            include_notes: true,
+            ..Default::default()
+        };
+        let mut builder = PromptBuilder::new(config);
+
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_notes(vec!["Use argon2id for password hashing".to_string()]);
+
+        builder.add_task_file_summary(summary);
+        let prompt = builder.build();
+
+        assert!(prompt.content.contains("features/auth.md"));
+        assert!(prompt.content.contains("Notes:"));
+        assert!(prompt
+            .content
+            .contains("· Use argon2id for password hashing"));
+    }
+
+    #[test]
+    fn test_prompt_builder_without_notes() {
+        let config = PromptConfig {
+            include_notes: false,
+            ..Default::default()
+        };
+        let mut builder = PromptBuilder::new(config);
+
+        let summary = TaskFileSummary::new("features/auth.md")
+            .with_counts(10, 7, 2, 1)
+            .with_notes(vec!["Use argon2id for password hashing".to_string()]);
+
+        builder.add_task_file_summary(summary);
+        let prompt = builder.build();
+
+        assert!(prompt.content.contains("features/auth.md"));
+        assert!(!prompt.content.contains("Notes:"));
+        assert!(!prompt.content.contains("argon2id"));
     }
 
     #[test]

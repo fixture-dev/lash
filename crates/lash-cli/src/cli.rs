@@ -321,6 +321,10 @@ pub enum Commands {
         /// Include file descriptions in the prompt (default: true)
         #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
         include_descriptions: bool,
+
+        /// Include contextual notes in the prompt (default: false)
+        #[arg(long, default_value = "false", action = clap::ArgAction::Set)]
+        include_notes: bool,
     },
 
     /// Launch the terminal UI

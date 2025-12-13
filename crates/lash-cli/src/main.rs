@@ -473,6 +473,7 @@ fn run(cli: LashCli) -> Result<()> {
             path,
             max_tokens,
             include_descriptions,
+            include_notes,
         } => {
             // Global --json flag overrides command-specific format
             let agent_format = if cli.json {
@@ -490,6 +491,7 @@ fn run(cli: LashCli) -> Result<()> {
                 json: cli.json,
                 no_color: cli.no_color,
                 include_descriptions,
+                include_notes,
             };
             let exit_code = commands::agent_prompt::execute(&args)?;
             process::exit(exit_code);

@@ -16,6 +16,7 @@ use crate::utils::file_discovery::find_project_root;
 
 /// Arguments for the agent-prompt command
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)] // CLI args naturally have many boolean flags
 pub struct AgentPromptArgs {
     /// Output format
     pub format: AgentFormat,
@@ -35,6 +36,8 @@ pub struct AgentPromptArgs {
     pub no_color: bool,
     /// Include file descriptions in the prompt
     pub include_descriptions: bool,
+    /// Include contextual notes in the prompt
+    pub include_notes: bool,
 }
 
 /// Execute the agent-prompt command
@@ -82,6 +85,7 @@ pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
         include_examples: true,
         include_tasks: false,
         include_descriptions: args.include_descriptions,
+        include_notes: args.include_notes,
         token_budget: args.max_tokens,
         label_filter: args.labels.clone(),
         path_filter: args.path.as_ref().map(|p| p.display().to_string()),
@@ -94,6 +98,7 @@ pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
             &args.labels,
             args.path.as_deref(),
             args.include_descriptions,
+            args.include_notes,
         )?
     } else {
         Vec::new()
@@ -133,6 +138,7 @@ fn load_task_file_summaries(
     label_filter: &[String],
     path_filter: Option<&Path>,
     include_descriptions: bool,
+    include_notes: bool,
 ) -> Result<Vec<TaskFileSummary>> {
     let db_path = get_database_path(project_root);
 
@@ -214,11 +220,22 @@ fn load_task_file_summaries(
             None
         };
 
+        // Extract contextual notes if requested
+        let notes = if include_notes {
+            tasks
+                .iter()
+                .flat_map(|t| t.contextual_notes.iter().map(|n| n.text().to_string()))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         // Build task file summary
         let summary = TaskFileSummary::new(file.path.display().to_string())
             .with_counts(total, completed, open, blocked)
             .with_doc_refs(doc_refs)
-            .with_description(description);
+            .with_description(description)
+            .with_notes(notes);
 
         summaries.push(summary);
     }
@@ -246,11 +263,13 @@ mod tests {
             json: false,
             no_color: false,
             include_descriptions: true,
+            include_notes: false,
         };
 
         assert_eq!(args.max_tokens, Some(1000));
         assert_eq!(args.labels.len(), 1);
         assert!(args.include_descriptions);
+        assert!(!args.include_notes);
     }
 
     #[test]
