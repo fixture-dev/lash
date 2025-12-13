@@ -955,7 +955,8 @@ impl AppState {
                 self.description_scroll_down(description_visible_height);
             }
             FocusedPane::Detail => {
-                if self.selected_task_index + 1 < self.tasks.len() {
+                let max_index = self.visible_task_count();
+                if self.selected_task_index + 1 < max_index {
                     self.selected_task_index += 1;
                 }
             }
@@ -1019,8 +1020,9 @@ impl AppState {
                 self.description_scroll = max_scroll;
             }
             FocusedPane::Detail => {
-                if !self.tasks.is_empty() {
-                    self.selected_task_index = self.tasks.len() - 1;
+                let max_index = self.visible_task_count();
+                if max_index > 0 {
+                    self.selected_task_index = max_index - 1;
                 }
             }
         }
@@ -1556,6 +1558,25 @@ impl AppState {
             }
         }
         count
+    }
+
+    /// Get the count of visible tasks in the current view
+    ///
+    /// When task tree is active, this counts only visible (non-collapsed) nodes.
+    /// Otherwise, returns the total task count.
+    /// Used for bounds checking in `move_up`/`move_down` when tree view is active.
+    #[must_use]
+    pub fn visible_task_count(&self) -> usize {
+        if let Some(task_trees) = &self.task_tree {
+            // Flatten all trees to get tasks in visual order (respects expansion state)
+            let mut flat_tasks: Vec<&TaskRecord> = Vec::new();
+            for tree in task_trees {
+                Self::flatten_task_tree(tree, &mut flat_tasks);
+            }
+            flat_tasks.len()
+        } else {
+            self.tasks.len()
+        }
     }
 
     /// Get currently selected task
