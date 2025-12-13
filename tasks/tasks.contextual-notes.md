@@ -50,7 +50,7 @@ Key semantic distinction:
   - Update `Task::default()` to initialize empty vec
   - Add unit tests for serialization round-trip
 
-- [ ] Task 2.2: Create ContextualNote type (optional refinement)
+- [x] Task 2.2: Create ContextualNote type (optional refinement)
   - Create struct with `text: String` and `line_number: usize`
   - Add validation for max length (warning at 200, error at 500 chars)
   - Update Task to use `Vec<ContextualNote>` if richer metadata needed

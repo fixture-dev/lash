@@ -52,5 +52,8 @@ pub use label::{
 };
 pub use report::{ErrorReport, GroupBy, ReportSummary};
 pub use status::TaskStatus;
-pub use task::{Task, TaskBuilder, TaskMetadata, TaskTree};
+pub use task::{
+    ContextualNote, Task, TaskBuilder, TaskMetadata, TaskTree, NOTE_LENGTH_ERROR_THRESHOLD,
+    NOTE_LENGTH_WARNING_THRESHOLD,
+};
 pub use tree::{TreeChars, TreeNode};

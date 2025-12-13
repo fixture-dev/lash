@@ -1491,8 +1491,11 @@ More text
         // The parent task should have 2 contextual notes
         let parent = tree.get_task("implement-feature").unwrap();
         assert_eq!(parent.contextual_notes.len(), 2);
-        assert_eq!(parent.contextual_notes[0], "Use library X for parsing");
-        assert_eq!(parent.contextual_notes[1], "Target < 100ms latency");
+        assert_eq!(
+            parent.contextual_notes[0].text(),
+            "Use library X for parsing"
+        );
+        assert_eq!(parent.contextual_notes[1].text(), "Target < 100ms latency");
     }
 
     #[test]
@@ -1517,8 +1520,11 @@ More text
         // The parent should have both notes (notes attach to parent, not preceding task)
         let parent = tree.get_task("parent-task").unwrap();
         assert_eq!(parent.contextual_notes.len(), 2);
-        assert_eq!(parent.contextual_notes[0], "First note");
-        assert_eq!(parent.contextual_notes[1], "Another note after child");
+        assert_eq!(parent.contextual_notes[0].text(), "First note");
+        assert_eq!(
+            parent.contextual_notes[1].text(),
+            "Another note after child"
+        );
     }
 
     #[test]
