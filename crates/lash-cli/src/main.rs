@@ -291,6 +291,7 @@ fn run(cli: LashCli) -> Result<()> {
             owner,
             docs,
             show_descriptions,
+            show_notes,
             format,
         } => {
             // Convert status to lash_types::TaskStatus
@@ -332,6 +333,7 @@ fn run(cli: LashCli) -> Result<()> {
                 owner,
                 docs,
                 show_descriptions,
+                show_notes,
                 format: output_format,
                 project_root,
                 theme: theme.clone(),

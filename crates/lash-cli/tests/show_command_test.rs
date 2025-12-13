@@ -205,3 +205,144 @@ fn test_show_verifies_reverse_dependency_resolution() {
     assert!(rdep_task.is_some());
     assert_eq!(rdep_task.unwrap().full_id, "file2#task-c");
 }
+
+/// Create a test project with tasks containing contextual notes
+fn setup_test_project_with_notes() -> (tempfile::TempDir, PathBuf) {
+    let temp_dir = temp_test_dir();
+    let project_root = temp_dir.path().to_path_buf();
+
+    // Create .lash directory
+    let lash_dir = project_root.join(".lash");
+    fs::create_dir_all(&lash_dir).unwrap();
+
+    // Create test file with tasks and contextual notes
+    let file_content = r#"# Test File
+
+@id: test-file
+
+## Tasks
+
+- [ ] Task with notes
+  @id: task-with-notes
+  - Use library X for parsing
+  - Target < 100ms latency
+  - Must handle edge cases
+
+- [ ] Task without notes
+  @id: task-without-notes
+
+- [ ] Parent task
+  @id: parent-task
+  - [ ] Child task with notes
+    @id: child-task
+    - This is a child note
+    - Another child note
+"#;
+
+    let file_path = project_root.join("test.md");
+    fs::write(&file_path, file_content).unwrap();
+
+    // Initialize database with schema
+    let db_path = lash_dir.join("db.sqlite");
+    let conn = lash_db::init_database(&db_path).unwrap();
+
+    let file_repo = FileRepository::new(&conn);
+    let task_repo = TaskRepository::new(&conn);
+
+    // Create a minimal config
+    let config = LashConfig::default();
+
+    // Parse file
+    let file = parse_file(&file_path, &config).unwrap();
+    let file_db_id = file_repo.insert(&file).unwrap();
+
+    // Insert tasks
+    for task in file.tasks.tasks() {
+        task_repo.insert(task, file_db_id, &file.id).unwrap();
+    }
+
+    (temp_dir, project_root)
+}
+
+#[test]
+fn test_show_task_with_contextual_notes() {
+    let (_temp_dir, project_root) = setup_test_project_with_notes();
+    let db_path = project_root.join(".lash/db.sqlite");
+    let conn = open_database(&db_path).unwrap();
+
+    let task_repo = TaskRepository::new(&conn);
+
+    // Get task with notes
+    let task = task_repo
+        .get_by_full_id("test-file#task-with-notes")
+        .unwrap()
+        .unwrap();
+
+    // Verify contextual notes are present
+    assert_eq!(task.contextual_notes.len(), 3);
+    assert_eq!(task.contextual_notes[0].text(), "Use library X for parsing");
+    assert_eq!(task.contextual_notes[1].text(), "Target < 100ms latency");
+    assert_eq!(task.contextual_notes[2].text(), "Must handle edge cases");
+}
+
+#[test]
+fn test_show_task_without_contextual_notes() {
+    let (_temp_dir, project_root) = setup_test_project_with_notes();
+    let db_path = project_root.join(".lash/db.sqlite");
+    let conn = open_database(&db_path).unwrap();
+
+    let task_repo = TaskRepository::new(&conn);
+
+    // Get task without notes
+    let task = task_repo
+        .get_by_full_id("test-file#task-without-notes")
+        .unwrap()
+        .unwrap();
+
+    // Verify no contextual notes
+    assert_eq!(task.contextual_notes.len(), 0);
+}
+
+#[test]
+fn test_show_child_task_with_contextual_notes() {
+    let (_temp_dir, project_root) = setup_test_project_with_notes();
+    let db_path = project_root.join(".lash/db.sqlite");
+    let conn = open_database(&db_path).unwrap();
+
+    let task_repo = TaskRepository::new(&conn);
+
+    // Get child task with notes
+    let task = task_repo
+        .get_by_full_id("test-file#child-task")
+        .unwrap()
+        .unwrap();
+
+    // Verify contextual notes are present
+    assert_eq!(task.contextual_notes.len(), 2);
+    assert_eq!(task.contextual_notes[0].text(), "This is a child note");
+    assert_eq!(task.contextual_notes[1].text(), "Another child note");
+}
+
+#[test]
+fn test_show_contextual_notes_are_serialized_to_json() {
+    let (_temp_dir, project_root) = setup_test_project_with_notes();
+    let db_path = project_root.join(".lash/db.sqlite");
+    let conn = open_database(&db_path).unwrap();
+
+    let task_repo = TaskRepository::new(&conn);
+
+    // Get task with notes
+    let task = task_repo
+        .get_by_full_id("test-file#task-with-notes")
+        .unwrap()
+        .unwrap();
+
+    // Serialize task to JSON
+    let json = serde_json::to_string(&task).unwrap();
+
+    // Verify JSON contains contextual_notes field
+    assert!(json.contains("contextual_notes"));
+    assert!(json.contains("Use library X for parsing"));
+    assert!(json.contains("Target < 100ms latency"));
+    assert!(json.contains("Must handle edge cases"));
+}

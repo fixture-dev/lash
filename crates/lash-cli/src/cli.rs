@@ -217,6 +217,10 @@ pub enum Commands {
         #[arg(long)]
         show_descriptions: bool,
 
+        /// Show contextual notes for tasks
+        #[arg(long)]
+        show_notes: bool,
+
         /// Output format
         #[arg(long, value_name = "FORMAT", value_enum, default_value = "text")]
         format: OutputFormat,
