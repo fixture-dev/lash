@@ -226,6 +226,31 @@ lash explain <CODE>
 lash playground init
 ```
 
+### Contextual Notes
+
+Lash supports **contextual notes** - plain bullet points (without checkboxes) nested under tasks that provide inline context, requirements, or acceptance criteria:
+
+```markdown
+- [ ] Implement payment gateway
+  - Use Stripe API v3 for transactions
+  - Support credit card and ACH payments
+  - Must handle refunds and partial captures
+  - [ ] Set up Stripe account
+  - [ ] Implement checkout flow
+  - [ ] Add webhook handling
+```
+
+**Key points:**
+- **Plain bullets** (`- Text`) provide context and are *not* tracked for completion
+- **Checkbox bullets** (`- [ ] Text`) are actionable tasks tracked for completion
+- Notes should appear before child tasks (convention)
+- Notes cannot have children (enforced by linter)
+- Notes are searchable via `lash search`
+
+This distinction helps separate "what needs to be done" from "how to do it" or "acceptance criteria", making task files more readable and providing better context for both humans and AI agents.
+
+See [`examples/contextual-notes.md`](examples/contextual-notes.md) for comprehensive examples.
+
 ### Color Schemes
 
 Lash supports 300+ color schemes from the [Gogh](https://gogh-co.github.io/Gogh/) collection. You can:

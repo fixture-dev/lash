@@ -170,13 +170,13 @@ Key semantic distinction:
 
 ### Phase 10: Testing & Documentation
 
-- [ ] Task 10.1: Integration tests
+- [x] Task 10.1: Integration tests
   - Test Parse → Lint → Index → Query workflow
   - Test mixed task/note hierarchies
   - Create fixture files with complex note patterns
   - Cover edge cases (orphaned notes, deep nesting)
 
-- [ ] Task 10.2: Documentation
+- [x] Task 10.2: Documentation
   - Add contextual notes section to README
   - Create example task files with notes
   - Document best practices (notes vs. child tasks)
