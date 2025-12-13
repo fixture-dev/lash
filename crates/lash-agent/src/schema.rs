@@ -189,6 +189,12 @@ pub fn generate_schema() -> LashSchema {
                 description: "Dependency references must point to existing tasks".to_string(),
                 value: "resolvable references".to_string(),
             },
+            ConstraintSpec {
+                name: "contextual_notes".to_string(),
+                description: "Plain bullets (without checkboxes) nested under tasks provide context, requirements, or acceptance criteria. Notes cannot have children."
+                    .to_string(),
+                value: "informational only, not actionable".to_string(),
+            },
         ],
         operations: vec![
             OperationSpec {
@@ -225,6 +231,12 @@ pub fn generate_schema() -> LashSchema {
                 name: "add_doc_reference".to_string(),
                 description: "Link to documentation resource for context".to_string(),
                 example: "@doc: docs/design.md#section-name".to_string(),
+            },
+            OperationSpec {
+                name: "add_contextual_note".to_string(),
+                description: "Add inline context or requirements under a task using plain bullets (no checkbox). Notes are informational and not tracked for completion."
+                    .to_string(),
+                example: "- [ ] Implement payment gateway\n  - Use Stripe API v3\n  - Support credit card and ACH payments".to_string(),
             },
         ],
     }
@@ -328,9 +340,13 @@ This includes password hashing with bcrypt and JWT tokens for session management
 ## Tasks
 
 - [ ] Implement login endpoint
+  - Use bcrypt with cost factor 12 for password hashing
+  - JWT tokens should expire after 24 hours
   - [ ] Add password hashing
   - [ ] Add JWT token generation
 - [ ] Add user registration
+  - Validate email format before storing
+  - Send confirmation email on registration
 - [x] Set up database schema
 "
     .to_string()
@@ -398,6 +414,47 @@ pub fn generate_doc_reference_example() -> String {
 - [ ] Add invoice generation
   @doc: ../docs/invoice-template.md
 - [x] Set up billing database schema
+"
+    .to_string()
+}
+
+/// Generate an example showing contextual notes
+///
+/// Returns a string demonstrating how to use plain bullets (without checkboxes)
+/// as contextual notes under tasks. Notes provide inline requirements, acceptance
+/// criteria, or implementation hints without being tracked for completion.
+///
+/// # Examples
+///
+/// ```
+/// use lash_agent::schema::generate_contextual_notes_example;
+///
+/// let example = generate_contextual_notes_example();
+/// assert!(example.contains("- [ ]")); // Task with checkbox
+/// assert!(example.contains("  - Use")); // Contextual note (plain bullet)
+/// ```
+pub fn generate_contextual_notes_example() -> String {
+    r"# Feature: Procedural Level Generation
+
+@id: feature-level-gen
+@labels: gameplay, procedural
+@status: in-progress
+
+## Tasks
+
+- [ ] Implement terrain generator
+  - Use Perlin noise for natural-looking terrain
+  - Ensure seed-based reproducibility for testing
+  - Target 64x64 minimum map size
+  - [ ] Add height map generation
+  - [ ] Add biome distribution
+- [ ] Create room placement algorithm
+  - Rooms should not overlap
+  - Maintain minimum corridor width of 2 tiles
+  - [ ] Implement BSP tree partitioning
+  - [ ] Add room connectivity validation
+- [x] Define tile types
+  - Wall, floor, door, water, lava
 "
     .to_string()
 }
@@ -483,5 +540,63 @@ mod tests {
         let deserialized: LashSchema = serde_json::from_str(&json).unwrap();
         assert_eq!(schema.version, deserialized.version);
         assert_eq!(schema.annotations.len(), deserialized.annotations.len());
+    }
+
+    #[test]
+    fn test_schema_has_contextual_notes_constraint() {
+        let schema = generate_schema();
+        let constraint_names: Vec<String> =
+            schema.constraints.iter().map(|c| c.name.clone()).collect();
+        assert!(constraint_names.contains(&"contextual_notes".to_string()));
+
+        // Verify the constraint description mentions key details
+        let notes_constraint = schema
+            .constraints
+            .iter()
+            .find(|c| c.name == "contextual_notes")
+            .expect("contextual_notes constraint should exist");
+        assert!(notes_constraint.description.contains("Plain bullets"));
+        assert!(notes_constraint.description.contains("without checkboxes"));
+    }
+
+    #[test]
+    fn test_schema_has_add_contextual_note_operation() {
+        let schema = generate_schema();
+        let operation_names: Vec<String> =
+            schema.operations.iter().map(|o| o.name.clone()).collect();
+        assert!(operation_names.contains(&"add_contextual_note".to_string()));
+
+        // Verify the operation example shows the pattern
+        let notes_op = schema
+            .operations
+            .iter()
+            .find(|o| o.name == "add_contextual_note")
+            .expect("add_contextual_note operation should exist");
+        assert!(notes_op.example.contains("- [ ]")); // Task with checkbox
+        assert!(notes_op.example.contains("  - Use")); // Plain bullet note
+    }
+
+    #[test]
+    fn test_generate_contextual_notes_example() {
+        let example = generate_contextual_notes_example();
+        // Has tasks with checkboxes
+        assert!(example.contains("- [ ]"));
+        assert!(example.contains("- [x]"));
+        // Has contextual notes (plain bullets under tasks)
+        assert!(example.contains("  - Use Perlin noise"));
+        assert!(example.contains("  - Rooms should not overlap"));
+        // Notes appear before child tasks (convention)
+        let perlin_pos = example.find("Use Perlin noise").unwrap();
+        let height_map_pos = example.find("Add height map generation").unwrap();
+        assert!(perlin_pos < height_map_pos);
+    }
+
+    #[test]
+    fn test_minimal_example_includes_contextual_notes() {
+        let example = generate_minimal_example();
+        // Verify the minimal example now includes contextual notes
+        assert!(example.contains("  - Use bcrypt"));
+        assert!(example.contains("  - JWT tokens should expire"));
+        assert!(example.contains("  - Validate email format"));
     }
 }

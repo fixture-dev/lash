@@ -60,6 +60,7 @@ Task files support the following metadata annotations:
 - **max_depth**: Maximum nesting depth for task hierarchies (3-4 levels)
 - **status_consistency**: Parent tasks complete only when all children are done or waived (hierarchical consistency)
 - **valid_dependencies**: Dependency references must point to existing tasks (resolvable references)
+- **contextual_notes**: Plain bullets (without checkboxes) nested under tasks provide context, requirements, or acceptance criteria. Notes cannot have children. (informational only, not actionable)
 
 ## Allowed Operations
 
@@ -119,6 +120,16 @@ Link to documentation resource for context
 @doc: docs/design.md#section-name
 ```
 
+### add_contextual_note
+
+Add inline context or requirements under a task using plain bullets (no checkbox). Notes are informational and not tracked for completion.
+
+```markdown
+- [ ] Implement payment gateway
+  - Use Stripe API v3
+  - Support credit card and ACH payments
+```
+
 
 ## Examples
 
@@ -140,9 +151,13 @@ This includes password hashing with bcrypt and JWT tokens for session management
 ## Tasks
 
 - [ ] Implement login endpoint
+  - Use bcrypt with cost factor 12 for password hashing
+  - JWT tokens should expire after 24 hours
   - [ ] Add password hashing
   - [ ] Add JWT token generation
 - [ ] Add user registration
+  - Validate email format before storing
+  - Send confirmation email on registration
 - [x] Set up database schema
 ```
 
