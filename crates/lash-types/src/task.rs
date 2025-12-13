@@ -7,6 +7,156 @@ use crate::dependency::{Dependency, DependencyRef};
 use crate::error::{codes, LashError, Result};
 use crate::status::TaskStatus;
 
+/// Warning threshold for contextual note length (in characters).
+/// Notes exceeding this length will trigger a warning during linting.
+pub const NOTE_LENGTH_WARNING_THRESHOLD: usize = 200;
+
+/// Error threshold for contextual note length (in characters).
+/// Notes exceeding this length will trigger an error during linting.
+pub const NOTE_LENGTH_ERROR_THRESHOLD: usize = 500;
+
+/// A contextual note attached to a task.
+///
+/// Contextual notes are plain bullet points (without checkboxes) that provide
+/// additional context, requirements, or acceptance criteria for a task. Unlike
+/// tasks, they are informational only and don't track completion status.
+///
+/// # Examples
+///
+/// ```
+/// use lash_types::task::ContextualNote;
+///
+/// let note = ContextualNote::new("Use library X for parsing", 42);
+/// assert_eq!(note.text(), "Use library X for parsing");
+/// assert_eq!(note.line_number(), 42);
+/// assert!(note.validate().is_ok());
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextualNote {
+    /// The text content of the note
+    text: String,
+    /// Line number in the source file (1-indexed)
+    line_number: usize,
+}
+
+impl ContextualNote {
+    /// Create a new contextual note.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - The text content of the note
+    /// * `line_number` - The line number in the source file (1-indexed)
+    #[must_use]
+    pub fn new(text: impl Into<String>, line_number: usize) -> Self {
+        Self {
+            text: text.into(),
+            line_number,
+        }
+    }
+
+    /// Get the text content of the note.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Get the line number where this note appears in the source file.
+    #[must_use]
+    pub fn line_number(&self) -> usize {
+        self.line_number
+    }
+
+    /// Get the length of the note text in characters.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.text.len()
+    }
+
+    /// Check if the note text is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+
+    /// Validate the contextual note.
+    ///
+    /// Returns `Ok(())` if the note is valid. Returns an error if the note
+    /// exceeds the maximum length threshold (500 characters).
+    ///
+    /// # Errors
+    ///
+    /// Returns `LashError::Lint` if the note text exceeds the error threshold.
+    pub fn validate(&self) -> Result<()> {
+        if self.text.len() > NOTE_LENGTH_ERROR_THRESHOLD {
+            return Err(LashError::Lint {
+                code: codes::E_LINT_BAD_INDENTATION, // Reusing existing code for format issues
+                message: format!(
+                    "Contextual note exceeds maximum length: {} characters (max {}) at line {}",
+                    self.text.len(),
+                    NOTE_LENGTH_ERROR_THRESHOLD,
+                    self.line_number
+                ),
+                location: None, // File path not known at this level
+                snippet: Some(self.truncated_text(50)),
+                help: Some(format!(
+                    "shorten the note to {} characters or fewer",
+                    NOTE_LENGTH_ERROR_THRESHOLD
+                )),
+            });
+        }
+        Ok(())
+    }
+
+    /// Check if the note exceeds the warning threshold.
+    ///
+    /// Returns `true` if the note length is above 200 characters but at or below
+    /// the error threshold. Use this in linting rules to emit warnings.
+    #[must_use]
+    pub fn exceeds_warning_threshold(&self) -> bool {
+        self.text.len() > NOTE_LENGTH_WARNING_THRESHOLD
+            && self.text.len() <= NOTE_LENGTH_ERROR_THRESHOLD
+    }
+
+    /// Check if the note exceeds the error threshold.
+    ///
+    /// Returns `true` if the note length is above 500 characters.
+    #[must_use]
+    pub fn exceeds_error_threshold(&self) -> bool {
+        self.text.len() > NOTE_LENGTH_ERROR_THRESHOLD
+    }
+
+    /// Get a truncated version of the text for display purposes.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_len` - Maximum length before truncation (including ellipsis)
+    #[must_use]
+    pub fn truncated_text(&self, max_len: usize) -> String {
+        if self.text.len() <= max_len {
+            self.text.clone()
+        } else if max_len <= 3 {
+            "...".to_string()
+        } else {
+            format!("{}...", &self.text[..max_len - 3])
+        }
+    }
+}
+
+impl From<&str> for ContextualNote {
+    fn from(text: &str) -> Self {
+        Self::new(text, 0)
+    }
+}
+
+impl From<String> for ContextualNote {
+    fn from(text: String) -> Self {
+        Self {
+            text,
+            line_number: 0,
+        }
+    }
+}
+
 /// A single task in the system
 ///
 /// Tasks are the fundamental unit of work tracking in Lash. Each task has:
@@ -47,7 +197,7 @@ pub struct Task {
 
     /// Contextual notes (plain bullet points nested under this task)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub contextual_notes: Vec<String>,
+    pub contextual_notes: Vec<ContextualNote>,
 }
 
 impl Task {
@@ -204,7 +354,7 @@ pub struct TaskBuilder {
     id: Option<String>,
     metadata: TaskMetadata,
     body: Option<String>,
-    contextual_notes: Vec<String>,
+    contextual_notes: Vec<ContextualNote>,
 }
 
 impl TaskBuilder {
@@ -295,16 +445,33 @@ impl TaskBuilder {
         self
     }
 
-    /// Add a contextual note to the task
+    /// Add a contextual note to the task.
+    ///
+    /// This method accepts any type that can be converted into a `ContextualNote`,
+    /// including `&str` and `String` (with line number defaulting to 0).
     #[must_use]
-    pub fn contextual_note(mut self, note: impl Into<String>) -> Self {
+    pub fn contextual_note(mut self, note: impl Into<ContextualNote>) -> Self {
         self.contextual_notes.push(note.into());
         self
     }
 
-    /// Set all contextual notes at once
+    /// Add a contextual note with a specific line number.
+    ///
+    /// Use this method when you know the source line number of the note.
     #[must_use]
-    pub fn contextual_notes(mut self, notes: Vec<String>) -> Self {
+    pub fn contextual_note_with_line(
+        mut self,
+        text: impl Into<String>,
+        line_number: usize,
+    ) -> Self {
+        self.contextual_notes
+            .push(ContextualNote::new(text, line_number));
+        self
+    }
+
+    /// Set all contextual notes at once.
+    #[must_use]
+    pub fn contextual_notes(mut self, notes: Vec<ContextualNote>) -> Self {
         self.contextual_notes = notes;
         self
     }
@@ -534,16 +701,28 @@ mod tests {
             .unwrap();
 
         assert_eq!(task.contextual_notes.len(), 2);
-        assert_eq!(task.contextual_notes[0], "Use library X for parsing");
-        assert_eq!(task.contextual_notes[1], "Target < 100ms latency");
+        assert_eq!(task.contextual_notes[0].text(), "Use library X for parsing");
+        assert_eq!(task.contextual_notes[1].text(), "Target < 100ms latency");
+    }
+
+    #[test]
+    fn test_task_builder_contextual_notes_with_line_number() {
+        let task = TaskBuilder::new("Task")
+            .contextual_note_with_line("Note with line", 42)
+            .build()
+            .unwrap();
+
+        assert_eq!(task.contextual_notes.len(), 1);
+        assert_eq!(task.contextual_notes[0].text(), "Note with line");
+        assert_eq!(task.contextual_notes[0].line_number(), 42);
     }
 
     #[test]
     fn test_task_builder_contextual_notes_bulk() {
         let notes = vec![
-            "Note 1".to_string(),
-            "Note 2".to_string(),
-            "Note 3".to_string(),
+            ContextualNote::new("Note 1", 10),
+            ContextualNote::new("Note 2", 11),
+            ContextualNote::new("Note 3", 12),
         ];
         let task = TaskBuilder::new("Task")
             .contextual_notes(notes.clone())
@@ -782,5 +961,153 @@ mod tests {
         assert!(!is_valid_id(""));
         assert!(!is_valid_id("has space"));
         assert!(!is_valid_id("has@symbol"));
+    }
+
+    // ===== ContextualNote Tests =====
+
+    #[test]
+    fn test_contextual_note_new() {
+        let note = ContextualNote::new("Test note", 42);
+        assert_eq!(note.text(), "Test note");
+        assert_eq!(note.line_number(), 42);
+    }
+
+    #[test]
+    fn test_contextual_note_len() {
+        let note = ContextualNote::new("Hello", 1);
+        assert_eq!(note.len(), 5);
+        assert!(!note.is_empty());
+
+        let empty = ContextualNote::new("", 1);
+        assert_eq!(empty.len(), 0);
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn test_contextual_note_from_str() {
+        let note: ContextualNote = "From string".into();
+        assert_eq!(note.text(), "From string");
+        assert_eq!(note.line_number(), 0);
+    }
+
+    #[test]
+    fn test_contextual_note_from_string() {
+        let note: ContextualNote = String::from("From owned string").into();
+        assert_eq!(note.text(), "From owned string");
+        assert_eq!(note.line_number(), 0);
+    }
+
+    #[test]
+    fn test_contextual_note_default() {
+        let note = ContextualNote::default();
+        assert_eq!(note.text(), "");
+        assert_eq!(note.line_number(), 0);
+    }
+
+    #[test]
+    fn test_contextual_note_validate_ok() {
+        let note = ContextualNote::new("Short note", 1);
+        assert!(note.validate().is_ok());
+    }
+
+    #[test]
+    fn test_contextual_note_validate_at_warning_threshold() {
+        // Exactly at warning threshold (200) - should validate OK
+        let text = "a".repeat(NOTE_LENGTH_WARNING_THRESHOLD);
+        let note = ContextualNote::new(text, 1);
+        assert!(note.validate().is_ok());
+        assert!(!note.exceeds_warning_threshold());
+    }
+
+    #[test]
+    fn test_contextual_note_validate_above_warning_below_error() {
+        // Above warning (200) but at or below error (500) - validates OK, but exceeds warning
+        let text = "a".repeat(NOTE_LENGTH_WARNING_THRESHOLD + 1);
+        let note = ContextualNote::new(text, 1);
+        assert!(note.validate().is_ok());
+        assert!(note.exceeds_warning_threshold());
+        assert!(!note.exceeds_error_threshold());
+    }
+
+    #[test]
+    fn test_contextual_note_validate_at_error_threshold() {
+        // Exactly at error threshold (500) - should validate OK
+        let text = "a".repeat(NOTE_LENGTH_ERROR_THRESHOLD);
+        let note = ContextualNote::new(text, 1);
+        assert!(note.validate().is_ok());
+        assert!(!note.exceeds_error_threshold());
+    }
+
+    #[test]
+    fn test_contextual_note_validate_above_error_threshold() {
+        // Above error threshold (501+) - should fail validation
+        let text = "a".repeat(NOTE_LENGTH_ERROR_THRESHOLD + 1);
+        let note = ContextualNote::new(text, 42);
+        let err = note.validate().unwrap_err();
+        assert!(matches!(err, LashError::Lint { .. }));
+        assert!(note.exceeds_error_threshold());
+    }
+
+    #[test]
+    fn test_contextual_note_truncated_text() {
+        let note = ContextualNote::new("Hello, World!", 1);
+
+        // No truncation needed
+        assert_eq!(note.truncated_text(20), "Hello, World!");
+
+        // Truncation needed
+        assert_eq!(note.truncated_text(10), "Hello, ...");
+
+        // Very short max
+        assert_eq!(note.truncated_text(3), "...");
+        assert_eq!(note.truncated_text(2), "...");
+    }
+
+    #[test]
+    fn test_contextual_note_serialization_roundtrip() {
+        let note = ContextualNote::new("Test note", 42);
+        let json = serde_json::to_string(&note).unwrap();
+        let deserialized: ContextualNote = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(note, deserialized);
+    }
+
+    #[test]
+    fn test_contextual_note_serialization_format() {
+        let note = ContextualNote::new("Test", 10);
+        let json = serde_json::to_string(&note).unwrap();
+
+        // Verify JSON structure
+        assert!(json.contains("\"text\""));
+        assert!(json.contains("\"line_number\""));
+        assert!(json.contains("\"Test\""));
+        assert!(json.contains("10"));
+    }
+
+    #[test]
+    fn test_contextual_note_equality() {
+        let note1 = ContextualNote::new("Same text", 1);
+        let note2 = ContextualNote::new("Same text", 1);
+        let note3 = ContextualNote::new("Same text", 2);
+        let note4 = ContextualNote::new("Different text", 1);
+
+        assert_eq!(note1, note2);
+        assert_ne!(note1, note3); // Different line number
+        assert_ne!(note1, note4); // Different text
+    }
+
+    #[test]
+    fn test_contextual_note_clone() {
+        let note = ContextualNote::new("Original", 42);
+        let cloned = note.clone();
+
+        assert_eq!(note, cloned);
+    }
+
+    #[test]
+    fn test_contextual_note_thresholds() {
+        // Verify threshold constants are correct
+        assert_eq!(NOTE_LENGTH_WARNING_THRESHOLD, 200);
+        assert_eq!(NOTE_LENGTH_ERROR_THRESHOLD, 500);
     }
 }

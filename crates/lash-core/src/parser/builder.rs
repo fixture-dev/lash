@@ -29,7 +29,7 @@
 //! - Clear error messages for malformed hierarchies
 
 use super::checkbox::{CheckboxLine, PlainBulletLine};
-use lash_types::{Task, TaskTree};
+use lash_types::{ContextualNote, Task, TaskTree};
 use std::collections::HashMap;
 
 /// Builder for constructing task trees from checkbox lines
@@ -306,14 +306,18 @@ impl TaskTreeBuilder {
         };
 
         if let Some(idx) = parent_idx {
-            self.tasks[idx].contextual_notes.push(note.text.clone());
+            self.tasks[idx]
+                .contextual_notes
+                .push(ContextualNote::new(note.text.clone(), note.line_num));
             Ok(())
         } else {
             // If note is at depth 0, attach to the most recent task at depth 0
             if depth == 0 {
                 if let Some(last_task) = self.tasks.last_mut() {
                     if last_task.depth == 0 {
-                        last_task.contextual_notes.push(note.text.clone());
+                        last_task
+                            .contextual_notes
+                            .push(ContextualNote::new(note.text.clone(), note.line_num));
                         return Ok(());
                     }
                 }
