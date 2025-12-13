@@ -3,6 +3,7 @@
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
+use lash_types::task::ContextualNote;
 use lash_types::{make_full_id, Task, TaskMetadata, TaskStatus};
 
 use crate::error::{DbError, DbResult};
@@ -50,6 +51,9 @@ pub struct TaskRecord {
 
     /// Task metadata
     pub metadata: TaskMetadata,
+
+    /// Contextual notes (plain bullet points nested under this task)
+    pub contextual_notes: Vec<ContextualNote>,
 }
 
 /// Filter criteria for querying tasks
@@ -104,6 +108,7 @@ impl<'conn> TaskRepository<'conn> {
     /// - Full ID already exists (unique constraint)
     pub fn insert(&self, task: &Task, file_db_id: i64, file_id: &str) -> DbResult<i64> {
         let metadata_json = serde_json::to_string(&task.metadata)?;
+        let contextual_notes_json = serde_json::to_string(&task.contextual_notes)?;
         let full_id = make_full_id(file_id, &task.id);
 
         // Convert parent_id (local) to database parent_id if present
@@ -120,8 +125,8 @@ impl<'conn> TaskRepository<'conn> {
         let order_index_i64 = task.order_index as i64;
 
         self.conn.execute(
-            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata, contextual_notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             (
                 file_db_id,
                 &task.id,
@@ -135,6 +140,7 @@ impl<'conn> TaskRepository<'conn> {
                 &task.metadata.estimate,
                 &task.body,
                 metadata_json,
+                contextual_notes_json,
             ),
         )?;
 
@@ -150,6 +156,7 @@ impl<'conn> TaskRepository<'conn> {
     /// - Metadata serialization fails
     pub fn update(&self, task: &Task, file_id: &str) -> DbResult<()> {
         let metadata_json = serde_json::to_string(&task.metadata)?;
+        let contextual_notes_json = serde_json::to_string(&task.contextual_notes)?;
         let full_id = make_full_id(file_id, &task.id);
 
         // Convert parent_id (local) to database parent_id if present
@@ -167,8 +174,8 @@ impl<'conn> TaskRepository<'conn> {
 
         let rows = self.conn.execute(
             "UPDATE tasks
-             SET title = ?1, status = ?2, depth = ?3, parent_id = ?4, order_index = ?5, owner = ?6, estimate = ?7, body = ?8, metadata = ?9
-             WHERE full_id = ?10",
+             SET title = ?1, status = ?2, depth = ?3, parent_id = ?4, order_index = ?5, owner = ?6, estimate = ?7, body = ?8, metadata = ?9, contextual_notes = ?10
+             WHERE full_id = ?11",
             (
                 &task.title,
                 task.status.as_str(),
@@ -179,6 +186,7 @@ impl<'conn> TaskRepository<'conn> {
                 &task.metadata.estimate,
                 &task.body,
                 metadata_json,
+                contextual_notes_json,
                 &full_id,
             ),
         )?;
@@ -209,7 +217,7 @@ impl<'conn> TaskRepository<'conn> {
     pub fn get_by_full_id(&self, full_id: &str) -> DbResult<Option<TaskRecord>> {
         self.conn
             .query_row(
-                "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata
+                "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata, contextual_notes
                  FROM tasks WHERE full_id = ?1",
                 [full_id],
                 Self::row_to_task_record,
@@ -226,7 +234,7 @@ impl<'conn> TaskRepository<'conn> {
     pub fn get_by_db_id(&self, id: i64) -> DbResult<Option<TaskRecord>> {
         self.conn
             .query_row(
-                "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata
+                "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata, contextual_notes
                  FROM tasks WHERE id = ?1",
                 [id],
                 Self::row_to_task_record,
@@ -258,7 +266,7 @@ impl<'conn> TaskRepository<'conn> {
     /// Returns error if query fails
     pub fn get_by_file(&self, file_db_id: i64) -> DbResult<Vec<TaskRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata
+            "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata, contextual_notes
              FROM tasks WHERE file_id = ?1 ORDER BY order_index",
         )?;
 
@@ -276,7 +284,7 @@ impl<'conn> TaskRepository<'conn> {
     /// Returns error if query fails
     pub fn find_by_status(&self, status: TaskStatus) -> DbResult<Vec<TaskRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata
+            "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata, contextual_notes
              FROM tasks WHERE status = ?1 ORDER BY full_id",
         )?;
 
@@ -297,7 +305,7 @@ impl<'conn> TaskRepository<'conn> {
     /// Returns error if query fails
     pub fn find_by_label(&self, label: &str) -> DbResult<Vec<TaskRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata
+            "SELECT DISTINCT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata, t.contextual_notes
              FROM tasks t
              JOIN files f ON t.file_id = f.id
              LEFT JOIN task_labels tl ON t.id = tl.task_id
@@ -321,7 +329,7 @@ impl<'conn> TaskRepository<'conn> {
     /// Returns error if query fails
     pub fn get_children(&self, task_db_id: i64) -> DbResult<Vec<TaskRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata
+            "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata, contextual_notes
              FROM tasks WHERE parent_id = ?1 ORDER BY order_index",
         )?;
 
@@ -346,7 +354,7 @@ impl<'conn> TaskRepository<'conn> {
                  SELECT t.id FROM tasks t
                  JOIN descendants d ON t.parent_id = d.id
              )
-             SELECT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata
+             SELECT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata, t.contextual_notes
              FROM tasks t
              JOIN descendants d ON t.id = d.id
              ORDER BY t.depth, t.order_index",
@@ -374,7 +382,7 @@ impl<'conn> TaskRepository<'conn> {
                  JOIN ancestors a ON t.id = a.id
                  WHERE t.parent_id IS NOT NULL
              )
-             SELECT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata
+             SELECT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata, t.contextual_notes
              FROM tasks t
              JOIN ancestors a ON t.id = a.id
              ORDER BY t.depth",
@@ -395,7 +403,7 @@ impl<'conn> TaskRepository<'conn> {
     pub fn find(&self, filter: &TaskFilter) -> DbResult<Vec<TaskRecord>> {
         // Build dynamic query based on filter
         let mut query = String::from(
-            "SELECT DISTINCT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata
+            "SELECT DISTINCT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata, t.contextual_notes
              FROM tasks t",
         );
 
@@ -494,6 +502,7 @@ impl<'conn> TaskRepository<'conn> {
 
         for (task, file_db_id, file_id) in tasks {
             let metadata_json = serde_json::to_string(&task.metadata)?;
+            let contextual_notes_json = serde_json::to_string(&task.contextual_notes)?;
             let full_id = make_full_id(file_id, &task.id);
 
             // Convert parent_id (local) to database parent_id if present
@@ -516,8 +525,8 @@ impl<'conn> TaskRepository<'conn> {
             let order_index_i64 = task.order_index as i64;
 
             tx.execute(
-                "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata, contextual_notes)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 (
                     file_db_id,
                     &task.id,
@@ -531,6 +540,7 @@ impl<'conn> TaskRepository<'conn> {
                     &task.metadata.estimate,
                     &task.body,
                     metadata_json,
+                    contextual_notes_json,
                 ),
             )?;
         }
@@ -588,6 +598,16 @@ impl<'conn> TaskRepository<'conn> {
             rusqlite::Error::FromSqlConversionFailure(12, rusqlite::types::Type::Text, Box::new(e))
         })?;
 
+        let contextual_notes_json: String = row.get(13)?;
+        let contextual_notes: Vec<ContextualNote> = serde_json::from_str(&contextual_notes_json)
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    13,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
+
         let status_str: String = row.get(5)?;
         let status = TaskStatus::from_str_lossy(&status_str);
 
@@ -612,6 +632,7 @@ impl<'conn> TaskRepository<'conn> {
             estimate: row.get(10)?,
             body: row.get(11)?,
             metadata,
+            contextual_notes,
         })
     }
 }
@@ -1681,5 +1702,136 @@ mod tests {
 
         let retrieved = task_repo.get_by_full_id("test#task1").unwrap().unwrap();
         assert_eq!(retrieved.order_index, 9999);
+    }
+
+    #[test]
+    fn test_contextual_notes_persistence() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create task with contextual notes
+        let mut task = create_test_task("task1", "Task with notes", 0, None, 0);
+        task.contextual_notes = vec![
+            ContextualNote::new("Use library X for parsing", 10),
+            ContextualNote::new("Target < 100ms latency", 11),
+            ContextualNote::new("Must handle edge cases", 12),
+        ];
+
+        task_repo.insert(&task, file_db_id, "test").unwrap();
+
+        // Retrieve and verify
+        let retrieved = task_repo.get_by_full_id("test#task1").unwrap().unwrap();
+        assert_eq!(retrieved.contextual_notes.len(), 3);
+        assert_eq!(
+            retrieved.contextual_notes[0].text(),
+            "Use library X for parsing"
+        );
+        assert_eq!(retrieved.contextual_notes[0].line_number(), 10);
+        assert_eq!(
+            retrieved.contextual_notes[1].text(),
+            "Target < 100ms latency"
+        );
+        assert_eq!(retrieved.contextual_notes[1].line_number(), 11);
+        assert_eq!(
+            retrieved.contextual_notes[2].text(),
+            "Must handle edge cases"
+        );
+        assert_eq!(retrieved.contextual_notes[2].line_number(), 12);
+    }
+
+    #[test]
+    fn test_contextual_notes_update() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create task with initial notes
+        let mut task = create_test_task("task1", "Task with notes", 0, None, 0);
+        task.contextual_notes = vec![ContextualNote::new("Original note", 10)];
+        task_repo.insert(&task, file_db_id, "test").unwrap();
+
+        // Update with new notes
+        task.contextual_notes = vec![
+            ContextualNote::new("Updated note 1", 10),
+            ContextualNote::new("Updated note 2", 11),
+        ];
+        task_repo.update(&task, "test").unwrap();
+
+        // Verify update
+        let retrieved = task_repo.get_by_full_id("test#task1").unwrap().unwrap();
+        assert_eq!(retrieved.contextual_notes.len(), 2);
+        assert_eq!(retrieved.contextual_notes[0].text(), "Updated note 1");
+        assert_eq!(retrieved.contextual_notes[1].text(), "Updated note 2");
+    }
+
+    #[test]
+    fn test_contextual_notes_empty_default() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create task without contextual notes (using the helper which initializes empty vec)
+        let task = create_test_task("task1", "Task without notes", 0, None, 0);
+        task_repo.insert(&task, file_db_id, "test").unwrap();
+
+        // Verify empty notes
+        let retrieved = task_repo.get_by_full_id("test#task1").unwrap().unwrap();
+        assert!(retrieved.contextual_notes.is_empty());
+    }
+
+    #[test]
+    fn test_contextual_notes_batch_insert() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create tasks with notes
+        let mut task1 = create_test_task("task1", "Task 1", 0, None, 0);
+        task1.contextual_notes = vec![ContextualNote::new("Note for task 1", 10)];
+
+        let mut task2 = create_test_task("task2", "Task 2", 0, None, 1);
+        task2.contextual_notes = vec![
+            ContextualNote::new("Note A for task 2", 20),
+            ContextualNote::new("Note B for task 2", 21),
+        ];
+
+        let task_tuples = vec![
+            (task1, file_db_id, "test".to_string()),
+            (task2, file_db_id, "test".to_string()),
+        ];
+
+        task_repo.insert_batch(&task_tuples).unwrap();
+
+        // Verify task1 notes
+        let retrieved1 = task_repo.get_by_full_id("test#task1").unwrap().unwrap();
+        assert_eq!(retrieved1.contextual_notes.len(), 1);
+        assert_eq!(retrieved1.contextual_notes[0].text(), "Note for task 1");
+
+        // Verify task2 notes
+        let retrieved2 = task_repo.get_by_full_id("test#task2").unwrap().unwrap();
+        assert_eq!(retrieved2.contextual_notes.len(), 2);
+        assert_eq!(retrieved2.contextual_notes[0].text(), "Note A for task 2");
+        assert_eq!(retrieved2.contextual_notes[1].text(), "Note B for task 2");
     }
 }

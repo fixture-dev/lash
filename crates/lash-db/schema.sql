@@ -20,7 +20,7 @@ CREATE TABLE metadata (
 );
 
 -- Initialize schema version
-INSERT INTO metadata (key, value) VALUES ('schema_version', '5');
+INSERT INTO metadata (key, value) VALUES ('schema_version', '6');
 
 -- ============================================================================
 -- Files table (task files from the project)
@@ -104,6 +104,9 @@ CREATE TABLE tasks (
 
     -- TaskMetadata as JSON blob (labels, dependencies, etc.)
     metadata TEXT NOT NULL DEFAULT '{}',
+
+    -- Contextual notes as JSON array (plain bullet points nested under the task)
+    contextual_notes TEXT NOT NULL DEFAULT '[]',
 
     FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE CASCADE

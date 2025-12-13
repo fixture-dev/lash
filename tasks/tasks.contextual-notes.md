@@ -105,13 +105,13 @@ Key semantic distinction:
 
 ### Phase 5: Database Schema
 
-- [ ] Task 5.1: Add database column
+- [x] Task 5.1: Add database column
   - Create migration `v6_contextual_notes.rs`
   - Add `ALTER TABLE tasks ADD COLUMN contextual_notes TEXT DEFAULT '[]'`
   - Update `CURRENT_SCHEMA_VERSION` to 6
   - Register migration and write tests
 
-- [ ] Task 5.2: Update task repository
+- [x] Task 5.2: Update task repository
   - Update SQL queries to include `contextual_notes`
   - Add JSON serialization/deserialization for notes
   - Add unit tests for persistence round-trip
@@ -214,8 +214,8 @@ Phase 1 (Design)
 ## Success Criteria
 
 ### Must Have
-- [ ] Parse plain bullets as contextual notes
-- [ ] Store notes in database
+- [x] Parse plain bullets as contextual notes
+- [x] Store notes in database
 - [ ] Display notes in `lash show` and TUI
 - [ ] Search notes content via FTS5
 - [ ] Linter validates note structure
