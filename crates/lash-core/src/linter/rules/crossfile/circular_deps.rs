@@ -271,6 +271,7 @@ mod tests {
             line_number: 0,
             metadata,
             body: None,
+            contextual_notes: Vec::new(),
         }
     }
 

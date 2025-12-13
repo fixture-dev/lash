@@ -237,6 +237,7 @@ mod tests {
             line_number: 0,
             metadata,
             body: None,
+            contextual_notes: Vec::new(),
         }
     }
 
@@ -484,6 +485,7 @@ mod tests {
             line_number: 0,
             metadata,
             body: None,
+            contextual_notes: Vec::new(),
         };
 
         let diagnostics = rule.check_task(&task, &ctx);

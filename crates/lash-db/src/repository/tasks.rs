@@ -657,6 +657,7 @@ mod tests {
             line_number: 0,
             metadata: TaskMetadata::default(),
             body: None,
+            contextual_notes: Vec::new(),
         }
     }
 

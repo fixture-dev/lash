@@ -44,6 +44,10 @@ pub struct Task {
 
     /// Extended description (optional)
     pub body: Option<String>,
+
+    /// Contextual notes (plain bullet points nested under this task)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contextual_notes: Vec<String>,
 }
 
 impl Task {
@@ -200,6 +204,7 @@ pub struct TaskBuilder {
     id: Option<String>,
     metadata: TaskMetadata,
     body: Option<String>,
+    contextual_notes: Vec<String>,
 }
 
 impl TaskBuilder {
@@ -216,6 +221,7 @@ impl TaskBuilder {
             id: None,
             metadata: TaskMetadata::default(),
             body: None,
+            contextual_notes: Vec::new(),
         }
     }
 
@@ -289,6 +295,20 @@ impl TaskBuilder {
         self
     }
 
+    /// Add a contextual note to the task
+    #[must_use]
+    pub fn contextual_note(mut self, note: impl Into<String>) -> Self {
+        self.contextual_notes.push(note.into());
+        self
+    }
+
+    /// Set all contextual notes at once
+    #[must_use]
+    pub fn contextual_notes(mut self, notes: Vec<String>) -> Self {
+        self.contextual_notes = notes;
+        self
+    }
+
     /// Build the task, validating and synthesizing ID if needed
     ///
     /// # Errors
@@ -310,6 +330,7 @@ impl TaskBuilder {
             line_number: self.line_number,
             metadata: self.metadata,
             body: self.body,
+            contextual_notes: self.contextual_notes,
         };
 
         // Validate with reasonable max depth
@@ -502,6 +523,62 @@ mod tests {
         let task = TaskBuilder::new("Task").id("custom-id").build().unwrap();
 
         assert_eq!(task.id, "custom-id");
+    }
+
+    #[test]
+    fn test_task_builder_contextual_notes() {
+        let task = TaskBuilder::new("Implement feature")
+            .contextual_note("Use library X for parsing")
+            .contextual_note("Target < 100ms latency")
+            .build()
+            .unwrap();
+
+        assert_eq!(task.contextual_notes.len(), 2);
+        assert_eq!(task.contextual_notes[0], "Use library X for parsing");
+        assert_eq!(task.contextual_notes[1], "Target < 100ms latency");
+    }
+
+    #[test]
+    fn test_task_builder_contextual_notes_bulk() {
+        let notes = vec![
+            "Note 1".to_string(),
+            "Note 2".to_string(),
+            "Note 3".to_string(),
+        ];
+        let task = TaskBuilder::new("Task")
+            .contextual_notes(notes.clone())
+            .build()
+            .unwrap();
+
+        assert_eq!(task.contextual_notes, notes);
+    }
+
+    #[test]
+    fn test_task_contextual_notes_serialization() {
+        let task = TaskBuilder::new("Task")
+            .id("test-task")
+            .contextual_note("First note")
+            .contextual_note("Second note")
+            .build()
+            .unwrap();
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&task).unwrap();
+        assert!(json.contains("contextual_notes"));
+        assert!(json.contains("First note"));
+
+        // Deserialize back
+        let deserialized: Task = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.contextual_notes, task.contextual_notes);
+    }
+
+    #[test]
+    fn test_task_empty_contextual_notes_not_serialized() {
+        let task = TaskBuilder::new("Task").id("test-task").build().unwrap();
+
+        // Empty notes should not appear in JSON (skip_serializing_if)
+        let json = serde_json::to_string(&task).unwrap();
+        assert!(!json.contains("contextual_notes"));
     }
 
     #[test]
