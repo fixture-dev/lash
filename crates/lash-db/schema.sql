@@ -20,7 +20,7 @@ CREATE TABLE metadata (
 );
 
 -- Initialize schema version
-INSERT INTO metadata (key, value) VALUES ('schema_version', '6');
+INSERT INTO metadata (key, value) VALUES ('schema_version', '7');
 
 -- ============================================================================
 -- Files table (task files from the project)
@@ -261,6 +261,7 @@ CREATE INDEX idx_doc_refs_target_path ON doc_refs(target_path);
 -- - labels: medium-high weight
 -- - file_description: medium weight (higher than task body, lower than title)
 -- - body: standard weight
+-- - contextual_notes: lower than body but higher than file_path
 -- - file_path: lower weight
 
 CREATE VIRTUAL TABLE tasks_fts USING fts5(
@@ -270,6 +271,7 @@ CREATE VIRTUAL TABLE tasks_fts USING fts5(
     labels,             -- Space-separated labels
     file_path,          -- File path for filename matching
     file_description,   -- File description text (searchable)
+    contextual_notes,   -- Contextual notes text (searchable)
     tokenize='unicode61 remove_diacritics 2'
 );
 
@@ -283,7 +285,7 @@ CREATE VIRTUAL TABLE tasks_fts USING fts5(
 
 -- Insert trigger: add new task to search index
 CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
-    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description)
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description, contextual_notes)
     SELECT
         new.id,
         new.full_id,
@@ -296,7 +298,11 @@ CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
             WHERE tl.task_id = new.id
         ), ''),
         f.path,
-        COALESCE(f.description, '')
+        COALESCE(f.description, ''),
+        COALESCE((
+            SELECT GROUP_CONCAT(json_extract(value, '$.text'), ' ')
+            FROM json_each(new.contextual_notes)
+        ), '')
     FROM files f
     WHERE f.id = new.file_id;
 END;
@@ -304,7 +310,7 @@ END;
 -- Update trigger: update search index when task changes
 CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
     DELETE FROM tasks_fts WHERE rowid = old.id;
-    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description)
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description, contextual_notes)
     SELECT
         new.id,
         new.full_id,
@@ -317,7 +323,11 @@ CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
             WHERE tl.task_id = new.id
         ), ''),
         f.path,
-        COALESCE(f.description, '')
+        COALESCE(f.description, ''),
+        COALESCE((
+            SELECT GROUP_CONCAT(json_extract(value, '$.text'), ' ')
+            FROM json_each(new.contextual_notes)
+        ), '')
     FROM files f
     WHERE f.id = new.file_id;
 END;
@@ -330,7 +340,7 @@ END;
 -- Trigger to update FTS when labels change
 CREATE TRIGGER task_labels_ai AFTER INSERT ON task_labels BEGIN
     DELETE FROM tasks_fts WHERE rowid = new.task_id;
-    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description)
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description, contextual_notes)
     SELECT
         t.id,
         t.full_id,
@@ -343,7 +353,11 @@ CREATE TRIGGER task_labels_ai AFTER INSERT ON task_labels BEGIN
             WHERE tl.task_id = t.id
         ), ''),
         f.path,
-        COALESCE(f.description, '')
+        COALESCE(f.description, ''),
+        COALESCE((
+            SELECT GROUP_CONCAT(json_extract(value, '$.text'), ' ')
+            FROM json_each(t.contextual_notes)
+        ), '')
     FROM tasks t
     JOIN files f ON f.id = t.file_id
     WHERE t.id = new.task_id;
@@ -351,7 +365,7 @@ END;
 
 CREATE TRIGGER task_labels_ad AFTER DELETE ON task_labels BEGIN
     DELETE FROM tasks_fts WHERE rowid = old.task_id;
-    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description)
+    INSERT INTO tasks_fts(rowid, full_id, title, body, labels, file_path, file_description, contextual_notes)
     SELECT
         t.id,
         t.full_id,
@@ -364,7 +378,11 @@ CREATE TRIGGER task_labels_ad AFTER DELETE ON task_labels BEGIN
             WHERE tl.task_id = t.id
         ), ''),
         f.path,
-        COALESCE(f.description, '')
+        COALESCE(f.description, ''),
+        COALESCE((
+            SELECT GROUP_CONCAT(json_extract(value, '$.text'), ' ')
+            FROM json_each(t.contextual_notes)
+        ), '')
     FROM tasks t
     JOIN files f ON f.id = t.file_id
     WHERE t.id = old.task_id;

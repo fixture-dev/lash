@@ -640,3 +640,185 @@ fn test_search_description_relevance_ranking() {
     assert_eq!(results.results[0].full_id, "file2#task2");
     assert_eq!(results.results[1].full_id, "file1#task1");
 }
+
+#[test]
+fn test_search_contextual_notes() {
+    let (temp_file, conn) = setup_test_db();
+    let _temp_file = temp_file; // Keep alive
+
+    // Insert a test file
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
+         VALUES ('notes-test.md', 'notes-test', 'Notes Test', 'hash1', 1234567890, 'in_progress', '{}')",
+        [],
+    )
+    .unwrap();
+
+    let file_id = conn.last_insert_rowid();
+
+    // Insert a task with contextual notes
+    let notes_json = r#"[{"text":"Use library X for parsing","line_number":10},{"text":"Target performance < 100ms","line_number":11}]"#;
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata, contextual_notes)
+         VALUES (?1, 'task1', 'notes-test#task1', 'Implement feature', 'open', 0, 0, 'Task body', '{}', ?2)",
+        rusqlite::params![file_id, notes_json],
+    )
+    .unwrap();
+
+    // Search for content in contextual notes
+    let query = SearchQuery::new("library");
+    let results = search(&conn, &query).unwrap();
+
+    // Should find the task
+    assert_eq!(results.results.len(), 1);
+    assert_eq!(results.results[0].full_id, "notes-test#task1");
+
+    // Check that contextual_notes is in matched_fields
+    assert!(results.results[0]
+        .matched_fields
+        .contains(&"contextual_notes".to_string()));
+
+    // Snippet should include the note
+    assert!(results.results[0].snippet.contains("[Note]"));
+    assert!(results.results[0]
+        .snippet
+        .contains("Use library X for parsing"));
+}
+
+#[test]
+fn test_search_contextual_notes_multiple_matches() {
+    let (temp_file, conn) = setup_test_db();
+    let _temp_file = temp_file; // Keep alive
+
+    // Insert a test file
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
+         VALUES ('multi-notes.md', 'multi-notes', 'Multi Notes', 'hash1', 1234567890, 'in_progress', '{}')",
+        [],
+    )
+    .unwrap();
+
+    let file_id = conn.last_insert_rowid();
+
+    // Insert multiple tasks, some with matching notes
+    let tasks = [
+        (
+            "task1",
+            "Task One",
+            r#"[{"text":"Use database Y","line_number":5}]"#,
+        ),
+        (
+            "task2",
+            "Task Two",
+            r#"[{"text":"Use database Z for storage","line_number":8}]"#,
+        ),
+        ("task3", "Task Three", r#"[]"#), // No notes
+    ];
+
+    for (id, title, notes_json) in &tasks {
+        conn.execute(
+            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata, contextual_notes)
+             VALUES (?1, ?2, ?3, ?4, 'open', 0, 0, 'Body', '{}', ?5)",
+            rusqlite::params![file_id, id, format!("multi-notes#{id}"), title, notes_json],
+        )
+        .unwrap();
+    }
+
+    // Search for "database"
+    let query = SearchQuery::new("database");
+    let results = search(&conn, &query).unwrap();
+
+    // Should find tasks 1 and 2 (have "database" in notes)
+    assert_eq!(results.results.len(), 2);
+
+    // Both should have contextual_notes in matched fields
+    for result in &results.results {
+        assert!(result
+            .matched_fields
+            .contains(&"contextual_notes".to_string()));
+        assert!(result.snippet.contains("[Note]"));
+    }
+}
+
+#[test]
+fn test_search_contextual_notes_with_body_match() {
+    let (temp_file, conn) = setup_test_db();
+    let _temp_file = temp_file; // Keep alive
+
+    // Insert a test file
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
+         VALUES ('combined.md', 'combined', 'Combined', 'hash1', 1234567890, 'in_progress', '{}')",
+        [],
+    )
+    .unwrap();
+
+    let file_id = conn.last_insert_rowid();
+
+    // Insert task with keyword in both body and notes
+    let notes_json = r#"[{"text":"Use optimization X","line_number":5}]"#;
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata, contextual_notes)
+         VALUES (?1, 'task1', 'combined#task1', 'Task Title', 'open', 0, 0, 'Body with optimization', '{}', ?2)",
+        rusqlite::params![file_id, notes_json],
+    )
+    .unwrap();
+
+    // Search for "optimization"
+    let query = SearchQuery::new("optimization");
+    let results = search(&conn, &query).unwrap();
+
+    // Should find the task
+    assert_eq!(results.results.len(), 1);
+
+    // Should match in both body and contextual_notes
+    assert!(results.results[0]
+        .matched_fields
+        .contains(&"body".to_string()));
+    assert!(results.results[0]
+        .matched_fields
+        .contains(&"contextual_notes".to_string()));
+
+    // Snippet should include both body and note
+    assert!(results.results[0].snippet.contains("optimization"));
+    assert!(results.results[0].snippet.contains("[Note]"));
+}
+
+#[test]
+fn test_search_contextual_notes_truncation() {
+    let (temp_file, conn) = setup_test_db();
+    let _temp_file = temp_file; // Keep alive
+
+    // Insert a test file
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, hash, mtime, status, metadata)
+         VALUES ('truncate.md', 'truncate', 'Truncate', 'hash1', 1234567890, 'in_progress', '{}')",
+        [],
+    )
+    .unwrap();
+
+    let file_id = conn.last_insert_rowid();
+
+    // Insert task with very long note
+    let long_note = "a".repeat(150) + " keyword " + &"b".repeat(50);
+    let notes_json = format!(r#"[{{"text":"{long_note}","line_number":5}}]"#);
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, body, metadata, contextual_notes)
+         VALUES (?1, 'task1', 'truncate#task1', 'Task Title', 'open', 0, 0, 'Body', '{}', ?2)",
+        rusqlite::params![file_id, notes_json],
+    )
+    .unwrap();
+
+    // Search for "keyword"
+    let query = SearchQuery::new("keyword");
+    let results = search(&conn, &query).unwrap();
+
+    // Should find the task
+    assert_eq!(results.results.len(), 1);
+
+    // Snippet should be truncated
+    assert!(results.results[0].snippet.contains("[Note]"));
+    assert!(results.results[0].snippet.ends_with("..."));
+    // Should be much shorter than the original note
+    assert!(results.results[0].snippet.len() < long_note.len());
+}

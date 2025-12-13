@@ -118,13 +118,13 @@ Key semantic distinction:
 
 ### Phase 6: Search Integration
 
-- [ ] Task 6.1: Add notes to FTS index
+- [x] Task 6.1: Add notes to FTS index
   - Update FTS5 schema to add `contextual_notes` column
   - Update FTS triggers (INSERT, UPDATE, DELETE)
   - Set appropriate BM25 weight (lower than title, similar to body)
   - Add integration tests for searching notes content
 
-- [ ] Task 6.2: Update search display
+- [x] Task 6.2: Update search display
   - Show "matched in note" indicator in search results
   - Display matched note text with highlighting
   - Handle truncation for long notes
