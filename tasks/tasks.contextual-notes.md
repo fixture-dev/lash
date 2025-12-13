@@ -151,7 +151,7 @@ Key semantic distinction:
   - Update tree navigation to skip notes (not selectable)
   - Handle expand/collapse with notes
 
-- [ ] Task 8.2: Show notes in detail pane
+- [x] Task 8.2: Show notes in detail pane
   - Add "Notes:" section header when notes exist
   - List notes with bullet points
   - Apply dimmed styling

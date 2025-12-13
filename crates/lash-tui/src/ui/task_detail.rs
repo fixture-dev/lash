@@ -77,6 +77,9 @@ fn build_content_lines(
     // Description section
     add_description_section(&mut content_lines, state, detail_state);
 
+    // Contextual notes section
+    add_contextual_notes_section(&mut content_lines, state, detail_state);
+
     // Subtasks section
     add_subtasks_section(&mut content_lines, state, detail_state);
 
@@ -254,6 +257,41 @@ fn add_description_section(
     lines.push(Line::from(""));
 }
 
+/// Add contextual notes section
+///
+/// Displays contextual notes (plain bullet points nested under the task)
+/// with dimmed/muted styling.
+fn add_contextual_notes_section(
+    lines: &mut Vec<Line<'static>>,
+    state: &AppState,
+    detail_state: &crate::state::TaskDetailState,
+) {
+    if detail_state.task.contextual_notes.is_empty() {
+        return;
+    }
+
+    lines.push(Line::from(vec![Span::styled(
+        "Notes",
+        Style::default()
+            .fg(state.theme.info_color())
+            .add_modifier(Modifier::BOLD),
+    )]));
+
+    // Render each note with a bullet point and dimmed styling
+    for note in &detail_state.task.contextual_notes {
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("· ", Style::default().fg(state.theme.muted_color())),
+            Span::styled(
+                note.text().to_string(),
+                Style::default().fg(state.theme.muted_color()),
+            ),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+}
+
 /// Add dependencies section
 fn add_dependencies_section(
     lines: &mut Vec<Line<'static>>,
@@ -414,4 +452,177 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::colors::{Theme, REGISTRY};
+    use crate::state::TaskDetailState;
+    use lash_db::repository::tasks::TaskRecord;
+    use lash_types::task::ContextualNote;
+    use lash_types::{TaskMetadata, TaskStatus};
+    use std::path::PathBuf;
+
+    /// Helper function to create a test task with contextual notes
+    fn create_test_task_with_notes(notes: Vec<ContextualNote>) -> TaskRecord {
+        TaskRecord {
+            id: 1,
+            file_id: 1,
+            local_id: "test-task".to_string(),
+            full_id: "file#test-task".to_string(),
+            title: "Test Task".to_string(),
+            status: TaskStatus::Open,
+            depth: 0,
+            parent_id: None,
+            order_index: 0,
+            owner: None,
+            estimate: None,
+            body: None,
+            metadata: TaskMetadata::default(),
+            contextual_notes: notes,
+        }
+    }
+
+    #[test]
+    fn test_add_contextual_notes_section_with_notes() {
+        // Setup
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let theme = Theme::new(scheme.clone());
+        let state = AppState::with_theme(theme);
+
+        let notes = vec![
+            ContextualNote::new("First note".to_string(), 10),
+            ContextualNote::new("Second note".to_string(), 11),
+            ContextualNote::new("Third note".to_string(), 12),
+        ];
+
+        let task = create_test_task_with_notes(notes);
+
+        let detail_state = TaskDetailState {
+            task,
+            file_path: PathBuf::from("/test/file.md"),
+            scroll_offset: 0,
+            labels: vec![],
+            dependencies: vec![],
+            subtasks: vec![],
+            content_height: 10,
+            selected_section: None,
+        };
+
+        // Render
+        let mut lines = Vec::new();
+        add_contextual_notes_section(&mut lines, &state, &detail_state);
+
+        // Verify: should have header + 3 notes + blank line = 5 lines
+        assert_eq!(lines.len(), 5);
+
+        // Check header
+        let header_text = lines[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect::<String>();
+        assert_eq!(header_text, "Notes");
+
+        // Check first note
+        let note1_text = lines[1]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect::<String>();
+        assert!(note1_text.contains("·"));
+        assert!(note1_text.contains("First note"));
+
+        // Check second note
+        let note2_text = lines[2]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect::<String>();
+        assert!(note2_text.contains("Second note"));
+
+        // Check third note
+        let note3_text = lines[3]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect::<String>();
+        assert!(note3_text.contains("Third note"));
+
+        // Check blank line at end
+        assert_eq!(lines[4].spans.len(), 0);
+    }
+
+    #[test]
+    fn test_add_contextual_notes_section_empty() {
+        // Setup
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let theme = Theme::new(scheme.clone());
+        let state = AppState::with_theme(theme);
+
+        let task = create_test_task_with_notes(vec![]);
+
+        let detail_state = TaskDetailState {
+            task,
+            file_path: PathBuf::from("/test/file.md"),
+            scroll_offset: 0,
+            labels: vec![],
+            dependencies: vec![],
+            subtasks: vec![],
+            content_height: 10,
+            selected_section: None,
+        };
+
+        // Render
+        let mut lines = Vec::new();
+        add_contextual_notes_section(&mut lines, &state, &detail_state);
+
+        // Verify: should have no lines since notes are empty
+        assert_eq!(lines.len(), 0);
+    }
+
+    #[test]
+    fn test_add_contextual_notes_section_styling() {
+        // Setup
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let theme = Theme::new(scheme.clone());
+        let state = AppState::with_theme(theme);
+
+        let notes = vec![ContextualNote::new("Test note".to_string(), 10)];
+        let task = create_test_task_with_notes(notes);
+
+        let detail_state = TaskDetailState {
+            task,
+            file_path: PathBuf::from("/test/file.md"),
+            scroll_offset: 0,
+            labels: vec![],
+            dependencies: vec![],
+            subtasks: vec![],
+            content_height: 10,
+            selected_section: None,
+        };
+
+        // Render
+        let mut lines = Vec::new();
+        add_contextual_notes_section(&mut lines, &state, &detail_state);
+
+        // Verify styling on note line (line 1)
+        assert!(lines.len() > 1);
+        let note_line = &lines[1];
+
+        // Should have 3 spans: indentation, bullet, and text
+        assert_eq!(note_line.spans.len(), 3);
+
+        // Check indentation span
+        assert_eq!(note_line.spans[0].content, "  ");
+
+        // Check bullet span (should be muted color)
+        assert_eq!(note_line.spans[1].content, "· ");
+        assert_eq!(note_line.spans[1].style.fg, Some(state.theme.muted_color()));
+
+        // Check text span (should be muted color)
+        assert_eq!(note_line.spans[2].content, "Test note");
+        assert_eq!(note_line.spans[2].style.fg, Some(state.theme.muted_color()));
+    }
 }
