@@ -34,7 +34,7 @@ Key semantic distinction:
 
 ### Phase 1: Design Documentation & Specification
 
-- [ ] Task 1.1: Update design document
+- [x] Task 1.1: Update design document
   - Update Section 4.2 Task Line Format with contextual note grammar
   - Define `NOTE_LINE := INDENT* "- " TEXT` (no checkbox)
   - Specify nesting rules (notes as direct children of tasks only)
@@ -44,7 +44,7 @@ Key semantic distinction:
 
 ### Phase 2: Core Data Model Updates
 
-- [ ] Task 2.1: Extend Task struct
+- [x] Task 2.1: Extend Task struct
   - Add `contextual_notes: Vec<String>` field to Task struct
   - Add `#[serde(default)]` for backward compatibility
   - Update `Task::default()` to initialize empty vec
@@ -57,19 +57,19 @@ Key semantic distinction:
 
 ### Phase 3: Parser Updates
 
-- [ ] Task 3.1: Add plain bullet detection
+- [x] Task 3.1: Add plain bullet detection
   - Add `is_plain_bullet()` function to checkbox parser
   - Create `PlainBulletLine` struct parallel to `CheckboxLine`
   - Ensure markdown links `- [text](url)` are NOT parsed as plain bullets
   - Add unit tests for plain bullet detection and link disambiguation
 
-- [ ] Task 3.2: Update parser events
+- [x] Task 3.2: Update parser events
   - Add `ContextualNote { indent, text, line_num }` to `ParserEvent` enum
   - Update parser to emit `ContextualNote` events
   - Ensure events maintain document order
   - Add integration tests for mixed task/note files
 
-- [ ] Task 3.3: Update task builder
+- [x] Task 3.3: Update task builder
   - Add `current_notes: Vec<String>` to builder state
   - Update `handle_checkbox()` to flush accumulated notes to previous task
   - Add `handle_contextual_note()` method

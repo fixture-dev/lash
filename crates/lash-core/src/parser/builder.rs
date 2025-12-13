@@ -28,7 +28,7 @@
 //! - Correct parent-child relationships
 //! - Clear error messages for malformed hierarchies
 
-use super::checkbox::CheckboxLine;
+use super::checkbox::{CheckboxLine, PlainBulletLine};
 use lash_types::{Task, TaskTree};
 use std::collections::HashMap;
 
@@ -220,6 +220,7 @@ impl TaskTreeBuilder {
             line_number: line.line_num,
             metadata,
             body: None,
+            contextual_notes: Vec::new(),
         };
 
         // Add task to the flat list
@@ -234,6 +235,94 @@ impl TaskTreeBuilder {
         self.parent_stack[depth as usize] = Some(task_idx);
 
         Ok(())
+    }
+
+    /// Add a contextual note to the most recent parent task
+    ///
+    /// Contextual notes are plain bullet points that provide additional context
+    /// for tasks. They are attached to the task that is at depth - 1 relative
+    /// to the note's depth.
+    ///
+    /// # Arguments
+    ///
+    /// * `note` - The plain bullet line to add as a contextual note
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the note was added successfully, or an error
+    /// describing the problem.
+    ///
+    /// # Errors
+    ///
+    /// Returns errors for:
+    /// - No parent task to attach the note to
+    /// - Invalid indentation
+    pub fn add_note(&mut self, note: &PlainBulletLine) -> Result<(), String> {
+        let depth = note.depth;
+
+        // Validate indentation is even (multiple of 2 spaces)
+        if !note.has_valid_indentation() {
+            return Err(format!(
+                "Invalid note indentation at line {}: {} spaces (must be multiple of 2)",
+                note.line_num, note.indent
+            ));
+        }
+
+        // Notes must be children of a task, so depth must be > 0
+        // unless there are no tasks yet, which is an error
+        if self.tasks.is_empty() {
+            return Err(format!(
+                "Orphaned note at line {}: no parent task to attach to",
+                note.line_num
+            ));
+        }
+
+        // Find the parent task for this note
+        // The parent should be at depth - 1
+        let parent_depth = if depth > 0 { depth - 1 } else { 0 };
+
+        // Look in the parent stack for the task at parent_depth
+        let parent_idx = if parent_depth as usize >= self.parent_stack.len() {
+            // Stack doesn't go that deep, use the deepest available
+            self.parent_stack.last().and_then(|&idx| idx)
+        } else {
+            self.parent_stack[parent_depth as usize]
+        };
+
+        // If there's no parent at the expected depth, find the most recent task
+        // that could be a parent (at any depth <= note.depth - 1)
+        let parent_idx = match parent_idx {
+            Some(idx) => Some(idx),
+            None => {
+                // Fall back to finding any task that could be a parent
+                // (depth < note.depth)
+                self.tasks
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find(|(_, t)| t.depth < depth)
+                    .map(|(i, _)| i)
+            }
+        };
+
+        if let Some(idx) = parent_idx {
+            self.tasks[idx].contextual_notes.push(note.text.clone());
+            Ok(())
+        } else {
+            // If note is at depth 0, attach to the most recent task at depth 0
+            if depth == 0 {
+                if let Some(last_task) = self.tasks.last_mut() {
+                    if last_task.depth == 0 {
+                        last_task.contextual_notes.push(note.text.clone());
+                        return Ok(());
+                    }
+                }
+            }
+            Err(format!(
+                "Orphaned note at line {}: no parent task at depth {} to attach to",
+                note.line_num, parent_depth
+            ))
+        }
     }
 
     /// Build the final task tree

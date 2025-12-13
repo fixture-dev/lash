@@ -168,6 +168,7 @@ mod tests {
                 ..Default::default()
             },
             body: None,
+            contextual_notes: Vec::new(),
         }
     }
 

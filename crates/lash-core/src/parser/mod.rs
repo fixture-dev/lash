@@ -402,6 +402,14 @@ fn find_tasks_section_line(content: &str) -> Option<usize> {
         .map(|(idx, _)| idx)
 }
 
+/// Represents a parsed line item in the task section
+enum TaskLineItem {
+    /// A checkbox task line
+    Checkbox(checkbox::CheckboxLine),
+    /// A plain bullet contextual note
+    Note(checkbox::PlainBulletLine),
+}
+
 /// Parse the task section and build the task tree
 #[allow(clippy::too_many_lines)]
 fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseResult<TaskTree> {
@@ -445,8 +453,8 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
         }
     };
 
-    // Parse checkbox lines in the task section
-    let mut checkbox_lines = Vec::new();
+    // Parse checkbox lines and plain bullet lines (contextual notes) in the task section
+    let mut task_items: Vec<TaskLineItem> = Vec::new();
     let mut i = start_line;
 
     while i < end_line {
@@ -454,7 +462,7 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
         let line = lines[idx];
         let line_num = idx + 1; // 1-indexed
 
-        // Try to parse as checkbox line
+        // Try to parse as checkbox line first
         if let Some(mut cb_line) = checkbox::CheckboxLine::parse(line, line_num) {
             // Look ahead for annotation block following this checkbox
             // An annotation block starts with @key: value on the next line
@@ -523,7 +531,11 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
                 }
             }
 
-            checkbox_lines.push(cb_line);
+            task_items.push(TaskLineItem::Checkbox(cb_line));
+        } else if let Some(note_line) = checkbox::PlainBulletLine::parse(line, line_num) {
+            // Plain bullet line (contextual note)
+            task_items.push(TaskLineItem::Note(note_line));
+            i += 1;
         } else if let Some(error_msg) = checkbox::CheckboxLine::detect_malformed(line) {
             // Line looks like a checkbox but has invalid syntax
             ctx.add_diagnostic(Diagnostic {
@@ -546,29 +558,55 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
         }
     }
 
-    // Build task tree from checkbox lines
+    // Build task tree from task items (checkbox lines and notes)
     let mut builder = builder::TaskTreeBuilder::new(ctx.config.max_depth);
 
-    for cb_line in &checkbox_lines {
-        if let Err(e) = builder.add_line(cb_line) {
-            // Add error to context and continue
-            ctx.add_diagnostic(Diagnostic {
-                severity: lash_types::Severity::Error,
-                code: "E_PARSE_TASK_TREE",
-                message: e,
-                location: Some(Location::new(
-                    ctx.file_path.to_path_buf(),
-                    cb_line.line_num,
-                    cb_line.column,
-                )),
-                snippet: None,
-                help: None,
-                labels: None,
-                recovery_command: None,
-                fix_steps: None,
-                explanation: None,
-                docs_url: None,
-            });
+    for item in &task_items {
+        match item {
+            TaskLineItem::Checkbox(cb_line) => {
+                if let Err(e) = builder.add_line(cb_line) {
+                    // Add error to context and continue
+                    ctx.add_diagnostic(Diagnostic {
+                        severity: lash_types::Severity::Error,
+                        code: "E_PARSE_TASK_TREE",
+                        message: e,
+                        location: Some(Location::new(
+                            ctx.file_path.to_path_buf(),
+                            cb_line.line_num,
+                            cb_line.column,
+                        )),
+                        snippet: None,
+                        help: None,
+                        labels: None,
+                        recovery_command: None,
+                        fix_steps: None,
+                        explanation: None,
+                        docs_url: None,
+                    });
+                }
+            }
+            TaskLineItem::Note(note_line) => {
+                if let Err(e) = builder.add_note(note_line) {
+                    // Add warning for orphaned notes (not an error)
+                    ctx.add_diagnostic(Diagnostic {
+                        severity: lash_types::Severity::Warning,
+                        code: "W_ORPHANED_NOTE",
+                        message: e,
+                        location: Some(Location::new(
+                            ctx.file_path.to_path_buf(),
+                            note_line.line_num,
+                            note_line.column,
+                        )),
+                        snippet: Some(format!("- {}", note_line.text)),
+                        help: Some("Contextual notes should be nested under a task".to_string()),
+                        labels: None,
+                        recovery_command: None,
+                        fix_steps: None,
+                        explanation: None,
+                        docs_url: None,
+                    });
+                }
+            }
         }
     }
 
@@ -1428,6 +1466,81 @@ More text
         assert!(result.is_ok());
         let tree = result.unwrap();
         assert_eq!(tree.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_task_section_internal_with_contextual_notes() {
+        let content = r"# Title
+
+## Tasks
+
+- [ ] Implement feature
+  - Use library X for parsing
+  - Target < 100ms latency
+  - [ ] Write core logic
+  - [ ] Add tests
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        assert!(result.is_ok());
+        let tree = result.unwrap();
+        assert_eq!(tree.len(), 3); // 1 parent + 2 children
+
+        // The parent task should have 2 contextual notes
+        let parent = tree.get_task("implement-feature").unwrap();
+        assert_eq!(parent.contextual_notes.len(), 2);
+        assert_eq!(parent.contextual_notes[0], "Use library X for parsing");
+        assert_eq!(parent.contextual_notes[1], "Target < 100ms latency");
+    }
+
+    #[test]
+    fn test_parse_task_section_internal_notes_before_and_after_children() {
+        let content = r"# Title
+
+## Tasks
+
+- [ ] Parent task
+  - First note
+  - [ ] Child task
+  - Another note after child
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        assert!(result.is_ok());
+        let tree = result.unwrap();
+        assert_eq!(tree.len(), 2); // 1 parent + 1 child
+
+        // The parent should have both notes (notes attach to parent, not preceding task)
+        let parent = tree.get_task("parent-task").unwrap();
+        assert_eq!(parent.contextual_notes.len(), 2);
+        assert_eq!(parent.contextual_notes[0], "First note");
+        assert_eq!(parent.contextual_notes[1], "Another note after child");
+    }
+
+    #[test]
+    fn test_parse_task_section_internal_markdown_link_not_note() {
+        let content = r"# Title
+
+## Tasks
+
+- [ ] Task with link
+  - [Reference Document](docs/reference.md)
+";
+        let config = LashConfig::default();
+        let mut ctx = ParseContext::new(Path::new("test.md"), &config);
+        let result = parse_task_section_internal(content, &mut ctx);
+
+        assert!(result.is_ok());
+        let tree = result.unwrap();
+        assert_eq!(tree.len(), 1);
+
+        // The markdown link should NOT be parsed as a contextual note
+        let task = tree.get_task("task-with-link").unwrap();
+        assert_eq!(task.contextual_notes.len(), 0);
     }
 
     // ==================== extract_file_metadata Tests ====================

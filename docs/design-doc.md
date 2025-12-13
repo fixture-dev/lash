@@ -224,6 +224,7 @@ Canonical task line grammar (conceptual):
 
 ```
 TASK_LINE := INDENT* "- [STATUS] " TITLE (METADATA_BLOCK?) (INLINE_LABELS?)
+NOTE_LINE := INDENT* "- " TEXT
 ```
 
 Where:
@@ -240,6 +241,30 @@ Where:
 * `INLINE_LABELS`:
 
   * `#backend #filters #agent`
+
+#### Contextual Notes
+
+Contextual notes are **plain bullet points** (without checkboxes) nested under tasks that serve as inline context, requirements, or acceptance criteria:
+
+```markdown
+- [ ] Implement sepia filter core
+  - Use ColorMatrix transformation for efficiency
+  - Target < 50ms for 4K images
+  - [ ] Define parameter schema
+  - [ ] Write Rust core function
+```
+
+Key semantics:
+
+* **Checkbox items** (`- [ ]`) = actionable tasks requiring completion tracking
+* **Plain bullet items** (`-`) = contextual notes (no completion tracking)
+* Notes must be indented exactly 2 spaces deeper than their parent task
+* Notes cannot have children (enforced by linter)
+* Notes should appear before child tasks (style convention, soft warning)
+* Notes are indexed in SQLite as searchable metadata on the parent task
+* Notes are included in FTS5 fuzzy search
+
+**Disambiguation**: Markdown links like `- [Link Text](url)` are NOT parsed as contextual notes. The parser detects the `](` pattern after the bracket to distinguish links from notes.
 
 #### Depth Limitation
 
@@ -565,6 +590,7 @@ Tables (names illustrative):
   * `owner`
   * `estimate`
   * `body` (optional long text for detail)
+  * `contextual_notes` (JSON array of strings; plain bullet notes nested under this task)
 
 * `dependencies`
 
@@ -590,7 +616,7 @@ Tables (names illustrative):
 Indexes:
 
 * On `tasks.status`, `labels.name`, `files.path`.
-* FTS (if used) on `tasks.title`, `tasks.body`, `files.path`, `files.description`.
+* FTS (if used) on `tasks.title`, `tasks.body`, `tasks.contextual_notes`, `files.path`, `files.description`.
 
 ### 9.3 Fuzzy Search
 

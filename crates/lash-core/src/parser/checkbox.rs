@@ -6,6 +6,9 @@
 //! - Task title extraction
 //! - Inline label parsing (#tag)
 //!
+//! Additionally, this module handles parsing of plain bullet lines (contextual notes),
+//! which are non-checkbox bullet points that provide additional context for tasks.
+//!
 //! Checkbox lines are the core building blocks of task lists. Each line is
 //! parsed into a `CheckboxLine` structure that captures all the information
 //! needed to build the task tree.
@@ -310,6 +313,188 @@ impl CheckboxLine {
     pub fn is_sibling_of(&self, other: &Self) -> bool {
         self.depth == other.depth
     }
+}
+
+/// A plain bullet line (contextual note)
+///
+/// Plain bullet lines are non-checkbox bullet points that provide additional
+/// context, requirements, or acceptance criteria for tasks. They are parsed
+/// separately from checkbox lines and attached to their parent tasks.
+///
+/// # Example
+///
+/// ```
+/// use lash_core::parser::checkbox::PlainBulletLine;
+///
+/// let line = "  - Use library X for parsing";
+/// let parsed = PlainBulletLine::parse(line, 5).unwrap();
+/// assert_eq!(parsed.depth, 1);
+/// assert_eq!(parsed.text, "Use library X for parsing");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlainBulletLine {
+    /// Number of leading spaces (indentation)
+    pub indent: usize,
+
+    /// Computed nesting depth (indent / 2)
+    pub depth: u8,
+
+    /// Note text (after "- ")
+    pub text: String,
+
+    /// Line number in source file (1-indexed)
+    pub line_num: usize,
+
+    /// Column number where bullet starts (1-indexed)
+    pub column: usize,
+}
+
+impl PlainBulletLine {
+    /// Parse a plain bullet line from a string
+    ///
+    /// This function parses lines that start with "- " but are NOT:
+    /// - Checkbox lines (e.g., "- [ ] task")
+    /// - Markdown links (e.g., "- [Link Text](url)")
+    ///
+    /// # Arguments
+    ///
+    /// * `line` - The line to parse
+    /// * `line_num` - Line number in source file (for error reporting)
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some(PlainBulletLine)` if the line is a valid plain bullet,
+    /// or `None` if it's a checkbox, markdown link, or not a bullet at all.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_core::parser::checkbox::PlainBulletLine;
+    ///
+    /// // Valid plain bullet
+    /// let parsed = PlainBulletLine::parse("  - Use library X", 1).unwrap();
+    /// assert_eq!(parsed.text, "Use library X");
+    ///
+    /// // Checkbox - should return None
+    /// assert!(PlainBulletLine::parse("- [ ] Task", 1).is_none());
+    ///
+    /// // Markdown link - should return None
+    /// assert!(PlainBulletLine::parse("- [Link](url)", 1).is_none());
+    /// ```
+    #[must_use]
+    pub fn parse(line: &str, line_num: usize) -> Option<Self> {
+        // Count leading spaces (indentation)
+        let indent = count_leading_spaces(line)?;
+
+        // Get the rest of the line after indentation
+        let rest = &line[indent..];
+
+        // Must start with "- " (dash followed by space)
+        if !rest.starts_with("- ") {
+            return None;
+        }
+
+        // Check if this is a checkbox pattern: "- [" followed by something
+        if rest.starts_with("- [") {
+            return None;
+        }
+
+        // Check if this looks like a malformed checkbox (has "[" with checkbox-like chars)
+        // This catches cases like "-  [ ] task" (extra space after dash)
+        if rest.contains('[') && rest.contains(']') {
+            // Check if there's a pattern that looks like a checkbox: [X] or [ ] etc.
+            if let Some(open_bracket) = rest.find('[') {
+                if let Some(close_bracket) = rest.find(']') {
+                    // Check if bracket content looks like checkbox status
+                    if close_bracket == open_bracket + 2 {
+                        let bracket_content = rest
+                            .get(open_bracket + 1..close_bracket)
+                            .and_then(|s| s.chars().next());
+                        if let Some(c) = bracket_content {
+                            if c == ' ' || c == 'x' || c == 'X' || c == '-' || c == '!' {
+                                // This looks like a malformed checkbox, not a plain bullet
+                                return None;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check if this is a markdown link: "- [text](url)"
+        // This is more complex - we need to find if there's a complete [text](url) pattern
+        if is_markdown_link(rest) {
+            return None;
+        }
+
+        // Extract text after "- "
+        let text = rest[2..].trim();
+        if text.is_empty() {
+            return None;
+        }
+
+        // Column where bullet starts (after indentation, at the dash)
+        let column = indent + 1;
+
+        #[allow(clippy::cast_possible_truncation)] // Depth is limited by max_depth config
+        let depth = (indent / 2) as u8;
+
+        Some(Self {
+            indent,
+            depth,
+            text: text.to_string(),
+            line_num,
+            column,
+        })
+    }
+
+    /// Validate that indentation is correct (multiple of 2 spaces)
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if indentation is valid, `false` otherwise.
+    #[must_use]
+    pub fn has_valid_indentation(&self) -> bool {
+        self.indent % 2 == 0
+    }
+
+    /// Check if this note can be a child of a checkbox line based on depth
+    ///
+    /// A note can be a child if its depth is exactly one more than the
+    /// potential parent's depth.
+    ///
+    /// # Arguments
+    ///
+    /// * `potential_parent` - The potential parent checkbox line
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if this note can be a child of the potential parent.
+    #[must_use]
+    pub fn can_be_child_of(&self, potential_parent: &CheckboxLine) -> bool {
+        self.depth == potential_parent.depth + 1
+    }
+}
+
+/// Check if a line (after indentation) is a markdown link pattern
+///
+/// Detects patterns like "- [Link Text](url)" which should NOT be parsed
+/// as plain bullets.
+fn is_markdown_link(rest: &str) -> bool {
+    // Pattern: "- [text](url)"
+    if !rest.starts_with("- [") {
+        return false;
+    }
+
+    // Find the closing bracket
+    if let Some(close_bracket_pos) = rest.find(']') {
+        // Check if the next character is '(' indicating a link
+        if rest.get(close_bracket_pos + 1..close_bracket_pos + 2) == Some("(") {
+            return true;
+        }
+    }
+
+    false
 }
 
 /// Count leading spaces in a line
@@ -960,5 +1145,202 @@ mod tests {
         let line = "- [ ] Implement `function()`";
         let parsed = CheckboxLine::parse(line, 1).unwrap();
         assert_eq!(parsed.title, "Implement `function()`");
+    }
+
+    // ===== PlainBulletLine Tests =====
+
+    #[test]
+    fn test_plain_bullet_basic() {
+        let line = "- Use library X for parsing";
+        let parsed = PlainBulletLine::parse(line, 1).unwrap();
+
+        assert_eq!(parsed.indent, 0);
+        assert_eq!(parsed.depth, 0);
+        assert_eq!(parsed.text, "Use library X for parsing");
+        assert_eq!(parsed.line_num, 1);
+        assert_eq!(parsed.column, 1);
+    }
+
+    #[test]
+    fn test_plain_bullet_indented() {
+        let line = "  - Target < 100ms latency";
+        let parsed = PlainBulletLine::parse(line, 5).unwrap();
+
+        assert_eq!(parsed.indent, 2);
+        assert_eq!(parsed.depth, 1);
+        assert_eq!(parsed.text, "Target < 100ms latency");
+        assert_eq!(parsed.line_num, 5);
+        assert_eq!(parsed.column, 3);
+    }
+
+    #[test]
+    fn test_plain_bullet_deep_indent() {
+        let line = "    - Deeply nested note";
+        let parsed = PlainBulletLine::parse(line, 1).unwrap();
+
+        assert_eq!(parsed.indent, 4);
+        assert_eq!(parsed.depth, 2);
+        assert_eq!(parsed.text, "Deeply nested note");
+    }
+
+    #[test]
+    fn test_plain_bullet_with_extra_whitespace() {
+        let line = "-   Note with extra whitespace  ";
+        let parsed = PlainBulletLine::parse(line, 1).unwrap();
+
+        assert_eq!(parsed.text, "Note with extra whitespace");
+    }
+
+    #[test]
+    fn test_plain_bullet_not_checkbox_open() {
+        let line = "- [ ] This is a checkbox";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_not_checkbox_done() {
+        let line = "- [x] Done checkbox";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_not_checkbox_waived() {
+        let line = "- [-] Waived checkbox";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_not_checkbox_blocked() {
+        let line = "- [!] Blocked checkbox";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_not_markdown_link() {
+        let line = "- [Link Text](https://example.com)";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_not_markdown_link_multiword() {
+        let line = "- [My Feature List](features.md)";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_empty_text() {
+        let line = "- ";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_whitespace_only_text() {
+        let line = "-    ";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_not_bullet() {
+        let line = "Just regular text";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_star_bullet() {
+        // Star bullets are not supported
+        let line = "* Star bullet";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_tab_indent() {
+        let line = "\t- Tabbed note";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+    }
+
+    #[test]
+    fn test_plain_bullet_valid_indentation() {
+        let valid = PlainBulletLine::parse("  - Note", 1).unwrap();
+        assert!(valid.has_valid_indentation());
+
+        let invalid_line = "   - Odd indent note";
+        let invalid = PlainBulletLine::parse(invalid_line, 1).unwrap();
+        assert!(!invalid.has_valid_indentation());
+    }
+
+    #[test]
+    fn test_plain_bullet_can_be_child_of_checkbox() {
+        let checkbox = CheckboxLine::parse("- [ ] Parent task", 1).unwrap();
+        let note = PlainBulletLine::parse("  - Child note", 2).unwrap();
+
+        assert!(note.can_be_child_of(&checkbox));
+    }
+
+    #[test]
+    fn test_plain_bullet_not_child_same_depth() {
+        let checkbox = CheckboxLine::parse("- [ ] Task", 1).unwrap();
+        let note = PlainBulletLine::parse("- Sibling note", 2).unwrap();
+
+        assert!(!note.can_be_child_of(&checkbox));
+    }
+
+    #[test]
+    fn test_plain_bullet_not_child_too_deep() {
+        let checkbox = CheckboxLine::parse("- [ ] Task", 1).unwrap();
+        let note = PlainBulletLine::parse("    - Too deep note", 2).unwrap();
+
+        assert!(!note.can_be_child_of(&checkbox));
+    }
+
+    #[test]
+    fn test_plain_bullet_with_special_chars() {
+        let line = "- Use foo, bar, and baz!";
+        let parsed = PlainBulletLine::parse(line, 1).unwrap();
+        assert_eq!(parsed.text, "Use foo, bar, and baz!");
+    }
+
+    #[test]
+    fn test_plain_bullet_with_code() {
+        let line = "- Call `process_data()` function";
+        let parsed = PlainBulletLine::parse(line, 1).unwrap();
+        assert_eq!(parsed.text, "Call `process_data()` function");
+    }
+
+    #[test]
+    fn test_plain_bullet_with_brackets_not_link() {
+        // Brackets without () after should be parsed as plain bullet
+        let line = "- Use [this format] for data";
+        let parsed = PlainBulletLine::parse(line, 1).unwrap();
+        assert_eq!(parsed.text, "Use [this format] for data");
+    }
+
+    #[test]
+    fn test_plain_bullet_not_malformed_checkbox() {
+        // Malformed checkbox with extra space should NOT be parsed as plain bullet
+        let line = "-  [ ] Task with extra space";
+        assert!(PlainBulletLine::parse(line, 1).is_none());
+
+        let line2 = "-   [x] Done with extra spaces";
+        assert!(PlainBulletLine::parse(line2, 1).is_none());
+
+        let line3 = "-  [-] Waived with extra space";
+        assert!(PlainBulletLine::parse(line3, 1).is_none());
+    }
+
+    #[test]
+    fn test_is_markdown_link_true() {
+        assert!(is_markdown_link("- [Link](url)"));
+        assert!(is_markdown_link("- [Multi Word](http://example.com)"));
+        assert!(is_markdown_link("- [A](b)"));
+    }
+
+    #[test]
+    fn test_is_markdown_link_false() {
+        assert!(!is_markdown_link("- Just text"));
+        assert!(!is_markdown_link("- [Brackets only]"));
+        assert!(!is_markdown_link("- [ ] Checkbox"));
+        assert!(!is_markdown_link("Some text"));
+        // Note: "- [No closing paren](" is detected as a link because it has ](
+        // This is intentional - we're conservative in excluding potential links
     }
 }

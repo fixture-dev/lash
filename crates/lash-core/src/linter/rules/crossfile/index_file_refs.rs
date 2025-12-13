@@ -162,6 +162,7 @@ mod tests {
                 line_number: 0,
                 metadata: TaskMetadata::default(),
                 body: None,
+                contextual_notes: Vec::new(),
             });
         }
 
@@ -378,6 +379,7 @@ mod tests {
             line_number: 0,
             metadata: TaskMetadata::default(),
             body: None,
+            contextual_notes: Vec::new(),
         });
         let _ = tasks.add_task(Task {
             id: "entry-2".to_string(),
@@ -389,6 +391,7 @@ mod tests {
             line_number: 0,
             metadata: TaskMetadata::default(),
             body: None,
+            contextual_notes: Vec::new(),
         });
 
         let index = TaskFile {

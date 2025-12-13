@@ -56,6 +56,7 @@ fn make_task(id: &str, title: &str, depth: u8) -> Task {
         line_number: 0,
         metadata: TaskMetadata::default(),
         body: None,
+        contextual_notes: Vec::new(),
     }
 }
 
