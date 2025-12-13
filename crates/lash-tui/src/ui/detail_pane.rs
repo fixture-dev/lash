@@ -346,6 +346,20 @@ fn render_task_node(
 
     items.push(ListItem::new(line));
 
+    // Render contextual notes if expanded and present
+    if node.expanded && !node.data.contextual_notes.is_empty() {
+        render_contextual_notes(
+            &node.data.contextual_notes,
+            items,
+            theme,
+            chars,
+            node.depth,
+            ancestors_is_last,
+            is_last,
+            node.children.is_empty(),
+        );
+    }
+
     // Recursively render children if expanded
     if node.expanded {
         let mut new_ancestors = ancestors_is_last.to_vec();
@@ -366,6 +380,79 @@ fn render_task_node(
                 cross_file_links,
             );
         }
+    }
+}
+
+/// Render contextual notes for a task
+///
+/// Notes are rendered with:
+/// - Tree prefixes matching the parent task's indentation
+/// - A bullet point prefix (· or . depending on tree chars)
+/// - Dimmed/muted styling
+/// - No expand/collapse indicator
+#[allow(clippy::too_many_arguments)]
+fn render_contextual_notes(
+    notes: &[lash_types::task::ContextualNote],
+    items: &mut Vec<ListItem<'static>>,
+    theme: &crate::colors::Theme,
+    chars: lash_types::tree::TreeChars,
+    _parent_depth: usize,
+    ancestors_is_last: &[bool],
+    parent_is_last: bool,
+    parent_has_no_children: bool,
+) {
+    // Determine the note bullet based on tree chars
+    let note_bullet = match chars {
+        lash_types::tree::TreeChars::Unicode => "· ",
+        lash_types::tree::TreeChars::Ascii => ". ",
+    };
+
+    // Build the base tree prefix (same as children would have)
+    let mut note_ancestors = ancestors_is_last.to_vec();
+    note_ancestors.push(parent_is_last);
+
+    for (idx, note) in notes.iter().enumerate() {
+        let is_last_note = idx == notes.len() - 1;
+
+        // Build tree prefix for this note
+        // Notes are at parent_depth + 1 (like children)
+        let mut prefix = String::new();
+
+        // Add indentation for ancestor levels
+        for &ancestor_is_last in &note_ancestors {
+            if ancestor_is_last {
+                prefix.push_str(chars.empty());
+            } else {
+                prefix.push_str(chars.vertical());
+            }
+        }
+
+        // Add branch character for current level
+        // If this is the last note AND the parent has no children, use last_branch
+        // Otherwise use regular branch
+        if is_last_note && parent_has_no_children {
+            prefix.push_str(chars.last_branch());
+        } else {
+            prefix.push_str(chars.branch());
+        }
+
+        // Build the styled line with muted color
+        let mut spans = vec![
+            Span::raw(prefix),
+            Span::raw("  ".to_string()), // No expand/collapse indicator for notes
+            Span::styled(
+                note_bullet.to_string(),
+                Style::default().fg(theme.muted_color()),
+            ),
+        ];
+
+        // Add the note text with muted styling
+        spans.push(Span::styled(
+            note.text().to_string(),
+            Style::default().fg(theme.muted_color()),
+        ));
+
+        items.push(ListItem::new(Line::from(spans)));
     }
 }
 
@@ -539,4 +626,172 @@ fn build_tree_prefix(
     }
 
     prefix
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::colors::{Theme, REGISTRY};
+    use lash_types::task::ContextualNote;
+
+    #[test]
+    fn test_render_contextual_notes_basic() {
+        // Setup
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let theme = Theme::new(scheme.clone());
+        let chars = lash_types::tree::TreeChars::Unicode;
+        let notes = vec![
+            ContextualNote::new("First note", 10),
+            ContextualNote::new("Second note", 11),
+        ];
+        let mut items = Vec::new();
+
+        // Render notes for a top-level task with no children
+        render_contextual_notes(
+            &notes,
+            &mut items,
+            &theme,
+            chars,
+            0,    // parent_depth
+            &[],  // ancestors_is_last
+            true, // parent_is_last
+            true, // parent_has_no_children
+        );
+
+        // Verify
+        assert_eq!(items.len(), 2);
+        // Note: We can't easily test the exact styling, but we can verify items were created
+    }
+
+    #[test]
+    fn test_render_contextual_notes_ascii() {
+        // Setup
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let theme = Theme::new(scheme.clone());
+        let chars = lash_types::tree::TreeChars::Ascii;
+        let notes = vec![ContextualNote::new("Test note", 5)];
+        let mut items = Vec::new();
+
+        // Render notes with ASCII tree chars
+        render_contextual_notes(&notes, &mut items, &theme, chars, 0, &[], true, true);
+
+        // Verify one item was created
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn test_render_contextual_notes_nested() {
+        // Setup
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let theme = Theme::new(scheme.clone());
+        let chars = lash_types::tree::TreeChars::Unicode;
+        let notes = vec![ContextualNote::new("Nested note", 15)];
+        let mut items = Vec::new();
+
+        // Render notes for a nested task (depth 2)
+        render_contextual_notes(
+            &notes,
+            &mut items,
+            &theme,
+            chars,
+            2,              // parent_depth
+            &[false, true], // ancestors_is_last
+            false,          // parent_is_last
+            false,          // parent_has_no_children
+        );
+
+        // Verify one item was created
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn test_render_contextual_notes_multiple_with_children() {
+        // Setup
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let theme = Theme::new(scheme.clone());
+        let chars = lash_types::tree::TreeChars::Unicode;
+        let notes = vec![
+            ContextualNote::new("Note 1", 20),
+            ContextualNote::new("Note 2", 21),
+            ContextualNote::new("Note 3", 22),
+        ];
+        let mut items = Vec::new();
+
+        // Render notes for a task that has children (notes are not last)
+        render_contextual_notes(
+            &notes,
+            &mut items,
+            &theme,
+            chars,
+            1,
+            &[false],
+            false,
+            false, // has children
+        );
+
+        // Verify three items were created
+        assert_eq!(items.len(), 3);
+    }
+
+    #[test]
+    fn test_render_contextual_notes_empty() {
+        // Setup
+        let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
+        let theme = Theme::new(scheme.clone());
+        let chars = lash_types::tree::TreeChars::Unicode;
+        let notes = vec![];
+        let mut items = Vec::new();
+
+        // Render empty notes
+        render_contextual_notes(&notes, &mut items, &theme, chars, 0, &[], true, true);
+
+        // Verify no items were created
+        assert_eq!(items.len(), 0);
+    }
+
+    #[test]
+    fn test_build_tree_prefix_root() {
+        let chars = lash_types::tree::TreeChars::Unicode;
+        let prefix = build_tree_prefix(0, true, &[], chars);
+
+        // Root level (depth 0) has no prefix
+        assert_eq!(prefix, "");
+    }
+
+    #[test]
+    fn test_build_tree_prefix_first_level() {
+        let chars = lash_types::tree::TreeChars::Unicode;
+
+        // First child
+        let prefix = build_tree_prefix(1, false, &[], chars);
+        assert_eq!(prefix, "├── ");
+
+        // Last child
+        let prefix = build_tree_prefix(1, true, &[], chars);
+        assert_eq!(prefix, "└── ");
+    }
+
+    #[test]
+    fn test_build_tree_prefix_nested() {
+        let chars = lash_types::tree::TreeChars::Unicode;
+
+        // Second level, first child, parent was last
+        let prefix = build_tree_prefix(2, false, &[true], chars);
+        assert_eq!(prefix, "    ├── ");
+
+        // Second level, first child, parent was not last
+        let prefix = build_tree_prefix(2, false, &[false], chars);
+        assert_eq!(prefix, "│   ├── ");
+    }
+
+    #[test]
+    fn test_build_tree_prefix_ascii() {
+        let chars = lash_types::tree::TreeChars::Ascii;
+
+        let prefix = build_tree_prefix(1, false, &[], chars);
+        assert_eq!(prefix, "+-- ");
+
+        let prefix = build_tree_prefix(1, true, &[], chars);
+        assert_eq!(prefix, "\\-- ");
+    }
 }

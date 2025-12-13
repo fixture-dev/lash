@@ -144,7 +144,7 @@ Key semantic distinction:
 
 ### Phase 8: TUI Integration
 
-- [ ] Task 8.1: Render notes in task tree
+- [x] Task 8.1: Render notes in task tree
   - Create `TreeItem::Note` variant
   - Render notes with `·` or `○` prefix (no checkbox)
   - Apply dimmed/italic styling
