@@ -35,3 +35,11 @@ harness = false
 [[bench]]
 name = "search_bench"
 harness = false
+
+[[bench]]
+name = "notes_indexing_bench"
+harness = false
+
+[[bench]]
+name = "notes_search_bench"
+harness = false

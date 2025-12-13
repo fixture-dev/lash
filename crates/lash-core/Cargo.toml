@@ -35,3 +35,7 @@ harness = false
 [[bench]]
 name = "linter_bench"
 harness = false
+
+[[bench]]
+name = "notes_parser_bench"
+harness = false

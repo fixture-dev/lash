@@ -51,7 +51,22 @@ Edit `.md` files directly using the format specified in the agent prompt. Common
 @labels: backend, api
 @owner: alice
 @depends-on: core/auth.md#task:login
+
+# Adding contextual notes (plain bullets, no checkbox)
+- [ ] Implement payment gateway
+  - Use Stripe API v3 for transactions
+  - Must handle refunds and partial captures
+  - [ ] Set up Stripe account
+  - [ ] Implement checkout flow
 ```
+
+**Important:** Contextual notes (plain bullets without checkboxes) provide requirements, constraints, and implementation hints. They are NOT tracked for completion but are searchable and indexed. Use them for:
+- Requirements and constraints
+- Acceptance criteria
+- Implementation hints
+- API/library specifics
+
+See `examples/contextual-notes.md` for comprehensive guidance on when to use notes vs. child tasks.
 
 ### Step 4: Validate Changes
 

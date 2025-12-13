@@ -266,6 +266,31 @@ Key semantics:
 
 **Disambiguation**: Markdown links like `- [Link Text](url)` are NOT parsed as contextual notes. The parser detects the `](` pattern after the bracket to distinguish links from notes.
 
+**Best Practices:**
+
+When to use contextual notes vs. child tasks:
+
+* **Use notes for:**
+  * Requirements and constraints ("Must support multi-tenancy")
+  * Acceptance criteria ("Results within 100ms for 95th percentile")
+  * Implementation hints ("Use Redis for session storage")
+  * API/library specifics ("Stripe API v3, not v2")
+  * Design context ("Moving from JSON to TOML per ADR-015")
+
+* **Use child tasks for:**
+  * Multi-step processes that need completion tracking
+  * Independently trackable work items
+  * Work that can be done in parallel
+  * Sub-tasks that may themselves have sub-tasks
+
+* **Style guidelines:**
+  * Keep notes concise (warning at 200 chars, error at 500 chars)
+  * Place notes before child tasks for better readability
+  * Use notes for "why" and "how", tasks for "what"
+  * Never nest notes under notes
+
+See `examples/contextual-notes.md` for comprehensive examples and patterns.
+
 #### Depth Limitation
 
 * Maximum depth, e.g. **3 or 4 levels** (`-`, `  -`, `    -`, `      -`).
