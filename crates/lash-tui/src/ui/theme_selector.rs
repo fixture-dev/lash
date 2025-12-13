@@ -134,7 +134,8 @@ fn render_scheme_list(
 
 /// Create a swatch line showing 16 colors in a 2x8 grid representation
 ///
-/// Shows colors 0-7 in first row, 8-15 in second row, represented as colored blocks
+/// Shows colors 0-7 in first row, 8-15 in second row, represented as colored blocks.
+/// Each color uses 3 block characters for better visibility.
 fn create_swatch_line(scheme: &ColorScheme) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
 
@@ -152,10 +153,10 @@ fn create_swatch_line(scheme: &ColorScheme) -> Vec<Span<'static>> {
             _ => unreachable!(),
         });
 
-        spans.push(Span::styled("█", Style::default().fg(color)));
+        spans.push(Span::styled("███", Style::default().fg(color)));
     }
 
-    spans.push(Span::raw(" "));
+    spans.push(Span::raw("  "));
 
     // Second row: colors 8-15
     for i in 8..16 {
@@ -171,7 +172,7 @@ fn create_swatch_line(scheme: &ColorScheme) -> Vec<Span<'static>> {
             _ => unreachable!(),
         });
 
-        spans.push(Span::styled("█", Style::default().fg(color)));
+        spans.push(Span::styled("███", Style::default().fg(color)));
     }
 
     spans
