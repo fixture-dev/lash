@@ -49,7 +49,7 @@ Tasks are organized by major module/component. Each task file contains:
 
 ### Content Features
 - [x] [tasks.description-section.md](tasks.description-section.md) - `## Description` section support (Tasks 1-8 complete) ✅
-- [ ] [tasks.contextual-notes.md](tasks.contextual-notes.md) - Contextual notes (plain bullets as inline requirements/criteria)
+- [x] [tasks.contextual-notes.md](tasks.contextual-notes.md) - Contextual notes (plain bullets as inline requirements/criteria) ✅
 
 ### Quality & Documentation
 - [x] [tasks.testing.md](tasks.testing.md) - Test strategy, integration tests, benchmarks, CI/CD (Tasks 1-9 complete) ✅
