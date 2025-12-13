@@ -10,15 +10,17 @@ mod v3_doc_refs;
 mod v4_file_descriptions;
 mod v5_fts_description;
 mod v6_contextual_notes;
+mod v7_fts_contextual_notes;
 
 use v2_enhanced_fts::MigrationV2EnhancedFts;
 use v3_doc_refs::MigrationV3DocRefs;
 use v4_file_descriptions::MigrationV4FileDescriptions;
 use v5_fts_description::MigrationV5FtsDescription;
 use v6_contextual_notes::MigrationV6ContextualNotes;
+use v7_fts_contextual_notes::MigrationV7FtsContextualNotes;
 
 /// Current schema version
-pub const CURRENT_SCHEMA_VERSION: i32 = 6;
+pub const CURRENT_SCHEMA_VERSION: i32 = 7;
 
 /// A database migration
 pub trait Migration {
@@ -130,6 +132,7 @@ fn get_migrations() -> Vec<Box<dyn Migration>> {
         Box::new(MigrationV4FileDescriptions),
         Box::new(MigrationV5FtsDescription),
         Box::new(MigrationV6ContextualNotes),
+        Box::new(MigrationV7FtsContextualNotes),
     ]
 }
 

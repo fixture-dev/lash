@@ -501,7 +501,8 @@ pub fn search_with_profiling(
     }
 
     // Build the SQL query with column-weighted BM25 scoring
-    // FTS5 bm25() with column weights: title (3.0), body (1.0), labels (2.0), file_path (0.5), file_description (1.5)
+    // FTS5 bm25() with column weights: title (3.0), body (1.0), labels (2.0),
+    // file_path (0.5), file_description (1.5), contextual_notes (0.8)
     let mut sql = String::from(
         "
         SELECT
@@ -512,10 +513,11 @@ pub fn search_with_profiling(
             t.status,
             t.owner,
             f.path,
-            bm25(tasks_fts, 3.0, 1.0, 2.0, 0.5, 1.5) as bm25_score,
+            bm25(tasks_fts, 3.0, 1.0, 2.0, 0.5, 1.5, 0.8) as bm25_score,
             fts.labels,
             fts.file_path,
-            fts.file_description
+            fts.file_description,
+            t.contextual_notes
         FROM tasks_fts fts
         JOIN tasks t ON t.id = fts.rowid
         JOIN files f ON f.id = t.file_id
@@ -622,6 +624,7 @@ pub fn search_with_profiling(
         let labels_str: String = row.get(8)?;
         let fts_file_path: String = row.get(9)?;
         let file_description: String = row.get(10)?;
+        let contextual_notes_json: String = row.get(11)?;
 
         Ok((
             task_id,
@@ -635,6 +638,7 @@ pub fn search_with_profiling(
             labels_str,
             fts_file_path,
             file_description,
+            contextual_notes_json,
         ))
     })?;
 
@@ -659,6 +663,7 @@ pub fn search_with_profiling(
             labels_str,
             _fts_file_path,
             file_description,
+            contextual_notes_json,
         ) = row?;
 
         // Parse status
@@ -672,6 +677,9 @@ pub fn search_with_profiling(
             labels_str.split_whitespace().map(String::from).collect()
         };
 
+        // Parse contextual notes from JSON
+        let contextual_notes_text = extract_notes_text(&contextual_notes_json);
+
         // Determine which fields matched
         let mut matched_fields = Vec::new();
         let query_lower = fts_query.to_lowercase();
@@ -682,6 +690,7 @@ pub fn search_with_profiling(
         let label_match = labels_str.to_lowercase().contains(&query_lower);
         let description_match =
             !file_description.is_empty() && file_description.to_lowercase().contains(&query_lower);
+        let notes_match = contextual_notes_text.to_lowercase().contains(&query_lower);
 
         if title_match {
             matched_fields.push("title".to_string());
@@ -695,6 +704,9 @@ pub fn search_with_profiling(
         if description_match {
             matched_fields.push("file_description".to_string());
         }
+        if notes_match {
+            matched_fields.push("contextual_notes".to_string());
+        }
 
         // Check for prefix match
         let prefix_match = title.to_lowercase().starts_with(&query_lower);
@@ -704,7 +716,13 @@ pub fn search_with_profiling(
 
         // Generate snippet
         let snippet_start = if profile { Some(Instant::now()) } else { None };
-        let snippet = generate_snippet(&title, body.as_deref(), &fts_query);
+        let snippet = generate_snippet(
+            &title,
+            body.as_deref(),
+            &fts_query,
+            notes_match,
+            &contextual_notes_json,
+        );
         if let Some(start) = snippet_start {
             snippet_time_ms += start.elapsed().as_secs_f64() * 1000.0;
         }
@@ -749,14 +767,50 @@ pub fn search_with_profiling(
     })
 }
 
+/// Extract plain text from contextual notes JSON
+///
+/// Parses the JSON array and concatenates all note text with spaces.
+/// Returns empty string if parsing fails or notes are empty.
+fn extract_notes_text(notes_json: &str) -> String {
+    match serde_json::from_str::<Vec<lash_types::ContextualNote>>(notes_json) {
+        Ok(notes) => notes
+            .iter()
+            .map(lash_types::ContextualNote::text)
+            .collect::<Vec<_>>()
+            .join(" "),
+        Err(_) => String::new(),
+    }
+}
+
+/// Find the first matching note text
+///
+/// Returns the text of the first note that contains the query (case-insensitive).
+fn find_matching_note(notes_json: &str, query: &str) -> Option<String> {
+    let query_lower = query.to_lowercase();
+    match serde_json::from_str::<Vec<lash_types::ContextualNote>>(notes_json) {
+        Ok(notes) => notes
+            .iter()
+            .find(|note| note.text().to_lowercase().contains(&query_lower))
+            .map(|note| note.text().to_string()),
+        Err(_) => None,
+    }
+}
+
 /// Generate a context snippet with highlighted terms
 ///
 /// This function creates a concise preview of the matched content, combining
-/// the title and a truncated body text. It's optimized to minimize allocations.
-fn generate_snippet(title: &str, body: Option<&str>, _query: &str) -> String {
+/// the title, truncated body text, and optionally a matching contextual note.
+/// It's optimized to minimize allocations.
+fn generate_snippet(
+    title: &str,
+    body: Option<&str>,
+    query: &str,
+    notes_match: bool,
+    contextual_notes_json: &str,
+) -> String {
     // Pre-allocate capacity to avoid reallocations
-    // Title + newline + up to 100 chars of body + "..."
-    let capacity = title.len() + 1 + 103;
+    // Title + newline + up to 100 chars of body + optional note + "..."
+    let capacity = title.len() + 1 + 103 + 120;
     let mut snippet = String::with_capacity(capacity);
 
     snippet.push_str(title);
@@ -777,6 +831,28 @@ fn generate_snippet(title: &str, body: Option<&str>, _query: &str) -> String {
             snippet.push_str("...");
         } else {
             snippet.push_str(body_text);
+        }
+    }
+
+    // Add matching note if present
+    if notes_match {
+        if let Some(note_text) = find_matching_note(contextual_notes_json, query) {
+            snippet.push('\n');
+            snippet.push_str("[Note] ");
+
+            // Truncate long notes
+            if note_text.len() > 100 {
+                let truncate_at = note_text
+                    .char_indices()
+                    .take_while(|(idx, _)| *idx <= 100)
+                    .last()
+                    .map_or(0, |(idx, ch)| idx + ch.len_utf8());
+
+                snippet.push_str(&note_text[..truncate_at]);
+                snippet.push_str("...");
+            } else {
+                snippet.push_str(&note_text);
+            }
         }
     }
 
@@ -1272,20 +1348,20 @@ mod tests {
 
     #[test]
     fn test_generate_snippet_title_only() {
-        let snippet = generate_snippet("Task Title", None, "query");
+        let snippet = generate_snippet("Task Title", None, "query", false, "[]");
         assert_eq!(snippet, "Task Title");
     }
 
     #[test]
     fn test_generate_snippet_with_short_body() {
-        let snippet = generate_snippet("Title", Some("Short body text"), "query");
+        let snippet = generate_snippet("Title", Some("Short body text"), "query", false, "[]");
         assert_eq!(snippet, "Title\nShort body text");
     }
 
     #[test]
     fn test_generate_snippet_with_long_body() {
         let long_body = "a".repeat(150);
-        let snippet = generate_snippet("Title", Some(&long_body), "query");
+        let snippet = generate_snippet("Title", Some(&long_body), "query", false, "[]");
 
         // Should truncate at ~100 chars + "..."
         assert!(snippet.starts_with("Title\n"));
@@ -1296,7 +1372,7 @@ mod tests {
     #[test]
     fn test_generate_snippet_exactly_100_chars() {
         let body = "a".repeat(100);
-        let snippet = generate_snippet("Title", Some(&body), "query");
+        let snippet = generate_snippet("Title", Some(&body), "query", false, "[]");
 
         // Should include all 100 chars without "..."
         assert_eq!(snippet, format!("Title\n{body}"));
@@ -1307,7 +1383,7 @@ mod tests {
     fn test_generate_snippet_unicode_safe() {
         // Test that truncation doesn't split multibyte characters
         let body = "Hello 世界! ".repeat(20); // Mix of ASCII and multibyte chars
-        let snippet = generate_snippet("Title", Some(&body), "query");
+        let snippet = generate_snippet("Title", Some(&body), "query", false, "[]");
 
         // Should not panic and should be valid UTF-8
         assert!(snippet.starts_with("Title\n"));
@@ -1317,14 +1393,14 @@ mod tests {
 
     #[test]
     fn test_generate_snippet_empty_body() {
-        let snippet = generate_snippet("Title", Some(""), "query");
+        let snippet = generate_snippet("Title", Some(""), "query", false, "[]");
         assert_eq!(snippet, "Title\n");
     }
 
     #[test]
     fn test_generate_snippet_newlines_in_body() {
         let body = "First line\nSecond line\nThird line";
-        let snippet = generate_snippet("Title", Some(body), "query");
+        let snippet = generate_snippet("Title", Some(body), "query", false, "[]");
         assert_eq!(snippet, "Title\nFirst line\nSecond line\nThird line");
     }
 
@@ -1332,7 +1408,7 @@ mod tests {
     fn test_generate_snippet_truncation_boundary() {
         // Test truncation at exactly a character boundary
         let body = "x".repeat(99) + "yz"; // 101 chars
-        let snippet = generate_snippet("Title", Some(&body), "query");
+        let snippet = generate_snippet("Title", Some(&body), "query", false, "[]");
 
         assert!(snippet.ends_with("..."));
         // The implementation truncates at the last char boundary <= 100, which includes
@@ -1347,7 +1423,7 @@ mod tests {
     fn test_generate_snippet_emoji_safe() {
         // Emojis are multibyte - ensure no splitting
         let body = "Test 😀 emoji 🎉 handling ".repeat(10);
-        let snippet = generate_snippet("Title", Some(&body), "query");
+        let snippet = generate_snippet("Title", Some(&body), "query", false, "[]");
 
         // Should handle emojis without panicking
         assert!(snippet.starts_with("Title\n"));
@@ -1583,5 +1659,101 @@ mod tests {
         let (fts_query, filters) = parse_query("\"first phrase\" \"second phrase\"");
         assert_eq!(fts_query, "\"first phrase\" \"second phrase\"");
         assert!(filters.is_empty());
+    }
+
+    // ============================================================================
+    // Contextual Notes Tests
+    // ============================================================================
+
+    #[test]
+    fn test_extract_notes_text_empty() {
+        let text = extract_notes_text("[]");
+        assert_eq!(text, "");
+    }
+
+    #[test]
+    fn test_extract_notes_text_single_note() {
+        let notes_json = r#"[{"text":"Use library X","line_number":10}]"#;
+        let text = extract_notes_text(notes_json);
+        assert_eq!(text, "Use library X");
+    }
+
+    #[test]
+    fn test_extract_notes_text_multiple_notes() {
+        let notes_json = r#"[{"text":"Use library X","line_number":10},{"text":"Target < 100ms","line_number":11}]"#;
+        let text = extract_notes_text(notes_json);
+        assert_eq!(text, "Use library X Target < 100ms");
+    }
+
+    #[test]
+    fn test_extract_notes_text_invalid_json() {
+        let text = extract_notes_text("invalid json");
+        assert_eq!(text, "");
+    }
+
+    #[test]
+    fn test_find_matching_note_found() {
+        let notes_json = r#"[{"text":"Use library X","line_number":10},{"text":"Target < 100ms","line_number":11}]"#;
+        let result = find_matching_note(notes_json, "library");
+        assert_eq!(result, Some("Use library X".to_string()));
+    }
+
+    #[test]
+    fn test_find_matching_note_case_insensitive() {
+        let notes_json = r#"[{"text":"Use library X","line_number":10}]"#;
+        let result = find_matching_note(notes_json, "LIBRARY");
+        assert_eq!(result, Some("Use library X".to_string()));
+    }
+
+    #[test]
+    fn test_find_matching_note_not_found() {
+        let notes_json = r#"[{"text":"Use library X","line_number":10}]"#;
+        let result = find_matching_note(notes_json, "database");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_find_matching_note_empty() {
+        let result = find_matching_note("[]", "library");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_generate_snippet_with_matching_note() {
+        let notes_json = r#"[{"text":"Use library X for parsing","line_number":10}]"#;
+        let snippet = generate_snippet("Title", Some("Body text"), "library", true, notes_json);
+        assert_eq!(
+            snippet,
+            "Title\nBody text\n[Note] Use library X for parsing"
+        );
+    }
+
+    #[test]
+    fn test_generate_snippet_with_long_note() {
+        let long_note = "a".repeat(150);
+        let notes_json = format!(r#"[{{"text":"{long_note}","line_number":10}}]"#);
+        let snippet = generate_snippet("Title", None, "aaa", true, &notes_json);
+
+        assert!(snippet.contains("[Note]"));
+        assert!(snippet.ends_with("..."));
+        // Should truncate note to ~100 chars
+        assert!(snippet.len() < long_note.len() + 50);
+    }
+
+    #[test]
+    fn test_generate_snippet_note_without_match() {
+        let notes_json = r#"[{"text":"Use library X","line_number":10}]"#;
+        let snippet = generate_snippet("Title", Some("Body"), "query", false, notes_json);
+        // Should not include note if notes_match is false
+        assert_eq!(snippet, "Title\nBody");
+        assert!(!snippet.contains("[Note]"));
+    }
+
+    #[test]
+    fn test_generate_snippet_with_multiple_notes_matches_first() {
+        let notes_json = r#"[{"text":"First note with keyword","line_number":10},{"text":"Second note with keyword","line_number":11}]"#;
+        let snippet = generate_snippet("Title", None, "keyword", true, notes_json);
+        // Should match first note
+        assert_eq!(snippet, "Title\n[Note] First note with keyword");
     }
 }

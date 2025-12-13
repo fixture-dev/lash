@@ -643,7 +643,19 @@ fn format_matched_fields(fields: &[String], formatter: &TextFormatter) -> String
         return String::new();
     }
 
-    let fields_str = format!("[{}]", fields.join(", "));
+    // Replace "contextual_notes" with a more user-friendly label
+    let display_fields: Vec<String> = fields
+        .iter()
+        .map(|f| {
+            if f == "contextual_notes" {
+                "note".to_string()
+            } else {
+                f.clone()
+            }
+        })
+        .collect();
+
+    let fields_str = format!("[{}]", display_fields.join(", "));
     formatter.format_muted(&fields_str)
 }
 
@@ -684,6 +696,18 @@ mod tests {
         assert_eq!(
             format_matched_fields(&["title".to_string(), "body".to_string()], &formatter),
             "[title, body]"
+        );
+        // Test that contextual_notes is displayed as "note"
+        assert_eq!(
+            format_matched_fields(&["contextual_notes".to_string()], &formatter),
+            "[note]"
+        );
+        assert_eq!(
+            format_matched_fields(
+                &["title".to_string(), "contextual_notes".to_string()],
+                &formatter
+            ),
+            "[title, note]"
         );
     }
 
