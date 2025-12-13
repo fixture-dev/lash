@@ -79,26 +79,26 @@ Key semantic distinction:
 
 ### Phase 4: Linter Rules
 
-- [ ] Task 4.1: Add note indentation rule
+- [x] Task 4.1: Add note indentation rule
   - Create `NoteIndentationRule` in linter rules
   - Check note indent is multiple of 2 spaces
   - Check note indent is exactly 2 spaces deeper than parent task
   - Add diagnostic code `E_NOTE_INVALID_INDENT`
   - Add auto-fix capability for indentation
 
-- [ ] Task 4.2: Add note length validation
+- [x] Task 4.2: Add note length validation
   - Create `NoteLengthRule` in linter rules
   - Add `W_NOTE_TOO_LONG` warning at 200 characters
   - Add `E_NOTE_EXCESSIVE_LENGTH` error at 500 characters
   - Measure length excluding indentation and bullet
 
-- [ ] Task 4.3: Add note nesting rule
+- [x] Task 4.3: Add note nesting rule
   - Create `NoteNestingRule` in linter rules
   - Add `E_NOTE_HAS_CHILDREN` error code
   - Detect items nested under contextual notes
   - Add help text suggesting conversion to task if children needed
 
-- [ ] Task 4.4: Add note ordering guideline (optional)
+- [x] Task 4.4: Add note ordering guideline (optional)
   - Create `NoteOrderingRule` (style category)
   - Add `W_NOTE_AFTER_CHILD_TASKS` warning
   - Make configurable via `warn_note_ordering: bool`

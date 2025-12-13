@@ -20,8 +20,8 @@ pub use syntax::{
 // Re-export all semantic rules for convenience
 pub use semantic::{
     AutoWaiveRule, BrokenDocFragmentRule, DescriptionLengthRule, DuplicateIdRule, EmptyTitleRule,
-    StatusConsistencyRule, ValidDateRule, ValidDocReferenceRule, ValidEstimateRule, ValidLabelRule,
-    ValidOwnerRule,
+    NoteIndentationRule, NoteLengthRule, NoteNestingRule, NoteOrderingRule, StatusConsistencyRule,
+    ValidDateRule, ValidDocReferenceRule, ValidEstimateRule, ValidLabelRule, ValidOwnerRule,
 };
 
 // Re-export all cross-file rules for convenience

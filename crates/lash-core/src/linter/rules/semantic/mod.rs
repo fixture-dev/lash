@@ -17,12 +17,20 @@
 //! - **Empty titles** - Tasks have non-empty titles
 //! - **Description length** - Descriptions are within reasonable length limits
 //! - **Doc fragment validation** - Fragment references point to existing headings
+//! - **Note indentation** - Contextual notes have correct indentation
+//! - **Note length** - Contextual notes are within length limits
+//! - **Note nesting** - Contextual notes don't have nested children
+//! - **Note ordering** - Contextual notes appear before child tasks (style)
 
 pub mod auto_waive;
 pub mod broken_doc_fragment;
 pub mod description_length;
 pub mod duplicate_id;
 pub mod empty_title;
+pub mod note_indentation;
+pub mod note_length;
+pub mod note_nesting;
+pub mod note_ordering;
 pub mod status_consistency;
 pub mod valid_date;
 pub mod valid_doc_reference;
@@ -35,6 +43,10 @@ pub use broken_doc_fragment::BrokenDocFragmentRule;
 pub use description_length::DescriptionLengthRule;
 pub use duplicate_id::DuplicateIdRule;
 pub use empty_title::EmptyTitleRule;
+pub use note_indentation::NoteIndentationRule;
+pub use note_length::NoteLengthRule;
+pub use note_nesting::NoteNestingRule;
+pub use note_ordering::NoteOrderingRule;
 pub use status_consistency::StatusConsistencyRule;
 pub use valid_date::ValidDateRule;
 pub use valid_doc_reference::ValidDocReferenceRule;

@@ -122,7 +122,7 @@ impl Default for RuleRegistry {
 ///
 /// Creates a registry with all built-in linting rules:
 /// - 8 syntax rules (Task #2 - Complete)
-/// - 11 semantic rules (Task #3 - Complete)
+/// - 15 semantic rules (Task #3 - Complete, plus contextual notes rules)
 /// - 5 cross-file rules (Task #4 - Complete)
 ///
 /// # Arguments
@@ -154,6 +154,10 @@ impl Default for RuleRegistry {
 /// 9. Description Length Limit (`W_SEM_DESC_TOO_LONG`, `E_SEM_DESC_TOO_LONG`)
 /// 10. Valid Documentation Reference (`E_SEM_INVALID_DOC`)
 /// 11. Broken Documentation Fragment (`W_SEM_DOC_FRAGMENT`)
+/// 12. Note Indentation (`E_NOTE_INVALID_INDENT`)
+/// 13. Note Length (`W_NOTE_TOO_LONG`, `E_NOTE_EXCESSIVE_LENGTH`)
+/// 14. Note Nesting (`E_NOTE_HAS_CHILDREN`)
+/// 15. Note Ordering (`W_NOTE_AFTER_CHILD_TASKS`)
 ///
 /// # Cross-File Rules
 ///
@@ -163,6 +167,7 @@ impl Default for RuleRegistry {
 /// 4. Orphaned Files (`W_INDEX_ORPHAN`)
 /// 5. Valid Dependency Path Resolution (`E_LINK_INVALID_PATH`)
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn register_default_rules(config: Option<&LintConfig>) -> RuleRegistry {
     use crate::linter::rules;
 
@@ -250,6 +255,24 @@ pub fn register_default_rules(config: Option<&LintConfig>) -> RuleRegistry {
     registry.register(
         RuleCategory::Semantic,
         Arc::new(rules::BrokenDocFragmentRule::new()),
+    );
+
+    // Register contextual notes rules
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::NoteIndentationRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::NoteLengthRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::NoteNestingRule::new()),
+    );
+    registry.register(
+        RuleCategory::Semantic,
+        Arc::new(rules::NoteOrderingRule::new()),
     );
 
     // Register cross-file rules (Task #4)
@@ -382,10 +405,10 @@ mod tests {
     #[test]
     fn test_default_registry() {
         let registry = register_default_rules(None);
-        // Should have 8 syntax rules (Task #2) + 11 semantic rules (Task #3) + 5 cross-file rules (Task #4)
-        assert_eq!(registry.rule_count(), 24);
+        // Should have 8 syntax rules + 15 semantic rules (11 base + 4 contextual notes) + 5 cross-file rules
+        assert_eq!(registry.rule_count(), 28);
         assert_eq!(registry.category_count(RuleCategory::Syntax), 8);
-        assert_eq!(registry.category_count(RuleCategory::Semantic), 11);
+        assert_eq!(registry.category_count(RuleCategory::Semantic), 15);
         assert_eq!(registry.category_count(RuleCategory::CrossFile), 5);
     }
 
@@ -397,10 +420,10 @@ mod tests {
         };
 
         let registry = register_default_rules(Some(&config));
-        assert_eq!(registry.rule_count(), 24);
+        assert_eq!(registry.rule_count(), 28);
 
         // Create linter and verify it was configured properly
         let linter = registry.create_linter(config.clone());
-        assert_eq!(linter.rule_count(), 24);
+        assert_eq!(linter.rule_count(), 28);
     }
 }
