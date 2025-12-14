@@ -69,6 +69,38 @@ cargo fmt --check
 cargo clippy --workspace -- -D warnings
 ```
 
+## Installation
+
+Install Lash globally using the install script:
+
+```bash
+# Install Lash to ~/.cargo/bin/lash
+./scripts/install.sh
+
+# Force reinstall (useful for local development/testing)
+./scripts/install.sh reinstall
+
+# Check installation status
+./scripts/install.sh status
+
+# Uninstall
+./scripts/install.sh uninstall
+```
+
+The script builds an optimized release binary and installs it to `~/.cargo/bin/lash`. Ensure `~/.cargo/bin` is in your PATH:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+Alternatively, install directly with Cargo:
+
+```bash
+cargo install --path crates/lash-cli          # Install
+cargo install --path crates/lash-cli --force  # Reinstall
+cargo uninstall lash-cli                      # Uninstall
+```
+
 ## Try the Playground
 
 Want to explore Lash's features without setting up your own project? Try the playground!
