@@ -15,16 +15,24 @@ The Forest Guardian is the first boss encounter, teaching players to recognize a
 ## Tasks
 
 - [ ] Design boss mechanics
+  - Phase 1: Single attack pattern, 6-second cooldown
+  - Phase 2: Two attack combo, falling leaves hazard
+  - Phase 3: Fast attacks, arena shrinks
   - [x] Define attack patterns
   - [x] Create phase transitions
   - [ ] Balance health and damage
   - [ ] Add vulnerability windows
 - [ ] Create boss animations
+  - Boss sprite: 64x64 pixels (4x player size)
+  - All animations need telegraph frames (0.5 second windup)
   - [ ] Idle animation cycle
   - [ ] Attack animations
   - [ ] Damage reaction sprites
   - [ ] Death sequence
 - [ ] Implement boss arena
+  - Arena: 20x12 tiles, locked camera
+  - Trees on edges are destructible for power-up drops
+  - Escape route opens after boss defeat (5 second timer)
   - [ ] Design arena hazards
   - [ ] Add destructible elements
   - [ ] Create escape route trigger
