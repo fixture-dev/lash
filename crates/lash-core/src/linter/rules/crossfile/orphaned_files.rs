@@ -74,7 +74,7 @@ impl OrphanedFilesRule {
         references
     }
 
-    /// Extract path from a markdown link format: [text](path)
+    /// Extract path from a markdown link format: `\[text\](path)`
     ///
     /// Returns Some(path) if found, None otherwise
     fn extract_markdown_link_path(text: &str) -> Option<String> {
