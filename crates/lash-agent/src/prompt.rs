@@ -11,18 +11,126 @@ use crate::tokens::{distribute_budget, estimate_tokens, truncate_to_budget};
 
 /// Generate CLI commands reference text
 fn generate_cli_commands_text() -> String {
-    r"## CLI Commands
+    r"## CLI Quick Reference
 
+```bash
+# Discovery & Navigation
+lash list                      # List all tasks
+lash list --tree               # Show task hierarchy
+lash list --label backend      # Filter by label
+lash list --status open        # Filter by status (open, done, blocked, waived)
+lash search <QUERY>            # Full-text search tasks and descriptions
+lash show <ID>                 # Show task/file details with dependencies
+
+# Validation & Formatting
+lash lint [PATH...]            # Validate task files (run after every edit!)
+lash lint --fix                # Auto-fix some lint errors
+lash format [PATH...]          # Normalize formatting
+
+# Indexing
+lash index                     # Update SQLite index after changes
+lash check-index               # Verify database consistency
+
+# Dependencies & Links
+lash graph                     # Show dependency graph (ascii)
+lash graph --format dot        # Export as DOT/Graphviz
+lash check-links               # Find broken references
+lash check-links --fix         # Auto-fix broken references
+
+# Error Help
+lash explain <CODE>            # Explain error code (e.g., E001)
+lash explain --list            # List all error codes
 ```
-lash lint [PATH...]       Validate task files for format/semantic errors
-lash format [PATH...]     Normalize formatting of task files
-lash index                Rebuild SQLite index from Markdown files
-lash list [FILTERS]       List tasks (--label, --status, --owner, --path)
-lash search <QUERY>       Fuzzy search tasks by keyword
-lash show <ID>            Show details for a task or file
-lash graph                Output dependency graph (--format dot|mermaid|json)
-lash check-links          Find broken @depends-on and @doc references
-lash tui                  Launch interactive terminal UI
+
+"
+    .to_string()
+}
+
+/// Generate workflow guidance text
+fn generate_workflow_text() -> String {
+    r#"## Recommended Workflow
+
+When working with Lash task files, follow this workflow for consistent results:
+
+1. **Discover** - Understand the project structure first
+   ```bash
+   lash list --tree              # See task hierarchy
+   lash search "relevant term"   # Find related tasks
+   ```
+
+2. **Read** - Open and understand the file before editing
+   - Check existing task structure and annotations
+   - Note the file's `@id`, `@labels`, and dependencies
+   - Review contextual notes for requirements
+
+3. **Modify** - Make your changes following the format specification
+   - Add tasks with proper checkbox syntax: `- [ ] Task description`
+   - Use 2-space indentation for subtasks
+   - Add contextual notes (plain bullets) for requirements
+
+4. **Validate** - Always lint after editing
+   ```bash
+   lash lint path/to/file.md    # Validate immediately after changes
+   ```
+
+5. **Index** - Update the database
+   ```bash
+   lash index                    # Rebuild index to reflect changes
+   ```
+
+"#
+    .to_string()
+}
+
+/// Generate error recovery guidance text
+fn generate_error_recovery_text() -> String {
+    r"## Common Issues & Recovery
+
+### Lint Errors
+
+| Code | Issue | Fix |
+|------|-------|-----|
+| E001 | Duplicate task ID | Ensure `@id` values are unique within each file |
+| E002 | Invalid dependency | Verify `@depends-on` target file and task exist |
+| E003 | Max depth exceeded | Flatten hierarchy (max 3-4 levels) |
+| E004 | Invalid status | Use valid checkbox: `[ ]`, `[x]`, `[-]`, `[!]` |
+
+Run `lash explain <CODE>` for detailed explanations.
+
+### Index Out of Sync
+
+If search results seem stale or incorrect:
+```bash
+lash index --force    # Force full reindex
+lash check-index      # Verify consistency
+```
+
+### Broken References
+
+If `@depends-on` or `@doc` references are broken:
+```bash
+lash check-links              # Find broken references
+lash check-links --fix        # Attempt auto-fix
+```
+
+"
+    .to_string()
+}
+
+/// Generate project structure guidance text
+fn generate_project_structure_text() -> String {
+    r"## Project Structure
+
+Lash projects follow these conventions:
+
+- **Index file**: `tasks/tasks.md` or `lash.index.md` at project root
+- **Task files**: Usually under `tasks/` directory
+- **Database**: `.lash/lash.db` (auto-generated, gitignore this)
+- **Config**: `.lash/config.toml` or `~/.lash/config.toml`
+
+To find the project structure:
+```bash
+lash list --tree    # Shows all task files and hierarchy
 ```
 
 "
@@ -257,7 +365,7 @@ impl Default for PromptConfig {
             include_examples: true,
             include_tasks: true,
             include_descriptions: true,
-            include_notes: false,
+            include_notes: true, // Default to true - contextual notes provide valuable context
             token_budget: None,
             label_filter: Vec::new(),
             path_filter: None,
@@ -427,6 +535,12 @@ Lash is a minimalist, Markdown-native task tracker where:
         .to_string();
         sections.push(("overview", overview, 10));
 
+        // Workflow guidance (high priority - agents need this)
+        sections.push(("workflow", generate_workflow_text(), 10));
+
+        // Project structure guidance
+        sections.push(("project_structure", generate_project_structure_text(), 9));
+
         // Schema
         let schema_text = generate_schema_text();
         sections.push(("schema", format!("## File Format\n\n{schema_text}\n"), 10));
@@ -505,6 +619,9 @@ When working with Lash files:
 "
         .to_string();
         sections.push(("safety", safety, 9));
+
+        // Error recovery guidance
+        sections.push(("error_recovery", generate_error_recovery_text(), 8));
 
         // Apply token budget if specified
         let (final_content, truncated) = if let Some(budget) = self.config.token_budget {
@@ -1058,7 +1175,7 @@ mod tests {
     #[test]
     fn test_prompt_config_include_notes_default() {
         let config = PromptConfig::default();
-        assert!(!config.include_notes);
+        assert!(config.include_notes); // Default is now true for better agent context
     }
 
     #[test]

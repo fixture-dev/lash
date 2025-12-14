@@ -16,6 +16,50 @@ Lash is a minimalist, Markdown-native task tracker where:
 - SQLite provides fast indexing and search (fully reconstructible from Markdown)
 - Format is strictly enforced by linting for predictability
 
+## Recommended Workflow
+
+When working with Lash task files, follow this workflow for consistent results:
+
+1. **Discover** - Understand the project structure first
+   ```bash
+   lash list --tree              # See task hierarchy
+   lash search "relevant term"   # Find related tasks
+   ```
+
+2. **Read** - Open and understand the file before editing
+   - Check existing task structure and annotations
+   - Note the file's `@id`, `@labels`, and dependencies
+   - Review contextual notes for requirements
+
+3. **Modify** - Make your changes following the format specification
+   - Add tasks with proper checkbox syntax: `- [ ] Task description`
+   - Use 2-space indentation for subtasks
+   - Add contextual notes (plain bullets) for requirements
+
+4. **Validate** - Always lint after editing
+   ```bash
+   lash lint path/to/file.md    # Validate immediately after changes
+   ```
+
+5. **Index** - Update the database
+   ```bash
+   lash index                    # Rebuild index to reflect changes
+   ```
+
+## Project Structure
+
+Lash projects follow these conventions:
+
+- **Index file**: `tasks/tasks.md` or `lash.index.md` at project root
+- **Task files**: Usually under `tasks/` directory
+- **Database**: `.lash/lash.db` (auto-generated, gitignore this)
+- **Config**: `.lash/config.toml` or `~/.lash/config.toml`
+
+To find the project structure:
+```bash
+lash list --tree    # Shows all task files and hierarchy
+```
+
 ## File Format
 
 # Lash Task File Format
@@ -202,18 +246,35 @@ This includes password hashing with bcrypt and JWT tokens for session management
 - [x] Set up billing database schema
 ```
 
-## CLI Commands
+## CLI Quick Reference
 
-```
-lash lint [PATH...]       Validate task files for format/semantic errors
-lash format [PATH...]     Normalize formatting of task files
-lash index                Rebuild SQLite index from Markdown files
-lash list [FILTERS]       List tasks (--label, --status, --owner, --path)
-lash search <QUERY>       Fuzzy search tasks by keyword
-lash show <ID>            Show details for a task or file
-lash graph                Output dependency graph (--format dot|mermaid|json)
-lash check-links          Find broken @depends-on and @doc references
-lash tui                  Launch interactive terminal UI
+```bash
+# Discovery & Navigation
+lash list                      # List all tasks
+lash list --tree               # Show task hierarchy
+lash list --label backend      # Filter by label
+lash list --status open        # Filter by status (open, done, blocked, waived)
+lash search <QUERY>            # Full-text search tasks and descriptions
+lash show <ID>                 # Show task/file details with dependencies
+
+# Validation & Formatting
+lash lint [PATH...]            # Validate task files (run after every edit!)
+lash lint --fix                # Auto-fix some lint errors
+lash format [PATH...]          # Normalize formatting
+
+# Indexing
+lash index                     # Update SQLite index after changes
+lash check-index               # Verify database consistency
+
+# Dependencies & Links
+lash graph                     # Show dependency graph (ascii)
+lash graph --format dot        # Export as DOT/Graphviz
+lash check-links               # Find broken references
+lash check-links --fix         # Auto-fix broken references
+
+# Error Help
+lash explain <CODE>            # Explain error code (e.g., E001)
+lash explain --list            # List all error codes
 ```
 
 ## Safety Guidelines
@@ -227,3 +288,32 @@ When working with Lash files:
 5. **Use unique IDs** within each file
 6. **Run `lash index`** after making changes to update the search index
 7. **Keep `@doc` references valid** - ensure referenced documentation files exist
+
+## Common Issues & Recovery
+
+### Lint Errors
+
+| Code | Issue | Fix |
+|------|-------|-----|
+| E001 | Duplicate task ID | Ensure `@id` values are unique within each file |
+| E002 | Invalid dependency | Verify `@depends-on` target file and task exist |
+| E003 | Max depth exceeded | Flatten hierarchy (max 3-4 levels) |
+| E004 | Invalid status | Use valid checkbox: `[ ]`, `[x]`, `[-]`, `[!]` |
+
+Run `lash explain <CODE>` for detailed explanations.
+
+### Index Out of Sync
+
+If search results seem stale or incorrect:
+```bash
+lash index --force    # Force full reindex
+lash check-index      # Verify consistency
+```
+
+### Broken References
+
+If `@depends-on` or `@doc` references are broken:
+```bash
+lash check-links              # Find broken references
+lash check-links --fix        # Attempt auto-fix
+```
