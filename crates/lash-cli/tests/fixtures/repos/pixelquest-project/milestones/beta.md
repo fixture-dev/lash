@@ -16,19 +16,27 @@ Beta release: all features complete, full content, ready for polish. External pl
 ## Tasks
 
 - [ ] All worlds complete
+  - Target: 2-3 hours total playtime
+  - Each world introduces at least one new mechanic
   - [x] World 2 levels built
   - [ ] World 2 boss implemented
   - [ ] All biomes functional
 - [ ] Feature complete
+  - No placeholder art or temporary mechanics
+  - All systems must be properly balanced
   - [ ] All power-ups implemented
   - [ ] Special moves unlockable
   - [ ] Boss fights polished
 - [ ] Content complete
+  - Asset checklist in docs/asset-checklist.md
+  - Audio normalized and compressed
   - [ ] All sprite art finished
   - [ ] All animations done
   - [ ] Music tracks complete
   - [ ] Sound effects complete
 - [ ] Beta playtesting
+  - Recruit 20-30 external testers via Discord
+  - Use feedback form: forms.gle/beta-feedback
   - [ ] External playtest round
   - [ ] Feedback integration
   - [ ] Performance optimization

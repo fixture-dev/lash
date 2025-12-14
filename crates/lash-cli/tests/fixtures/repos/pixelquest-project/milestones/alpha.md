@@ -17,18 +17,26 @@ Alpha release: core gameplay loop playable from start to finish. Focus is on val
 ## Tasks
 
 - [x] Core gameplay complete
+  - Target: 30 minutes of playable content
+  - Core loop must feel fun before expanding scope
   - [x] Player movement working
   - [x] Basic enemies implemented
   - [x] Physics stable
 - [x] First world playable
+  - 4 levels + boss = minimum viable world
+  - Save/load must work for progress persistence
   - [x] Tutorial levels complete
   - [x] World 1 levels built
   - [x] World 1 boss functional
 - [x] Essential systems working
+  - All systems at 60 FPS on minimum spec hardware
+  - No crashes during 1-hour play sessions
   - [x] Rendering pipeline
   - [x] Audio playback
   - [x] Input handling
 - [x] Alpha playtesting
+  - Playtest with 5-10 internal testers
+  - Track completion rates and death hotspots
   - [x] Internal playtest round
   - [x] Bug fixing pass
   - [x] Balance adjustments
