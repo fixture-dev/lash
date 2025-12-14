@@ -3,7 +3,7 @@
 //! This module identifies which dependencies are blocking a task's completion and
 //! provides actionable reports for developers to understand and resolve blockers.
 //!
-//! The blocker analyzer builds on top of [`StatusComputer`] to provide:
+//! The blocker analyzer builds on top of `StatusComputer` to provide:
 //! - Direct blocker identification (immediate dependencies blocking a task)
 //! - Transitive blocker analysis (chains of blocked dependencies)
 //! - Root blocker identification (fundamental blockers with no further dependencies)

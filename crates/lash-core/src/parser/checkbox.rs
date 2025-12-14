@@ -354,7 +354,7 @@ impl PlainBulletLine {
     ///
     /// This function parses lines that start with "- " but are NOT:
     /// - Checkbox lines (e.g., "- [ ] task")
-    /// - Markdown links (e.g., "- [Link Text](url)")
+    /// - Markdown links (e.g., `- \[Link Text\](url)`)
     ///
     /// # Arguments
     ///
@@ -478,7 +478,7 @@ impl PlainBulletLine {
 
 /// Check if a line (after indentation) is a markdown link pattern
 ///
-/// Detects patterns like "- [Link Text](url)" which should NOT be parsed
+/// Detects patterns like `- \[Link Text\](url)` which should NOT be parsed
 /// as plain bullets.
 fn is_markdown_link(rest: &str) -> bool {
     // Pattern: "- [text](url)"
