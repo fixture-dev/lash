@@ -38,7 +38,7 @@ pub struct AnnotationSpec {
 /// Specification for a checkbox status value
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusSpec {
-    /// Status symbol (e.g., "[ ]", "[x]")
+    /// Status symbol (e.g., `[ ]`, `[x]`)
     pub symbol: String,
     /// Name of the status (e.g., "open", "done")
     pub name: String,
