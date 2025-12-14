@@ -4,8 +4,8 @@
 //! including what causes them, why they matter, and how to fix them.
 
 use anyhow::Result;
+use lash_cli::theme::CliTheme;
 use lash_types::error_explanations::{all_error_codes, explain_error};
-use owo_colors::OwoColorize;
 
 /// Arguments for the explain command
 #[derive(Debug, Clone)]
@@ -30,9 +30,16 @@ pub struct ExplainArgs {
 ///
 /// Exit code: 0 (success), 1 (error code not found)
 pub fn execute(args: &ExplainArgs) -> Result<i32> {
+    // Load theme based on no_color flag and output format
+    let theme = if args.json {
+        None
+    } else {
+        CliTheme::load(None, !args.no_color)?
+    };
+
     // Handle --list flag
     if args.list {
-        return list_error_codes(args);
+        return list_error_codes(args, theme.as_ref());
     }
 
     // Look up the error code
@@ -42,18 +49,15 @@ pub fn execute(args: &ExplainArgs) -> Result<i32> {
         if args.json {
             print_json(&explanation)?;
         } else {
-            print_human(&explanation, !args.no_color);
+            print_human(&explanation, theme.as_ref());
         }
         Ok(0)
     } else {
-        if args.no_color {
-            eprintln!("Error: Unknown error code '{}'", args.code);
+        let error_msg = format!("Error: Unknown error code '{}'", args.code);
+        if let Some(t) = &theme {
+            eprintln!("{}", t.style_error(&error_msg));
         } else {
-            eprintln!(
-                "{}: Unknown error code '{}'",
-                "Error".red().bold(),
-                args.code
-            );
+            eprintln!("{error_msg}");
         }
         eprintln!();
         eprintln!("Run 'lash explain --list' to see all available error codes.");
@@ -68,7 +72,7 @@ fn normalize_code(code: &str) -> String {
 }
 
 /// List all available error codes
-fn list_error_codes(args: &ExplainArgs) -> Result<i32> {
+fn list_error_codes(args: &ExplainArgs, theme: Option<&CliTheme>) -> Result<i32> {
     let codes = all_error_codes();
 
     if args.json {
@@ -78,11 +82,9 @@ fn list_error_codes(args: &ExplainArgs) -> Result<i32> {
         });
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
-        let use_color = !args.no_color;
-
-        if use_color {
-            println!("{}", "Available Error Codes".cyan().bold());
-            println!("{}", "=".repeat(50).dimmed());
+        if let Some(t) = theme {
+            println!("{}", t.style_info("Available Error Codes"));
+            println!("{}", t.style_muted(&"=".repeat(50)));
         } else {
             println!("Available Error Codes");
             println!("{}", "=".repeat(50));
@@ -122,21 +124,22 @@ fn list_error_codes(args: &ExplainArgs) -> Result<i32> {
             }
         }
 
-        print_category("Parse Errors", &parse_errors, use_color);
-        print_category("Lint Errors", &lint_errors, use_color);
-        print_category("Dependency Errors", &dep_errors, use_color);
-        print_category("Index Errors", &index_errors, use_color);
-        print_category("Query Errors", &query_errors, use_color);
-        print_category("Config Errors", &config_errors, use_color);
-        print_category("IO Errors", &io_errors, use_color);
-        print_category("Task Creation Errors", &create_errors, use_color);
-        print_category("Internal Errors", &internal_errors, use_color);
+        print_category("Parse Errors", &parse_errors, theme);
+        print_category("Lint Errors", &lint_errors, theme);
+        print_category("Dependency Errors", &dep_errors, theme);
+        print_category("Index Errors", &index_errors, theme);
+        print_category("Query Errors", &query_errors, theme);
+        print_category("Config Errors", &config_errors, theme);
+        print_category("IO Errors", &io_errors, theme);
+        print_category("Task Creation Errors", &create_errors, theme);
+        print_category("Internal Errors", &internal_errors, theme);
 
         println!();
-        if use_color {
-            println!("{} {} error codes available", "Total:".bold(), codes.len());
+        let total_msg = format!("Total: {} error codes available", codes.len());
+        if let Some(t) = theme {
+            println!("{}", t.style_label(&total_msg));
         } else {
-            println!("Total: {} error codes available", codes.len());
+            println!("{total_msg}");
         }
         println!();
         println!("Run 'lash explain <CODE>' for detailed information about a specific error.");
@@ -146,21 +149,21 @@ fn list_error_codes(args: &ExplainArgs) -> Result<i32> {
 }
 
 /// Print a category of error codes
-fn print_category(name: &str, codes: &[&str], use_color: bool) {
+fn print_category(name: &str, codes: &[&str], theme: Option<&CliTheme>) {
     if codes.is_empty() {
         return;
     }
 
-    if use_color {
-        println!("{}", name.yellow().bold());
+    if let Some(t) = theme {
+        println!("{}", t.style_warning(name));
     } else {
         println!("{name}");
     }
 
     for code in codes {
         if let Some(explanation) = explain_error(code) {
-            if use_color {
-                println!("  {} - {}", code.green(), explanation.summary);
+            if let Some(t) = theme {
+                println!("  {} - {}", t.style_success(code), explanation.summary);
             } else {
                 println!("  {code} - {}", explanation.summary);
             }
@@ -172,44 +175,51 @@ fn print_category(name: &str, codes: &[&str], use_color: bool) {
 }
 
 /// Print explanation in human-readable format
-fn print_human(explanation: &lash_types::error_explanations::ErrorExplanation, use_color: bool) {
+fn print_human(
+    explanation: &lash_types::error_explanations::ErrorExplanation,
+    theme: Option<&CliTheme>,
+) {
     println!();
 
-    if use_color {
-        println!("{} {}", "Error:".red().bold(), explanation.code.yellow());
+    if let Some(t) = theme {
+        println!(
+            "{} {}",
+            t.style_error("Error:"),
+            t.style_warning(explanation.code)
+        );
         println!();
-        println!("{}", explanation.summary.white().bold());
+        println!("{}", t.style_label(explanation.summary));
         println!();
 
-        println!("{}", "Description".cyan().bold());
-        println!("{}", "-".repeat(40).dimmed());
+        println!("{}", t.style_info("Description"));
+        println!("{}", t.style_muted(&"-".repeat(40)));
         println!("{}", explanation.description);
         println!();
 
-        println!("{}", "Why It Matters".cyan().bold());
-        println!("{}", "-".repeat(40).dimmed());
+        println!("{}", t.style_info("Why It Matters"));
+        println!("{}", t.style_muted(&"-".repeat(40)));
         println!("{}", explanation.why_it_matters);
         println!();
 
-        println!("{}", "How To Fix".cyan().bold());
-        println!("{}", "-".repeat(40).dimmed());
+        println!("{}", t.style_info("How To Fix"));
+        println!("{}", t.style_muted(&"-".repeat(40)));
         println!("{}", explanation.how_to_fix);
         println!();
 
         if let Some(bad) = explanation.example_bad {
-            println!("{}", "Example (Incorrect)".red().bold());
-            println!("{}", "-".repeat(40).dimmed());
+            println!("{}", t.style_error("Example (Incorrect)"));
+            println!("{}", t.style_muted(&"-".repeat(40)));
             for line in bad.lines() {
-                println!("  {}", line.dimmed());
+                println!("  {}", t.style_muted(line));
             }
             println!();
         }
 
         if let Some(good) = explanation.example_good {
-            println!("{}", "Example (Correct)".green().bold());
-            println!("{}", "-".repeat(40).dimmed());
+            println!("{}", t.style_success("Example (Correct)"));
+            println!("{}", t.style_muted(&"-".repeat(40)));
             for line in good.lines() {
-                println!("  {}", line.green());
+                println!("  {}", t.style_success(line));
             }
             println!();
         }

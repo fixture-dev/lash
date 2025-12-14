@@ -5,6 +5,7 @@
 
 use anyhow::{Context, Result};
 use lash_cli::formatter::Verbosity;
+use lash_cli::theme::CliTheme;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::instrument;
@@ -41,6 +42,13 @@ pub struct InitArgs {
 #[instrument(skip(args), fields(no_index = args.no_index, force = args.force))]
 #[allow(clippy::needless_pass_by_value)]
 pub fn execute(args: InitArgs) -> Result<i32> {
+    // Load theme based on no_color flag and output format
+    let theme = if args.json {
+        None
+    } else {
+        CliTheme::load(None, !args.no_color)?
+    };
+
     let cwd = args.path.clone().map_or_else(
         || std::env::current_dir().context("Failed to get current directory"),
         Ok,
@@ -63,7 +71,12 @@ pub fn execute(args: InitArgs) -> Result<i32> {
             });
             println!("{}", serde_json::to_string_pretty(&error)?);
         } else {
-            eprintln!("Error: Lash project already exists in: {}", cwd.display());
+            let error_msg = format!("Error: Lash project already exists in: {}", cwd.display());
+            if let Some(ref t) = theme {
+                eprintln!("{}", t.style_error(&error_msg));
+            } else {
+                eprintln!("{error_msg}");
+            }
             if index_file.exists() {
                 eprintln!("  Found: lash.index.md");
             }
@@ -95,13 +108,30 @@ pub fn execute(args: InitArgs) -> Result<i32> {
         if let Err(e) = run_index(&cwd, &args) {
             tracing::warn!(error = %e, "Failed to run initial index (non-fatal)");
             if !args.json {
-                eprintln!("Warning: Initial indexing failed: {e}");
+                let warning_msg = format!("Warning: Initial indexing failed: {e}");
+                if let Some(ref t) = theme {
+                    eprintln!("{}", t.style_warning(&warning_msg));
+                } else {
+                    eprintln!("{warning_msg}");
+                }
                 eprintln!("You can run 'lash index' manually to index your project.");
             }
         }
     }
 
     // Print success message
+    print_success_message(&args, &cwd, &index_file, theme.as_ref())?;
+
+    Ok(0)
+}
+
+/// Print the success message after initialization
+fn print_success_message(
+    args: &InitArgs,
+    cwd: &Path,
+    index_file: &Path,
+    theme: Option<&CliTheme>,
+) -> Result<()> {
     if args.json {
         let success = serde_json::json!({
             "success": true,
@@ -111,6 +141,26 @@ pub fn execute(args: InitArgs) -> Result<i32> {
             "message": "Lash project initialized successfully"
         });
         println!("{}", serde_json::to_string_pretty(&success)?);
+    } else if let Some(t) = theme {
+        println!();
+        println!(
+            "{}",
+            t.style_success("Lash project initialized successfully!")
+        );
+        println!();
+        println!("{} {}", t.style_info("Location:"), cwd.display());
+        println!("  {} lash.index.md", t.style_success("Created:"));
+        println!("  {} .lash/", t.style_success("Created:"));
+        println!();
+        println!("{}:", t.style_info("Next steps"));
+        println!("  1. Edit lash.index.md to define your project structure");
+        println!("  2. Create task files referenced in the index");
+        println!("  3. Run 'lash list' to see your tasks");
+        println!();
+        println!(
+            "For more information, see: {}",
+            t.style_muted("https://github.com/your-org/lash")
+        );
     } else {
         println!();
         println!("Lash project initialized successfully!");
@@ -126,8 +176,7 @@ pub fn execute(args: InitArgs) -> Result<i32> {
         println!();
         println!("For more information, see: https://github.com/your-org/lash");
     }
-
-    Ok(0)
+    Ok(())
 }
 
 /// Run the index command on the project

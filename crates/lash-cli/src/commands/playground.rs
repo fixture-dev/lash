@@ -13,6 +13,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::instrument;
 
+use lash_cli::theme::CliTheme;
+
 /// Arguments for the playground command
 #[derive(Debug, Clone)]
 pub struct PlaygroundArgs {
@@ -22,8 +24,7 @@ pub struct PlaygroundArgs {
     pub reset: bool,
     /// Enable JSON output mode
     pub json: bool,
-    /// Disable colored output (currently unused but reserved for future use)
-    #[allow(dead_code)]
+    /// Disable colored output
     pub no_color: bool,
 }
 
@@ -38,6 +39,13 @@ pub struct PlaygroundArgs {
 /// Exit code: 0 (success), 1 (error)
 #[instrument(skip(args), fields(path = ?args.path, reset = args.reset))]
 pub fn execute(args: PlaygroundArgs) -> Result<i32> {
+    // Load theme based on no_color flag and output format
+    let theme = if args.json {
+        None
+    } else {
+        CliTheme::load(None, !args.no_color)?
+    };
+
     // Determine target path (default to ./playground/)
     let target_path = args.path.as_ref().map_or_else(
         || std::env::current_dir().map(|p| p.join("playground")),
@@ -56,6 +64,13 @@ pub fn execute(args: PlaygroundArgs) -> Result<i32> {
                     "suggestion": "Use --reset to regenerate"
                 });
                 println!("{}", serde_json::to_string_pretty(&error)?);
+            } else if let Some(ref t) = theme {
+                eprintln!(
+                    "{}: Playground already exists at: {}",
+                    t.style_error("Error"),
+                    target_path.display()
+                );
+                eprintln!("Use --reset to delete and regenerate.");
             } else {
                 eprintln!(
                     "Error: Playground already exists at: {}",
@@ -98,6 +113,34 @@ pub fn execute(args: PlaygroundArgs) -> Result<i32> {
             "message": "PixelQuest playground initialized successfully"
         });
         println!("{}", serde_json::to_string_pretty(&success)?);
+    } else if let Some(ref t) = theme {
+        println!();
+        println!(
+            "{} PixelQuest playground initialized successfully!",
+            t.style_success("🎮")
+        );
+        println!();
+        println!("{} {}", t.style_info("Location:"), target_path.display());
+        println!();
+        println!("{}:", t.style_info("Next steps"));
+        println!("  {} {}", t.style_label("cd"), target_path.display());
+        println!(
+            "  {}              # List all tasks",
+            t.style_label("lash list")
+        );
+        println!(
+            "  {}     # Search for tasks",
+            t.style_label("lash search \"boss\"")
+        );
+        println!(
+            "  {}  # View specific file",
+            t.style_label("lash show features/player-movement.md")
+        );
+        println!(
+            "  {}  # Read the full guide",
+            t.style_label("cat PLAYGROUND_GUIDE.md")
+        );
+        println!();
     } else {
         println!();
         println!("🎮 PixelQuest playground initialized successfully!");

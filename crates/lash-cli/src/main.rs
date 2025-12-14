@@ -617,6 +617,7 @@ fn run(cli: LashCli) -> Result<()> {
                 format,
                 dry_run,
                 interactive,
+                no_color: cli.no_color,
             };
             let exit_code = commands::add::execute(&args)?;
             process::exit(exit_code);

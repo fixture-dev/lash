@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use lash_cli::cli::ConfigCommand;
 use lash_cli::config::Config;
-use owo_colors::OwoColorize;
+use lash_cli::theme::CliTheme;
 use std::path::PathBuf;
 
 /// Arguments for the config command
@@ -32,15 +32,22 @@ pub struct ConfigArgs {
 ///
 /// Exit code: 0 (success), 1 (error)
 pub fn execute(args: &ConfigArgs) -> Result<i32> {
+    // Load theme based on no_color flag and output format
+    let theme = if args.json {
+        None
+    } else {
+        CliTheme::load(None, !args.no_color)?
+    };
+
     match &args.command {
-        ConfigCommand::Get { key } => get(args, key),
-        ConfigCommand::Set { key, value, user } => set(args, key, value, *user),
-        ConfigCommand::List { changed } => list(args, *changed),
+        ConfigCommand::Get { key } => get(args, key, theme.as_ref()),
+        ConfigCommand::Set { key, value, user } => set(args, key, value, *user, theme.as_ref()),
+        ConfigCommand::List { changed } => list(args, *changed, theme.as_ref()),
     }
 }
 
 /// Get a configuration value
-fn get(args: &ConfigArgs, key: &str) -> Result<i32> {
+fn get(args: &ConfigArgs, key: &str, theme: Option<&CliTheme>) -> Result<i32> {
     // Load merged configuration
     let config = Config::load_merged(args.project_root.as_deref())?;
 
@@ -64,20 +71,26 @@ fn get(args: &ConfigArgs, key: &str) -> Result<i32> {
                 "error": format!("Configuration key not found: {key}")
             });
             eprintln!("{}", serde_json::to_string_pretty(&json)?);
-        } else if args.no_color {
-            eprintln!("Error: Configuration key not found: {key}");
         } else {
-            eprintln!(
-                "{}: Configuration key not found: {key}",
-                "Error".red().bold(),
-            );
+            let error_msg = format!("Configuration key not found: {key}");
+            if let Some(t) = theme {
+                eprintln!("{}: {error_msg}", t.style_error("Error"));
+            } else {
+                eprintln!("Error: {error_msg}");
+            }
         }
         Ok(1)
     }
 }
 
 /// Set a configuration value
-fn set(args: &ConfigArgs, key: &str, value: &str, user: bool) -> Result<i32> {
+fn set(
+    args: &ConfigArgs,
+    key: &str,
+    value: &str,
+    user: bool,
+    theme: Option<&CliTheme>,
+) -> Result<i32> {
     // Determine the config file path
     let config_path = if user {
         Config::user_config_path()
@@ -124,31 +137,33 @@ fn set(args: &ConfigArgs, key: &str, value: &str, user: bool) -> Result<i32> {
             "config_path": config_path.display().to_string()
         });
         println!("{}", serde_json::to_string_pretty(&json)?);
-    } else if args.no_color {
-        println!("Configuration updated: {key} = {value}");
-        println!("Config file: {}", config_path.display());
     } else {
-        println!(
-            "{}: {} = {}",
-            "Configuration updated".green().bold(),
-            key,
-            value
-        );
-        println!("{}: {}", "Config file".dimmed(), config_path.display());
+        let msg = format!("{key} = {value}");
+        if let Some(t) = theme {
+            println!("{}: {msg}", t.style_success("Configuration updated"));
+            println!(
+                "{}: {}",
+                t.style_muted("Config file"),
+                config_path.display()
+            );
+        } else {
+            println!("Configuration updated: {msg}");
+            println!("Config file: {}", config_path.display());
+        }
     }
 
     Ok(0)
 }
 
 /// List all configuration settings
-fn list(args: &ConfigArgs, changed: bool) -> Result<i32> {
+fn list(args: &ConfigArgs, changed: bool, theme: Option<&CliTheme>) -> Result<i32> {
     let config = Config::load_merged(args.project_root.as_deref())?;
     let defaults = Config::default();
 
     if args.json {
         list_json(&config)?;
     } else {
-        list_text(&config, &defaults, changed, !args.no_color);
+        list_text(&config, &defaults, changed, theme);
     }
 
     Ok(0)
@@ -181,11 +196,11 @@ fn list_json(config: &Config) -> Result<()> {
 }
 
 /// Output config as human-readable text
-fn list_text(config: &Config, defaults: &Config, changed: bool, use_color: bool) {
+fn list_text(config: &Config, defaults: &Config, changed: bool, theme: Option<&CliTheme>) {
     // Header
-    if use_color {
-        println!("{}", "Configuration Settings".cyan().bold());
-        println!("{}", "=".repeat(50).dimmed());
+    if let Some(t) = theme {
+        println!("{}", t.style_info("Configuration Settings"));
+        println!("{}", t.style_muted(&"=".repeat(50)));
     } else {
         println!("Configuration Settings");
         println!("{}", "=".repeat(50));
@@ -193,40 +208,40 @@ fn list_text(config: &Config, defaults: &Config, changed: bool, use_color: bool)
     println!();
 
     // Output section
-    print_section("[output]", use_color);
+    print_section("[output]", theme);
     print_setting(
         "  default_format",
         &config.output.default_format,
         changed && config.output.default_format == defaults.output.default_format,
-        use_color,
+        theme,
     );
     print_setting(
         "  verbosity",
         &config.output.verbosity,
         changed && config.output.verbosity == defaults.output.verbosity,
-        use_color,
+        theme,
     );
     print_setting(
         "  color",
         &config.output.color.to_string(),
         changed && config.output.color == defaults.output.color,
-        use_color,
+        theme,
     );
     println!();
 
     // Linter section
-    print_section("[linter]", use_color);
+    print_section("[linter]", theme);
     print_setting(
         "  max_depth",
         &config.linter.max_depth.to_string(),
         changed && config.linter.max_depth == defaults.linter.max_depth,
-        use_color,
+        theme,
     );
     print_setting(
         "  auto_fix",
         &config.linter.auto_fix.to_string(),
         changed && config.linter.auto_fix == defaults.linter.auto_fix,
-        use_color,
+        theme,
     );
     let rules_str = if config.linter.rules.is_empty() {
         "[]".to_string()
@@ -237,63 +252,63 @@ fn list_text(config: &Config, defaults: &Config, changed: bool, use_color: bool)
         "  rules",
         &rules_str,
         changed && config.linter.rules.is_empty(),
-        use_color,
+        theme,
     );
     println!();
 
     // Search section
-    print_section("[search]", use_color);
+    print_section("[search]", theme);
     let threshold_unchanged =
         (config.search.fuzzy_threshold - defaults.search.fuzzy_threshold).abs() < f32::EPSILON;
     print_setting(
         "  fuzzy_threshold",
         &config.search.fuzzy_threshold.to_string(),
         changed && threshold_unchanged,
-        use_color,
+        theme,
     );
     print_setting(
         "  limit",
         &config.search.limit.to_string(),
         changed && config.search.limit == defaults.search.limit,
-        use_color,
+        theme,
     );
     println!();
 
     // Agent section
-    print_section("[agent]", use_color);
+    print_section("[agent]", theme);
     print_setting(
         "  token_budget",
         &config.agent.token_budget.to_string(),
         changed && config.agent.token_budget == defaults.agent.token_budget,
-        use_color,
+        theme,
     );
     print_setting(
         "  default_format",
         &config.agent.default_format,
         changed && config.agent.default_format == defaults.agent.default_format,
-        use_color,
+        theme,
     );
     println!();
 }
 
 /// Print a section header
-fn print_section(name: &str, use_color: bool) {
-    if use_color {
-        println!("{}", name.yellow().bold());
+fn print_section(name: &str, theme: Option<&CliTheme>) {
+    if let Some(t) = theme {
+        println!("{}", t.style_warning(name));
     } else {
         println!("{name}");
     }
 }
 
 /// Print a single setting
-fn print_setting(key: &str, value: &str, skip_if_unchanged: bool, use_color: bool) {
+fn print_setting(key: &str, value: &str, skip_if_unchanged: bool, theme: Option<&CliTheme>) {
     // Skip unchanged settings if filtering for changed only
     if skip_if_unchanged {
         return;
     }
 
-    if use_color {
-        println!("{} = \"{}\"", key.green(), value);
+    if let Some(t) = theme {
+        println!("{} = \"{}\"", t.style_label(key), value);
     } else {
         println!("{key} = \"{value}\"");
     }

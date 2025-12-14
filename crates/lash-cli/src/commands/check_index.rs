@@ -4,6 +4,7 @@
 
 use anyhow::{Context, Result};
 use lash_cli::formatter::Verbosity;
+use lash_cli::theme::CliTheme;
 use lash_db::{open_database, IndexVerifier, VerifierConfig};
 use std::path::{Path, PathBuf};
 
@@ -35,6 +36,13 @@ pub struct CheckIndexArgs {
 ///
 /// Exit code: 0 (no issues), 1 (issues found), 3 (DB error)
 pub fn execute(args: CheckIndexArgs) -> Result<i32> {
+    // Load theme based on no_color flag and output format
+    let theme = if args.json {
+        None
+    } else {
+        CliTheme::load(None, !args.no_color)?
+    };
+
     // Determine project root
     let project_root = if let Some(root) = args.project_root {
         root
@@ -76,7 +84,7 @@ pub fn execute(args: CheckIndexArgs) -> Result<i32> {
     if args.json {
         output_json_report(&report)?;
     } else {
-        output_text_report(&report, args.diff, args.no_color);
+        output_text_report(&report, args.diff, theme.as_ref());
     }
 
     // Return exit code based on findings
@@ -139,17 +147,18 @@ fn output_json_report(report: &lash_db::VerificationReport) -> Result<()> {
 }
 
 /// Output verification report as human-readable text
-fn output_text_report(report: &lash_db::VerificationReport, show_diff: bool, no_color: bool) {
-    use owo_colors::OwoColorize;
-
-    let use_color = !no_color;
-
+fn output_text_report(
+    report: &lash_db::VerificationReport,
+    show_diff: bool,
+    theme: Option<&CliTheme>,
+) {
     // Header
     if report.is_clean() {
-        if use_color {
-            println!("{}", "✓ Index is in sync".green().bold());
+        let msg = "✓ Index is in sync";
+        if let Some(t) = theme {
+            println!("{}", t.style_success(msg));
         } else {
-            println!("✓ Index is in sync");
+            println!("{msg}");
         }
         println!();
         println!(
@@ -160,15 +169,11 @@ fn output_text_report(report: &lash_db::VerificationReport, show_diff: bool, no_
     }
 
     // Issues found
-    if use_color {
-        println!(
-            "{}",
-            format!("Found {} issue(s)", report.total_issues())
-                .red()
-                .bold()
-        );
+    let msg = format!("Found {} issue(s)", report.total_issues());
+    if let Some(t) = theme {
+        println!("{}", t.style_error(&msg));
     } else {
-        println!("Found {} issue(s)", report.total_issues());
+        println!("{msg}");
     }
     println!();
 
@@ -177,50 +182,50 @@ fn output_text_report(report: &lash_db::VerificationReport, show_diff: bool, no_
     print_issue_count_if_any(
         "Stale files (in DB but not on disk)",
         report.count_by_kind(lash_db::IssueKind::StaleFile),
-        use_color,
+        theme,
     );
     print_issue_count_if_any(
         "Missing files (on disk but not in DB)",
         report.count_by_kind(lash_db::IssueKind::MissingFile),
-        use_color,
+        theme,
     );
     print_issue_count_if_any(
         "Hash mismatches (file modified)",
         report.count_by_kind(lash_db::IssueKind::HashMismatch),
-        use_color,
+        theme,
     );
     print_issue_count_if_any(
         "Orphaned tasks",
         report.count_by_kind(lash_db::IssueKind::OrphanedTasks),
-        use_color,
+        theme,
     );
     print_issue_count_if_any(
         "Orphaned dependencies",
         report.count_by_kind(lash_db::IssueKind::OrphanedDependencies),
-        use_color,
+        theme,
     );
 
     // Detailed issue list if requested
     if show_diff {
         println!();
-        if use_color {
-            println!("{}", "Detailed issues:".bold());
+        let msg = "Detailed issues:";
+        if let Some(t) = theme {
+            println!("{}", t.style_label(msg));
         } else {
-            println!("Detailed issues:");
+            println!("{msg}");
         }
         println!();
 
         for issue in &report.issues {
-            if use_color {
-                println!(
-                    "{} {}",
-                    format!("[{}]", issue.kind).yellow().bold(),
-                    issue.path.display().to_string().cyan()
-                );
+            let kind = format!("[{}]", issue.kind);
+            let path = issue.path.display().to_string();
+
+            if let Some(t) = theme {
+                println!("{} {}", t.style_warning(&kind), t.style_info(&path));
                 println!("  {}", issue.description);
-                println!("  {}", issue.fix_suggestion.dimmed());
+                println!("  {}", t.style_muted(&issue.fix_suggestion));
             } else {
-                println!("[{}] {}", issue.kind, issue.path.display());
+                println!("{kind} {path}");
                 println!("  {}", issue.description);
                 println!("  {}", issue.fix_suggestion);
             }
@@ -230,22 +235,23 @@ fn output_text_report(report: &lash_db::VerificationReport, show_diff: bool, no_
 
     // Suggestion
     println!();
-    if use_color {
-        println!("{}", "To fix these issues, run:".bold());
-        println!("  {}", "lash index".cyan());
+    let msg = "To fix these issues, run:";
+    let cmd = "lash index";
+    if let Some(t) = theme {
+        println!("{}", t.style_label(msg));
+        println!("  {}", t.style_info(cmd));
     } else {
-        println!("To fix these issues, run:");
-        println!("  lash index");
+        println!("{msg}");
+        println!("  {cmd}");
     }
 }
 
 /// Print an issue count if non-zero
-fn print_issue_count_if_any(label: &str, count: usize, use_color: bool) {
-    use owo_colors::OwoColorize;
-
+fn print_issue_count_if_any(label: &str, count: usize, theme: Option<&CliTheme>) {
     if count > 0 {
-        if use_color {
-            println!("  {} {}", label, count.to_string().red());
+        let count_str = count.to_string();
+        if let Some(t) = theme {
+            println!("  {}: {}", label, t.style_error(&count_str));
         } else {
             println!("  {label}: {count}");
         }

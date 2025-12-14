@@ -4,6 +4,7 @@
 
 use anyhow::{Context as AnyhowContext, Result};
 use clap::Args;
+use lash_cli::theme::CliTheme;
 use lash_core::creation::service::TaskCreationService;
 use lash_types::creation::{
     FileTarget, InsertPosition, ParentRef, TaskCreationRequest, TaskCreationRequestBuilder,
@@ -83,6 +84,10 @@ pub struct AddArgs {
     /// Interactive mode (prompt for missing fields)
     #[arg(short, long)]
     pub interactive: bool,
+
+    /// Disable colored output
+    #[arg(long)]
+    pub no_color: bool,
 }
 
 /// Execute the add command
@@ -95,6 +100,13 @@ pub struct AddArgs {
 ///
 /// Exit code: 0 (success), 1 (validation error), 3 (creation error)
 pub fn execute(args: &AddArgs) -> Result<i32> {
+    // Load theme based on no_color flag and output format
+    let theme = if args.format == "json" {
+        None
+    } else {
+        CliTheme::load(None, !args.no_color)?
+    };
+
     // 1. Find project root
     let project_root = {
         let cwd = std::env::current_dir().context("Failed to get current directory")?;
@@ -126,11 +138,11 @@ pub fn execute(args: &AddArgs) -> Result<i32> {
             // This ensures subsequent queries (lash list, lash show) see the new task
             reindex_project(&project_root, &config)?;
 
-            output_success(args, &result)?;
+            output_success(args, &result, theme.as_ref())?;
             Ok(0)
         }
         Err(errors) => {
-            output_errors(&errors, &args.format)?;
+            output_errors(&errors, &args.format, theme.as_ref())?;
             Ok(1)
         }
     }
@@ -232,7 +244,11 @@ fn parse_status(s: &str) -> Result<TaskStatus> {
 }
 
 /// Output success result
-fn output_success(args: &AddArgs, result: &lash_types::creation::TaskCreationResult) -> Result<()> {
+fn output_success(
+    args: &AddArgs,
+    result: &lash_types::creation::TaskCreationResult,
+    theme: Option<&CliTheme>,
+) -> Result<()> {
     if args.format == "json" {
         // Output JSON
         let json = serde_json::json!({
@@ -243,8 +259,26 @@ fn output_success(args: &AddArgs, result: &lash_types::creation::TaskCreationRes
             "is_new_file": result.is_new_file,
         });
         println!("{}", serde_json::to_string_pretty(&json)?);
+    } else if let Some(t) = theme {
+        // Text output with colors
+        if result.is_new_file {
+            println!(
+                "{} task {} in new file {}",
+                t.style_success("Created"),
+                t.style_label(&result.task_id),
+                t.style_info(&result.file_path.display().to_string())
+            );
+        } else {
+            println!(
+                "{} task {} at {}:{}",
+                t.style_success("Created"),
+                t.style_label(&result.task_id),
+                t.style_info(&result.file_path.display().to_string()),
+                t.style_muted(&result.line_number.to_string())
+            );
+        }
     } else {
-        // Text output
+        // Text output without colors
         if result.is_new_file {
             println!(
                 "Created task '{}' in new file {}",
@@ -267,6 +301,7 @@ fn output_success(args: &AddArgs, result: &lash_types::creation::TaskCreationRes
 fn output_errors(
     errors: &[lash_types::creation_errors::TaskCreationError],
     format: &str,
+    theme: Option<&CliTheme>,
 ) -> Result<()> {
     if format == "json" {
         let json = serde_json::json!({
@@ -280,6 +315,16 @@ fn output_errors(
             }).collect::<Vec<_>>(),
         });
         println!("{}", serde_json::to_string_pretty(&json)?);
+    } else if let Some(t) = theme {
+        for err in errors {
+            eprintln!(
+                "{} [{}]: {}",
+                t.style_error("Error"),
+                err.error_code(),
+                err.message()
+            );
+            eprintln!("  {}: {}", t.style_info("Help"), err.help());
+        }
     } else {
         for err in errors {
             eprintln!("Error [{}]: {}", err.error_code(), err.message());
@@ -416,6 +461,7 @@ mod tests {
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
+            no_color: true,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -447,6 +493,7 @@ mod tests {
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
+            no_color: true,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -481,6 +528,7 @@ mod tests {
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
+            no_color: true,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -509,6 +557,7 @@ mod tests {
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
+            no_color: true,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -537,6 +586,7 @@ mod tests {
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
+            no_color: true,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -568,6 +618,7 @@ mod tests {
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
+            no_color: true,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -599,6 +650,7 @@ mod tests {
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
+            no_color: true,
         };
 
         let project_root = PathBuf::from("/tmp");
