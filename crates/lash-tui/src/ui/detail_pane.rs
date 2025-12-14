@@ -68,19 +68,26 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, conn: &Connection
         frame.render_widget(paragraph, content_area);
     } else {
         // Check if tree view is available
-        let items: Vec<ListItem> = if let Some(task_trees) = &state.task_tree {
-            render_task_tree(task_trees, state, theme, conn)
-        } else {
-            render_flat_task_list(state, theme, conn)
-        };
+        // For tree view, we get both items and the item index for the selected task
+        // (which accounts for contextual notes being rendered as separate items)
+        let (items, selected_item_idx): (Vec<ListItem>, usize) =
+            if let Some(task_trees) = &state.task_tree {
+                render_task_tree(task_trees, state, theme, conn)
+            } else {
+                // Flat list: item index matches task index (no contextual notes in flat view)
+                (
+                    render_flat_task_list(state, theme, conn),
+                    state.selected_task_index,
+                )
+            };
 
         let list = List::new(items)
             .block(block)
             .highlight_style(themes::selected_style(theme));
 
-        // Create list state with current selection
+        // Create list state with the correct item index (accounts for contextual notes)
         let mut list_state = ListState::default();
-        list_state.select(Some(state.selected_task_index));
+        list_state.select(Some(selected_item_idx));
 
         frame.render_stateful_widget(list, content_area, &mut list_state);
     }
@@ -233,14 +240,22 @@ fn parse_description_with_highlights(
 }
 
 /// Render tasks in tree view
+///
+/// Returns the list items and the item index corresponding to the selected task.
+/// The item index accounts for contextual notes being rendered as separate items.
 fn render_task_tree(
     trees: &[TreeNode<TaskRecord>],
     state: &AppState,
     theme: &crate::colors::Theme,
     conn: &Connection,
-) -> Vec<ListItem<'static>> {
+) -> (Vec<ListItem<'static>>, usize) {
     let mut items = Vec::new();
     let chars = state.tree_chars;
+    // Track logical task index separately from items.len() because contextual notes
+    // are rendered as list items but don't count towards the task selection index
+    let mut task_index: usize = 0;
+    // Track the item index corresponding to the selected task for ListState scrolling
+    let mut selected_item_index: usize = 0;
 
     // Check if current file is an index file
     // Try tree view first (like task loading does), then fall back to flat list
@@ -270,6 +285,8 @@ fn render_task_tree(
         render_task_node(
             tree,
             &mut items,
+            &mut task_index,
+            &mut selected_item_index,
             state,
             theme,
             chars,
@@ -280,7 +297,7 @@ fn render_task_tree(
         );
     }
 
-    items
+    (items, selected_item_index)
 }
 
 /// Recursively render a task tree node
@@ -288,6 +305,8 @@ fn render_task_tree(
 fn render_task_node(
     node: &TreeNode<TaskRecord>,
     items: &mut Vec<ListItem<'static>>,
+    task_index: &mut usize,
+    selected_item_index: &mut usize,
     state: &AppState,
     theme: &crate::colors::Theme,
     chars: lash_types::tree::TreeChars,
@@ -296,8 +315,14 @@ fn render_task_node(
     is_index_file: bool,
     cross_file_links: &HashSet<i64>,
 ) {
-    let current_index = items.len();
-    let is_selected = current_index == state.selected_task_index;
+    // Use task_index for selection check, not items.len(), because items includes
+    // contextual notes which don't count towards the logical task selection index
+    let is_selected = *task_index == state.selected_task_index;
+
+    // Record the item index for the selected task (used for ListState scrolling)
+    if is_selected {
+        *selected_item_index = items.len();
+    }
 
     // Build tree prefix
     let prefix = build_tree_prefix(node.depth, is_last, ancestors_is_last, chars);
@@ -345,6 +370,8 @@ fn render_task_node(
     );
 
     items.push(ListItem::new(line));
+    // Increment task_index after pushing the task (contextual notes don't increment)
+    *task_index += 1;
 
     // Render contextual notes if expanded and present
     if node.expanded && !node.data.contextual_notes.is_empty() {
@@ -371,6 +398,8 @@ fn render_task_node(
             render_task_node(
                 child,
                 items,
+                task_index,
+                selected_item_index,
                 state,
                 theme,
                 chars,
