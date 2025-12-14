@@ -13,6 +13,7 @@ use lash_db::{open_database, DocRefRepository, FileRepository, TaskRepository};
 use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
+use lash_cli::theme::CliTheme;
 
 /// Arguments for the agent-prompt command
 #[derive(Debug, Clone)]
@@ -32,7 +33,6 @@ pub struct AgentPromptArgs {
     #[allow(dead_code)] // Reserved for future JSON output formatting
     pub json: bool,
     /// Disable colored output
-    #[allow(dead_code)] // Reserved for future colored output
     pub no_color: bool,
     /// Include file descriptions in the prompt
     pub include_descriptions: bool,
@@ -57,6 +57,13 @@ pub struct AgentPromptArgs {
 /// - Database does not exist or cannot be opened (if task filtering is requested)
 /// - Query execution fails
 pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
+    // Load theme for warnings/info messages only (NOT for the prompt itself)
+    let theme = if args.json {
+        None
+    } else {
+        CliTheme::load(None, !args.no_color)?
+    };
+
     // Determine project root
     let project_root = if let Some(ref root) = args.project_root {
         root.clone()
@@ -123,10 +130,15 @@ pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
     );
 
     if prompt.truncated && !args.json {
-        eprintln!(
+        let msg = format!(
             "\nNote: Content was truncated to fit within token budget (estimated {} tokens)",
             prompt.token_count
         );
+        if let Some(ref t) = theme {
+            eprintln!("{}", t.style_warning(&msg));
+        } else {
+            eprintln!("{msg}");
+        }
     }
 
     Ok(0)
