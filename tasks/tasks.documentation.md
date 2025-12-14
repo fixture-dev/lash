@@ -35,41 +35,41 @@ Create a comprehensive README that serves as the entry point for new users and p
 
 ### Subtasks
 
-- [ ] Write README.md with sections:
-  - [ ] **Project description**
-    - [ ] What is Lash?
-    - [ ] Key features
-    - [ ] Use cases
-  - [ ] **Installation**
-    - [ ] From source (`cargo install --path .`)
+- [x] Write README.md with sections:
+  - [x] **Project description**
+    - [x] What is Lash?
+    - [x] Key features
+    - [x] Use cases
+  - [x] **Installation**
+    - [x] From source (`cargo install --path .`)
     - [ ] From crates.io (when published)
     - [ ] Binary releases (future)
-  - [ ] **Quick start**
-    - [ ] Create a task file
-    - [ ] Index the project
-    - [ ] List and query tasks
-    - [ ] Basic workflow
-  - [ ] **Project status**
-    - [ ] Current version
-    - [ ] Development status
-    - [ ] Roadmap (link to tasks)
-  - [ ] **Documentation links**
-    - [ ] User guide
-    - [ ] Design document
-    - [ ] Contributing guide
-  - [ ] **License and credits**
-- [ ] Add badges
-  - [ ] CI status
-  - [ ] Coverage (if tracked)
-  - [ ] License
-  - [ ] Rust version
-- [ ] Add example snippet
-  - [ ] Show minimal task file
-  - [ ] Show basic commands
-  - [ ] Keep it short and clear
-- [ ] Add animated demo (optional)
-  - [ ] GIF or video showing Lash in action
-  - [ ] Use `asciinema` or similar
+  - [x] **Quick start**
+    - [x] Create a task file
+    - [x] Index the project
+    - [x] List and query tasks
+    - [x] Basic workflow
+  - [x] **Project status**
+    - [x] Current version
+    - [x] Development status
+    - [x] Roadmap (link to tasks)
+  - [x] **Documentation links**
+    - [x] User guide
+    - [x] Design document
+    - [x] Contributing guide
+  - [x] **License and credits**
+- [x] Add badges
+  - [x] CI status
+  - [-] Coverage (if tracked)
+  - [x] License
+  - [x] Rust version
+- [x] Add example snippet
+  - [x] Show minimal task file
+  - [x] Show basic commands
+  - [x] Keep it short and clear
+- [-] Add animated demo (optional)
+  - [-] GIF or video showing Lash in action
+  - [-] Use `asciinema` or similar
 
 ### Success Criteria
 
@@ -97,65 +97,65 @@ Write a comprehensive user guide covering all features and workflows.
 
 ### Subtasks
 
-- [ ] Create `docs/user-guide.md` with chapters:
-  - [ ] **Introduction**
-    - [ ] What is Lash?
-    - [ ] When to use Lash
-    - [ ] Core concepts (tasks, dependencies, labels)
-  - [ ] **Getting Started**
-    - [ ] Installation
-    - [ ] Creating your first project
-    - [ ] Understanding project structure
-  - [ ] **Task File Format**
-    - [ ] File structure
-    - [ ] Annotations reference (`@id`, `@labels`, etc.)
-    - [ ] Checkbox statuses
-    - [ ] Dependency references
-    - [ ] Examples
-  - [ ] **CLI Commands**
-    - [ ] `lash lint` - validation and linting
-    - [ ] `lash format` - auto-formatting
-    - [ ] `lash index` - indexing and DB management
-    - [ ] `lash list` - querying tasks
-    - [ ] `lash show` - viewing task details
-    - [ ] `lash search` - fuzzy search
-    - [ ] `lash graph` - dependency visualization
-    - [ ] `lash check-links` - link validation
-    - [ ] `lash agent-prompt` - agent integration
-    - [ ] `lash tui` - terminal UI
-  - [ ] **Dependencies**
-    - [ ] How dependencies work
-    - [ ] Implicit (hierarchy) dependencies
-    - [ ] Explicit (`@depends-on`) dependencies
-    - [ ] Directory-level dependencies
-    - [ ] Completion rules
-    - [ ] Handling blockers
-  - [ ] **Labels and Filtering**
-    - [ ] Using labels for organization
-    - [ ] Filtering by labels
-    - [ ] Cross-cutting concerns
-  - [ ] **TUI Usage**
-    - [ ] Launching the TUI
-    - [ ] Navigation and keyboard shortcuts
-    - [ ] Viewing and editing tasks
-    - [ ] Agent view mode
-  - [ ] **Best Practices**
-    - [ ] Project organization
-    - [ ] Task granularity
-    - [ ] Dependency management
-    - [ ] Label conventions
-  - [ ] **Troubleshooting**
-    - [ ] Common errors and solutions
-    - [ ] DB consistency issues
-    - [ ] Performance tips
-- [ ] Add diagrams and screenshots
-  - [ ] TUI screenshot
-  - [ ] Dependency graph example
-  - [ ] File structure diagram
-- [ ] Add examples throughout
-  - [ ] Real-world task file examples
-  - [ ] Common workflows
-  - [ ] Complex dependency scenarios
+- [x] Create `docs/user-guide.md` with chapters:
+  - [x] **Introduction**
+    - [x] What is Lash?
+    - [x] When to use Lash
+    - [x] Core concepts (tasks, dependencies, labels)
+  - [x] **Getting Started**
+    - [x] Installation
+    - [x] Creating your first project
+    - [x] Understanding project structure
+  - [x] **Task File Format**
+    - [x] File structure
+    - [x] Annotations reference (`@id`, `@labels`, etc.)
+    - [x] Checkbox statuses
+    - [x] Dependency references
+    - [x] Examples
+  - [x] **CLI Commands**
+    - [x] `lash lint` - validation and linting
+    - [x] `lash format` - auto-formatting
+    - [x] `lash index` - indexing and DB management
+    - [x] `lash list` - querying tasks
+    - [x] `lash show` - viewing task details
+    - [x] `lash search` - fuzzy search
+    - [x] `lash graph` - dependency visualization
+    - [x] `lash check-links` - link validation
+    - [x] `lash agent-prompt` - agent integration
+    - [x] `lash tui` - terminal UI
+  - [x] **Dependencies**
+    - [x] How dependencies work
+    - [x] Implicit (hierarchy) dependencies
+    - [x] Explicit (`@depends-on`) dependencies
+    - [x] Directory-level dependencies
+    - [x] Completion rules
+    - [x] Handling blockers
+  - [x] **Labels and Filtering**
+    - [x] Using labels for organization
+    - [x] Filtering by labels
+    - [x] Cross-cutting concerns
+  - [x] **TUI Usage**
+    - [x] Launching the TUI
+    - [x] Navigation and keyboard shortcuts
+    - [x] Viewing and editing tasks
+    - [-] Agent view mode
+  - [x] **Best Practices**
+    - [x] Project organization
+    - [x] Task granularity
+    - [x] Dependency management
+    - [x] Label conventions
+  - [x] **Troubleshooting**
+    - [x] Common errors and solutions
+    - [x] DB consistency issues
+    - [x] Performance tips
+- [-] Add diagrams and screenshots
+  - [-] TUI screenshot
+  - [-] Dependency graph example
+  - [-] File structure diagram
+- [x] Add examples throughout
+  - [x] Real-world task file examples
+  - [x] Common workflows
+  - [x] Complex dependency scenarios
 
 ### Success Criteria
 
@@ -184,60 +184,60 @@ Write developer documentation for contributors and maintainers.
 
 ### Subtasks
 
-- [ ] Create `docs/developer-guide.md` with sections:
-  - [ ] **Architecture Overview**
-    - [ ] Crate structure (`lash-core`, `lash-db`, etc.)
-    - [ ] Module responsibilities
-    - [ ] Data flow diagram
-  - [ ] **Development Setup**
-    - [ ] Prerequisites
-    - [ ] Building from source
-    - [ ] Running tests
-    - [ ] Running benchmarks
-  - [ ] **Code Organization**
-    - [ ] Directory structure
-    - [ ] Naming conventions
-    - [ ] Module boundaries
-  - [ ] **Core Components**
-    - [ ] Markdown parser
-    - [ ] Linter
-    - [ ] Dependency resolver
-    - [ ] Indexing engine
-    - [ ] Query engine
-    - [ ] CLI framework
-    - [ ] TUI
-  - [ ] **Database Schema**
-    - [ ] Tables and relationships
-    - [ ] Indexes
-    - [ ] Queries
-  - [ ] **Error Handling**
-    - [ ] Error types
-    - [ ] Error codes
-    - [ ] Formatting strategies
-  - [ ] **Testing Strategy**
-    - [ ] Unit tests
-    - [ ] Integration tests
-    - [ ] E2E tests
-    - [ ] Benchmarks
-  - [ ] **Contributing**
-    - [ ] How to contribute
-    - [ ] Code style (rustfmt, clippy)
-    - [ ] PR process
-    - [ ] Review criteria
-  - [ ] **Release Process**
-    - [ ] Versioning
-    - [ ] Changelog
-    - [ ] Publishing to crates.io
-    - [ ] Binary releases
-- [ ] Create `CONTRIBUTING.md`
-  - [ ] Code of conduct
-  - [ ] How to file issues
-  - [ ] How to submit PRs
-  - [ ] Development workflow
-- [ ] Add architecture diagrams
-  - [ ] Crate dependency graph
-  - [ ] Data flow diagram
-  - [ ] CLI command flow
+- [x] Create `docs/developer-guide.md` with sections:
+  - [x] **Architecture Overview**
+    - [x] Crate structure (`lash-core`, `lash-db`, etc.)
+    - [x] Module responsibilities
+    - [x] Data flow diagram
+  - [x] **Development Setup**
+    - [x] Prerequisites
+    - [x] Building from source
+    - [x] Running tests
+    - [x] Running benchmarks
+  - [x] **Code Organization**
+    - [x] Directory structure
+    - [x] Naming conventions
+    - [x] Module boundaries
+  - [x] **Core Components**
+    - [x] Markdown parser
+    - [x] Linter
+    - [x] Dependency resolver
+    - [x] Indexing engine
+    - [x] Query engine
+    - [x] CLI framework
+    - [x] TUI
+  - [x] **Database Schema**
+    - [x] Tables and relationships
+    - [x] Indexes
+    - [x] Queries
+  - [x] **Error Handling**
+    - [x] Error types
+    - [x] Error codes
+    - [x] Formatting strategies
+  - [x] **Testing Strategy**
+    - [x] Unit tests
+    - [x] Integration tests
+    - [x] E2E tests
+    - [x] Benchmarks
+  - [x] **Contributing**
+    - [x] How to contribute
+    - [x] Code style (rustfmt, clippy)
+    - [x] PR process
+    - [x] Review criteria
+  - [x] **Release Process**
+    - [x] Versioning
+    - [x] Changelog
+    - [x] Publishing to crates.io
+    - [x] Binary releases
+- [x] Create `CONTRIBUTING.md`
+  - [x] Code of conduct
+  - [x] How to file issues
+  - [x] How to submit PRs
+  - [x] Development workflow
+- [-] Add architecture diagrams
+  - [-] Crate dependency graph
+  - [-] Data flow diagram
+  - [-] CLI command flow
 
 ### Success Criteria
 
@@ -325,38 +325,38 @@ Create practical examples and tutorials for common use cases.
 
 ### Subtasks
 
-- [ ] Create `examples/` directory with:
-  - [ ] **Example 1: Simple TODO list**
-    - [ ] Single file with basic tasks
-    - [ ] Show basic CLI workflow
-  - [ ] **Example 2: Multi-file project**
-    - [ ] Multiple task files
-    - [ ] Directory structure
-    - [ ] Dependencies between files
-  - [ ] **Example 3: Software project**
-    - [ ] Feature breakdown
-    - [ ] Module dependencies
-    - [ ] Labels for cross-cutting concerns
-  - [ ] **Example 4: Agent-driven workflow**
-    - [ ] Agent-tagged tasks
-    - [ ] Using `lash agent-prompt`
-    - [ ] Agent making updates
-  - [ ] **Example 5: Complex dependencies**
-    - [ ] Nested dependencies
-    - [ ] Blocked tasks
-    - [ ] Waived tasks
-- [ ] Write tutorial walkthrough for each example
-  - [ ] Step-by-step instructions
-  - [ ] Expected outputs
-  - [ ] Explanations
-- [ ] Add example outputs
-  - [ ] CLI command outputs
-  - [ ] Dependency graphs
-  - [ ] TUI screenshots
-- [ ] Create video tutorials (optional)
-  - [ ] Screen recordings with narration
-  - [ ] Publish to YouTube or similar
-  - [ ] Link from documentation
+- [x] Create `examples/` directory with:
+  - [x] **Example 1: Simple TODO list**
+    - [x] Single file with basic tasks
+    - [x] Show basic CLI workflow
+  - [x] **Example 2: Multi-file project**
+    - [x] Multiple task files
+    - [x] Directory structure
+    - [x] Dependencies between files
+  - [x] **Example 3: Software project**
+    - [x] Feature breakdown
+    - [x] Module dependencies
+    - [x] Labels for cross-cutting concerns
+  - [x] **Example 4: Agent-driven workflow**
+    - [x] Agent-tagged tasks
+    - [x] Using `lash agent-prompt`
+    - [x] Agent making updates
+  - [x] **Example 5: Complex dependencies**
+    - [x] Nested dependencies
+    - [x] Blocked tasks
+    - [x] Waived tasks
+- [x] Write tutorial walkthrough for each example
+  - [x] Step-by-step instructions
+  - [x] Expected outputs
+  - [x] Explanations
+- [-] Add example outputs
+  - [-] CLI command outputs
+  - [-] Dependency graphs
+  - [-] TUI screenshots
+- [-] Create video tutorials (optional)
+  - [-] Screen recordings with narration
+  - [-] Publish to YouTube or similar
+  - [-] Link from documentation
 
 ### Success Criteria
 
@@ -384,52 +384,52 @@ Create specific documentation for AI agents using Lash.
 
 ### Subtasks
 
-- [ ] Create `docs/agent-guide.md` with sections:
-  - [ ] **Introduction for Agents**
-    - [ ] What is Lash?
-    - [ ] Why agents should use Lash
-    - [ ] Agent-friendly features
-  - [ ] **Getting Started (for agents)**
-    - [ ] Obtaining Lash schema
-    - [ ] Understanding file format
-    - [ ] Allowed operations
-  - [ ] **File Format Schema**
-    - [ ] Formal specification
-    - [ ] Annotation reference
-    - [ ] Dependency syntax
-    - [ ] Constraints and rules
-  - [ ] **Safe Modifications**
-    - [ ] Adding tasks
-    - [ ] Updating task status
-    - [ ] Adding dependencies
-    - [ ] Waiving tasks
-    - [ ] What NOT to do
-  - [ ] **Workflows**
-    - [ ] Workflow 1: Get context (`lash agent-prompt`)
-    - [ ] Workflow 2: Read task files
-    - [ ] Workflow 3: Modify tasks
-    - [ ] Workflow 4: Validate (`lash lint`)
-    - [ ] Workflow 5: Update index (`lash index`)
-  - [ ] **Error Handling**
-    - [ ] Common errors and solutions
-    - [ ] Lint error recovery
-    - [ ] Broken dependency fixes
-  - [ ] **Token Minimization**
-    - [ ] Using sparse context
-    - [ ] ID-based references
-    - [ ] Summarization strategies
-  - [ ] **Examples**
-    - [ ] Example prompt
-    - [ ] Example modifications
-    - [ ] Example queries
-- [ ] Add agent-friendly formatting
-  - [ ] Machine-readable sections
-  - [ ] JSON schema snippets
-  - [ ] Minimal examples (token-efficient)
-- [ ] Create Claude Code skill spec (future)
-  - [ ] JSON/YAML skill definition
-  - [ ] Command specifications
-  - [ ] Usage examples
+- [x] Create `docs/agent-guide.md` with sections:
+  - [x] **Introduction for Agents**
+    - [x] What is Lash?
+    - [x] Why agents should use Lash
+    - [x] Agent-friendly features
+  - [x] **Getting Started (for agents)**
+    - [x] Obtaining Lash schema
+    - [x] Understanding file format
+    - [x] Allowed operations
+  - [x] **File Format Schema**
+    - [x] Formal specification
+    - [x] Annotation reference
+    - [x] Dependency syntax
+    - [x] Constraints and rules
+  - [x] **Safe Modifications**
+    - [x] Adding tasks
+    - [x] Updating task status
+    - [x] Adding dependencies
+    - [x] Waiving tasks
+    - [x] What NOT to do
+  - [x] **Workflows**
+    - [x] Workflow 1: Get context (`lash agent-prompt`)
+    - [x] Workflow 2: Read task files
+    - [x] Workflow 3: Modify tasks
+    - [x] Workflow 4: Validate (`lash lint`)
+    - [x] Workflow 5: Update index (`lash index`)
+  - [x] **Error Handling**
+    - [x] Common errors and solutions
+    - [x] Lint error recovery
+    - [x] Broken dependency fixes
+  - [x] **Token Minimization**
+    - [x] Using sparse context
+    - [x] ID-based references
+    - [x] Summarization strategies
+  - [x] **Examples**
+    - [x] Example prompt
+    - [x] Example modifications
+    - [x] Example queries
+- [x] Add agent-friendly formatting
+  - [x] Machine-readable sections
+  - [x] JSON schema snippets
+  - [x] Minimal examples (token-efficient)
+- [-] Create Claude Code skill spec (future)
+  - [-] JSON/YAML skill definition
+  - [-] Command specifications
+  - [-] Usage examples
 
 ### Success Criteria
 
@@ -458,29 +458,29 @@ Create a comprehensive reference for all error codes.
 
 ### Subtasks
 
-- [ ] Create `docs/error-codes.md` with:
-  - [ ] Table of all error codes
-  - [ ] Code, severity, category
-  - [ ] Short description
-  - [ ] Detailed explanation
-  - [ ] Common causes
-  - [ ] How to fix
-  - [ ] Examples
-- [ ] Organize by category
-  - [ ] Parse errors (E_PARSE_*)
-  - [ ] Lint errors (E_LINT_*)
-  - [ ] Dependency errors (E_DEP_*)
-  - [ ] Index errors (E_INDEX_*)
-  - [ ] Config errors (E_CONFIG_*)
-  - [ ] IO errors (E_IO_*)
-- [ ] Add searchability
-  - [ ] Table of contents
-  - [ ] Anchor links for each code
-  - [ ] Search tips
-- [ ] Generate from code (optional)
-  - [ ] Extract error definitions from source
-  - [ ] Auto-generate reference
-  - [ ] Keep docs in sync with code
+- [x] Create `docs/error-codes.md` with:
+  - [x] Table of all error codes
+  - [x] Code, severity, category
+  - [x] Short description
+  - [x] Detailed explanation
+  - [x] Common causes
+  - [x] How to fix
+  - [x] Examples
+- [x] Organize by category
+  - [x] Parse errors (E_PARSE_*)
+  - [x] Lint errors (E_LINT_*)
+  - [x] Dependency errors (E_DEP_*)
+  - [x] Index errors (E_INDEX_*)
+  - [x] Config errors (E_CONFIG_*)
+  - [x] IO errors (E_IO_*)
+- [-] Add searchability
+  - [-] Table of contents
+  - [x] Anchor links for each code
+  - [-] Search tips
+- [-] Generate from code (optional)
+  - [-] Extract error definitions from source
+  - [-] Auto-generate reference
+  - [-] Keep docs in sync with code
 
 ### Success Criteria
 
@@ -510,27 +510,27 @@ Set up processes to keep documentation up to date as code evolves.
 
 - [ ] Add documentation review to PR process
   - [ ] Require doc updates for new features
-  - [ ] Check for broken links
+  - [x] Check for broken links
   - [ ] Verify examples still work
-- [ ] Set up link checker
-  - [ ] Use `markdown-link-check` or similar
-  - [ ] Run in CI
-  - [ ] Report broken links
-- [ ] Add doc tests to CI
-  - [ ] Run all code examples
-  - [ ] Verify examples compile
-  - [ ] Catch outdated examples
-- [ ] Create documentation style guide
-  - [ ] Tone and voice
-  - [ ] Formatting conventions
-  - [ ] Example structure
+- [x] Set up link checker
+  - [x] Use `markdown-link-check` or similar
+  - [x] Run in CI
+  - [x] Report broken links
+- [x] Add doc tests to CI
+  - [-] Run all code examples
+  - [x] Verify examples compile
+  - [-] Catch outdated examples
+- [x] Create documentation style guide
+  - [x] Tone and voice
+  - [x] Formatting conventions
+  - [x] Example structure
 - [ ] Schedule periodic doc reviews
   - [ ] Review quarterly or on major releases
   - [ ] Update for accuracy
   - [ ] Improve clarity based on feedback
 - [ ] Add user feedback mechanism
   - [ ] Link to issues for doc feedback
-  - [ ] Add "Was this helpful?" prompts (optional)
+  - [-] Add "Was this helpful?" prompts (optional)
   - [ ] Track common questions (improve docs)
 
 ### Success Criteria
