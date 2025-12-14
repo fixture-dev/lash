@@ -4,7 +4,7 @@ This document describes all error codes used by Lash, organized by category.
 
 ## Parse Errors (E_PARSE_*)
 
-### E_PARSE_BAD_CHECKBOX
+### E_PARSE_INVALID_CHECKBOX
 
 **Description:** Invalid checkbox syntax in task list
 
@@ -30,7 +30,7 @@ This document describes all error codes used by Lash, organized by category.
 
 ---
 
-### E_PARSE_MALFORMED_HEADING
+### E_PARSE_INVALID_HEADER
 
 **Description:** Heading structure is malformed
 
@@ -40,6 +40,20 @@ This document describes all error codes used by Lash, organized by category.
 ```
 
 **How to fix:** Add space after `#` markers: `## Heading`
+
+---
+
+### E_PARSE_UNEXPECTED_DEPTH
+
+**Description:** Task appears at an unexpected depth level
+
+**Example:**
+```markdown
+- [ ] Parent
+      - [ ] Child (too many spaces)
+```
+
+**How to fix:** Ensure consistent indentation using the configured indent size (default: 2 spaces)
 
 ---
 
@@ -88,9 +102,9 @@ File 2: @id: my.task  # Duplicate!
 
 ---
 
-### E_LINT_MISSING_ID
+### E_LINT_MISSING_ANNOTATION
 
-**Description:** Task file missing required `@id` annotation
+**Description:** Task file missing required annotation (such as `@id`)
 
 **Example:**
 ```markdown
@@ -99,20 +113,35 @@ File 2: @id: my.task  # Duplicate!
 - [ ] Task without ID
 ```
 
-**How to fix:** Add `@id: unique.identifier` annotation to file metadata
+**How to fix:** Add the required annotation, e.g., `@id: unique.identifier` to file metadata
 
 ---
 
-### E_LINT_INVALID_STATUS
+### E_LINT_STATUS_INCONSISTENCY
 
-**Description:** `@status` value is not recognized
+**Description:** `@status` value doesn't match actual task completion state
 
 **Example:**
 ```markdown
-@status: in-flight  # Invalid
+@status: done
+## Tasks
+- [ ] Incomplete task  # Status says done but task is open!
 ```
 
-**How to fix:** Use valid status values: `open`, `in-progress`, `blocked`, `done`
+**How to fix:** Update `@status` to match actual completion or complete the remaining tasks
+
+---
+
+### E_LINT_INVALID_LABEL
+
+**Description:** Label format is invalid
+
+**Example:**
+```markdown
+@labels: valid-label, invalid label!
+```
+
+**How to fix:** Labels must be alphanumeric with hyphens, no spaces or special characters
 
 ---
 
@@ -232,55 +261,83 @@ Attempting to write to read-only file
 
 ---
 
-## Database Errors (E_DB_*)
+### E_IO_INVALID_PATH
 
-### E_DB_CONNECTION
-
-**Description:** Cannot connect to or open database
+**Description:** File path is invalid or malformed
 
 **Example:**
-Database file is locked or corrupted
+Path contains invalid characters or is not a valid UTF-8 string
 
-**How to fix:** Close other connections to the database or rebuild index with `lash index`
+**How to fix:** Ensure path is valid and uses correct path separators for your OS
 
 ---
 
-### E_DB_QUERY
+## Index Errors (E_INDEX_*)
 
-**Description:** Database query failed
+### E_INDEX_CORRUPTED
+
+**Description:** Database index is corrupted or cannot be accessed
 
 **Example:**
-SQL syntax error or constraint violation
+Database file is locked, corrupted, or query failed
 
-**How to fix:** Rebuild the database index with `lash index`
+**How to fix:** Delete `.lash/lash.db` and rebuild index with `lash index --force`
 
 ---
 
-### E_DB_CONSTRAINT
+### E_INDEX_VERSION_MISMATCH
 
-**Description:** Database constraint violated
+**Description:** Database schema version doesn't match current Lash version
 
 **Example:**
-Duplicate key insertion
+Opening a database created by a different Lash version
 
-**How to fix:** Resolve conflicts in task data and rebuild index
+**How to fix:** Rebuild database with `lash index --force` to migrate to current schema
 
 ---
 
-### E_DB_MIGRATION
+### E_INDEX_OUT_OF_SYNC
 
-**Description:** Database schema migration failed
+**Description:** Database index is out of sync with Markdown files
 
 **Example:**
-Incompatible schema version
+Running `lash check-index` shows differences between DB and files
 
-**How to fix:** Backup data and rebuild database with current version
+**How to fix:** Run `lash index` to synchronize the database with current files
 
 ---
 
-## Configuration Errors (E_CFG_*)
+## Query Errors (E_QUERY_*)
 
-### E_CFG_ROOT_NOT_FOUND
+### E_QUERY_INVALID_SYNTAX
+
+**Description:** Search query has invalid syntax
+
+**Example:**
+```bash
+lash search "unclosed quote
+```
+
+**How to fix:** Check query syntax; ensure quotes are balanced and operators are valid
+
+---
+
+### E_QUERY_NO_RESULTS
+
+**Description:** Query returned no matching results
+
+**Example:**
+```bash
+lash search "nonexistent-task-xyz"
+```
+
+**How to fix:** Broaden search terms or check that tasks exist in the index
+
+---
+
+## Configuration Errors (E_CONFIG_*)
+
+### E_CONFIG_ROOT_NOT_FOUND
 
 **Description:** No Lash project root found
 
@@ -291,7 +348,7 @@ Running `lash` command outside of a Lash project
 
 ---
 
-### E_CFG_INVALID_VALUE
+### E_CONFIG_INVALID_VALUE
 
 **Description:** Configuration value is invalid
 
@@ -304,7 +361,7 @@ max_depth = 10  # Must be 2-5
 
 ---
 
-### E_CFG_PARSE_ERROR
+### E_CONFIG_PARSE_ERROR
 
 **Description:** Configuration file cannot be parsed
 
@@ -315,7 +372,7 @@ Invalid TOML syntax in `.lash/config.toml`
 
 ---
 
-### E_CFG_MISSING_INDEX
+### E_CONFIG_MISSING_INDEX
 
 **Description:** Project root index file is missing
 

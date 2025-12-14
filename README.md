@@ -11,7 +11,7 @@
   [![Built with Markdown](https://img.shields.io/badge/built%20with-markdown-000000.svg?logo=markdown)](https://commonmark.org/)
   [![SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg?logo=sqlite)](https://www.sqlite.org/)
 
-  **Status:** Active Development (Phase 8 - Testing Complete, Documentation Pending)
+  **Status:** Active Development (Phase 9 - Documentation Complete)
 </div>
 
 ## Overview
@@ -347,14 +347,19 @@ Popular schemes include: Nord, Dracula, Solarized Dark, Solarized Light, Monokai
 
 ## Documentation
 
+- [User Guide](./docs/user-guide.md) - Complete user documentation
+- [Developer Guide](./docs/developer-guide.md) - Architecture and contribution guide
+- [Agent Integration Guide](./docs/agent-guide.md) - Guide for AI agents using Lash
 - [Design Document](./docs/design-doc.md) - Comprehensive specification
 - [Error Codes](./docs/error-codes.md) - Complete error catalog
 - [Testing Guide](./docs/TESTING.md) - Testing documentation
-- [Development Tasks](./tasks/tasks.md) - Implementation roadmap
+- [Examples](./examples/) - Tutorials and sample projects
 
 ## Contributing
 
-Lash is in active development. See [`tasks/tasks.md`](./tasks/tasks.md) for the current roadmap and [`devlog.md`](./devlog.md) for recent progress.
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+For the current development roadmap, see [`tasks/tasks.md`](./tasks/tasks.md) and [`devlog.md`](./devlog.md) for recent progress.
 
 ## License
 
