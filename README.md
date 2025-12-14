@@ -11,7 +11,7 @@
   [![Built with Markdown](https://img.shields.io/badge/built%20with-markdown-000000.svg?logo=markdown)](https://commonmark.org/)
   [![SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg?logo=sqlite)](https://www.sqlite.org/)
 
-  **Status:** Active Development (Phase 5 - Core Complete, Documentation In Progress)
+  **Status:** Active Development (Phase 8 - Testing Complete, Documentation Pending)
 </div>
 
 ## Overview
@@ -26,15 +26,16 @@ Lash is a terminal-first task management system that uses Markdown as the single
 
 ## What's Implemented
 
-All core functionality is production-ready:
+All core functionality is production-ready with 1,600+ tests (>80% coverage):
 
-- **Markdown Parser** - Full task file parsing with 390+ tests (67.7µs benchmark)
-- **Linter & Formatter** - 20 validation rules with auto-formatting (607 tests)
+- **Markdown Parser** - Full task file parsing with contextual notes support (67.7µs benchmark)
+- **Linter & Formatter** - 20 validation rules with auto-formatting and interactive mode
 - **SQLite Indexing** - Fast indexing engine exceeding performance targets by 8-12x
-- **Dependency Resolution** - Complete graph analysis with cycle detection (495 tests)
-- **Terminal UI (TUI)** - Interactive interface with 300+ Gogh color schemes
+- **Dependency Resolution** - Complete graph analysis with cycle detection
+- **Terminal UI (TUI)** - Interactive interface with 300+ Gogh color schemes and task creation
 - **CLI Framework** - Configuration, logging, and command execution infrastructure
 - **Query Commands** - List, search, show, and graph commands for exploring tasks
+- **Task Creation** - CLI and TUI support for adding tasks with full annotation support
 - **Agent Integration** - Token-minimized prompt generation for LLM workflows
 
 ## Project Structure
@@ -97,7 +98,7 @@ See `playground/PLAYGROUND_GUIDE.md` for detailed usage instructions.
 This project follows strict quality standards:
 - **Pre-commit hooks**: Auto-enforces formatting, linting, and tests
 - **Zero warnings**: All clippy lints must pass with `clippy::pedantic`
-- **Comprehensive tests**: 920+ tests across all crates (>80% coverage target)
+- **Comprehensive tests**: 1,600+ tests across all crates (>80% coverage target)
 - **Error taxonomy**: 25+ documented error codes in `docs/error-codes.md`
 - **Doctests**: All public APIs include executable examples
 - **CI/CD**: Automated testing on Linux, macOS, and Windows
@@ -177,53 +178,100 @@ The profiler tracks:
 
 ## Usage
 
+### Project Setup
+
+```bash
+# Initialize a new Lash project
+lash init [--path DIR]
+
+# Initialize demo project (PixelQuest)
+lash playground init
+```
+
+### Linting & Formatting
+
 ```bash
 # Lint task files
-lash lint [PATH...]
+lash lint [PATH...] [--fix] [--interactive]
 
-# Format task files
-lash format [PATH...]
+# Format task files (alias: fmt)
+lash format [PATH...] [--check] [--diff]
+```
 
+### Indexing & Database
+
+```bash
 # Index files into database
-lash index
+lash index [--force] [--show-files]
 
 # Verify database consistency
-lash check-index
+lash check-index [--diff]
+```
 
+### Querying Tasks
+
+```bash
 # List tasks (with filters)
-lash list [--label backend] [--status open] [--tree]
+lash list [--label backend] [--status open] [--owner name]
+lash list [--tree] [--show-descriptions] [--show-notes]
 
-# Search tasks
-lash search "authentication"
+# Search tasks (full-text)
+lash search "authentication" [--limit 20]
 
 # Show task details
-lash show task-id
+lash show <task-id> [--deps] [--rdeps]
+```
 
+### Task Creation
+
+```bash
+# Add a new task
+lash add "Task description" [--file path.md] [--parent task-id]
+lash add "Task" --label backend --owner alice --estimate 2h
+lash add --interactive  # Interactive mode
+```
+
+### Dependencies
+
+```bash
 # Export dependency graph
-lash graph [--format dot|json|mermaid]
+lash graph [--format ascii|dot|json|mermaid]
+lash graph [--scope file.md] [--hide-completed]
 
 # Validate cross-file links
-lash check-links [--fix]
+lash check-links [--fix] [--dry-run]
+```
 
+### Agent Integration
+
+```bash
 # Generate agent prompt for LLMs
-lash agent-prompt [OPTIONS]
+lash agent-prompt [--format plain|json|claude-skill|agents-md]
+lash agent-prompt [--label backend] [--max-tokens 4000]
+lash agent-prompt [--include-descriptions] [--include-notes]
+```
 
+### User Interface
+
+```bash
 # Launch TUI
 lash tui [--color-scheme "Nord"]
+```
 
+### Configuration & Help
+
+```bash
 # Manage configuration
 lash config get <key>
 lash config set <key> <value>
-lash config list
+lash config list [--changed]
 
 # Generate shell completions
-lash completion bash|zsh|fish|powershell
+lash completion bash|zsh|fish|powershell|elvish
 
 # Explain error codes
 lash explain <CODE>
-
-# Initialize demo project
-lash playground init
+lash explain --list  # Show all error codes
 ```
 
 ### Contextual Notes
@@ -250,6 +298,34 @@ Lash supports **contextual notes** - plain bullet points (without checkboxes) ne
 This distinction helps separate "what needs to be done" from "how to do it" or "acceptance criteria", making task files more readable and providing better context for both humans and AI agents.
 
 See [`examples/contextual-notes.md`](examples/contextual-notes.md) for comprehensive examples.
+
+### Description Sections
+
+Task files can include an optional `## Description` section for providing detailed context about the file's purpose:
+
+```markdown
+# Authentication System
+
+@id: auth
+@labels: backend, security
+
+## Description
+
+This module handles all authentication flows including login, logout,
+password reset, and session management. It integrates with our OAuth
+providers and implements JWT-based token authentication.
+
+## Tasks
+
+- [ ] Implement login endpoint
+- [ ] Add password reset flow
+```
+
+**Key points:**
+- Description sections are full-text searchable via `lash search`
+- Displayed in task detail views (`lash show`) and TUI
+- Use `--show-descriptions` with `lash list` to include in output
+- Great for providing context to both humans and AI agents
 
 ### Color Schemes
 
