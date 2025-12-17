@@ -147,6 +147,7 @@ mod tests {
 
         let task = Task {
             id: "task-1".to_string(),
+            has_explicit_id: false,
             title: "Test task".to_string(),
             status: TaskStatus::Open,
             depth: 0,

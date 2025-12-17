@@ -659,3 +659,128 @@ fn test_format_with_custom_annotations() {
     assert!(formatted.contains("@priority: high"));
     assert!(formatted.contains("@estimate: 2d"));
 }
+
+/// Regression test for GitHub Issue #6:
+/// https://github.com/fixture-dev/lash/issues/6
+///
+/// The formatter was stripping task-level annotations (@id, @owner, etc.)
+/// and contextual notes (plain bullet points) from task files.
+#[test]
+fn test_format_preserves_task_annotations_issue_6() {
+    let config = make_config();
+    let formatter = Formatter::new(config.clone(), FormatOptions::default());
+
+    let content = r#"# Project Setup
+
+@id: project
+@status: in-progress
+
+## Tasks
+
+- [x] Setup infrastructure
+  @id: task-1-1
+  @owner: alice
+  @estimate: 2h
+  - Initialize the project structure
+  - Configure build tools
+  - [x] Create project skeleton
+    @id: task-1-1-1
+    - Set up directory layout
+    - Add configuration files
+- [ ] Implement core features
+  @id: task-1-2
+  @depends-on: task-1-1
+  @agent-note: Prioritize performance
+"#;
+
+    let file = parse_file_from_string(content, &config).unwrap();
+    let formatted = formatter.format_file(&file).unwrap();
+
+    // Task-level @id annotations must be preserved
+    assert!(
+        formatted.contains("@id: task-1-1"),
+        "Task @id annotation for task-1-1 should be preserved"
+    );
+    assert!(
+        formatted.contains("@id: task-1-1-1"),
+        "Task @id annotation for task-1-1-1 should be preserved"
+    );
+    assert!(
+        formatted.contains("@id: task-1-2"),
+        "Task @id annotation for task-1-2 should be preserved"
+    );
+
+    // Task metadata annotations must be preserved
+    assert!(
+        formatted.contains("@owner: alice"),
+        "Task @owner annotation should be preserved"
+    );
+    assert!(
+        formatted.contains("@estimate: 2h"),
+        "Task @estimate annotation should be preserved"
+    );
+    assert!(
+        formatted.contains("@depends-on: task-1-1"),
+        "Task @depends-on annotation should be preserved"
+    );
+    assert!(
+        formatted.contains("@agent-note: Prioritize performance"),
+        "Task @agent-note annotation should be preserved"
+    );
+
+    // Contextual notes (plain bullet points) must be preserved
+    assert!(
+        formatted.contains("- Initialize the project structure"),
+        "Contextual note 'Initialize the project structure' should be preserved"
+    );
+    assert!(
+        formatted.contains("- Configure build tools"),
+        "Contextual note 'Configure build tools' should be preserved"
+    );
+    assert!(
+        formatted.contains("- Set up directory layout"),
+        "Contextual note 'Set up directory layout' should be preserved"
+    );
+    assert!(
+        formatted.contains("- Add configuration files"),
+        "Contextual note 'Add configuration files' should be preserved"
+    );
+}
+
+/// Test that round-trip formatting is idempotent for task annotations
+#[test]
+fn test_round_trip_preserves_task_annotations() {
+    let config = make_config();
+    let formatter = Formatter::new(config.clone(), FormatOptions::default());
+
+    let content = r#"# Test
+
+@id: test
+
+## Tasks
+
+- [ ] Task with metadata
+  @id: explicit-task-id
+  @owner: bob
+  - This is a contextual note
+  - Another note here
+"#;
+
+    let file = parse_file_from_string(content, &config).unwrap();
+    let formatted1 = formatter.format_file(&file).unwrap();
+
+    // Parse and format again - should be idempotent
+    let file2 = parse_file_from_string(&formatted1, &config).unwrap();
+    let formatted2 = formatter.format_file(&file2).unwrap();
+
+    assert_eq!(
+        formatted1, formatted2,
+        "Formatting with task annotations should be idempotent.\nFirst:\n{formatted1}\n\nSecond:\n{formatted2}"
+    );
+
+    // Verify annotations survived both passes
+    assert!(formatted2.contains("@id: explicit-task-id"));
+    assert!(formatted2.contains("@owner: bob"));
+    assert!(formatted2.contains("- This is a contextual note"));
+    assert!(formatted2.contains("- Another note here"));
+}

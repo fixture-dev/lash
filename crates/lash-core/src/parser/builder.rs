@@ -151,6 +151,7 @@ impl TaskTreeBuilder {
             .and_then(|a| a.get_single("id"))
             .map(String::from);
 
+        let has_explicit_id = explicit_id.is_some();
         let task_id = if let Some(id) = explicit_id {
             id
         } else {
@@ -212,6 +213,7 @@ impl TaskTreeBuilder {
         // Create the task
         let task = Task {
             id: task_id,
+            has_explicit_id,
             title: line.title.clone(),
             status: line.status,
             depth,

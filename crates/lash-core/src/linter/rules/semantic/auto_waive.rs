@@ -181,6 +181,7 @@ mod tests {
     ) -> Task {
         Task {
             id: id.to_string(),
+            has_explicit_id: false,
             title: title.to_string(),
             status,
             depth,

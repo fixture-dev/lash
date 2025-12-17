@@ -163,6 +163,7 @@ mod tests {
     fn make_task_with_owner(owner: Option<&str>) -> Task {
         Task {
             id: "task-1".to_string(),
+            has_explicit_id: false,
             title: "Test task".to_string(),
             status: TaskStatus::Open,
             depth: 0,

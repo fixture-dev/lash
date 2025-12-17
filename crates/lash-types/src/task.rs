@@ -170,6 +170,10 @@ pub struct Task {
     /// Unique ID within the file (synthesized if not provided)
     pub id: String,
 
+    /// Whether the task has an explicit @id annotation (vs synthesized ID)
+    #[serde(default)]
+    pub has_explicit_id: bool,
+
     /// Task title/description
     pub title: String,
 
@@ -352,6 +356,7 @@ pub struct TaskBuilder {
     order_index: usize,
     line_number: usize,
     id: Option<String>,
+    has_explicit_id: bool,
     metadata: TaskMetadata,
     body: Option<String>,
     contextual_notes: Vec<ContextualNote>,
@@ -369,6 +374,7 @@ impl TaskBuilder {
             order_index: 0,
             line_number: 0,
             id: None,
+            has_explicit_id: false,
             metadata: TaskMetadata::default(),
             body: None,
             contextual_notes: Vec::new(),
@@ -411,9 +417,13 @@ impl TaskBuilder {
     }
 
     /// Set an explicit task ID
+    ///
+    /// This marks the task as having an explicit ID (vs synthesized),
+    /// which will be preserved during formatting.
     #[must_use]
     pub fn id(mut self, id: impl Into<String>) -> Self {
         self.id = Some(id.into());
+        self.has_explicit_id = true;
         self
     }
 
@@ -489,6 +499,7 @@ impl TaskBuilder {
 
         let task = Task {
             id,
+            has_explicit_id: self.has_explicit_id,
             title: self.title,
             status: self.status,
             depth: self.depth,

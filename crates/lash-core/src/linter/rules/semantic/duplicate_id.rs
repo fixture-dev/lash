@@ -137,6 +137,7 @@ mod tests {
     fn make_task(id: &str, title: &str) -> Task {
         Task {
             id: id.to_string(),
+            has_explicit_id: false,
             title: title.to_string(),
             status: TaskStatus::Open,
             depth: 0,

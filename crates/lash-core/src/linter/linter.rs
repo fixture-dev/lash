@@ -304,6 +304,7 @@ mod tests {
         for i in 0..task_count {
             let task = Task {
                 id: format!("task-{i}"),
+                has_explicit_id: false,
                 title: format!("Task {i}"),
                 status: TaskStatus::Open,
                 depth: 0,

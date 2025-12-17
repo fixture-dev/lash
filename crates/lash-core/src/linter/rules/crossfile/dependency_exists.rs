@@ -283,6 +283,7 @@ mod tests {
 
         Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -300,6 +301,7 @@ mod tests {
         for (i, task_id) in task_ids.iter().enumerate() {
             let _ = tasks.add_task(Task {
                 id: (*task_id).to_string(),
+                has_explicit_id: false,
                 title: format!("Task {task_id}"),
                 status: TaskStatus::Open,
                 depth: 0,
@@ -390,6 +392,7 @@ mod tests {
 
         let task = Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -428,6 +431,7 @@ mod tests {
 
         let task = Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -468,6 +472,7 @@ mod tests {
 
         let task = Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -506,6 +511,7 @@ mod tests {
 
         let task = Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -541,6 +547,7 @@ mod tests {
 
         let task = Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -575,6 +582,7 @@ mod tests {
 
         let task = Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -619,6 +627,7 @@ mod tests {
 
         let task = Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -676,6 +685,7 @@ mod tests {
 
         let task = Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
