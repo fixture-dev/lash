@@ -816,3 +816,90 @@ fn test_format_preserves_doc_annotation_singular() {
         "The formatter should NOT output @docs (plural). Got:\n{formatted}"
     );
 }
+
+/// Test that @doc annotations appearing after contextual notes are preserved
+/// Related to GitHub Issue #6 follow-up feedback
+#[test]
+fn test_format_preserves_doc_after_contextual_notes() {
+    let config = make_config();
+    let formatter = Formatter::new(config.clone(), FormatOptions::default());
+
+    let content = r#"# Test
+
+@id: test
+
+## Tasks
+
+- [ ] TUI App Shell
+  @id: task-5-2
+  - Depends on: Theme System (task-5-1)
+  @doc: ../docs/tui-design.md
+  - [ ] Implement HirelingApp class
+"#;
+
+    let file = parse_file_from_string(content, &config).unwrap();
+    let formatted = formatter.format_file(&file).unwrap();
+
+    // @doc must be preserved even when it appears after contextual notes
+    assert!(
+        formatted.contains("@doc: ../docs/tui-design.md"),
+        "The @doc annotation should be preserved even after contextual notes. Got:\n{formatted}"
+    );
+
+    // Contextual note must also be preserved
+    assert!(
+        formatted.contains("- Depends on: Theme System (task-5-1)"),
+        "The contextual note should be preserved. Got:\n{formatted}"
+    );
+
+    // Child task must also be preserved
+    assert!(
+        formatted.contains("- [ ] Implement HirelingApp class"),
+        "The child task should be preserved. Got:\n{formatted}"
+    );
+}
+
+/// Test that file-level @doc annotations are preserved
+/// Related to GitHub Issue #6 follow-up feedback
+#[test]
+fn test_format_preserves_file_level_doc_annotation() {
+    let config = make_config();
+    let formatter = Formatter::new(config.clone(), FormatOptions::default());
+
+    let content = r#"# Phase 5
+
+@id: phase-5
+@labels: tui, interface
+@status: pending
+@depends-on: phase-3-orchestration.md
+@doc: ../docs/tui-design.md
+
+## Tasks
+
+- [ ] Theme System
+  @id: task-5-1
+"#;
+
+    let file = parse_file_from_string(content, &config).unwrap();
+    let formatted = formatter.format_file(&file).unwrap();
+
+    // File-level @doc must be preserved
+    assert!(
+        formatted.contains("@doc: ../docs/tui-design.md"),
+        "File-level @doc annotation should be preserved. Got:\n{formatted}"
+    );
+
+    // Other file-level annotations must also be preserved
+    assert!(
+        formatted.contains("@labels:"),
+        "File-level @labels should be preserved"
+    );
+    assert!(
+        formatted.contains("@status:"),
+        "File-level @status should be preserved"
+    );
+    assert!(
+        formatted.contains("@depends-on:"),
+        "File-level @depends-on should be preserved"
+    );
+}

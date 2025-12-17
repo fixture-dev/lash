@@ -396,6 +396,19 @@ impl Formatter {
             output.push('\n');
         }
 
+        // Output @doc references (note: singular annotation key, plural field name)
+        if !file.metadata.docs.is_empty() {
+            output.push_str("@doc: ");
+            let docs: Vec<_> = file
+                .metadata
+                .docs
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect();
+            output.push_str(&docs.join(", "));
+            output.push('\n');
+        }
+
         // Custom annotations (alphabetically sorted by key)
         let mut custom_keys: Vec<_> = file.metadata.custom.keys().collect();
         custom_keys.sort();
@@ -433,6 +446,17 @@ impl Formatter {
                 .map(std::string::ToString::to_string)
                 .collect();
             annotations.push(("depends-on", deps.join(", ")));
+        }
+
+        // Output @doc references (note: singular annotation key, plural field name)
+        if !file.metadata.docs.is_empty() {
+            let docs: Vec<_> = file
+                .metadata
+                .docs
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect();
+            annotations.push(("doc", docs.join(", ")));
         }
 
         if !file.metadata.labels.is_empty() {
