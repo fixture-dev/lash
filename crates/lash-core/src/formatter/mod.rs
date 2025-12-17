@@ -505,6 +505,7 @@ impl Formatter {
         // Calculate indentation
         let indent_spaces = self.options.indent_spaces as usize;
         let indent = " ".repeat(task.depth as usize * indent_spaces);
+        let annotation_indent = " ".repeat((task.depth as usize + 1) * indent_spaces);
 
         // Format checkbox line
         output.push_str(&indent);
@@ -523,6 +524,17 @@ impl Formatter {
 
         output.push('\n');
 
+        // Format task-level annotations (indented one level deeper)
+        self.format_task_annotations(task, &annotation_indent, output);
+
+        // Format contextual notes as plain bullet points
+        for note in &task.contextual_notes {
+            output.push_str(&annotation_indent);
+            output.push_str("- ");
+            output.push_str(note.text());
+            output.push('\n');
+        }
+
         // Format children
         let children: Vec<_> = all_tasks
             .iter()
@@ -531,6 +543,87 @@ impl Formatter {
 
         for child in children {
             self.format_task(child, all_tasks, output);
+        }
+    }
+
+    /// Format task-level annotations
+    ///
+    /// Outputs annotations like @id, @owner, @estimate, @depends-on, @agent-note, etc.
+    /// Only outputs annotations that are present (non-empty).
+    #[allow(clippy::unused_self)] // Keeps consistent API pattern
+    fn format_task_annotations(&self, task: &lash_types::Task, indent: &str, output: &mut String) {
+        // Output @id only if the task has an explicit ID (not synthesized)
+        if task.has_explicit_id {
+            output.push_str(indent);
+            output.push_str("@id: ");
+            output.push_str(&task.id);
+            output.push('\n');
+        }
+
+        // Output @owner if present
+        if let Some(ref owner) = task.metadata.owner {
+            output.push_str(indent);
+            output.push_str("@owner: ");
+            output.push_str(owner);
+            output.push('\n');
+        }
+
+        // Output @estimate if present
+        if let Some(ref estimate) = task.metadata.estimate {
+            output.push_str(indent);
+            output.push_str("@estimate: ");
+            output.push_str(estimate);
+            output.push('\n');
+        }
+
+        // Output @depends-on if present
+        if !task.metadata.depends_on.is_empty() {
+            output.push_str(indent);
+            output.push_str("@depends-on: ");
+            let deps: Vec<_> = task
+                .metadata
+                .depends_on
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect();
+            output.push_str(&deps.join(", "));
+            output.push('\n');
+        }
+
+        // Output @docs if present
+        if !task.metadata.docs.is_empty() {
+            output.push_str(indent);
+            output.push_str("@docs: ");
+            let docs: Vec<_> = task
+                .metadata
+                .docs
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect();
+            output.push_str(&docs.join(", "));
+            output.push('\n');
+        }
+
+        // Output @agent-note if present
+        if let Some(ref agent_note) = task.metadata.agent_note {
+            output.push_str(indent);
+            output.push_str("@agent-note: ");
+            output.push_str(agent_note);
+            output.push('\n');
+        }
+
+        // Output custom annotations (alphabetically sorted by key)
+        let mut custom_keys: Vec<_> = task.metadata.custom.keys().collect();
+        custom_keys.sort();
+        for key in custom_keys {
+            if let Some(value) = task.metadata.custom.get(key) {
+                output.push_str(indent);
+                output.push('@');
+                output.push_str(key);
+                output.push_str(": ");
+                output.push_str(value);
+                output.push('\n');
+            }
         }
     }
 
@@ -600,6 +693,7 @@ mod tests {
     ) -> Task {
         Task {
             id: id.to_string(),
+            has_explicit_id: false,
             title: title.to_string(),
             status,
             depth,

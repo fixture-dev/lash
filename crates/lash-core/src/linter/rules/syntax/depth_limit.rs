@@ -113,6 +113,7 @@ mod tests {
     fn make_task(depth: u8) -> Task {
         Task {
             id: format!("task-{depth}"),
+            has_explicit_id: false,
             title: format!("Task at depth {depth}"),
             status: TaskStatus::Open,
             depth,

@@ -211,6 +211,7 @@ mod tests {
         for (i, file_ref) in referenced_files.iter().enumerate() {
             let _ = tasks.add_task(Task {
                 id: format!("entry-{i}"),
+                has_explicit_id: false,
                 title: (*file_ref).to_string(),
                 status: TaskStatus::Open,
                 depth: 0,

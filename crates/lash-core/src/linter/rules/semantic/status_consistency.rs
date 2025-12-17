@@ -166,6 +166,7 @@ mod tests {
     fn make_task(id: &str, title: &str, status: TaskStatus, parent: Option<&str>) -> Task {
         Task {
             id: id.to_string(),
+            has_explicit_id: false,
             title: title.to_string(),
             status,
             depth: u8::from(parent.is_some()),

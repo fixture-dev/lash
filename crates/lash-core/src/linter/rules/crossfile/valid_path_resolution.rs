@@ -229,6 +229,7 @@ mod tests {
 
         Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -477,6 +478,7 @@ mod tests {
 
         let task = Task {
             id: "test-task".to_string(),
+            has_explicit_id: false,
             title: "Test Task".to_string(),
             status: TaskStatus::Open,
             depth: 0,

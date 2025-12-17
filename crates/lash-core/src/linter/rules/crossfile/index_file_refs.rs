@@ -154,6 +154,7 @@ mod tests {
         for (i, file_ref) in referenced_files.iter().enumerate() {
             let _ = tasks.add_task(Task {
                 id: format!("entry-{i}"),
+                has_explicit_id: false,
                 title: (*file_ref).to_string(),
                 status: TaskStatus::Open,
                 depth: 0,
@@ -371,6 +372,7 @@ mod tests {
         let mut tasks = TaskTree::new();
         let _ = tasks.add_task(Task {
             id: "entry-1".to_string(),
+            has_explicit_id: false,
             title: "tasks.md".to_string(),
             status: TaskStatus::Open,
             depth: 0,
@@ -383,6 +385,7 @@ mod tests {
         });
         let _ = tasks.add_task(Task {
             id: "entry-2".to_string(),
+            has_explicit_id: false,
             title: "Some regular text entry".to_string(), // Not a file reference
             status: TaskStatus::Open,
             depth: 0,

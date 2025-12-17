@@ -263,6 +263,7 @@ mod tests {
 
         Task {
             id: id.to_string(),
+            has_explicit_id: false,
             title: format!("Task {id}"),
             status: TaskStatus::Open,
             depth: 0,

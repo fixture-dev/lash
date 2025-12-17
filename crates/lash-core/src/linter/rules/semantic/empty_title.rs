@@ -113,6 +113,7 @@ mod tests {
     fn make_task_with_title(title: &str) -> Task {
         Task {
             id: "task-1".to_string(),
+            has_explicit_id: false,
             title: title.to_string(),
             status: TaskStatus::Open,
             depth: 0,
