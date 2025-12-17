@@ -590,10 +590,10 @@ impl Formatter {
             output.push('\n');
         }
 
-        // Output @docs if present
+        // Output @doc if present (note: singular, not @docs)
         if !task.metadata.docs.is_empty() {
             output.push_str(indent);
-            output.push_str("@docs: ");
+            output.push_str("@doc: ");
             let docs: Vec<_> = task
                 .metadata
                 .docs

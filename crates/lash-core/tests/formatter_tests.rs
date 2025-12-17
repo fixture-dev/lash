@@ -784,3 +784,35 @@ fn test_round_trip_preserves_task_annotations() {
     assert!(formatted2.contains("- This is a contextual note"));
     assert!(formatted2.contains("- Another note here"));
 }
+
+/// Test that @doc annotation is preserved correctly (not changed to @docs)
+/// Related to GitHub Issue #6 follow-up feedback
+#[test]
+fn test_format_preserves_doc_annotation_singular() {
+    let config = make_config();
+    let formatter = Formatter::new(config.clone(), FormatOptions::default());
+
+    let content = r#"# Theme Tasks
+
+@id: theme
+
+## Tasks
+
+- [ ] Theme System
+  @id: task-5-1
+  @doc: ../docs/technology-research.md
+"#;
+
+    let file = parse_file_from_string(content, &config).unwrap();
+    let formatted = formatter.format_file(&file).unwrap();
+
+    // @doc must remain singular (not become @docs)
+    assert!(
+        formatted.contains("@doc: ../docs/technology-research.md"),
+        "The @doc annotation should remain singular, not become @docs. Got:\n{formatted}"
+    );
+    assert!(
+        !formatted.contains("@docs:"),
+        "The formatter should NOT output @docs (plural). Got:\n{formatted}"
+    );
+}
