@@ -408,6 +408,9 @@ enum TaskLineItem {
     Checkbox(checkbox::CheckboxLine),
     /// A plain bullet contextual note
     Note(checkbox::PlainBulletLine),
+    /// An orphaned annotation line (appears after contextual notes)
+    /// Contains the raw line content and line number
+    OrphanedAnnotation(String, usize),
 }
 
 /// Parse the task section and build the task tree
@@ -552,6 +555,11 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
                 docs_url: None,
             });
             i += 1;
+        } else if line.trim().starts_with('@') {
+            // Orphaned annotation line (appears after contextual notes)
+            // Store it for later merging into the most recent task
+            task_items.push(TaskLineItem::OrphanedAnnotation(line.to_string(), line_num));
+            i += 1;
         } else {
             // Other non-checkbox lines are silently ignored (comments, blank lines, etc.)
             i += 1;
@@ -599,6 +607,27 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
                         )),
                         snippet: Some(format!("- {}", note_line.text)),
                         help: Some("Contextual notes should be nested under a task".to_string()),
+                        labels: None,
+                        recovery_command: None,
+                        fix_steps: None,
+                        explanation: None,
+                        docs_url: None,
+                    });
+                }
+            }
+            TaskLineItem::OrphanedAnnotation(line, line_num) => {
+                // Parse the orphaned annotation and merge it into the most recent task
+                if let Err(e) = builder.add_orphaned_annotation(line, *line_num, ctx.config) {
+                    ctx.add_diagnostic(Diagnostic {
+                        severity: lash_types::Severity::Warning,
+                        code: "W_ORPHANED_ANNOTATION",
+                        message: e,
+                        location: Some(Location::new(ctx.file_path.to_path_buf(), *line_num, 1)),
+                        snippet: Some(line.clone()),
+                        help: Some(
+                            "Annotations should appear immediately after a task checkbox"
+                                .to_string(),
+                        ),
                         labels: None,
                         recovery_command: None,
                         fix_steps: None,

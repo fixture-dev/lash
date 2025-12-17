@@ -331,6 +331,99 @@ impl TaskTreeBuilder {
         }
     }
 
+    /// Add an orphaned annotation to the most recent applicable task
+    ///
+    /// Orphaned annotations are annotation lines that appear after contextual notes
+    /// within a task. They should be merged into the most recent task at the
+    /// appropriate depth.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - There are no tasks to attach the annotation to
+    /// - The line doesn't start with '@'
+    /// - The annotation cannot be parsed
+    #[allow(clippy::missing_panics_doc)] // Can't panic: tasks.is_empty() checked first
+    pub fn add_orphaned_annotation(
+        &mut self,
+        line: &str,
+        line_num: usize,
+        config: &lash_types::LashConfig,
+    ) -> Result<(), String> {
+        if self.tasks.is_empty() {
+            return Err(format!(
+                "Orphaned annotation at line {line_num}: no task to attach to"
+            ));
+        }
+
+        // Parse the annotation line
+        let trimmed = line.trim();
+        if !trimmed.starts_with('@') {
+            return Err(format!(
+                "Invalid annotation at line {line_num}: must start with '@'"
+            ));
+        }
+
+        // Parse the annotation to extract key and value
+        let annotation_lines = vec![line];
+        let block = match super::annotations::parse_annotation_block(
+            annotation_lines.into_iter(),
+            Some(config),
+        ) {
+            Ok(block) => block,
+            Err(e) => {
+                return Err(format!(
+                    "Failed to parse annotation at line {line_num}: {e}"
+                ))
+            }
+        };
+
+        // Find the most recent task to attach this annotation to
+        // We use the most recently added task as the target
+        // Safety: We already checked that self.tasks is not empty above
+        let task = self
+            .tasks
+            .last_mut()
+            .expect("tasks checked non-empty above");
+
+        // Merge the parsed annotation into the task's metadata
+        // Handle @doc annotations specifically
+        let docs = block.get_docs().unwrap_or_default();
+        for doc_ref in docs {
+            if !task.metadata.docs.contains(&doc_ref) {
+                task.metadata.docs.push(doc_ref);
+            }
+        }
+
+        // Handle other annotation types
+        if let Some(owner) = block.get_single("owner") {
+            task.metadata.owner = Some(owner.to_string());
+        }
+        if let Some(estimate) = block.get_single("estimate") {
+            task.metadata.estimate = Some(estimate.to_string());
+        }
+        if let Some(agent_note) = block.get_single("agent-note") {
+            task.metadata.agent_note = Some(agent_note.to_string());
+        }
+
+        // Handle dependencies
+        let deps = block.get_dependencies().unwrap_or_default();
+        for dep in deps {
+            if !task.metadata.depends_on.contains(&dep) {
+                task.metadata.depends_on.push(dep);
+            }
+        }
+
+        // Handle labels
+        for label in block.get_labels("labels") {
+            if !task.metadata.labels.contains(&label.name) {
+                task.metadata.labels.push(label.name);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Build the final task tree
     ///
     /// Converts the flat list of tasks with parent indices into a proper
