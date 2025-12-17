@@ -13,6 +13,8 @@ use crate::utils::file_discovery::find_project_root;
 /// Arguments for the check-index command
 #[derive(Debug, Clone)]
 pub struct CheckIndexArgs {
+    /// Paths to verify (if empty, verifies entire project)
+    pub paths: Vec<PathBuf>,
     /// Show detailed diff of inconsistencies
     pub diff: bool,
     /// Output JSON diagnostics
@@ -74,7 +76,25 @@ pub fn execute(args: CheckIndexArgs) -> Result<i32> {
     let conn = open_database(&db_path).context("Failed to open database")?;
 
     // Configure verifier
-    let verifier_config = VerifierConfig::new(project_root.clone());
+    let mut verifier_config = VerifierConfig::new(project_root.clone());
+
+    // Add path filtering if paths were provided
+    if !args.paths.is_empty() {
+        // Convert relative paths to absolute
+        let absolute_paths: Vec<PathBuf> = args
+            .paths
+            .iter()
+            .map(|p| {
+                if p.is_absolute() {
+                    p.clone()
+                } else {
+                    std::env::current_dir().map_or_else(|_| p.clone(), |cwd| cwd.join(p))
+                }
+            })
+            .collect();
+        verifier_config = verifier_config.with_paths(absolute_paths);
+    }
+
     let verifier = IndexVerifier::new(&conn, verifier_config);
 
     // Run verification

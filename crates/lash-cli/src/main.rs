@@ -257,8 +257,13 @@ fn run(cli: LashCli) -> Result<()> {
             process::exit(exit_code);
         }
 
-        Commands::Index { force, show_files } => {
+        Commands::Index {
+            paths,
+            force,
+            show_files,
+        } => {
             let args = commands::index::IndexArgs {
+                paths,
                 force,
                 show_files,
                 json: cli.json,
@@ -271,8 +276,9 @@ fn run(cli: LashCli) -> Result<()> {
             process::exit(exit_code);
         }
 
-        Commands::CheckIndex { diff } => {
+        Commands::CheckIndex { paths, diff } => {
             let args = commands::check_index::CheckIndexArgs {
+                paths,
                 diff,
                 json: cli.json,
                 no_color: cli.no_color,

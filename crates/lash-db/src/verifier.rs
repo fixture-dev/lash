@@ -364,6 +364,26 @@ impl VerifierConfig {
         self.check_orphaned_dependencies = check;
         self
     }
+
+    /// Set specific paths to verify (instead of entire project root)
+    ///
+    /// When paths are provided, only files under those paths will be verified.
+    /// Each path should be under the project root.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_db::verifier::VerifierConfig;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = VerifierConfig::new(PathBuf::from("/project"))
+    ///     .with_paths(vec![PathBuf::from("/project/tasks")]);
+    /// ```
+    #[must_use]
+    pub fn with_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.walker_config = self.walker_config.with_paths(paths);
+        self
+    }
 }
 
 /// Index verifier for detecting database drift
