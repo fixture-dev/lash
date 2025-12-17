@@ -40,6 +40,15 @@ pub enum DbError {
     #[error("Dependency cycle detected: {0}")]
     CycleDetected(String),
 
+    /// Duplicate file ID detected across different files
+    #[error("Duplicate file ID '{file_id}' found in multiple files: {paths}")]
+    DuplicateFileId {
+        /// The conflicting file ID
+        file_id: String,
+        /// Paths of files with the same ID (comma-separated)
+        paths: String,
+    },
+
     /// Invalid state
     #[error("Invalid database state: {0}")]
     InvalidState(String),

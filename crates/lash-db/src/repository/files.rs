@@ -467,13 +467,56 @@ impl<'conn> FileRepository<'conn> {
     ///
     /// # Errors
     ///
-    /// Returns error if any operation fails or if metadata serialization fails.
+    /// Returns error if any operation fails, if metadata serialization fails,
+    /// or if duplicate file IDs are detected across different files.
     pub fn upsert_batch(
         &self,
         files: &[TaskFile],
     ) -> DbResult<std::collections::HashMap<PathBuf, i64>> {
         use std::collections::HashMap;
 
+        // Phase 1: Check for duplicate file_ids within the batch
+        let mut file_id_to_paths: HashMap<&str, Vec<&Path>> = HashMap::new();
+        for file in files {
+            file_id_to_paths
+                .entry(&file.id)
+                .or_default()
+                .push(&file.path);
+        }
+
+        // Find duplicates within the batch
+        for (file_id, paths) in &file_id_to_paths {
+            if paths.len() > 1 {
+                let paths_str = paths
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(DbError::DuplicateFileId {
+                    file_id: (*file_id).to_string(),
+                    paths: paths_str,
+                });
+            }
+        }
+
+        // Phase 2: Check for conflicts with existing database entries
+        // A file_id conflict occurs when we're inserting a file with a file_id
+        // that already exists in the database for a DIFFERENT path
+        for file in files {
+            let normalized_path = normalize_path_for_db(&file.path);
+            if let Some(existing) = self.get_by_file_id(&file.id)? {
+                // If the existing file has a different path, it's a conflict
+                let existing_path_str = existing.path.display().to_string();
+                if existing_path_str != normalized_path {
+                    return Err(DbError::DuplicateFileId {
+                        file_id: file.id.clone(),
+                        paths: format!("{existing_path_str} (existing), {normalized_path} (new)"),
+                    });
+                }
+            }
+        }
+
+        // Phase 3: Perform the actual upserts
         let tx = self.conn.unchecked_transaction()?;
         let mut path_to_id = HashMap::new();
 
@@ -874,5 +917,84 @@ mod tests {
             let normalized = normalize_path_for_db(&path);
             assert_eq!(normalized, "features/auth.md");
         }
+    }
+
+    #[test]
+    fn test_upsert_batch_duplicate_file_id_within_batch() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        // Create two files with the same file_id but different paths
+        let mut file1 = create_test_file("tasks/foo.md");
+        file1.id = "shared-id".to_string();
+
+        let mut file2 = create_test_file("other/bar.md");
+        file2.id = "shared-id".to_string();
+
+        let batch_files = vec![file1, file2];
+
+        let result = repo.upsert_batch(&batch_files);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        match err {
+            DbError::DuplicateFileId { file_id, paths } => {
+                assert_eq!(file_id, "shared-id");
+                assert!(paths.contains("tasks/foo.md"));
+                assert!(paths.contains("other/bar.md"));
+            }
+            _ => panic!("Expected DuplicateFileId error, got: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn test_upsert_batch_duplicate_file_id_with_existing() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        // Insert a file with a specific file_id
+        let mut existing_file = create_test_file("existing.md");
+        existing_file.id = "my-unique-id".to_string();
+        repo.insert(&existing_file).unwrap();
+
+        // Try to upsert a new file with the same file_id but different path
+        let mut new_file = create_test_file("new-file.md");
+        new_file.id = "my-unique-id".to_string();
+
+        let result = repo.upsert_batch(&[new_file]);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        match err {
+            DbError::DuplicateFileId { file_id, paths } => {
+                assert_eq!(file_id, "my-unique-id");
+                assert!(paths.contains("existing.md"));
+                assert!(paths.contains("new-file.md"));
+            }
+            _ => panic!("Expected DuplicateFileId error, got: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn test_upsert_batch_same_file_same_id_ok() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        // Insert a file
+        let mut file = create_test_file("myfile.md");
+        file.id = "my-id".to_string();
+        repo.insert(&file).unwrap();
+
+        // Upsert the same file (same path, same file_id) - should succeed
+        file.title = "Updated Title".to_string();
+        let result = repo.upsert_batch(&[file]);
+        assert!(result.is_ok());
+
+        // Verify it was updated
+        let record = repo.get_by_path(Path::new("myfile.md")).unwrap().unwrap();
+        assert_eq!(record.title, "Updated Title");
     }
 }
