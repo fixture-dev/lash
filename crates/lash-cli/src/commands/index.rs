@@ -19,6 +19,8 @@ use crate::utils::output::create_progress_bar;
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct IndexArgs {
+    /// Paths to index (if empty, indexes entire project)
+    pub paths: Vec<PathBuf>,
     /// Force full rebuild even if index is up to date
     pub force: bool,
     /// Show which files are being indexed
@@ -89,10 +91,27 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
     });
 
     // Configure indexer
-    let indexer_config = IndexerConfig::new(project_root.clone())
+    let mut indexer_config = IndexerConfig::new(project_root.clone())
         .with_incremental(!args.force)
         .with_progress(!args.json)
         .with_profiling(false);
+
+    // Add path filtering if paths were provided
+    if !args.paths.is_empty() {
+        // Convert relative paths to absolute and validate they're under project root
+        let absolute_paths: Vec<PathBuf> = args
+            .paths
+            .iter()
+            .map(|p| {
+                if p.is_absolute() {
+                    p.clone()
+                } else {
+                    std::env::current_dir().map_or_else(|_| p.clone(), |cwd| cwd.join(p))
+                }
+            })
+            .collect();
+        indexer_config = indexer_config.with_paths(absolute_paths);
+    }
 
     // Set up error reporter
     let output_format = if args.json {

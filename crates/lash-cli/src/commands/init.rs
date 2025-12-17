@@ -184,6 +184,7 @@ fn run_index(project_root: &Path, args: &InitArgs) -> Result<()> {
     use crate::commands::index::{execute as index_execute, IndexArgs};
 
     let index_args = IndexArgs {
+        paths: Vec::new(),
         force: true,
         show_files: false,
         json: args.json,

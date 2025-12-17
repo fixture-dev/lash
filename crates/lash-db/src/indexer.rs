@@ -193,6 +193,26 @@ impl IndexerConfig {
         self.walker_config = walker_config;
         self
     }
+
+    /// Set specific paths to index (instead of entire project root)
+    ///
+    /// When paths are provided, only files under those paths will be indexed.
+    /// Each path should be under the project root.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_db::indexer::IndexerConfig;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = IndexerConfig::new(PathBuf::from("/project"))
+    ///     .with_paths(vec![PathBuf::from("/project/tasks")]);
+    /// ```
+    #[must_use]
+    pub fn with_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.walker_config = self.walker_config.with_paths(paths);
+        self
+    }
 }
 
 /// Progress information during indexing

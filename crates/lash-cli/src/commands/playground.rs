@@ -164,6 +164,7 @@ fn index_playground(project_root: &Path) -> Result<()> {
     use crate::commands::index::{execute, IndexArgs};
 
     let args = IndexArgs {
+        paths: Vec::new(),
         force: true,
         show_files: false,
         json: false,

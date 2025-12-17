@@ -170,6 +170,10 @@ pub enum Commands {
     /// Rebuild the `SQLite` index from Markdown files
     #[command()]
     Index {
+        /// Files or directories to index (defaults to current project)
+        #[arg(value_name = "PATH")]
+        paths: Vec<PathBuf>,
+
         /// Force full rebuild even if index is up to date
         #[arg(long)]
         force: bool,
@@ -182,6 +186,10 @@ pub enum Commands {
     /// Verify that `SQLite` index matches Markdown files
     #[command()]
     CheckIndex {
+        /// Files or directories to verify (defaults to current project)
+        #[arg(value_name = "PATH")]
+        paths: Vec<PathBuf>,
+
         /// Show detailed diff of inconsistencies
         #[arg(long)]
         diff: bool,
@@ -653,6 +661,57 @@ mod tests {
     fn test_cli_parse_index() {
         let cli = LashCli::try_parse_from(["lash", "index"]).unwrap();
         assert!(matches!(cli.command, Commands::Index { .. }));
+        if let Commands::Index { paths, force, .. } = cli.command {
+            assert!(paths.is_empty());
+            assert!(!force);
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_index_with_paths() {
+        let cli = LashCli::try_parse_from(["lash", "index", "tasks/"]).unwrap();
+        if let Commands::Index { paths, .. } = cli.command {
+            assert_eq!(paths.len(), 1);
+            assert_eq!(paths[0], PathBuf::from("tasks/"));
+        } else {
+            panic!("Expected Index command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_index_with_multiple_paths() {
+        let cli =
+            LashCli::try_parse_from(["lash", "index", "tasks/", "projects/", "--force"]).unwrap();
+        if let Commands::Index { paths, force, .. } = cli.command {
+            assert_eq!(paths.len(), 2);
+            assert_eq!(paths[0], PathBuf::from("tasks/"));
+            assert_eq!(paths[1], PathBuf::from("projects/"));
+            assert!(force);
+        } else {
+            panic!("Expected Index command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_check_index() {
+        let cli = LashCli::try_parse_from(["lash", "check-index"]).unwrap();
+        assert!(matches!(cli.command, Commands::CheckIndex { .. }));
+        if let Commands::CheckIndex { paths, diff } = cli.command {
+            assert!(paths.is_empty());
+            assert!(!diff);
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_check_index_with_paths() {
+        let cli = LashCli::try_parse_from(["lash", "check-index", "tasks/", "--diff"]).unwrap();
+        if let Commands::CheckIndex { paths, diff } = cli.command {
+            assert_eq!(paths.len(), 1);
+            assert_eq!(paths[0], PathBuf::from("tasks/"));
+            assert!(diff);
+        } else {
+            panic!("Expected CheckIndex command");
+        }
     }
 
     #[test]

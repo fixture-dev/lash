@@ -360,6 +360,7 @@ fn reindex_project(project_root: &Path) -> Result<()> {
     use crate::commands::index::{execute as index_execute, IndexArgs};
 
     let index_args = IndexArgs {
+        paths: Vec::new(),
         force: false,
         show_files: false,
         json: false,

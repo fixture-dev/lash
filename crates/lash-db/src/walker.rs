@@ -149,6 +149,10 @@ pub struct FileWalkerConfig {
     /// Project root directory to start walking from
     pub project_root: PathBuf,
 
+    /// Specific paths to walk (if empty, walks `project_root`)
+    /// Each path must be under `project_root`
+    pub paths: Vec<PathBuf>,
+
     /// File extensions to include (e.g., "md")
     /// If empty, includes all files
     pub extensions: Vec<String>,
@@ -180,6 +184,7 @@ impl FileWalkerConfig {
     pub fn new(project_root: PathBuf) -> Self {
         Self {
             project_root,
+            paths: Vec::new(),
             extensions: vec!["md".to_string()],
             exclude_patterns: Self::default_exclude_patterns(),
             respect_gitignore: true,
@@ -268,6 +273,26 @@ impl FileWalkerConfig {
         self.follow_symlinks = follow;
         self
     }
+
+    /// Set specific paths to walk (instead of entire project root)
+    ///
+    /// When paths are provided, only files under those paths will be discovered.
+    /// Each path should be under the project root.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_db::walker::FileWalkerConfig;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = FileWalkerConfig::new(PathBuf::from("/project"))
+    ///     .with_paths(vec![PathBuf::from("/project/tasks")]);
+    /// ```
+    #[must_use]
+    pub fn with_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.paths = paths;
+        self
+    }
 }
 
 /// File system walker for discovering Markdown files
@@ -300,6 +325,9 @@ impl FileWalker {
     /// Returns a vector of file metadata for all discovered files.
     /// Files are returned in deterministic order (sorted by path).
     ///
+    /// When `paths` is configured, only files under those paths are discovered.
+    /// Otherwise, discovers all files under `project_root`.
+    ///
     /// # Example
     ///
     /// ```no_run
@@ -330,62 +358,95 @@ impl FileWalker {
     /// - **Unicode filenames**: Fully supported
     /// - **Large directories**: Uses streaming iterator (efficient memory usage)
     pub fn discover_files(&self) -> DbResult<Vec<FileMetadata>> {
-        let mut builder = WalkBuilder::new(&self.config.project_root);
+        // Determine which paths to walk
+        let walk_paths = if self.config.paths.is_empty() {
+            vec![self.config.project_root.clone()]
+        } else {
+            self.config.paths.clone()
+        };
 
-        // Configure the walker
-        builder
-            .follow_links(self.config.follow_symlinks)
-            .git_ignore(self.config.respect_gitignore)
-            .git_global(self.config.respect_gitignore)
-            .git_exclude(self.config.respect_gitignore);
-
-        let walker = builder.build();
         let mut files = Vec::new();
 
-        // Walk the directory tree
-        for entry in walker {
-            match entry {
-                Ok(entry) => {
-                    let path = entry.path();
+        for walk_path in &walk_paths {
+            // Check if path exists
+            if !walk_path.exists() {
+                return Err(DbError::IoError(format!(
+                    "Path does not exist: {}",
+                    walk_path.display()
+                )));
+            }
 
-                    // Skip directories
-                    if path.is_dir() {
-                        continue;
-                    }
-
-                    // Skip symlinks if not following them
-                    if !self.config.follow_symlinks && path.is_symlink() {
-                        continue;
-                    }
-
-                    // Check if file matches extension filter
-                    if !self.matches_extension(path) {
-                        continue;
-                    }
-
-                    // Check if file matches exclude patterns
-                    if self.is_excluded(path) {
-                        continue;
-                    }
-
-                    // Collect metadata
-                    match FileMetadata::from_path(path, &self.config.project_root) {
+            // Handle single file case
+            if walk_path.is_file() {
+                if self.matches_extension(walk_path) && !self.is_excluded(walk_path) {
+                    match FileMetadata::from_path(walk_path, &self.config.project_root) {
                         Ok(metadata) => files.push(metadata),
                         Err(e) => {
-                            // Log warning but continue (handles permission denied, etc.)
-                            eprintln!("Warning: Skipping {}: {}", path.display(), e);
+                            eprintln!("Warning: Skipping {}: {}", walk_path.display(), e);
                         }
                     }
                 }
-                Err(e) => {
-                    // Log error but continue (handles broken symlinks, etc.)
-                    eprintln!("Warning: Error during directory traversal: {e}");
+                continue;
+            }
+
+            // Build walker for this path
+            let mut builder = WalkBuilder::new(walk_path);
+            builder
+                .follow_links(self.config.follow_symlinks)
+                .git_ignore(self.config.respect_gitignore)
+                .git_global(self.config.respect_gitignore)
+                .git_exclude(self.config.respect_gitignore);
+
+            let walker = builder.build();
+
+            // Walk the directory tree
+            for entry in walker {
+                match entry {
+                    Ok(entry) => {
+                        let path = entry.path();
+
+                        // Skip directories
+                        if path.is_dir() {
+                            continue;
+                        }
+
+                        // Skip symlinks if not following them
+                        if !self.config.follow_symlinks && path.is_symlink() {
+                            continue;
+                        }
+
+                        // Check if file matches extension filter
+                        if !self.matches_extension(path) {
+                            continue;
+                        }
+
+                        // Check if file matches exclude patterns
+                        if self.is_excluded(path) {
+                            continue;
+                        }
+
+                        // Collect metadata
+                        match FileMetadata::from_path(path, &self.config.project_root) {
+                            Ok(metadata) => files.push(metadata),
+                            Err(e) => {
+                                // Log warning but continue (handles permission denied, etc.)
+                                eprintln!("Warning: Skipping {}: {}", path.display(), e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // Log error but continue (handles broken symlinks, etc.)
+                        eprintln!("Warning: Error during directory traversal: {e}");
+                    }
                 }
             }
         }
 
         // Sort by relative path for deterministic output
         files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+
+        // Deduplicate (in case multiple paths overlap)
+        files.dedup_by(|a, b| a.relative_path == b.relative_path);
 
         Ok(files)
     }
