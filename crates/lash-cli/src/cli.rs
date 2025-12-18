@@ -79,7 +79,8 @@ pub struct LashCli {
 
     /// Enable tree view display
     #[arg(
-        long,
+        long = "tree",
+        visible_alias = "tree-view",
         global = true,
         conflicts_with = "no_tree_view",
         help_heading = "Global Options"
@@ -87,7 +88,12 @@ pub struct LashCli {
     pub tree_view: bool,
 
     /// Disable tree view display
-    #[arg(long, global = true, help_heading = "Global Options")]
+    #[arg(
+        long = "no-tree",
+        visible_alias = "no-tree-view",
+        global = true,
+        help_heading = "Global Options"
+    )]
     pub no_tree_view: bool,
 
     /// Maximum depth for tree view display (1-10)
@@ -846,17 +852,27 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_parse_tree_view_flags() {
-        let cli = LashCli::try_parse_from(["lash", "--tree-view", "list"]).unwrap();
+    fn test_cli_parse_tree_flags() {
+        // Test new --tree flag
+        let cli = LashCli::try_parse_from(["lash", "--tree", "list"]).unwrap();
         assert!(cli.tree_view);
         assert!(!cli.no_tree_view);
 
-        let cli = LashCli::try_parse_from(["lash", "--no-tree-view", "list"]).unwrap();
+        // Test --no-tree flag
+        let cli = LashCli::try_parse_from(["lash", "--no-tree", "list"]).unwrap();
         assert!(!cli.tree_view);
         assert!(cli.no_tree_view);
 
-        // Test conflict between --tree-view and --no-tree-view
-        let result = LashCli::try_parse_from(["lash", "--tree-view", "--no-tree-view", "list"]);
+        // Test backward compatibility with --tree-view alias
+        let cli = LashCli::try_parse_from(["lash", "--tree-view", "list"]).unwrap();
+        assert!(cli.tree_view);
+
+        // Test backward compatibility with --no-tree-view alias
+        let cli = LashCli::try_parse_from(["lash", "--no-tree-view", "list"]).unwrap();
+        assert!(cli.no_tree_view);
+
+        // Test conflict between --tree and --no-tree
+        let result = LashCli::try_parse_from(["lash", "--tree", "--no-tree", "list"]);
         assert!(result.is_err());
     }
 
@@ -880,12 +896,18 @@ mod tests {
 
     #[test]
     fn test_cli_parse_combined_tree_flags() {
+        // Test with new --tree flag
         let cli =
-            LashCli::try_parse_from(["lash", "--tree-view", "--max-depth", "7", "--ascii", "list"])
+            LashCli::try_parse_from(["lash", "--tree", "--max-depth", "7", "--ascii", "list"])
                 .unwrap();
         assert!(cli.tree_view);
         assert_eq!(cli.max_depth, Some(7));
         assert!(cli.ascii);
+
+        // Test with backward-compatible --tree-view alias
+        let cli = LashCli::try_parse_from(["lash", "--tree-view", "-d", "5", "list"]).unwrap();
+        assert!(cli.tree_view);
+        assert_eq!(cli.max_depth, Some(5));
     }
 
     #[test]

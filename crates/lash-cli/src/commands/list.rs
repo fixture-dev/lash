@@ -220,8 +220,8 @@ pub fn execute(args: ListArgs) -> Result<i32> {
 
     tracing::debug!(file_count = files.len(), "Retrieved files");
 
-    // Fetch tasks if show_notes is enabled
-    let file_tasks: HashMap<i64, Vec<TaskRecord>> = if args.show_notes {
+    // Fetch tasks if tree view or show_notes is enabled
+    let file_tasks: HashMap<i64, Vec<TaskRecord>> = if use_tree_view || args.show_notes {
         let task_repo = TaskRepository::new(&conn);
         let mut tasks_map = HashMap::new();
         for file in &files {
@@ -320,26 +320,33 @@ fn determine_tree_view_enabled(args: &ListArgs) -> bool {
     }
 }
 
-/// Represents a directory or file node in the file tree
+/// Represents a node in the hierarchical task tree
+/// Can be a directory, file, or task
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-struct DirectoryNode {
-    /// Display name (directory name or file name)
-    name: String,
-    /// Full path
-    path: PathBuf,
-    /// true for directory, false for file
-    is_directory: bool,
-    /// For files, the underlying `FileRecord`
-    file_record: Option<FileRecord>,
+enum TaskTreeNodeData {
+    /// Directory containing files
+    Directory { name: String, path: PathBuf },
+    /// Task file containing tasks
+    File { record: FileRecord },
+    /// Individual task (`file_path` stored for potential future use)
+    Task {
+        record: TaskRecord,
+        file_path: PathBuf,
+    },
 }
 
-/// Build file tree from flat file list
-fn build_file_tree(
+/// Build complete task tree from files and their tasks
+///
+/// Creates a hierarchical tree structure that includes directories, files, and their tasks.
+/// Tasks are nested under their parent file nodes, preserving task parent-child relationships.
+#[allow(clippy::too_many_lines)]
+fn build_task_tree(
     files: &[FileRecord],
+    file_tasks: &HashMap<i64, Vec<TaskRecord>>,
     max_depth: usize,
     default_expanded: bool,
-) -> Vec<TreeNode<DirectoryNode>> {
+) -> Vec<TreeNode<TaskTreeNodeData>> {
     if files.is_empty() {
         return Vec::new();
     }
@@ -358,8 +365,8 @@ fn build_file_tree(
     }
 
     // Build tree structure
-    let mut roots: Vec<TreeNode<DirectoryNode>> = Vec::new();
-    let mut dir_nodes: HashMap<PathBuf, TreeNode<DirectoryNode>> = HashMap::new();
+    let mut roots: Vec<TreeNode<TaskTreeNodeData>> = Vec::new();
+    let mut dir_nodes: HashMap<PathBuf, TreeNode<TaskTreeNodeData>> = HashMap::new();
 
     // Sort directories by path for consistent ordering
     let mut sorted_dirs: Vec<_> = dir_map.keys().collect();
@@ -378,11 +385,9 @@ fn build_file_tree(
                 .to_string();
 
             let mut dir_node = TreeNode::new(
-                DirectoryNode {
+                TaskTreeNodeData::Directory {
                     name: dir_name,
                     path: dir_path.clone(),
-                    is_directory: true,
-                    file_record: None,
                 },
                 depth,
             );
@@ -394,26 +399,33 @@ fn build_file_tree(
             dir_nodes.insert(dir_path.clone(), dir_node);
         }
 
-        // Add file nodes to directory
+        // Add file nodes with their tasks
         for file in dir_files {
-            let file_name = file
-                .path
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new(""))
-                .to_string_lossy()
-                .to_string();
-
-            let file_node = TreeNode::new(
-                DirectoryNode {
-                    name: file_name,
-                    path: file.path.clone(),
-                    is_directory: false,
-                    file_record: Some(file.clone()),
+            let file_depth = depth + 1;
+            let mut file_node = TreeNode::new(
+                TaskTreeNodeData::File {
+                    record: file.clone(),
                 },
-                depth + 1,
+                file_depth,
             );
 
-            // Add to parent directory or root
+            if default_expanded && file_depth < max_depth {
+                file_node.expand();
+            }
+
+            // Add tasks as children of the file
+            if let Some(tasks) = file_tasks.get(&file.id) {
+                add_tasks_to_node(
+                    &mut file_node,
+                    tasks,
+                    file_depth,
+                    max_depth,
+                    default_expanded,
+                    &file.path,
+                );
+            }
+
+            // Add file to parent directory or root
             if depth == 0 {
                 roots.push(file_node);
             } else if let Some(parent) = dir_nodes.get_mut(dir_path) {
@@ -423,7 +435,6 @@ fn build_file_tree(
     }
 
     // Build parent-child relationships for directories
-    // Sort for deterministic order
     let mut dir_paths: Vec<PathBuf> = dir_nodes.keys().cloned().collect();
     dir_paths.sort();
     for dir_path in &dir_paths {
@@ -449,9 +460,91 @@ fn build_file_tree(
         }
     }
 
-    // Sort roots by name for deterministic order
-    roots.sort_by(|a, b| a.data.name.cmp(&b.data.name));
+    // Sort roots by display name for deterministic order
+    roots.sort_by(|a, b| {
+        let name_a = match &a.data {
+            TaskTreeNodeData::Directory { name, .. } => name.clone(),
+            TaskTreeNodeData::File { record } => record
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            TaskTreeNodeData::Task { record, .. } => record.title.clone(),
+        };
+        let name_b = match &b.data {
+            TaskTreeNodeData::Directory { name, .. } => name.clone(),
+            TaskTreeNodeData::File { record } => record
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            TaskTreeNodeData::Task { record, .. } => record.title.clone(),
+        };
+        name_a.cmp(&name_b)
+    });
+
     roots
+}
+
+/// Add tasks to a file node, preserving task hierarchy
+fn add_tasks_to_node(
+    file_node: &mut TreeNode<TaskTreeNodeData>,
+    tasks: &[TaskRecord],
+    file_depth: usize,
+    max_depth: usize,
+    default_expanded: bool,
+    file_path: &Path,
+) {
+    // Build task hierarchy using parent_id relationships
+    // Tasks are already ordered by order_index
+
+    let mut task_nodes: HashMap<i64, TreeNode<TaskTreeNodeData>> = HashMap::new();
+    let mut root_task_ids: Vec<i64> = Vec::new();
+    let mut child_task_ids: Vec<(i64, i64)> = Vec::new(); // (child_id, parent_id)
+
+    // First pass: create all task nodes and identify relationships
+    for task in tasks {
+        let task_depth = file_depth + 1 + task.depth as usize;
+        let mut node = TreeNode::new(
+            TaskTreeNodeData::Task {
+                record: task.clone(),
+                file_path: file_path.to_path_buf(),
+            },
+            task_depth,
+        );
+
+        if default_expanded && task_depth < max_depth {
+            node.expand();
+        }
+
+        if let Some(parent_db_id) = task.parent_id {
+            child_task_ids.push((task.id, parent_db_id));
+        } else {
+            root_task_ids.push(task.id);
+        }
+
+        task_nodes.insert(task.id, node);
+    }
+
+    // Second pass: build parent-child relationships
+    for (child_id, parent_id) in child_task_ids {
+        if let Some(child_node) = task_nodes.remove(&child_id) {
+            if let Some(parent_node) = task_nodes.get_mut(&parent_id) {
+                parent_node.children.push(child_node);
+            } else {
+                // Parent not found, treat as root
+                task_nodes.insert(child_id, child_node);
+                root_task_ids.push(child_id);
+            }
+        }
+    }
+
+    // Add root tasks to file node (preserving order)
+    for task_id in root_task_ids {
+        if let Some(node) = task_nodes.remove(&task_id) {
+            file_node.children.push(node);
+        }
+    }
 }
 
 /// Output error as JSON
@@ -696,7 +789,7 @@ fn output_text_flat(
     println!("Total: {} file(s)", files.len());
 }
 
-/// Output files as human-readable tree view
+/// Output files and tasks as human-readable tree view
 fn output_text_tree(
     files: &[FileRecord],
     file_tasks: &HashMap<i64, Vec<TaskRecord>>,
@@ -717,92 +810,17 @@ fn output_text_tree(
     // Get config for tree settings
     let config = lash_types::UserConfig::load().unwrap_or_default();
     let max_depth = args.max_depth.unwrap_or(config.tree_view.max_depth);
-    let default_expanded = config.tree_view.default_expanded;
+    // Always expand by default to show tasks in tree view
+    let default_expanded = true;
 
-    // Build tree
-    let trees = build_file_tree(files, max_depth, default_expanded);
+    // Build task-aware tree
+    let trees = build_task_tree(files, file_tasks, max_depth, default_expanded);
 
     // Create formatter
     let formatter = TreeFormatter::new(args.ascii, max_depth, args.theme.clone());
 
-    // Format tree
-    let lines = formatter.format_tree(&trees, |node, fmt| {
-        if node.is_directory {
-            // Directory node
-            if let Some(theme) = fmt.theme() {
-                format!("{}/", theme.style_info(&node.name))
-            } else {
-                format!("{}/", node.name)
-            }
-        } else if let Some(file) = &node.file_record {
-            // File node
-            let status_indicator = match file.status {
-                lash_types::FileStatus::Complete => "✓",
-                lash_types::FileStatus::Blocked => "!",
-                lash_types::FileStatus::InProgress => "○",
-                lash_types::FileStatus::Empty => "·",
-            };
-
-            let mut output = if let Some(theme) = fmt.theme() {
-                let status_styled = match file.status {
-                    lash_types::FileStatus::Complete => theme.style_success(status_indicator),
-                    lash_types::FileStatus::Blocked => theme.style_error(status_indicator),
-                    lash_types::FileStatus::InProgress => theme.style_info(status_indicator),
-                    lash_types::FileStatus::Empty => theme.style_muted(status_indicator),
-                };
-                format!("{status_styled} {}", theme.style_label(&node.name))
-            } else {
-                format!("{status_indicator} {}", node.name)
-            };
-
-            // Add description if requested and available
-            if args.show_descriptions && !file.description.is_empty() {
-                let truncated = truncate_description(&file.description, 100);
-                if let Some(theme) = fmt.theme() {
-                    output.push('\n');
-                    output.push_str("    ");
-                    output.push_str(&theme.style_muted(&truncated));
-                } else {
-                    output.push_str("\n    ");
-                    output.push_str(&truncated);
-                }
-            }
-
-            // Add notes if requested
-            if args.show_notes {
-                if let Some(tasks) = file_tasks.get(&file.id) {
-                    for task in tasks {
-                        if !task.contextual_notes.is_empty() {
-                            // Add task title
-                            output.push('\n');
-                            output.push_str("    ");
-                            if let Some(theme) = fmt.theme() {
-                                output.push_str(&theme.style_label(&task.title));
-                            } else {
-                                output.push_str(&task.title);
-                            }
-
-                            // Add each note with marker
-                            for note in &task.contextual_notes {
-                                output.push('\n');
-                                output.push_str("      · ");
-                                if let Some(theme) = fmt.theme() {
-                                    output.push_str(&theme.style_muted(note.text()));
-                                } else {
-                                    output.push_str(note.text());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            output
-        } else {
-            // Fallback for nodes without file records
-            node.name.clone()
-        }
-    });
+    // Format tree with task-aware rendering
+    let lines = formatter.format_tree(&trees, |node, fmt| format_task_tree_node(node, fmt, args));
 
     // Print lines
     for line in lines {
@@ -811,7 +829,151 @@ fn output_text_tree(
 
     // Print summary
     println!();
-    println!("Total: {} file(s)", files.len());
+    let total_tasks: usize = file_tasks.values().map(Vec::len).sum();
+    println!("Total: {} file(s), {} task(s)", files.len(), total_tasks);
+}
+
+/// Format a single node in the task tree
+#[allow(clippy::too_many_lines)]
+fn format_task_tree_node(node: &TaskTreeNodeData, fmt: &TreeFormatter, args: &ListArgs) -> String {
+    use std::fmt::Write;
+
+    match node {
+        TaskTreeNodeData::Directory { name, .. } => {
+            if let Some(theme) = fmt.theme() {
+                format!("{}/", theme.style_info(name))
+            } else {
+                format!("{name}/")
+            }
+        }
+        TaskTreeNodeData::File { record } => {
+            let file_name = record.path.file_name().map_or_else(
+                || record.path.display().to_string(),
+                |n| n.to_string_lossy().to_string(),
+            );
+
+            let status_indicator = match record.status {
+                lash_types::FileStatus::Complete => "✓",
+                lash_types::FileStatus::Blocked => "!",
+                lash_types::FileStatus::InProgress => "○",
+                lash_types::FileStatus::Empty => "·",
+            };
+
+            let mut output = if let Some(theme) = fmt.theme() {
+                let status_styled = match record.status {
+                    lash_types::FileStatus::Complete => theme.style_success(status_indicator),
+                    lash_types::FileStatus::Blocked => theme.style_error(status_indicator),
+                    lash_types::FileStatus::InProgress => theme.style_info(status_indicator),
+                    lash_types::FileStatus::Empty => theme.style_muted(status_indicator),
+                };
+                let file_id = theme.style_muted(&format!(" ({})", record.file_id));
+                format!(
+                    "{} {}{}",
+                    status_styled,
+                    theme.style_label(&file_name),
+                    file_id
+                )
+            } else {
+                format!("{} {} ({})", status_indicator, file_name, record.file_id)
+            };
+
+            // Add description if requested and available
+            if args.show_descriptions && !record.description.is_empty() {
+                let truncated = truncate_description(&record.description, 80);
+                if let Some(theme) = fmt.theme() {
+                    let _ = write!(output, "\n    {}", theme.style_muted(&truncated));
+                } else {
+                    let _ = write!(output, "\n    {truncated}");
+                }
+            }
+
+            output
+        }
+        TaskTreeNodeData::Task { record, .. } => {
+            let checkbox = match record.status {
+                lash_types::TaskStatus::Open => "[ ]",
+                lash_types::TaskStatus::Done => "[x]",
+                lash_types::TaskStatus::Waived => "[-]",
+                lash_types::TaskStatus::Blocked => "[!]",
+            };
+
+            let mut parts = Vec::new();
+
+            // Status checkbox
+            if let Some(theme) = fmt.theme() {
+                let styled_checkbox = match record.status {
+                    lash_types::TaskStatus::Open => theme.style_muted(checkbox),
+                    lash_types::TaskStatus::Done => theme.style_success(checkbox),
+                    lash_types::TaskStatus::Waived => theme.style_warning(checkbox),
+                    lash_types::TaskStatus::Blocked => theme.style_error(checkbox),
+                };
+                parts.push(styled_checkbox);
+            } else {
+                parts.push(checkbox.to_string());
+            }
+
+            // Title
+            parts.push(record.title.clone());
+
+            // Task ID (muted)
+            let task_id = format!("({})", record.full_id);
+            if let Some(theme) = fmt.theme() {
+                parts.push(theme.style_muted(&task_id));
+            } else {
+                parts.push(task_id);
+            }
+
+            let mut output = parts.join(" ");
+
+            // Add metadata on same line if present
+            let mut metadata_parts = Vec::new();
+
+            if let Some(ref owner) = record.owner {
+                metadata_parts.push(format!("@{owner}"));
+            }
+
+            if let Some(ref estimate) = record.estimate {
+                metadata_parts.push(format!("~{estimate}"));
+            }
+
+            if !record.metadata.labels.is_empty() {
+                let labels = record
+                    .metadata
+                    .labels
+                    .iter()
+                    .map(|l| format!("#{l}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                metadata_parts.push(labels);
+            }
+
+            if !metadata_parts.is_empty() {
+                let metadata_str = metadata_parts.join(" ");
+                if let Some(theme) = fmt.theme() {
+                    let _ = write!(output, " {}", theme.style_muted(&metadata_str));
+                } else {
+                    let _ = write!(output, " {metadata_str}");
+                }
+            }
+
+            // Add contextual notes if show_notes is enabled
+            if args.show_notes && !record.contextual_notes.is_empty() {
+                for note in &record.contextual_notes {
+                    if let Some(theme) = fmt.theme() {
+                        let _ = write!(
+                            output,
+                            "\n    {}",
+                            theme.style_muted(&format!("· {}", note.text()))
+                        );
+                    } else {
+                        let _ = write!(output, "\n    · {}", note.text());
+                    }
+                }
+            }
+
+            output
+        }
+    }
 }
 
 #[cfg(test)]
@@ -867,9 +1029,10 @@ mod tests {
     }
 
     #[test]
-    fn test_build_file_tree_empty() {
+    fn test_build_task_tree_empty() {
         let files = vec![];
-        let trees = build_file_tree(&files, 5, false);
+        let file_tasks = HashMap::new();
+        let trees = build_task_tree(&files, &file_tasks, 5, false);
         assert!(trees.is_empty());
     }
 
