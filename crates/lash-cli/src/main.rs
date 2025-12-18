@@ -290,6 +290,7 @@ fn run(cli: LashCli) -> Result<()> {
         }
 
         Commands::List {
+            filter,
             label,
             status,
             path,
@@ -332,6 +333,7 @@ fn run(cli: LashCli) -> Result<()> {
             };
 
             let args = commands::list::ListArgs {
+                filter,
                 labels: label,
                 status: task_status,
                 path,

@@ -295,6 +295,26 @@ impl<'conn> TaskRepository<'conn> {
         Ok(tasks)
     }
 
+    /// Get all task full IDs in the database
+    ///
+    /// Returns a list of all task `full_id`s, useful for fuzzy matching
+    /// when a task lookup fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails
+    pub fn get_all_full_ids(&self) -> DbResult<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT full_id FROM tasks ORDER BY full_id")?;
+
+        let ids = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+
+        Ok(ids)
+    }
+
     /// Find tasks by label
     ///
     /// Finds tasks that have the label directly (via `task_labels`) OR
@@ -1834,5 +1854,67 @@ mod tests {
         assert_eq!(retrieved2.contextual_notes.len(), 2);
         assert_eq!(retrieved2.contextual_notes[0].text(), "Note A for task 2");
         assert_eq!(retrieved2.contextual_notes[1].text(), "Note B for task 2");
+    }
+
+    #[test]
+    fn test_get_all_full_ids() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        // Insert test file
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Initially no tasks
+        let ids = task_repo.get_all_full_ids().unwrap();
+        assert!(ids.is_empty());
+
+        // Create multiple tasks
+        let task1 = create_test_task("setup-db", "Setup Database", 0, None, 0);
+        let task2 = create_test_task("setup-api", "Setup API", 0, None, 1);
+        let task3 = create_test_task("setup-auth", "Setup Auth", 0, None, 2);
+
+        task_repo.insert(&task1, file_db_id, "test").unwrap();
+        task_repo.insert(&task2, file_db_id, "test").unwrap();
+        task_repo.insert(&task3, file_db_id, "test").unwrap();
+
+        // Verify all IDs are returned
+        let ids = task_repo.get_all_full_ids().unwrap();
+        assert_eq!(ids.len(), 3);
+        assert!(ids.contains(&"test#setup-db".to_string()));
+        assert!(ids.contains(&"test#setup-api".to_string()));
+        assert!(ids.contains(&"test#setup-auth".to_string()));
+    }
+
+    #[test]
+    fn test_get_all_full_ids_sorted() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        // Insert test file
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create tasks with IDs that should sort alphabetically
+        let task_z = create_test_task("zulu", "Zulu Task", 0, None, 0);
+        let task_a = create_test_task("alpha", "Alpha Task", 0, None, 1);
+        let task_m = create_test_task("mike", "Mike Task", 0, None, 2);
+
+        task_repo.insert(&task_z, file_db_id, "test").unwrap();
+        task_repo.insert(&task_a, file_db_id, "test").unwrap();
+        task_repo.insert(&task_m, file_db_id, "test").unwrap();
+
+        // Verify IDs are sorted alphabetically by full_id
+        let ids = task_repo.get_all_full_ids().unwrap();
+        assert_eq!(ids.len(), 3);
+        assert_eq!(ids[0], "test#alpha");
+        assert_eq!(ids[1], "test#mike");
+        assert_eq!(ids[2], "test#zulu");
     }
 }

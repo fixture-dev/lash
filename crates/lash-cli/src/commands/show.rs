@@ -7,6 +7,7 @@ use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterCon
 use lash_cli::formatter::{OutputFormat, Verbosity};
 use lash_cli::theme::CliTheme;
 use lash_cli::tree_formatter::TreeFormatter;
+use lash_core::fuzzy::FuzzyMatcher;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::tasks::TaskRecord;
 use lash_db::{
@@ -81,7 +82,7 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
         diag.help = Some("Run `lash index` to create the database".to_string());
 
         if args.json {
-            output_json_diagnostic(&diag)?;
+            output_json_diagnostic(&diag, &[])?;
         } else {
             let reporter_config = ErrorReporterConfig {
                 verbosity: args.verbosity,
@@ -105,7 +106,7 @@ pub fn execute(args: &ShowArgs) -> Result<i32> {
             diag.help = Some("Try running `lash index` to rebuild the database".to_string());
 
             if args.json {
-                output_json_diagnostic(&diag)?;
+                output_json_diagnostic(&diag, &[])?;
             } else {
                 let reporter_config = ErrorReporterConfig {
                     verbosity: args.verbosity,
@@ -198,7 +199,7 @@ fn show_file(
             diag.help = Some("Make sure the file has been indexed with `lash index`".to_string());
 
             if args.json {
-                output_json_diagnostic(&diag)?;
+                output_json_diagnostic(&diag, &[])?;
             } else {
                 let reporter_config = ErrorReporterConfig {
                     verbosity: args.verbosity,
@@ -326,17 +327,40 @@ fn show_task(
     let task = match task_repo.get_by_full_id(&args.target) {
         Ok(Some(task)) => task,
         Ok(None) => {
+            // Try fuzzy matching to suggest similar task IDs
+            let all_task_ids = task_repo.get_all_full_ids().unwrap_or_default();
+            let suggestions = find_similar_task_ids(&args.target, &all_task_ids);
+
             let error = LashError::internal(
                 format!("Task not found: {}", args.target),
                 Some("Task may not exist or hasn't been indexed".to_string()),
             );
             let mut diag = error.to_diagnostic();
-            diag.help = Some(
-                "Make sure the task exists and has been indexed with `lash index`".to_string(),
-            );
+
+            // Build help message with suggestions if available
+            let help_msg = if let Some((best_match, _score)) = suggestions.first() {
+                if suggestions.len() == 1 {
+                    format!(
+                        "Did you mean '{best_match}'?\n\nMake sure the task exists and has been indexed with `lash index`"
+                    )
+                } else {
+                    let matches: Vec<_> = suggestions
+                        .iter()
+                        .take(3)
+                        .map(|(id, _)| format!("  - {id}"))
+                        .collect();
+                    format!(
+                        "Did you mean one of these?\n{}\n\nMake sure the task exists and has been indexed with `lash index`",
+                        matches.join("\n")
+                    )
+                }
+            } else {
+                "Make sure the task exists and has been indexed with `lash index`".to_string()
+            };
+            diag.help = Some(help_msg.clone());
 
             if args.json {
-                output_json_diagnostic(&diag)?;
+                output_json_diagnostic(&diag, &suggestions)?;
             } else {
                 let reporter_config = ErrorReporterConfig {
                     verbosity: args.verbosity,
@@ -347,6 +371,12 @@ fn show_task(
                 };
                 let mut reporter = ErrorReporter::new(reporter_config);
                 reporter.report_diagnostic(&diag);
+
+                // Always print suggestions in text mode, regardless of verbosity
+                if !suggestions.is_empty() && args.verbosity < Verbosity::Verbose {
+                    eprintln!();
+                    eprintln!("  help: {help_msg}");
+                }
             }
             return Ok(5); // Exit code 5 for not found
         }
@@ -459,21 +489,47 @@ fn get_database_path(project_root: &Path) -> PathBuf {
 /// Output error as JSON
 fn output_json_error(error: &LashError) -> Result<()> {
     let diagnostic = error.to_diagnostic();
-    output_json_diagnostic(&diagnostic)
+    output_json_diagnostic(&diagnostic, &[])
 }
 
 /// Output diagnostic as JSON
-fn output_json_diagnostic(diagnostic: &lash_types::error::Diagnostic) -> Result<()> {
+fn output_json_diagnostic(
+    diagnostic: &lash_types::error::Diagnostic,
+    suggestions: &[(String, f64)],
+) -> Result<()> {
     use serde_json::json;
 
-    let output = json!({
+    let mut output = json!({
         "error": diagnostic.message,
         "code": diagnostic.code,
         "suggestion": diagnostic.help.clone().unwrap_or_else(|| "Run `lash index` to ensure the database is up to date".to_string()),
     });
 
+    // Include suggestions if available
+    if !suggestions.is_empty() {
+        let suggestion_list: Vec<_> = suggestions
+            .iter()
+            .map(|(id, score)| {
+                json!({
+                    "id": id,
+                    "score": score
+                })
+            })
+            .collect();
+        output["similar_ids"] = json!(suggestion_list);
+    }
+
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
+}
+
+/// Find similar task IDs using fuzzy matching
+///
+/// Returns a list of (`task_id`, score) pairs sorted by score descending.
+fn find_similar_task_ids(query: &str, candidates: &[String]) -> Vec<(String, f64)> {
+    let fuzzy_matcher = FuzzyMatcher::new(0.5, 5); // Lower threshold for more suggestions
+    let results = fuzzy_matcher.find_matches(query, candidates);
+    results.into_iter().map(|c| (c.task_id, c.score)).collect()
 }
 
 /// Output file as JSON

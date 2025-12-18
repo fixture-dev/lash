@@ -7,6 +7,7 @@ use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterCon
 use lash_cli::formatter::{OutputFormat as OutputFormatTrait, Verbosity};
 use lash_cli::theme::CliTheme;
 use lash_cli::tree_formatter::TreeFormatter;
+use lash_core::fuzzy::FuzzyMatcher;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::tasks::TaskRecord;
 use lash_db::{open_database, DocRefRepository, FileRepository, TaskRepository};
@@ -30,6 +31,8 @@ pub enum OutputFormat {
 #[allow(dead_code)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ListArgs {
+    /// Filter by task ID (supports fuzzy matching)
+    pub filter: Option<String>,
     /// Filter by label (can be specified multiple times) - currently unused in file view
     pub labels: Vec<String>,
     /// Filter by status - currently unused in file view
@@ -142,7 +145,13 @@ pub fn execute(args: ListArgs) -> Result<i32> {
 
     // Create repositories
     let file_repo = FileRepository::new(&conn);
+    let task_repo = TaskRepository::new(&conn);
     let doc_repo = DocRefRepository::new(&conn);
+
+    // Handle task ID filter if provided
+    if let Some(ref filter_id) = args.filter {
+        return execute_filtered_list(&args, &task_repo, &file_repo, filter_id);
+    }
 
     // Check if tree view is enabled
     let use_tree_view = determine_tree_view_enabled(&args);
@@ -264,6 +273,193 @@ pub fn execute(args: ListArgs) -> Result<i32> {
     }
 
     Ok(0)
+}
+
+/// Execute the list command with task ID filtering
+///
+/// This function handles the --filter flag which allows filtering tasks by ID,
+/// with fuzzy matching support when no exact match is found.
+fn execute_filtered_list(
+    args: &ListArgs,
+    task_repo: &TaskRepository,
+    file_repo: &FileRepository,
+    filter_id: &str,
+) -> Result<i32> {
+    // Get all task IDs for fuzzy matching
+    let all_task_ids = task_repo.get_all_full_ids().unwrap_or_default();
+
+    // Try exact match first
+    if let Ok(Some(task)) = task_repo.get_by_full_id(filter_id) {
+        // Found exact match - show this task
+        let file = file_repo
+            .get_by_db_id(task.file_id)?
+            .unwrap_or_else(|| FileRecord {
+                id: task.file_id,
+                path: PathBuf::from(format!("<file-id-{}>", task.file_id)),
+                file_id: format!("file-{}", task.file_id),
+                title: String::from("<unknown>"),
+                description: String::new(),
+                hash: String::new(),
+                mtime: 0,
+                status: lash_types::FileStatus::InProgress,
+                metadata: lash_types::FileMetadata::default(),
+                indexed_at: 0,
+            });
+
+        output_filtered_tasks(args, &[task], &[file]);
+        return Ok(0);
+    }
+
+    // No exact match - use fuzzy matching
+    let id_matcher = FuzzyMatcher::new(0.4, 10); // Lower threshold for more results
+    let similar_ids = id_matcher.find_matches(filter_id, &all_task_ids);
+
+    if similar_ids.is_empty() {
+        // No matches found - output helpful error message
+        let msg = format!("No tasks found matching '{filter_id}'");
+        if let Some(theme) = args.theme.as_ref() {
+            println!("{}", theme.style_warning(&msg));
+        } else {
+            println!("{msg}");
+        }
+        println!();
+        println!("Try running `lash search {filter_id}` for full-text search");
+        return Ok(5); // Exit code 5 for not found
+    }
+
+    // Get the matching tasks
+    let mut tasks = Vec::new();
+    let mut file_ids = HashSet::new();
+
+    for candidate in &similar_ids {
+        if let Ok(Some(task)) = task_repo.get_by_full_id(&candidate.task_id) {
+            file_ids.insert(task.file_id);
+            tasks.push(task);
+        }
+    }
+
+    // Get the files for matching tasks
+    let files: Vec<FileRecord> = file_ids
+        .iter()
+        .filter_map(|&id| file_repo.get_by_db_id(id).ok().flatten())
+        .collect();
+
+    // Check if we have an exact match
+    let has_exact = similar_ids.first().is_some_and(|m| m.score >= 1.0);
+
+    if !has_exact {
+        // Show suggestion message
+        let match_count = similar_ids.len();
+        let msg = if match_count == 1 {
+            format!(
+                "No exact match for '{}'. Did you mean '{}'?",
+                filter_id, similar_ids[0].task_id
+            )
+        } else {
+            format!("No exact match for '{filter_id}'. Found {match_count} similar task IDs:")
+        };
+
+        if let Some(theme) = args.theme.as_ref() {
+            println!("{}", theme.style_info(&msg));
+        } else {
+            println!("{msg}");
+        }
+
+        if match_count > 1 {
+            for candidate in similar_ids.iter().take(5) {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let score_pct = (candidate.score * 100.0) as u32;
+                if let Some(theme) = args.theme.as_ref() {
+                    println!(
+                        "  {} {}",
+                        theme.style_label(&candidate.task_id),
+                        theme.style_muted(&format!("({score_pct}% match)"))
+                    );
+                } else {
+                    println!("  {} ({}% match)", candidate.task_id, score_pct);
+                }
+            }
+        }
+        println!();
+    }
+
+    output_filtered_tasks(args, &tasks, &files);
+    Ok(0)
+}
+
+/// Output filtered tasks in the appropriate format
+fn output_filtered_tasks(args: &ListArgs, tasks: &[TaskRecord], files: &[FileRecord]) {
+    if tasks.is_empty() {
+        return;
+    }
+
+    match args.format {
+        OutputFormat::Json | OutputFormat::JsonPretty => {
+            use serde_json::json;
+
+            let files_json: Vec<serde_json::Value> = files.iter().map(|f| json!(f)).collect();
+            let tasks_json: Vec<serde_json::Value> = tasks.iter().map(|t| json!(t)).collect();
+
+            let output = json!({
+                "count": tasks.len(),
+                "tasks": tasks_json,
+                "files": files_json
+            });
+
+            if args.format == OutputFormat::JsonPretty {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&output).unwrap_or_default()
+                );
+            } else {
+                println!("{}", serde_json::to_string(&output).unwrap_or_default());
+            }
+        }
+        OutputFormat::Text => {
+            // Create file lookup map
+            let file_map: HashMap<i64, &FileRecord> = files.iter().map(|f| (f.id, f)).collect();
+
+            // Group tasks by file
+            let mut tasks_by_file: HashMap<i64, Vec<&TaskRecord>> = HashMap::new();
+            for task in tasks {
+                tasks_by_file.entry(task.file_id).or_default().push(task);
+            }
+
+            // Print tasks grouped by file
+            for (file_id, file_tasks) in &tasks_by_file {
+                if let Some(file) = file_map.get(file_id) {
+                    // Print file header
+                    if let Some(theme) = args.theme.as_ref() {
+                        println!("{}", theme.style_label(&file.path.display().to_string()));
+                    } else {
+                        println!("{}", file.path.display());
+                    }
+
+                    // Print tasks
+                    for task in file_tasks {
+                        let checkbox = match task.status {
+                            lash_types::TaskStatus::Open => "[ ]",
+                            lash_types::TaskStatus::Done => "[x]",
+                            lash_types::TaskStatus::Waived => "[-]",
+                            lash_types::TaskStatus::Blocked => "[!]",
+                        };
+
+                        if let Some(theme) = args.theme.as_ref() {
+                            let styled_checkbox = theme.styled_checkbox(task.status);
+                            let task_id = theme.style_muted(&format!("({})", task.full_id));
+                            println!("  {} {} {}", styled_checkbox, task.title, task_id);
+                        } else {
+                            println!("  {} {} ({})", checkbox, task.title, task.full_id);
+                        }
+                    }
+                    println!();
+                }
+            }
+
+            // Print summary
+            println!("Found {} task(s) in {} file(s)", tasks.len(), files.len());
+        }
+    }
 }
 
 /// Get the database path for a project
@@ -983,6 +1179,7 @@ mod tests {
     #[test]
     fn test_determine_tree_view_enabled_default() {
         let args = ListArgs {
+            filter: None,
             labels: vec![],
             status: None,
             path: None,
@@ -1008,6 +1205,7 @@ mod tests {
     #[test]
     fn test_determine_tree_view_enabled_with_flag() {
         let args = ListArgs {
+            filter: None,
             labels: vec![],
             status: None,
             path: None,
