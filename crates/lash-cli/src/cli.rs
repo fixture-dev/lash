@@ -203,6 +203,10 @@ pub enum Commands {
 
     /// List tasks matching specified criteria
     List {
+        /// Filter by task ID (supports fuzzy matching)
+        #[arg(long, short = 'f', visible_alias = "id", value_name = "ID")]
+        filter: Option<String>,
+
         /// Filter by label (can be specified multiple times)
         #[arg(long, value_name = "LABEL")]
         label: Vec<String>,
