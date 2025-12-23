@@ -239,7 +239,92 @@ JSON error response:
 
 Run `lash explain <ERROR_CODE>` for detailed help on any error.
 
-### Workflow 4: Creating a New Task File (Manual)
+### Workflow 4: Completing Tasks with `lash complete`
+
+**Goal**: Mark tasks as done when implementation is complete.
+
+**Why use `lash complete`**:
+- **Safe**: Updates source Markdown and re-indexes automatically
+- **Scriptable**: JSON output for programmatic verification
+- **Error-aware**: Fuzzy matching suggests correct IDs for typos
+
+**Steps**:
+
+1. **Complete a task after implementation**:
+   ```bash
+   lash complete features.auth#implement-login --json
+   ```
+
+   Response:
+   ```json
+   {
+     "success": true,
+     "completed": [
+       {
+         "task_id": "features.auth#implement-login",
+         "file_path": "features/auth.md",
+         "previous_status": "open"
+       }
+     ],
+     "errors": []
+   }
+   ```
+
+2. **Complete multiple tasks at once**:
+   ```bash
+   lash complete features.auth#task-1 features.auth#task-2 --json
+   ```
+
+3. **Preview before completing (dry run)**:
+   ```bash
+   lash complete --dry-run features.auth#implement-login
+   ```
+
+   Output:
+   ```
+   Would complete:
+     [x] features.auth#implement-login (features/auth.md)
+   ```
+
+**Error Handling**:
+
+Task not found with suggestions:
+```json
+{
+  "success": false,
+  "completed": [],
+  "errors": [
+    {
+      "task_id": "features.auth#implment-login",
+      "code": "E_NOT_FOUND",
+      "message": "Task not found: features.auth#implment-login",
+      "suggestions": ["features.auth#implement-login"]
+    }
+  ]
+}
+```
+
+Task already complete:
+```json
+{
+  "success": false,
+  "completed": [],
+  "errors": [
+    {
+      "task_id": "features.auth#implement-login",
+      "code": "E_ALREADY_COMPLETE",
+      "message": "Task 'features.auth#implement-login' is already complete"
+    }
+  ]
+}
+```
+
+**Exit codes**:
+- `0` - All tasks completed successfully
+- `1` - Validation error (already complete, waived, etc.)
+- `5` - Task not found
+
+### Workflow 5: Creating a New Task File (Manual)
 
 **Goal**: Add a new feature area with its own task file by editing Markdown directly.
 
@@ -287,7 +372,7 @@ Run `lash explain <ERROR_CODE>` for detailed help on any error.
    lash index
    ```
 
-### Workflow 5: Adding Cross-File Dependencies
+### Workflow 6: Adding Cross-File Dependencies
 
 **Goal**: Link a task to work in another file.
 
@@ -320,7 +405,7 @@ Run `lash explain <ERROR_CODE>` for detailed help on any error.
    lash index
    ```
 
-### Workflow 6: Token-Optimized Context Generation
+### Workflow 7: Token-Optimized Context Generation
 
 **Goal**: Generate a minimal prompt for a specific task area.
 
@@ -735,6 +820,7 @@ lash agent-prompt --labels specific-area  # Narrow scope
 | Command | Purpose | Example |
 |---------|---------|---------|
 | `lash add` | Create a new task | `lash add "Fix bug" --file bugs.md --format json` |
+| `lash complete` | Mark task as complete | `lash complete features#task-id --json` |
 | `lash agent-prompt` | Generate agent instructions | `lash agent-prompt --format plain` |
 | `lash lint` | Validate task files | `lash lint path/to/file.md` |
 | `lash format` | Auto-format task files | `lash format --fix` |

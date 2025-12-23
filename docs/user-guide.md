@@ -786,6 +786,63 @@ lash add --interactive
 
 **Note:** After adding a task, Lash automatically re-indexes the database.
 
+### Task Completion
+
+#### `lash complete`
+
+Mark one or more tasks as complete.
+
+```bash
+# Complete a single task
+lash complete features#implement-login
+
+# Complete multiple tasks at once
+lash complete features#task-1 features#task-2 features#task-3
+
+# Preview what would be changed (dry run)
+lash complete --dry-run features#implement-login
+
+# JSON output for scripting
+lash complete --json features#implement-login
+```
+
+**What it does:**
+- Updates the checkbox in the source Markdown file from `[ ]` or `[!]` to `[x]`
+- Automatically re-indexes the database
+- Supports fuzzy matching with suggestions if task ID not found
+
+**Exit codes:**
+- `0` - All tasks completed successfully
+- `1` - Validation error (task already complete, waived, etc.)
+- `5` - Task not found
+
+**Options:**
+- `TASK_ID...` - One or more task IDs to complete (required)
+- `--dry-run` - Preview changes without modifying files
+- `--json` - JSON output for scripting
+
+**Example output:**
+```
+[x] features#implement-login -> features/auth.md
+```
+
+**JSON output:**
+```json
+{
+  "success": true,
+  "completed": [
+    {
+      "task_id": "features#implement-login",
+      "file_path": "features/auth.md",
+      "previous_status": "open"
+    }
+  ],
+  "errors": []
+}
+```
+
+**Note:** After completing tasks, Lash automatically re-indexes the database.
+
 ### Dependencies
 
 #### `lash graph`
