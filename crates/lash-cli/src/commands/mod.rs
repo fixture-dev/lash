@@ -5,6 +5,7 @@ pub mod agent_prompt;
 pub mod ascii_graph;
 pub mod check_index;
 pub mod check_links;
+pub mod complete;
 pub mod config;
 pub mod explain;
 pub mod format;
