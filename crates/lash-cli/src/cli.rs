@@ -398,6 +398,17 @@ pub enum Commands {
         command: ConfigCommand,
     },
 
+    /// Mark one or more tasks as complete
+    Complete {
+        /// Task ID(s) to mark as complete (supports fuzzy matching)
+        #[arg(required = true, num_args = 1..)]
+        task_ids: Vec<String>,
+
+        /// Preview what would be changed without modifying files
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Create a new task
     Add {
         /// The task title (required)
@@ -912,6 +923,46 @@ mod tests {
         let cli = LashCli::try_parse_from(["lash", "--tree-view", "-d", "5", "list"]).unwrap();
         assert!(cli.tree_view);
         assert_eq!(cli.max_depth, Some(5));
+    }
+
+    #[test]
+    fn test_cli_parse_complete_single() {
+        let cli = LashCli::try_parse_from(["lash", "complete", "test#task-1"]).unwrap();
+        if let Commands::Complete { task_ids, dry_run } = cli.command {
+            assert_eq!(task_ids, vec!["test#task-1"]);
+            assert!(!dry_run);
+        } else {
+            panic!("Expected Complete command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_complete_multiple() {
+        let cli =
+            LashCli::try_parse_from(["lash", "complete", "test#task-1", "test#task-2"]).unwrap();
+        if let Commands::Complete { task_ids, .. } = cli.command {
+            assert_eq!(task_ids, vec!["test#task-1", "test#task-2"]);
+        } else {
+            panic!("Expected Complete command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_complete_dry_run() {
+        let cli =
+            LashCli::try_parse_from(["lash", "complete", "--dry-run", "test#task-1"]).unwrap();
+        if let Commands::Complete { task_ids, dry_run } = cli.command {
+            assert_eq!(task_ids, vec!["test#task-1"]);
+            assert!(dry_run);
+        } else {
+            panic!("Expected Complete command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_complete_requires_task_id() {
+        let result = LashCli::try_parse_from(["lash", "complete"]);
+        assert!(result.is_err());
     }
 
     #[test]
