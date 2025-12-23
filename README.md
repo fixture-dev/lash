@@ -263,6 +263,16 @@ lash add "Task" --label backend --owner alice --estimate 2h
 lash add --interactive  # Interactive mode
 ```
 
+### Task Completion
+
+```bash
+# Mark tasks as complete
+lash complete <task-id>              # Complete a single task
+lash complete task1 task2 task3      # Complete multiple tasks
+lash complete --dry-run <task-id>    # Preview without changing files
+lash complete --json <task-id>       # Machine-readable output
+```
+
 ### Dependencies
 
 ```bash

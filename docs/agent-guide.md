@@ -844,7 +844,63 @@ lash add "Implement password reset" \
 }
 ```
 
-### Example 5: Handling Errors
+### Example 5: Completing Tasks Programmatically
+
+**Using lash complete command:**
+```bash
+# Complete a single task
+lash complete features.auth#implement-login --json
+
+# Complete multiple tasks at once
+lash complete features.auth#task-1 features.auth#task-2 --json
+```
+
+**JSON response (success):**
+```json
+{
+  "success": true,
+  "completed": [
+    {
+      "task_id": "features.auth#implement-login",
+      "file_path": "features/auth.md",
+      "previous_status": "open"
+    }
+  ],
+  "errors": []
+}
+```
+
+**JSON response (task not found with suggestions):**
+```json
+{
+  "success": false,
+  "completed": [],
+  "errors": [
+    {
+      "task_id": "features.auth#implment-login",
+      "code": "E_NOT_FOUND",
+      "message": "Task not found: features.auth#implment-login",
+      "suggestions": ["features.auth#implement-login"]
+    }
+  ]
+}
+```
+
+**Dry run (preview without changes):**
+```bash
+lash complete --dry-run features.auth#implement-login
+
+# Output:
+# Would complete:
+#   [x] features.auth#implement-login (features/auth.md)
+```
+
+**Exit codes:**
+- `0` - All tasks completed successfully
+- `1` - Validation error (task already complete, waived, etc.)
+- `5` - Task not found
+
+### Example 6: Handling Errors
 
 **Scenario: Accidentally create duplicate ID**
 
