@@ -601,6 +601,30 @@ fn run(cli: LashCli) -> Result<()> {
             process::exit(exit_code);
         }
 
+        Commands::Status {
+            limit,
+            label,
+            path,
+            owner,
+            since,
+            compact,
+        } => {
+            let args = commands::status::StatusArgs {
+                limit,
+                labels: label,
+                path,
+                owner,
+                since,
+                compact,
+                json: cli.json,
+                no_color: cli.no_color,
+                project_root,
+                verbosity,
+            };
+            let exit_code = commands::status::execute(&args)?;
+            process::exit(exit_code);
+        }
+
         Commands::Add {
             title,
             file,

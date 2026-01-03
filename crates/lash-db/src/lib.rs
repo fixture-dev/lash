@@ -37,7 +37,8 @@ pub use project_root::{
     ProjectRootConfig,
 };
 pub use repository::{
-    DependencyRepository, DocRefRepository, FileRepository, LabelRepository, TaskRepository,
+    DependencyRepository, DocRefRepository, FileRepository, LabelRepository, StatusCounts,
+    TaskRepository,
 };
 pub use search::{
     parse_query, search, search_with_profiling, SearchMetrics, SearchQuery, SearchResult,

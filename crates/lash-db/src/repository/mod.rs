@@ -17,4 +17,4 @@ pub use dependencies::DependencyRepository;
 pub use doc_ref::{DocRefRepository, DocRefRow};
 pub use files::{normalize_path_for_db, FileRepository};
 pub use labels::LabelRepository;
-pub use tasks::TaskRepository;
+pub use tasks::{StatusCounts, TaskRepository};
