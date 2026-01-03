@@ -409,6 +409,33 @@ pub enum Commands {
         dry_run: bool,
     },
 
+    /// Show project task status summary
+    Status {
+        /// Maximum tasks per category
+        #[arg(short = 'n', long, default_value = "5")]
+        limit: usize,
+
+        /// Filter by label (can be specified multiple times)
+        #[arg(long, value_name = "LABEL")]
+        label: Vec<String>,
+
+        /// Filter by path prefix
+        #[arg(long, value_name = "PATH")]
+        path: Option<PathBuf>,
+
+        /// Filter by owner
+        #[arg(long, value_name = "NAME")]
+        owner: Option<String>,
+
+        /// Recency threshold (e.g., "1d", "1w", "today")
+        #[arg(long, default_value = "1w")]
+        since: String,
+
+        /// Minimal output for agents (task IDs and counts only)
+        #[arg(long)]
+        compact: bool,
+    },
+
     /// Create a new task
     Add {
         /// The task title (required)
@@ -963,6 +990,54 @@ mod tests {
     fn test_cli_parse_complete_requires_task_id() {
         let result = LashCli::try_parse_from(["lash", "complete"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_status() {
+        let cli = LashCli::try_parse_from(["lash", "status"]).unwrap();
+        assert!(matches!(cli.command, Commands::Status { .. }));
+        if let Commands::Status {
+            limit,
+            since,
+            compact,
+            ..
+        } = cli.command
+        {
+            assert_eq!(limit, 5);
+            assert_eq!(since, "1w");
+            assert!(!compact);
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_status_with_options() {
+        let cli = LashCli::try_parse_from([
+            "lash",
+            "status",
+            "--limit",
+            "10",
+            "--since",
+            "2d",
+            "--compact",
+            "--label",
+            "backend",
+        ])
+        .unwrap();
+        if let Commands::Status {
+            limit,
+            since,
+            compact,
+            label,
+            ..
+        } = cli.command
+        {
+            assert_eq!(limit, 10);
+            assert_eq!(since, "2d");
+            assert!(compact);
+            assert_eq!(label, vec!["backend"]);
+        } else {
+            panic!("Expected Status command");
+        }
     }
 
     #[test]

@@ -22,6 +22,7 @@ When working with Lash task files, follow this workflow for consistent results:
 
 1. **Discover** - Understand the project structure first
    ```bash
+   lash status                   # Get quick overview of current work
    lash list --tree              # See task hierarchy
    lash search "relevant term"   # Find related tasks
    ```
@@ -250,6 +251,8 @@ This includes password hashing with bcrypt and JWT tokens for session management
 
 ```bash
 # Discovery & Navigation
+lash status                    # Show project status summary (in-progress, blocked, recent)
+lash status --compact          # Minimal output for agents
 lash list                      # List all tasks
 lash list --tree               # Show task hierarchy
 lash list --label backend      # Filter by label

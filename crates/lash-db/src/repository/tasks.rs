@@ -75,6 +75,21 @@ pub struct TaskFilter {
     pub blocked: Option<bool>,
 }
 
+/// Status counts for all tasks in the database
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusCounts {
+    /// Total number of tasks
+    pub total: usize,
+    /// Number of open tasks
+    pub open: usize,
+    /// Number of done tasks
+    pub done: usize,
+    /// Number of waived tasks
+    pub waived: usize,
+    /// Number of blocked tasks
+    pub blocked: usize,
+}
+
 /// Repository for task operations
 pub struct TaskRepository<'conn> {
     conn: &'conn Connection,
@@ -609,6 +624,82 @@ impl<'conn> TaskRepository<'conn> {
             .collect::<Result<Vec<String>, _>>()?;
 
         Ok(owners)
+    }
+
+    /// Get detailed status counts for all tasks
+    ///
+    /// Returns counts for each status type: total, open, done, waived, blocked
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails
+    pub fn get_status_counts(&self) -> DbResult<StatusCounts> {
+        let (total, open, done, waived, blocked): (i64, i64, i64, i64, i64) = self.conn.query_row(
+            "SELECT
+                COUNT(*) as total,
+                COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) as open,
+                COALESCE(SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END), 0) as done,
+                COALESCE(SUM(CASE WHEN status = 'waived' THEN 1 ELSE 0 END), 0) as waived,
+                COALESCE(SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END), 0) as blocked
+             FROM tasks",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )?;
+
+        #[allow(clippy::cast_sign_loss)]
+        Ok(StatusCounts {
+            total: total as usize,
+            open: open as usize,
+            done: done as usize,
+            waived: waived as usize,
+            blocked: blocked as usize,
+        })
+    }
+
+    /// Find recently completed tasks
+    ///
+    /// Finds tasks with status 'done' or 'waived' in files modified since the given timestamp.
+    /// Results are ordered by file modification time (most recent first).
+    ///
+    /// # Arguments
+    ///
+    /// * `since_timestamp` - Unix timestamp (seconds since epoch)
+    /// * `limit` - Maximum number of tasks to return
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails
+    pub fn find_recently_completed(
+        &self,
+        since_timestamp: i64,
+        limit: usize,
+    ) -> DbResult<Vec<TaskRecord>> {
+        #[allow(clippy::cast_possible_wrap)]
+        let limit_i64 = limit as i64;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata, t.contextual_notes
+             FROM tasks t
+             JOIN files f ON t.file_id = f.id
+             WHERE t.status IN ('done', 'waived')
+               AND f.mtime >= ?1
+             ORDER BY f.mtime DESC
+             LIMIT ?2",
+        )?;
+
+        let tasks = stmt
+            .query_map([since_timestamp, limit_i64], Self::row_to_task_record)?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(tasks)
     }
 
     /// Helper to convert a row to `TaskRecord`

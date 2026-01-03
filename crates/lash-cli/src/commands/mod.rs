@@ -17,4 +17,5 @@ pub mod list;
 pub mod playground;
 pub mod search;
 pub mod show;
+pub mod status;
 pub mod tui;
