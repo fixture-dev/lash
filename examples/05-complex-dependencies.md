@@ -2,7 +2,6 @@
 
 @id: complex-dependencies-demo
 @labels: example, documentation, dependencies
-@status: in-progress
 @created: 2025-12-14
 
 ## Description

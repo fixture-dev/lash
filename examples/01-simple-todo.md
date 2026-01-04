@@ -2,7 +2,6 @@
 
 @id: weekend-todos
 @labels: personal, example
-@status: in-progress
 @created: 2025-12-14
 
 ## Description

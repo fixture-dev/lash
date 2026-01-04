@@ -1,7 +1,6 @@
 # Database Schema
 
 @id: backend.database
-@status: done
 @labels: backend, database, p0
 @created: 2025-12-01
 @owner: backend-team

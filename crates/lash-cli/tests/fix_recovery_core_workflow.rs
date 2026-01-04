@@ -24,7 +24,6 @@ fn test_fix_on_valid_file_no_crash() {
 
 @id: test.valid
 @labels: backend, frontend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -58,7 +57,6 @@ fn test_suggest_shows_fixable_count() {
 
 @id: test.valid
 @labels: backend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -98,7 +96,6 @@ fn test_suggest_json_has_fixable_field() {
 
 @id: test.valid
 @labels: backend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -147,7 +144,6 @@ fn test_fix_on_error_free_file() {
 
 @id: test.no-errors
 @labels: backend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -189,7 +185,6 @@ fn test_fix_quiet_minimal_output() {
 
 @id: test.quiet
 @labels: backend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -259,7 +254,6 @@ fn test_fix_multiple_files() {
 
 @id: test-project
 @labels: backend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -274,7 +268,6 @@ fn test_fix_multiple_files() {
 
 @id: tasks.main
 @labels: frontend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -309,7 +302,6 @@ fn test_fix_json_valid_output() {
 
 @id: test.json
 @labels: backend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -352,7 +344,6 @@ fn test_fix_iteration_has_limit() {
 
 @id: test.iteration
 @labels: backend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks

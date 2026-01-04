@@ -3,7 +3,6 @@
 @id: unicode.example
 @owner: José García
 @labels: internationalization, i18n, español, 日本語
-@status: in-progress
 @created: 2024-01-20
 
 ## Tasks

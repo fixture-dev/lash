@@ -187,6 +187,7 @@ fn render_results(
                 lash_types::TaskStatus::Done => theme.success_color(),
                 lash_types::TaskStatus::Blocked => theme.error_color(),
                 lash_types::TaskStatus::Waived => theme.muted_color(),
+                lash_types::TaskStatus::InProgress => theme.task_in_progress(),
                 lash_types::TaskStatus::Open => theme.foreground(),
             };
 
@@ -194,6 +195,7 @@ fn render_results(
                 lash_types::TaskStatus::Done => "[x]",
                 lash_types::TaskStatus::Blocked => "[!]",
                 lash_types::TaskStatus::Waived => "[-]",
+                lash_types::TaskStatus::InProgress => "[>]",
                 lash_types::TaskStatus::Open => "[ ]",
             };
 

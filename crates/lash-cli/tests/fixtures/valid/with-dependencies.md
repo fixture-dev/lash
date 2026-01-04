@@ -1,7 +1,6 @@
 # Task List with Dependencies
 
 @id: deps.example
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks

@@ -1,7 +1,6 @@
 # Authentication Service
 
 @id: backend-auth
-@status: in-progress
 @labels: backend, security
 @created: 2024-01-15
 

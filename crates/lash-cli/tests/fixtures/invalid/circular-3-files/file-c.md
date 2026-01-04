@@ -1,7 +1,6 @@
 # File C
 
 @id: file-c
-@status: in-progress
 @labels: circular-test
 @depends-on: file-b.md
 @created: 2024-01-10

@@ -1,7 +1,6 @@
 # Testing Framework
 
 @id: infra.testing
-@status: in-progress
 @labels: testing, qa, p1
 @created: 2024-01-15
 

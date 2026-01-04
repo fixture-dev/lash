@@ -1,7 +1,6 @@
 # Circular Dependency Test
 
 @id: circular-test
-@status: in-progress
 @labels: test, invalid, circular
 @created: 2024-01-10
 

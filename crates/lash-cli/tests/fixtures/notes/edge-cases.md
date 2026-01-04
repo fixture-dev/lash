@@ -2,7 +2,6 @@
 
 @id: notes.edge-cases
 @labels: testing, edge-cases
-@status: in-progress
 @created: 2025-12-13
 
 ## Tasks

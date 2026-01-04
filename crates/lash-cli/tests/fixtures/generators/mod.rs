@@ -139,7 +139,6 @@ impl ProjectGenerator {
 
         // Metadata
         content.push_str(&format!("@id: {}\n", self.name));
-        content.push_str("@status: in-progress\n");
         if !self.labels.is_empty() {
             content.push_str(&format!("@labels: {}\n", self.labels.join(", ")));
         }
@@ -320,7 +319,6 @@ impl FileContent {
 
         // Metadata
         content.push_str(&format!("@id: {}\n", self.id));
-        content.push_str("@status: in-progress\n");
         if !self.labels.is_empty() {
             content.push_str(&format!("@labels: {}\n", self.labels.join(", ")));
         }

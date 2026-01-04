@@ -1,7 +1,6 @@
 # Task List with Duplicate IDs
 
 @id: duplicate.example
-@status: in-progress
 
 ## Tasks
 

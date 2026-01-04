@@ -1,7 +1,6 @@
 # Monitoring and Observability
 
 @id: infra-monitoring
-@status: in-progress
 @labels: infrastructure, observability
 @created: 2024-01-15
 

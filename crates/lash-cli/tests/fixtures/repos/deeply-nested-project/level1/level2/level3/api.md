@@ -1,7 +1,6 @@
 # Level 3 - API
 
 @id: level3-api
-@status: in-progress
 @labels: level3
 @depends-on: level1/level2/services.md
 @created: 2024-01-13

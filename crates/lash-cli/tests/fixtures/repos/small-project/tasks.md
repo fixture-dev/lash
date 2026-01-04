@@ -2,7 +2,6 @@
 
 @id: dev-tasks
 @owner: alice
-@status: in-progress
 @labels: development
 @created: 2024-01-16
 

@@ -8,7 +8,6 @@
 //! Supported annotation types include:
 //! - `@id`: Unique identifier
 //! - `@labels`: Comma-separated list of labels
-//! - `@status`: Overall file/task status
 //! - `@owner`: Assigned owner
 //! - `@created`: Creation date (YYYY-MM-DD)
 //! - `@estimate`: Time estimate
@@ -240,7 +239,7 @@ impl AnnotationBlock {
 
     /// Validate that single-value annotations don't have duplicates
     ///
-    /// Some annotations (like @id, @owner, @status) should only appear once.
+    /// Some annotations (like @id, @owner) should only appear once.
     /// This checks for duplicates and returns an error if found.
     ///
     /// # Errors
@@ -250,7 +249,6 @@ impl AnnotationBlock {
         let single_value_keys = [
             known_keys::ID,
             known_keys::OWNER,
-            known_keys::STATUS,
             known_keys::CREATED,
             known_keys::ESTIMATE,
             known_keys::AGENT_NOTE,
@@ -624,9 +622,6 @@ pub mod known_keys {
     /// Comma-separated labels
     pub const LABELS: &str = "labels";
 
-    /// Status (open, done, waived, blocked)
-    pub const STATUS: &str = "status";
-
     /// Assigned owner
     pub const OWNER: &str = "owner";
 
@@ -647,7 +642,7 @@ pub mod known_keys {
 
     /// All known annotation keys
     pub const ALL: &[&str] = &[
-        ID, LABELS, STATUS, OWNER, CREATED, ESTIMATE, DEPENDS_ON, AGENT_NOTE, DOC,
+        ID, LABELS, OWNER, CREATED, ESTIMATE, DEPENDS_ON, AGENT_NOTE, DOC,
     ];
 }
 
@@ -1088,7 +1083,6 @@ mod tests {
     fn test_known_annotation_keys() {
         assert_eq!(known_keys::ID, "id");
         assert_eq!(known_keys::LABELS, "labels");
-        assert_eq!(known_keys::STATUS, "status");
         assert_eq!(known_keys::OWNER, "owner");
         assert_eq!(known_keys::CREATED, "created");
         assert_eq!(known_keys::ESTIMATE, "estimate");
@@ -1096,7 +1090,7 @@ mod tests {
         assert_eq!(known_keys::AGENT_NOTE, "agent-note");
         assert_eq!(known_keys::DOC, "doc");
 
-        assert_eq!(known_keys::ALL.len(), 9);
+        assert_eq!(known_keys::ALL.len(), 8);
         assert!(known_keys::ALL.contains(&"id"));
         assert!(known_keys::ALL.contains(&"depends-on"));
         assert!(known_keys::ALL.contains(&"doc"));
@@ -1109,7 +1103,6 @@ mod tests {
         let lines = vec![
             "@id: my-task",
             "@labels: backend, api, database",
-            "@status: open",
             "@owner: alice",
             "@created: 2025-01-15",
             "@estimate: 2h",
@@ -1127,10 +1120,6 @@ mod tests {
 
         assert_eq!(block.get_single("id"), Some("my-task"));
         assert_eq!(block.get_labels("labels").len(), 3);
-        assert_eq!(
-            block.get_status("status").unwrap().unwrap(),
-            TaskStatus::Open
-        );
         assert_eq!(block.get_single("owner"), Some("alice"));
         assert_eq!(
             block.get_date("created").unwrap().unwrap().to_string(),

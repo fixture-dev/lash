@@ -1,7 +1,6 @@
 # API Gateway
 
 @id: backend-gateway
-@status: in-progress
 @labels: backend, infrastructure
 @depends-on: backend/authentication.md
 @created: 2024-01-15

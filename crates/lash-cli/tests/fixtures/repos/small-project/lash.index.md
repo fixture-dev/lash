@@ -1,7 +1,6 @@
 # Small Test Project
 
 @id: small-project
-@status: in-progress
 @labels: test, demo
 @created: 2024-01-15
 

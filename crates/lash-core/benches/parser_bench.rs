@@ -42,7 +42,6 @@ fn generate_complex_file(num_tasks: usize) -> String {
     content.push_str("@id: complex-benchmark\n");
     content.push_str("@owner: benchmark-runner\n");
     content.push_str("@labels: backend, api, security, performance\n");
-    content.push_str("@status: in-progress\n");
     content.push_str("@created: 2025-01-15\n\n");
     content.push_str("This is a complex file with multiple annotations and nested structure.\n");
     content.push_str("It simulates a real-world task file.\n\n");
@@ -176,7 +175,6 @@ fn bench_header_parsing(c: &mut Criterion) {
 @id: test
 @owner: alice
 @labels: backend, api, security
-@status: in-progress
 @created: 2025-01-15
 
 ## Tasks
@@ -241,7 +239,6 @@ fn bench_realistic_file(c: &mut Criterion) {
 @id: backend-api
 @owner: alice
 @labels: backend, api, database
-@status: in-progress
 @created: 2025-01-10
 @depends-on: auth-service.md#task:setup
 

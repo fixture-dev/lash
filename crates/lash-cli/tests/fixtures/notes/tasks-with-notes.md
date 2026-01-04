@@ -2,7 +2,6 @@
 
 @id: tasks.notes
 @labels: example
-@status: in-progress
 
 ## Tasks
 

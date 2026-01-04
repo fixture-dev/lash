@@ -1,7 +1,6 @@
 # Database
 
 @id: database
-@status: in-progress
 @labels: backend, infrastructure
 @created: 2024-01-11
 

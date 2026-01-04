@@ -1,7 +1,6 @@
 # State Management
 
 @id: frontend-state
-@status: in-progress
 @labels: frontend
 @depends-on: frontend/components.md
 @created: 2024-01-15

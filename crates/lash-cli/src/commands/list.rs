@@ -439,6 +439,7 @@ fn output_filtered_tasks(args: &ListArgs, tasks: &[TaskRecord], files: &[FileRec
                     for task in file_tasks {
                         let checkbox = match task.status {
                             lash_types::TaskStatus::Open => "[ ]",
+                            lash_types::TaskStatus::InProgress => "[>]",
                             lash_types::TaskStatus::Done => "[x]",
                             lash_types::TaskStatus::Waived => "[-]",
                             lash_types::TaskStatus::Blocked => "[!]",
@@ -1088,6 +1089,7 @@ fn format_task_tree_node(node: &TaskTreeNodeData, fmt: &TreeFormatter, args: &Li
         TaskTreeNodeData::Task { record, .. } => {
             let checkbox = match record.status {
                 lash_types::TaskStatus::Open => "[ ]",
+                lash_types::TaskStatus::InProgress => "[>]",
                 lash_types::TaskStatus::Done => "[x]",
                 lash_types::TaskStatus::Waived => "[-]",
                 lash_types::TaskStatus::Blocked => "[!]",
@@ -1099,6 +1101,9 @@ fn format_task_tree_node(node: &TaskTreeNodeData, fmt: &TreeFormatter, args: &Li
             if let Some(theme) = fmt.theme() {
                 let styled_checkbox = match record.status {
                     lash_types::TaskStatus::Open => theme.style_muted(checkbox),
+                    lash_types::TaskStatus::InProgress => {
+                        theme.style_task_status(checkbox, record.status)
+                    }
                     lash_types::TaskStatus::Done => theme.style_success(checkbox),
                     lash_types::TaskStatus::Waived => theme.style_warning(checkbox),
                     lash_types::TaskStatus::Blocked => theme.style_error(checkbox),

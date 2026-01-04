@@ -1,7 +1,6 @@
 # Customer Portal
 
 @id: frontend.portal
-@status: in-progress
 @labels: frontend, p0
 @created: 2025-10-10
 @owner: frontend-team

@@ -1,7 +1,6 @@
 # Blog Platform Project
 
 @id: blog-platform
-@status: in-progress
 @labels: web, fullstack, example
 @created: 2025-12-14
 

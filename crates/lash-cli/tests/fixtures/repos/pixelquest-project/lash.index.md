@@ -1,7 +1,6 @@
 # PixelQuest: Retro 2D Platformer
 
 @id: pixelquest
-@status: in-progress
 @labels: game, platformer, demo
 @created: 2024-08-01
 

@@ -24,7 +24,6 @@ fn test_parse_complete_valid_file() {
 @id: backend-api
 @owner: alice
 @labels: backend, api
-@status: in-progress
 @created: 2025-01-15
 
 This file tracks all backend API development tasks.
@@ -56,7 +55,6 @@ Focus areas include authentication, data models, and endpoints.
     assert_eq!(file.id, "backend-api");
     assert_eq!(file.title, "Backend API Tasks");
     assert_eq!(file.metadata.owner, Some("alice".to_string()));
-    assert_eq!(file.metadata.status, Some("in-progress".to_string()));
     assert_eq!(file.metadata.created, Some("2025-01-15".to_string()));
     // Check labels without caring about order
     assert_eq!(file.metadata.labels.len(), 2);
@@ -657,7 +655,6 @@ fn test_extract_file_metadata_with_all_fields() {
 
 @id: complete-1
 @labels: backend, api, security
-@status: in-progress
 @owner: alice
 @created: 2025-01-15
 
@@ -678,7 +675,6 @@ fn test_extract_file_metadata_with_all_fields() {
     assert!(file.metadata.labels.contains(&"backend".to_string()));
     assert!(file.metadata.labels.contains(&"api".to_string()));
     assert!(file.metadata.labels.contains(&"security".to_string()));
-    assert_eq!(file.metadata.status, Some("in-progress".to_string()));
     assert_eq!(file.metadata.owner, Some("alice".to_string()));
     assert_eq!(file.metadata.created, Some("2025-01-15".to_string()));
 }

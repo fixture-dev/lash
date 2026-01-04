@@ -23,7 +23,6 @@ fn setup_test_db() -> (TempDir, std::path::PathBuf) {
         r#"# Sample Tasks
 
 @id: sample
-@status: in-progress
 
 ## Tasks
 
@@ -172,7 +171,6 @@ fn setup_test_db_with_directory_structure() -> (TempDir, std::path::PathBuf) {
         r#"# Test Project
 
 @id: root
-@status: in-progress
 
 ## Tasks
 
@@ -188,7 +186,6 @@ fn setup_test_db_with_directory_structure() -> (TempDir, std::path::PathBuf) {
         r#"# Enemy AI & Behavior
 
 @id: enemy-ai
-@status: in-progress
 
 ## Tasks
 
@@ -206,7 +203,6 @@ fn setup_test_db_with_directory_structure() -> (TempDir, std::path::PathBuf) {
         r#"# Player Movement
 
 @id: player
-@status: in-progress
 
 ## Tasks
 
@@ -223,7 +219,6 @@ fn setup_test_db_with_directory_structure() -> (TempDir, std::path::PathBuf) {
         r#"# Level Design
 
 @id: levels
-@status: in-progress
 
 ## Tasks
 

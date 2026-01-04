@@ -114,7 +114,7 @@ pub fn enrich_diagnostic(diagnostic: &mut Diagnostic) {
         codes::E_LINT_UNKNOWN_ANNOTATION => {
             diagnostic.fix_steps = Some(vec![
                 "Check for typos in the annotation name".to_string(),
-                "Valid annotations: @id, @labels, @status, @owner, @estimate, @depends-on, @created, @doc, @agent-note".to_string(),
+                "Valid annotations: @id, @labels, @owner, @estimate, @depends-on, @created, @doc, @agent-note".to_string(),
                 "Either fix the typo or remove the unknown annotation".to_string(),
                 "Save the file".to_string(),
             ]);

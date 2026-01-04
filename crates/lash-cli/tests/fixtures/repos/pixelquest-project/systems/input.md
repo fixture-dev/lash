@@ -1,7 +1,6 @@
 # Input Handling System
 
 @id: systems.input
-@status: in-progress
 @labels: backend, input, p0
 @created: 2024-01-15
 

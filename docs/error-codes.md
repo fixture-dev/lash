@@ -119,16 +119,16 @@ File 2: @id: my.task  # Duplicate!
 
 ### E_LINT_STATUS_INCONSISTENCY
 
-**Description:** `@status` value doesn't match actual task completion state
+**Description:** Parent task marked as done but has incomplete child tasks
 
 **Example:**
 ```markdown
-@status: done
 ## Tasks
-- [ ] Incomplete task  # Status says done but task is open!
+- [x] Parent task
+  - [ ] Incomplete child task
 ```
 
-**How to fix:** Update `@status` to match actual completion or complete the remaining tasks
+**How to fix:** Mark all child tasks as done or waived, or change parent status to open
 
 ---
 
@@ -154,7 +154,7 @@ File 2: @id: my.task  # Duplicate!
 @invalid-field: value
 ```
 
-**How to fix:** Remove unknown annotation or check spelling. Valid annotations: `@id`, `@status`, `@labels`, `@owner`, `@created`, `@estimate`, `@depends-on`, `@agent-note`
+**How to fix:** Remove unknown annotation or check spelling. Valid annotations: `@id`, `@labels`, `@owner`, `@created`, `@estimate`, `@depends-on`, `@agent-note`
 
 ---
 

@@ -861,7 +861,8 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         let task_title = task.title.clone();
         let old_status = task.status;
         let new_status = match task.status {
-            lash_types::TaskStatus::Open => lash_types::TaskStatus::Done,
+            lash_types::TaskStatus::Open => lash_types::TaskStatus::InProgress,
+            lash_types::TaskStatus::InProgress => lash_types::TaskStatus::Done,
             lash_types::TaskStatus::Done => lash_types::TaskStatus::Waived,
             lash_types::TaskStatus::Waived | lash_types::TaskStatus::Blocked => {
                 lash_types::TaskStatus::Open
@@ -869,7 +870,10 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         };
 
         // If transitioning to Done, check for special cases
-        if old_status == lash_types::TaskStatus::Open && new_status == lash_types::TaskStatus::Done
+        if matches!(
+            old_status,
+            lash_types::TaskStatus::Open | lash_types::TaskStatus::InProgress
+        ) && new_status == lash_types::TaskStatus::Done
         {
             // First check if this is a cross-file link task in an index file
             // This takes priority because it has broader implications
@@ -1298,6 +1302,7 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     fn status_display_char(status: lash_types::TaskStatus) -> &'static str {
         match status {
             lash_types::TaskStatus::Open => "[ ]",
+            lash_types::TaskStatus::InProgress => "[>]",
             lash_types::TaskStatus::Done => "[x]",
             lash_types::TaskStatus::Waived => "[-]",
             lash_types::TaskStatus::Blocked => "[!]",
@@ -1308,6 +1313,7 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     fn status_checkbox_char(status: lash_types::TaskStatus) -> char {
         match status {
             lash_types::TaskStatus::Open => ' ',
+            lash_types::TaskStatus::InProgress => '>',
             lash_types::TaskStatus::Done => 'x',
             lash_types::TaskStatus::Waived => '-',
             lash_types::TaskStatus::Blocked => '!',
@@ -1917,6 +1923,7 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
                 depth: t.depth,
                 status_indicator: match t.status {
                     lash_types::TaskStatus::Done => 'x',
+                    lash_types::TaskStatus::InProgress => '>',
                     lash_types::TaskStatus::Waived => '-',
                     lash_types::TaskStatus::Blocked => '!',
                     lash_types::TaskStatus::Open => ' ',

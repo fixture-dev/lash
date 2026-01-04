@@ -429,6 +429,7 @@ fn output_text(
 fn print_task_summary(task: &TaskRecord, theme: Option<&CliTheme>) {
     let checkbox = match task.status {
         TaskStatus::Open => "[ ]",
+        TaskStatus::InProgress => "[>]",
         TaskStatus::Done => "[x]",
         TaskStatus::Waived => "[-]",
         TaskStatus::Blocked => "[!]",
@@ -440,6 +441,7 @@ fn print_task_summary(task: &TaskRecord, theme: Option<&CliTheme>) {
     if let Some(t) = theme {
         let styled_checkbox = match task.status {
             TaskStatus::Open => t.style_muted(checkbox),
+            TaskStatus::InProgress => t.style_task_status(checkbox, task.status),
             TaskStatus::Done => t.style_success(checkbox),
             TaskStatus::Waived => t.style_warning(checkbox),
             TaskStatus::Blocked => t.style_error(checkbox),

@@ -23,7 +23,6 @@ This document records all design decisions made during the planning phase. These
 
 @id: photo-app.filters.sepia
 @labels: photo-app, filters, image-processing
-@status: in-progress
 @owner: frank
 @created: 2025-11-16
 
@@ -226,7 +225,7 @@ project/
 **Implementation:**
 
 **Built-in annotations (always allowed):**
-- `@id`, `@labels`, `@status`, `@owner`, `@created`, `@estimate`, `@depends-on`, `@agent-note`
+- `@id`, `@labels`, `@owner`, `@created`, `@estimate`, `@depends-on`, `@agent-note`
 
 **Custom annotations (via config):**
 

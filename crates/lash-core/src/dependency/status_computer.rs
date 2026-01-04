@@ -399,12 +399,12 @@ impl<'a> StatusComputer<'a> {
                     ComputedStatus::Complete
                 }
             }
-            TaskStatus::Open => {
+            TaskStatus::Open | TaskStatus::InProgress => {
                 if blockers.is_empty() {
-                    // Task is open and ready to work on
+                    // Task is open/in-progress and ready to work on
                     ComputedStatus::Incomplete
                 } else {
-                    // Task is open but blocked by dependencies
+                    // Task is open/in-progress but blocked by dependencies
                     ComputedStatus::Blocked(blockers)
                 }
             }

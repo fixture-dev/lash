@@ -2,7 +2,6 @@
 
 @id: core.lib
 @owner: team-core
-@status: in-progress
 @labels: core, library
 @created: 2024-01-05
 

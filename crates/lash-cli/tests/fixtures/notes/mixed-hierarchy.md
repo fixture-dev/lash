@@ -2,7 +2,6 @@
 
 @id: notes.mixed
 @labels: testing, hierarchy
-@status: in-progress
 @created: 2025-12-13
 
 ## Description

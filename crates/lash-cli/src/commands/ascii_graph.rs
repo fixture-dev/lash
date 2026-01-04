@@ -517,6 +517,7 @@ impl<'a> AsciiGraphRenderer<'a> {
     fn render_checkbox(&self, status: TaskStatus) -> String {
         let checkbox = match status {
             TaskStatus::Open => "[ ]",
+            TaskStatus::InProgress => "[>]",
             TaskStatus::Done => "[x]",
             TaskStatus::Waived => "[-]",
             TaskStatus::Blocked => "[!]",

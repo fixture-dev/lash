@@ -1,7 +1,6 @@
 # CRLF Line Endings
 
 @id: crlf-endings
-@status: in-progress
 @labels: edge-case, line-endings
 @created: 2024-01-10
 

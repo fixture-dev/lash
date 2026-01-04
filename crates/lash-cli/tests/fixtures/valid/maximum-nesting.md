@@ -1,7 +1,6 @@
 # Task List at Maximum Nesting Depth
 
 @id: max-nesting.example
-@status: in-progress
 @created: 2024-01-20
 
 ## Tasks

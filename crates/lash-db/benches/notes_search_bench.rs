@@ -80,8 +80,7 @@ fn generate_searchable_task_file(
     note_density: f64,
     notes_per_task: usize,
 ) -> String {
-    let mut content =
-        format!("# Task File {file_id}\n\n@id: {file_id}\n@status: in-progress\n\n## Tasks\n\n");
+    let mut content = format!("# Task File {file_id}\n\n@id: {file_id}\n\n## Tasks\n\n");
 
     let task_verbs = ["Implement", "Fix", "Add", "Update", "Refactor", "Optimize"];
     let task_objects = [

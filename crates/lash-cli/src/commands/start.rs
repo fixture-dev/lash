@@ -1,7 +1,7 @@
-//! Complete command implementation
+//! Start command implementation
 //!
-//! The `lash complete` command marks one or more tasks as complete by updating
-//! the checkbox in the source markdown file from `[ ]` or `[!]` to `[x]`.
+//! The `lash start` command marks one or more tasks as in-progress by updating
+//! the checkbox in the source markdown file from `[ ]` or `[!]` to `[>]`.
 
 use anyhow::{Context, Result};
 use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
@@ -20,11 +20,11 @@ use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
 
-/// Arguments for the complete command
+/// Arguments for the start command
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)]
-pub struct CompleteArgs {
-    /// Task ID(s) to mark as complete
+pub struct StartArgs {
+    /// Task ID(s) to mark as in-progress
     pub task_ids: Vec<String>,
     /// Preview what would be changed without modifying files
     pub dry_run: bool,
@@ -38,20 +38,20 @@ pub struct CompleteArgs {
     pub verbosity: Verbosity,
 }
 
-/// Result of completing a single task
+/// Result of starting a single task
 #[derive(Debug, Clone, Serialize)]
-pub struct CompleteResult {
+pub struct StartResult {
     /// Task full ID
     pub task_id: String,
     /// File path where task was updated
     pub file_path: PathBuf,
-    /// Previous status before completion
+    /// Previous status before starting
     pub previous_status: String,
 }
 
-/// Error for a single task that could not be completed
+/// Error for a single task that could not be started
 #[derive(Debug, Clone, Serialize)]
-pub struct CompleteError {
+pub struct StartError {
     /// The task ID that was requested
     pub task_id: String,
     /// Error code
@@ -63,16 +63,16 @@ pub struct CompleteError {
     pub suggestions: Vec<String>,
 }
 
-/// Execute the complete command
+/// Execute the start command
 ///
 /// # Arguments
 ///
-/// * `args` - Complete command arguments
+/// * `args` - Start command arguments
 ///
 /// # Returns
 ///
 /// Exit code: 0 (success), 1 (validation error), 3 (DB error), 5 (not found)
-pub fn execute(args: &CompleteArgs) -> Result<i32> {
+pub fn execute(args: &StartArgs) -> Result<i32> {
     // Determine project root
     let project_root = if let Some(ref root) = args.project_root {
         root.clone()
@@ -85,7 +85,7 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
         project_root = %project_root.display(),
         task_ids = ?args.task_ids,
         dry_run = args.dry_run,
-        "Starting complete operation"
+        "Starting start operation"
     );
 
     // Load theme for colored output
@@ -156,8 +156,8 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
     };
 
     // Process each task ID
-    let mut results: Vec<CompleteResult> = Vec::new();
-    let mut errors: Vec<CompleteError> = Vec::new();
+    let mut results: Vec<StartResult> = Vec::new();
+    let mut errors: Vec<StartError> = Vec::new();
 
     for task_id in &unique_task_ids {
         match process_task(task_id, &task_repo, &file_repo, &project_root, args.dry_run) {
@@ -169,7 +169,7 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
     // Re-index if we made changes and not in dry-run mode
     if !args.dry_run && !results.is_empty() {
         if let Err(e) = reindex_project(&project_root) {
-            tracing::warn!("Failed to re-index after completion: {e}");
+            tracing::warn!("Failed to re-index after starting: {e}");
             // Don't fail the command, just warn
         }
     }
@@ -203,7 +203,7 @@ fn process_task(
     file_repo: &FileRepository,
     project_root: &Path,
     dry_run: bool,
-) -> std::result::Result<CompleteResult, CompleteError> {
+) -> std::result::Result<StartResult, StartError> {
     // Try to find the task
     let task = match task_repo.get_by_full_id(task_id) {
         Ok(Some(task)) => task,
@@ -212,7 +212,7 @@ fn process_task(
             let all_task_ids = task_repo.get_all_full_ids().unwrap_or_default();
             let suggestions = find_similar_task_ids(task_id, &all_task_ids);
 
-            return Err(CompleteError {
+            return Err(StartError {
                 task_id: task_id.to_string(),
                 code: "E_NOT_FOUND".to_string(),
                 message: format!("Task not found: {task_id}"),
@@ -220,7 +220,7 @@ fn process_task(
             });
         }
         Err(e) => {
-            return Err(CompleteError {
+            return Err(StartError {
                 task_id: task_id.to_string(),
                 code: "E_DB_ERROR".to_string(),
                 message: format!("Database error: {e}"),
@@ -229,10 +229,18 @@ fn process_task(
         }
     };
 
-    // Check if task can be completed
+    // Check if task can be started
     match task.status {
+        TaskStatus::InProgress => {
+            return Err(StartError {
+                task_id: task_id.to_string(),
+                code: "E_ALREADY_IN_PROGRESS".to_string(),
+                message: format!("Task '{}' is already in progress", task.full_id),
+                suggestions: vec![],
+            });
+        }
         TaskStatus::Done => {
-            return Err(CompleteError {
+            return Err(StartError {
                 task_id: task_id.to_string(),
                 code: "E_ALREADY_COMPLETE".to_string(),
                 message: format!("Task '{}' is already complete", task.full_id),
@@ -240,15 +248,15 @@ fn process_task(
             });
         }
         TaskStatus::Waived => {
-            return Err(CompleteError {
+            return Err(StartError {
                 task_id: task_id.to_string(),
                 code: "E_WAIVED".to_string(),
                 message: format!("Task '{}' is waived (not applicable)", task.full_id),
                 suggestions: vec![],
             });
         }
-        TaskStatus::Open | TaskStatus::InProgress | TaskStatus::Blocked => {
-            // Can be completed
+        TaskStatus::Open | TaskStatus::Blocked => {
+            // Can be started
         }
     }
 
@@ -256,7 +264,7 @@ fn process_task(
     let file = match file_repo.get_by_db_id(task.file_id) {
         Ok(Some(file)) => file,
         Ok(None) => {
-            return Err(CompleteError {
+            return Err(StartError {
                 task_id: task_id.to_string(),
                 code: "E_FILE_NOT_FOUND".to_string(),
                 message: format!("File not found for task '{}'", task.full_id),
@@ -264,7 +272,7 @@ fn process_task(
             });
         }
         Err(e) => {
-            return Err(CompleteError {
+            return Err(StartError {
                 task_id: task_id.to_string(),
                 code: "E_DB_ERROR".to_string(),
                 message: format!("Database error: {e}"),
@@ -280,9 +288,9 @@ fn process_task(
             &file.path,
             &task.title,
             task.status,
-            TaskStatus::Done,
+            TaskStatus::InProgress,
         ) {
-            return Err(CompleteError {
+            return Err(StartError {
                 task_id: task_id.to_string(),
                 code: "E_FILE_UPDATE".to_string(),
                 message: format!("Failed to update file: {e}"),
@@ -291,7 +299,7 @@ fn process_task(
         }
     }
 
-    Ok(CompleteResult {
+    Ok(StartResult {
         task_id: task.full_id.clone(),
         file_path: file.path.clone(),
         previous_status: task.status.as_str().to_string(),
@@ -386,7 +394,7 @@ fn update_markdown_task_status(
     Ok(())
 }
 
-/// Re-index the project after completing tasks
+/// Re-index the project after starting tasks
 fn reindex_project(project_root: &Path) -> Result<()> {
     let db_path = project_root.join(".lash").join("lash.db");
     let conn = open_database(&db_path).context("Failed to open database for re-indexing")?;
@@ -397,16 +405,16 @@ fn reindex_project(project_root: &Path) -> Result<()> {
 
     indexer
         .index_project()
-        .context("Failed to re-index after task completion")?;
+        .context("Failed to re-index after task start")?;
 
     Ok(())
 }
 
 /// Output results as JSON
-fn output_json_results(results: &[CompleteResult], errors: &[CompleteError]) -> Result<()> {
+fn output_json_results(results: &[StartResult], errors: &[StartError]) -> Result<()> {
     let json = serde_json::json!({
         "success": errors.is_empty(),
-        "completed": results,
+        "started": results,
         "errors": errors,
     });
     println!("{}", serde_json::to_string_pretty(&json)?);
@@ -431,14 +439,14 @@ fn output_json_error(message: &str, code: &str, help: Option<&str>) -> Result<()
 
 /// Output results as text
 fn output_text_results(
-    results: &[CompleteResult],
-    errors: &[CompleteError],
+    results: &[StartResult],
+    errors: &[StartError],
     dry_run: bool,
     theme: Option<&CliTheme>,
 ) {
     // Print results
     if dry_run && !results.is_empty() {
-        println!("Would complete:");
+        println!("Would start:");
     }
 
     for result in results {
@@ -446,22 +454,22 @@ fn output_text_results(
             if dry_run {
                 println!(
                     "  {} {} ({})",
-                    t.style_success("[x]"),
+                    t.style_info("[>]"),
                     t.style_label(&result.task_id),
                     t.style_muted(&result.file_path.display().to_string())
                 );
             } else {
                 println!(
                     "{} {} -> {}",
-                    t.style_success("[x]"),
+                    t.style_info("[>]"),
                     t.style_label(&result.task_id),
                     t.style_muted(&result.file_path.display().to_string())
                 );
             }
         } else if dry_run {
-            println!("  [x] {} ({})", result.task_id, result.file_path.display());
+            println!("  [>] {} ({})", result.task_id, result.file_path.display());
         } else {
-            println!("[x] {} ({})", result.task_id, result.file_path.display());
+            println!("[>] {} ({})", result.task_id, result.file_path.display());
         }
     }
 
@@ -495,14 +503,14 @@ fn output_text_results(
         println!();
         if let Some(t) = theme {
             println!(
-                "{}: {} completed, {} failed",
+                "{}: {} started, {} failed",
                 t.style_info("Summary"),
                 results.len(),
                 errors.len()
             );
         } else {
             println!(
-                "Summary: {} completed, {} failed",
+                "Summary: {} started, {} failed",
                 results.len(),
                 errors.len()
             );
@@ -517,14 +525,15 @@ mod tests {
     #[test]
     fn test_status_checkbox_char() {
         assert_eq!(status_checkbox_char(TaskStatus::Open), ' ');
+        assert_eq!(status_checkbox_char(TaskStatus::InProgress), '>');
         assert_eq!(status_checkbox_char(TaskStatus::Done), 'x');
         assert_eq!(status_checkbox_char(TaskStatus::Waived), '-');
         assert_eq!(status_checkbox_char(TaskStatus::Blocked), '!');
     }
 
     #[test]
-    fn test_complete_result_serialization() {
-        let result = CompleteResult {
+    fn test_start_result_serialization() {
+        let result = StartResult {
             task_id: "test#task-1".to_string(),
             file_path: PathBuf::from("tasks.md"),
             previous_status: "open".to_string(),
@@ -536,8 +545,8 @@ mod tests {
     }
 
     #[test]
-    fn test_complete_error_serialization() {
-        let error = CompleteError {
+    fn test_start_error_serialization() {
+        let error = StartError {
             task_id: "test#task-1".to_string(),
             code: "E_NOT_FOUND".to_string(),
             message: "Task not found".to_string(),
@@ -549,11 +558,11 @@ mod tests {
     }
 
     #[test]
-    fn test_complete_error_no_suggestions() {
-        let error = CompleteError {
+    fn test_start_error_no_suggestions() {
+        let error = StartError {
             task_id: "test#task-1".to_string(),
-            code: "E_ALREADY_COMPLETE".to_string(),
-            message: "Already complete".to_string(),
+            code: "E_ALREADY_IN_PROGRESS".to_string(),
+            message: "Already in progress".to_string(),
             suggestions: vec![],
         };
         let json = serde_json::to_string(&error).unwrap();

@@ -1,7 +1,6 @@
 # Authentication Service
 
 @id: backend.auth
-@status: in-progress
 @labels: backend, auth, p0, security
 @created: 2025-09-15
 @owner: backend-team-alpha

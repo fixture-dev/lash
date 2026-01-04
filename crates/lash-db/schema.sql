@@ -20,7 +20,7 @@ CREATE TABLE metadata (
 );
 
 -- Initialize schema version
-INSERT INTO metadata (key, value) VALUES ('schema_version', '7');
+INSERT INTO metadata (key, value) VALUES ('schema_version', '8');
 
 -- ============================================================================
 -- Files table (task files from the project)
@@ -81,8 +81,8 @@ CREATE TABLE tasks (
     -- Task title/description
     title TEXT NOT NULL,
 
-    -- Current status (open, done, waived, blocked)
-    status TEXT NOT NULL CHECK(status IN ('open', 'done', 'waived', 'blocked')),
+    -- Current status (open, in-progress, done, waived, blocked)
+    status TEXT NOT NULL CHECK(status IN ('open', 'in-progress', 'done', 'waived', 'blocked')),
 
     -- Nesting level (0 = top-level, max typically 2-3)
     depth INTEGER NOT NULL CHECK(depth >= 0),

@@ -1,7 +1,6 @@
 # Player Movement & Controls
 
 @id: features.player-movement
-@status: in-progress
 @labels: backend, gameplay, p0
 @created: 2024-01-15
 

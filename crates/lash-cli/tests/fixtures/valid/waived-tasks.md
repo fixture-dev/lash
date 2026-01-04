@@ -1,7 +1,6 @@
 # Task List with Waived Items
 
 @id: waived.example
-@status: in-progress
 @created: 2024-01-19
 
 ## Tasks

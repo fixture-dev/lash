@@ -1,7 +1,6 @@
 # Build Pipeline & CI/CD
 
 @id: infra.build
-@status: in-progress
 @labels: tooling, devops, p1
 @created: 2024-01-15
 

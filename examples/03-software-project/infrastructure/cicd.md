@@ -1,7 +1,6 @@
 # CI/CD Pipeline
 
 @id: infra.cicd
-@status: in-progress
 @labels: infrastructure, devops, p0
 @created: 2025-10-25
 @owner: devops-team

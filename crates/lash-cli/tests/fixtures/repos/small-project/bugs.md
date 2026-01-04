@@ -2,7 +2,6 @@
 
 @id: bugs
 @owner: bob
-@status: in-progress
 @labels: bug, maintenance
 @created: 2024-01-17
 

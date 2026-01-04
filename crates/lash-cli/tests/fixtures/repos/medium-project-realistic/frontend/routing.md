@@ -1,7 +1,6 @@
 # Application Routing
 
 @id: frontend-routing
-@status: in-progress
 @labels: frontend
 @created: 2024-01-15
 

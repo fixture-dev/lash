@@ -125,7 +125,6 @@ Implement the Markdown parser that transforms raw `.md` files into the core data
 - [x] **Parse specific annotation types**
   - [x] `@id: string` - validate ID format
   - [x] `@labels: a, b, c` - split on commas, parse as Label list
-  - [x] `@status: string` - validate against known statuses
   - [x] `@owner: string` - any string
   - [x] `@created: YYYY-MM-DD` - validate date format
   - [x] `@estimate: duration` - validate format (e.g., "2h", "3d")

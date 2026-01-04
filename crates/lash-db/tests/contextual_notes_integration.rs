@@ -33,7 +33,6 @@ fn create_notes_test_project() -> TempDir {
         r#"# Notes Test Project
 
 @id: project
-@status: in-progress
 @created: 2025-12-13
 
 ## Tasks
@@ -49,7 +48,6 @@ fn create_notes_test_project() -> TempDir {
         r#"# Simple Notes Example
 
 @id: simple
-@status: in-progress
 @created: 2025-12-13
 
 ## Tasks
@@ -74,7 +72,6 @@ fn create_notes_test_project() -> TempDir {
         r#"# Complex Notes
 
 @id: complex
-@status: in-progress
 @created: 2025-12-13
 
 ## Tasks
@@ -108,7 +105,6 @@ fn test_parse_file_with_contextual_notes() {
     let content = r#"# Test File
 
 @id: test
-@status: in-progress
 
 ## Tasks
 
@@ -164,7 +160,6 @@ fn test_parse_mixed_task_and_note_hierarchy() {
     let content = r#"# Mixed Hierarchy
 
 @id: mixed
-@status: in-progress
 
 ## Tasks
 
@@ -202,7 +197,6 @@ fn test_parse_task_with_many_notes() {
     let content = r#"# Many Notes
 
 @id: many
-@status: in-progress
 
 ## Tasks
 
@@ -244,7 +238,6 @@ fn test_parse_notes_with_special_characters() {
     let content = r#"# Special Characters
 
 @id: special
-@status: in-progress
 
 ## Tasks
 
@@ -280,7 +273,6 @@ fn test_lint_detects_note_after_tasks() {
     let content = r#"# Note Ordering
 
 @id: ordering
-@status: in-progress
 
 ## Tasks
 
@@ -337,7 +329,6 @@ fn test_lint_accepts_notes_before_tasks() {
     let content = r#"# Correct Ordering
 
 @id: correct
-@status: in-progress
 
 ## Tasks
 
@@ -382,7 +373,6 @@ fn test_note_length_parsing() {
         r"# Long Note
 
 @id: long
-@status: in-progress
 
 ## Tasks
 
@@ -548,7 +538,6 @@ fn test_index_and_verify_note_line_numbers() {
     let content = r#"# Line Numbers
 
 @id: lines
-@status: in-progress
 
 ## Tasks
 
@@ -584,8 +573,8 @@ fn test_index_and_verify_note_line_numbers() {
     // Verify notes have line numbers
     assert_eq!(task.contextual_notes.len(), 2);
     // Line numbers are 1-indexed in the file
-    assert_eq!(task.contextual_notes[0].line_number(), 9);
-    assert_eq!(task.contextual_notes[1].line_number(), 10);
+    assert_eq!(task.contextual_notes[0].line_number(), 8);
+    assert_eq!(task.contextual_notes[1].line_number(), 9);
 }
 
 // ==================== Search Tests ====================
@@ -599,7 +588,6 @@ fn test_search_finds_content_in_notes() {
         r#"# Search Test
 
 @id: search
-@status: in-progress
 
 ## Tasks
 
@@ -661,7 +649,6 @@ fn test_search_notes_with_multiple_matches() {
         r#"# Search Test
 
 @id: search
-@status: in-progress
 
 ## Tasks
 
@@ -711,7 +698,6 @@ fn test_search_notes_ranking() {
         r#"# Search Test
 
 @id: search
-@status: in-progress
 
 ## Tasks
 
@@ -765,7 +751,6 @@ fn test_task_with_no_notes() {
     let content = r#"# No Notes
 
 @id: no-notes
-@status: in-progress
 
 ## Tasks
 
@@ -793,7 +778,6 @@ fn test_notes_preserved_across_statuses() {
     let content = r#"# Status Test
 
 @id: status
-@status: in-progress
 
 ## Tasks
 
@@ -841,7 +825,6 @@ fn test_database_persistence_roundtrip() {
         r"# Roundtrip Test
 
 @id: roundtrip
-@status: in-progress
 
 ## Tasks
 
@@ -892,7 +875,6 @@ fn test_notes_with_deep_nesting() {
     let content = r#"# Deep Nesting
 
 @id: deep
-@status: in-progress
 
 ## Tasks
 
@@ -945,7 +927,6 @@ fn test_incremental_indexing_preserves_notes() {
         r#"# Incremental Test
 
 @id: incremental
-@status: in-progress
 
 ## Tasks
 

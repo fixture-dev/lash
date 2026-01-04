@@ -1,7 +1,6 @@
 # Hosting and Infrastructure
 
 @id: infra-hosting
-@status: in-progress
 @labels: infrastructure, cloud
 @created: 2024-01-15
 

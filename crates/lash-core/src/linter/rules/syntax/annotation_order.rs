@@ -44,13 +44,11 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// @estimate: 2h
 /// @labels: backend, api
 /// @owner: alice
-/// @status: in-progress
 /// ```
 ///
 /// Out of order (still valid, just inconsistent):
 /// ```markdown
 /// @id: task-1
-/// @status: in-progress
 /// @labels: backend, api
 /// @owner: alice
 /// ```

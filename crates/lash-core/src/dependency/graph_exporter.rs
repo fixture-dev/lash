@@ -464,6 +464,7 @@ impl<'a> GraphExporter<'a> {
             // Format status indicator
             let status_symbol = match node.status {
                 TaskStatus::Open => "[ ]",
+                TaskStatus::InProgress => "[>]",
                 TaskStatus::Done => "[✓]",
                 TaskStatus::Waived => "[-]",
                 TaskStatus::Blocked => "[!]",
@@ -509,6 +510,7 @@ impl<'a> GraphExporter<'a> {
         match status {
             TaskStatus::Done => "lightgreen",
             TaskStatus::Open => "lightyellow",
+            TaskStatus::InProgress => "lightblue",
             TaskStatus::Waived => "lightgray",
             TaskStatus::Blocked => "lightcoral",
         }

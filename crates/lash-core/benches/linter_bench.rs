@@ -166,7 +166,6 @@ fn bench_realistic_lint(c: &mut Criterion) {
 @id: backend-api
 @owner: alice
 @labels: backend, api, database
-@status: in-progress
 @created: 2025-01-10
 
 This file tracks the backend API development tasks for the project.

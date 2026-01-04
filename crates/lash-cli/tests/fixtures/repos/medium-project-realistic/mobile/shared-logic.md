@@ -1,7 +1,6 @@
 # Shared Mobile Logic
 
 @id: mobile-shared
-@status: in-progress
 @labels: mobile
 @created: 2024-01-15
 

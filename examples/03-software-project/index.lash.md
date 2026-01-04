@@ -1,7 +1,6 @@
 # E-Commerce Platform v2.0
 
 @id: ecommerce-v2
-@status: in-progress
 @labels: production, ecommerce, saas
 @created: 2025-09-01
 

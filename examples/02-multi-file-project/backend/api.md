@@ -1,7 +1,6 @@
 # API Development
 
 @id: backend.api
-@status: in-progress
 @labels: backend, api, p0
 @created: 2025-12-05
 @owner: backend-team

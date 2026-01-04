@@ -1,7 +1,6 @@
 # Beta Milestone
 
 @id: milestone.beta
-@status: in-progress
 @labels: milestone, p0
 @depends-on: milestones/alpha.md
 @depends-on: features/boss-fights.md#world-1-boss

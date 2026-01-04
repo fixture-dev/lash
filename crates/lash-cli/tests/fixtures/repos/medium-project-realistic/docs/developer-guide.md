@@ -1,7 +1,6 @@
 # Developer Guide
 
 @id: docs-dev
-@status: in-progress
 @labels: docs, internal
 @created: 2024-01-15
 

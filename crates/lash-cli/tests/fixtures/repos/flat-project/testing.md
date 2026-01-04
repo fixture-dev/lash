@@ -1,7 +1,6 @@
 # Testing
 
 @id: testing
-@status: in-progress
 @labels: qa, testing
 @created: 2024-01-14
 

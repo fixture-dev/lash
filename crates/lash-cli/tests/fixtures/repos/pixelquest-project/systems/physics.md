@@ -1,7 +1,6 @@
 # Physics & Collision System
 
 @id: systems.physics
-@status: in-progress
 @labels: backend, physics, p0
 @created: 2024-01-15
 

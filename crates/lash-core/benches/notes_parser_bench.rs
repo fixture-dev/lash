@@ -81,7 +81,6 @@ fn generate_realistic_with_notes() -> String {
 @id: backend-api-notes
 @owner: alice
 @labels: backend, api, database
-@status: in-progress
 @created: 2025-01-10
 
 Implementation plan for backend API with detailed notes.

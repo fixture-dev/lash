@@ -1,7 +1,6 @@
 # Backend Testing
 
 @id: backend-tests
-@status: in-progress
 @labels: backend, testing
 @created: 2024-01-15
 

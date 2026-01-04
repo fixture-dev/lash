@@ -71,8 +71,7 @@ fn generate_task_file_with_notes(
     note_density: f64,
     notes_per_task: usize,
 ) -> String {
-    let mut content =
-        format!("# Task File {file_id}\n\n@id: {file_id}\n@status: in-progress\n\n## Tasks\n\n");
+    let mut content = format!("# Task File {file_id}\n\n@id: {file_id}\n\n## Tasks\n\n");
 
     for i in 0..task_count {
         content.push_str(&format!("- [ ] Task {} in file {}\n", i + 1, file_id));

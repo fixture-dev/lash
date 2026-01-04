@@ -1,7 +1,6 @@
 # Task List with Blockers
 
 @id: blockers.example
-@status: blocked
 @created: 2024-01-18
 
 ## Tasks

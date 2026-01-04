@@ -1,7 +1,6 @@
 # Kubernetes Setup
 
 @id: infra.k8s
-@status: in-progress
 @labels: infrastructure, devops, p0
 @created: 2025-10-20
 @owner: devops-team

@@ -2,7 +2,6 @@
 
 @id: services.auth
 @owner: team-services
-@status: in-progress
 @labels: services, security, auth
 @created: 2024-01-10
 @depends-on: core/lib.md#core.lib

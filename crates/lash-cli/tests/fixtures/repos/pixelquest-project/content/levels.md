@@ -1,7 +1,6 @@
 # Level Design
 
 @id: content.levels
-@status: in-progress
 @labels: design, levels, p0
 @created: 2024-01-15
 

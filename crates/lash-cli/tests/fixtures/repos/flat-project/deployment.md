@@ -1,7 +1,6 @@
 # Deployment
 
 @id: deployment
-@status: in-progress
 @labels: ops, infrastructure
 @created: 2024-01-15
 

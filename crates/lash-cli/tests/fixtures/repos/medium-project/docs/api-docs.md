@@ -2,7 +2,6 @@
 
 @id: docs.api
 @owner: dave
-@status: open
 @labels: docs, api
 @created: 2024-01-16
 @depends-on: backend/api.md#backend.api

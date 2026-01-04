@@ -1,7 +1,6 @@
 # UI Components
 
 @id: frontend.components
-@status: in-progress
 @labels: frontend, ui, p0
 @created: 2025-12-07
 @owner: frontend-team

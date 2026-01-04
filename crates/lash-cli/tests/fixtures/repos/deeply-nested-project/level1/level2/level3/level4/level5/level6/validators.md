@@ -1,7 +1,6 @@
 # Level 6 - Validators
 
 @id: level6-validators
-@status: in-progress
 @labels: level6
 @depends-on: level1/level2/level3/level4/level5/middleware.md
 @created: 2024-01-16

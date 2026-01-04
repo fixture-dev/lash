@@ -37,7 +37,6 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// ```markdown
 /// @id: task-123
 /// @labels: backend, api
-/// @status: in-progress
 /// @depends-on: other-task
 /// ```
 ///

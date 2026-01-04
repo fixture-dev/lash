@@ -1,7 +1,6 @@
 # Product Catalog Service
 
 @id: backend-products
-@status: in-progress
 @labels: backend, feature
 @created: 2024-01-15
 

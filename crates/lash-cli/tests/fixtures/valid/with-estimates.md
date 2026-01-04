@@ -1,7 +1,6 @@
 # Task List with Time Estimates
 
 @id: estimates.example
-@status: in-progress
 @owner: alice
 @created: 2024-01-20
 

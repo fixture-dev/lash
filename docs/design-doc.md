@@ -166,7 +166,6 @@ Example sketch (**not final syntax**, but concrete enough to implement):
 
 @id: photo-app.filters.sepia
 @labels: photo-app, filters, image-processing
-@status: in-progress
 @owner: frank
 @created: 2025-11-16
 
@@ -303,7 +302,6 @@ A small, fixed set of annotations, for example:
 * `@id: <string>` – unique within the file; combined with file path to form a globally unique task ID.
 * `@labels: a, b, c`
 * `@owner: <string>`
-* `@status: <overall status for the file>`
 * `@estimate: <duration>` (for optional planning).
 * `@depends-on: <path or id>` (explicit extra dependencies).
 * `@agent-note:` – a short note addressed to agents (“LLM-specific hints”).

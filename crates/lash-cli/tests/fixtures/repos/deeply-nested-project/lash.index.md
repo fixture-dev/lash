@@ -1,7 +1,6 @@
 # Deeply Nested Project
 
 @id: deeply-nested
-@status: in-progress
 @labels: test, structure-variant
 @created: 2024-01-10
 

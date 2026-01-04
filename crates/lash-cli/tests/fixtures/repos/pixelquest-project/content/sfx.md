@@ -1,7 +1,6 @@
 # Sound Effects
 
 @id: content.sfx
-@status: in-progress
 @labels: audio, sfx, p1
 @created: 2024-01-15
 

@@ -1,7 +1,6 @@
 # API Documentation
 
 @id: docs-api
-@status: in-progress
 @labels: docs, backend
 @created: 2024-01-15
 

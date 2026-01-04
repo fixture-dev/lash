@@ -75,6 +75,12 @@ impl Theme {
         self.foreground()
     }
 
+    /// Color for in-progress tasks (ANSI blue)
+    #[must_use]
+    pub fn task_in_progress(&self) -> Color {
+        self.scheme.ansi_color(4) // color_05 (blue)
+    }
+
     /// Color for waived tasks (ANSI bright black / dark gray)
     #[must_use]
     pub fn task_waived(&self) -> Color {
@@ -101,6 +107,7 @@ impl Theme {
             TaskStatus::Done => Style::default().fg(self.task_done()),
             TaskStatus::Blocked => Style::default().fg(self.task_blocked()),
             TaskStatus::Open => Style::default().fg(self.task_open()),
+            TaskStatus::InProgress => Style::default().fg(self.task_in_progress()),
             TaskStatus::Waived => Style::default().fg(self.task_waived()),
         }
     }
@@ -237,6 +244,7 @@ impl Theme {
     pub fn checkbox_char(&self, status: TaskStatus) -> &'static str {
         match status {
             TaskStatus::Open => "[ ]",
+            TaskStatus::InProgress => "[>]",
             TaskStatus::Done => "[x]",
             TaskStatus::Waived => "[-]",
             TaskStatus::Blocked => "[!]",

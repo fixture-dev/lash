@@ -1,7 +1,6 @@
 # Security and Compliance
 
 @id: infra-security
-@status: in-progress
 @labels: infrastructure, security
 @created: 2024-01-15
 

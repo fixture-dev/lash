@@ -1,7 +1,6 @@
 # Story & Narrative
 
 @id: design.story
-@status: in-progress
 @labels: design, narrative, p2
 @created: 2024-01-15
 

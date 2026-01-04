@@ -77,8 +77,6 @@ Task files support the following metadata annotations:
   - Example: `@id: feature-auth`
 - `@labels`: Comma-separated tags for cross-cutting organization
   - Example: `@labels: backend, security`
-- `@status`: Overall status of the file or section
-  - Example: `@status: in-progress`
 - `@owner`: Person or agent responsible for this task
   - Example: `@owner: alice`
 - `@created`: Creation date in YYYY-MM-DD format
@@ -94,7 +92,8 @@ Task files support the following metadata annotations:
 
 ## Task Status Values
 
-- `[ ]` (open) - Task not yet started or in progress
+- `[ ]` (open) - Task not yet started
+- `[>]` (in-progress) - Task actively being worked on
 - `[x]` (done) - Task completed successfully
 - `[-]` (waived) - Task marked as not applicable or cancelled
 - `[!]` (blocked) - Task blocked by dependencies or external factors
@@ -185,7 +184,6 @@ Add inline context or requirements under a task using plain bullets (no checkbox
 
 @id: feature-auth
 @labels: backend, security
-@status: in-progress
 @owner: alice
 
 ## Description

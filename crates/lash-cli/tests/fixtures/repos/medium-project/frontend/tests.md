@@ -2,7 +2,6 @@
 
 @id: frontend.tests
 @owner: bob
-@status: in-progress
 @labels: frontend, testing, quality
 @created: 2024-01-15
 @depends-on: frontend/components.md#frontend.components

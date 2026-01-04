@@ -73,7 +73,6 @@ fn test_lint_error_exit_code() {
 
     let invalid_content = r#"# Invalid Checkbox
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -99,7 +98,6 @@ fn test_show_not_found_exit_code() {
     // Create valid index first
     let valid_content = r#"# Valid Project
 @id: test.valid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -134,7 +132,6 @@ fn test_database_error_exit_code() {
     // Create valid index
     let valid_content = r#"# Valid Project
 @id: test.valid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -199,7 +196,6 @@ fn test_quiet_mode_error_output() {
 
     let invalid_content = r#"# Invalid Tasks
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -239,7 +235,6 @@ fn test_normal_mode_error_output() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -280,7 +275,6 @@ fn test_verbose_mode_error_output() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -322,7 +316,6 @@ fn test_debug_mode_error_output() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -361,7 +354,6 @@ fn test_lint_json_output_schema() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -406,7 +398,6 @@ fn test_json_diagnostic_fields() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -445,7 +436,6 @@ fn test_text_vs_json_output_comparison() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -510,7 +500,6 @@ fn test_format_command_error() {
 
     let invalid_content = r#"# Invalid Metadata
 @id: test.invalid
-@status: invalid-status-value
 @created: not-a-valid-date
 
 ## Tasks
@@ -544,7 +533,6 @@ fn test_index_command_with_invalid_files() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -586,7 +574,6 @@ fn test_search_command_database_error() {
     // Valid content
     let content = r#"# Valid Project
 @id: test.valid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -638,7 +625,6 @@ fn test_list_command_no_database() {
     // Create valid content but don't index
     let content = r#"# Valid Project
 @id: test.valid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -710,7 +696,6 @@ fn test_error_message_formatting() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -757,7 +742,6 @@ fn test_multiple_errors_reported() {
     // Create file with multiple errors
     let content = r#"# Multiple Errors
 @id: test.multiple
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -796,7 +780,6 @@ fn test_quiet_mode_with_json() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -837,7 +820,6 @@ fn test_verbose_mode_with_json() {
 
     let invalid_content = r#"# Invalid Task
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -884,7 +866,6 @@ fn test_multiple_files_with_errors() {
             "tasks1.md",
             r#"# Tasks 1
 @id: tasks1
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -896,7 +877,6 @@ fn test_multiple_files_with_errors() {
             "tasks2.md",
             r#"# Tasks 2
 @id: tasks2
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -958,7 +938,6 @@ fn test_check_index_out_of_sync() {
 
     let content = r#"# Test Project
 @id: test
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -978,7 +957,6 @@ fn test_check_index_out_of_sync() {
     // Modify the file
     let new_content = r#"# Test Project
 @id: test
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks

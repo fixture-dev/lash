@@ -1,7 +1,6 @@
 # Frontend Testing
 
 @id: frontend-tests
-@status: in-progress
 @labels: frontend, testing
 @created: 2024-01-15
 

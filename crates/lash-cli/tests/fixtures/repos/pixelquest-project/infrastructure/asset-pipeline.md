@@ -1,7 +1,6 @@
 # Asset Processing Pipeline
 
 @id: infra.assets
-@status: in-progress
 @labels: tooling, assets, p1
 @created: 2024-01-15
 

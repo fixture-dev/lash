@@ -1,7 +1,6 @@
 # E-Commerce Platform
 
 @id: ecommerce-platform
-@status: in-progress
 @labels: fullstack, production
 @created: 2024-01-01
 

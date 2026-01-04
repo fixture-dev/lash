@@ -1,7 +1,6 @@
 # Power-ups & Item System
 
 @id: features.power-ups
-@status: in-progress
 @labels: backend, gameplay, p1
 @created: 2024-01-15
 

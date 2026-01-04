@@ -533,7 +533,7 @@ impl LashError {
             message: format!("unknown annotation: @{ann}"),
             location: Some(Location::new(file, line, column)),
             snippet: Some(format!("@{ann}")),
-            help: Some("valid annotations: @id, @labels, @status, @owner, @estimate, @depends-on, @created, @agent-note".to_string()),
+            help: Some("valid annotations: @id, @labels, @owner, @estimate, @depends-on, @created, @agent-note".to_string()),
         }
     }
 

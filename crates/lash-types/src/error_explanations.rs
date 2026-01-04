@@ -135,7 +135,7 @@ pub fn explain_error(code: &str) -> Option<ErrorExplanation> {
         codes::E_LINT_UNKNOWN_ANNOTATION => Some(ErrorExplanation {
             code: codes::E_LINT_UNKNOWN_ANNOTATION,
             summary: "Unknown annotation",
-            description: "The annotation used is not recognized by Lash. Valid annotations are: @id, @labels, @status, @owner, @estimate, @depends-on, @created, @doc, and @agent-note.",
+            description: "The annotation used is not recognized by Lash. Valid annotations are: @id, @labels, @owner, @estimate, @depends-on, @created, @doc, and @agent-note.",
             why_it_matters: "Unknown annotations are ignored by Lash, which may indicate a typo or misunderstanding of the annotation system.",
             how_to_fix: "Check the annotation name for typos, or remove it if it's not needed. Refer to the documentation for the list of valid annotations.",
             example_bad: Some("@task-id: my-task\n@priority: high"),

@@ -2,7 +2,6 @@
 
 @id: docs.user-guide
 @owner: dave
-@status: open
 @labels: docs, user-guide
 @created: 2024-01-17
 

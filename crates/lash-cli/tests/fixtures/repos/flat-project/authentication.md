@@ -1,7 +1,6 @@
 # Authentication
 
 @id: auth
-@status: in-progress
 @labels: backend, security
 @created: 2024-01-11
 

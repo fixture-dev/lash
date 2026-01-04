@@ -1,7 +1,6 @@
 # Product Catalog Service
 
 @id: backend.catalog
-@status: in-progress
 @labels: backend, p0
 @created: 2025-09-20
 @owner: backend-team-beta
