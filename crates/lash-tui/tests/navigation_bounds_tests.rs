@@ -26,7 +26,6 @@ fn setup_test_db_with_multiple_files() -> (TempDir, std::path::PathBuf) {
                 r#"# Task File {i}
 
 @id: file{i}
-@status: in-progress
 
 ## Tasks
 
@@ -67,7 +66,6 @@ fn setup_test_db_with_hierarchical_tasks() -> (TempDir, std::path::PathBuf) {
         r#"# Hierarchical Tasks
 
 @id: hierarchical
-@status: in-progress
 
 ## Tasks
 

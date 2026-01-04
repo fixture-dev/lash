@@ -1,7 +1,6 @@
 # Medium Test Project
 
 @id: medium-project
-@status: in-progress
 @labels: test, demo, fullstack
 @created: 2024-01-10
 

@@ -206,7 +206,7 @@ pub struct ParsedHeader {
     /// File title (from H1 heading)
     pub title: String,
 
-    /// Metadata annotations (@id, @labels, @status, etc.)
+    /// Metadata annotations (@id, @labels, @owner, etc.)
     pub annotations: annotations::AnnotationBlock,
 
     /// Optional overview/description text (legacy, before Description section)
@@ -667,9 +667,6 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
         .map(|l| l.name)
         .collect();
 
-    // Extract status
-    let status = annotations.get_single("status").map(String::from);
-
     // Extract owner
     let owner = annotations.get_single("owner").map(String::from);
 
@@ -696,7 +693,7 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
         // Skip known annotations
         if matches!(
             key.as_str(),
-            "id" | "labels" | "status" | "owner" | "created" | "depends-on" | "doc"
+            "id" | "labels" | "owner" | "created" | "depends-on" | "doc"
         ) {
             continue;
         }
@@ -709,7 +706,6 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
 
     FileMetadata {
         labels,
-        status,
         owner,
         created,
         depends_on,
@@ -1033,7 +1029,6 @@ mod tests {
 @id: test-id
 @owner: alice
 @labels: backend, api
-@status: in-progress
 @created: 2025-01-15
 
 ## Tasks
@@ -1047,7 +1042,6 @@ mod tests {
         let file = result.unwrap();
 
         assert_eq!(file.metadata.owner, Some("alice".to_string()));
-        assert_eq!(file.metadata.status, Some("in-progress".to_string()));
         assert_eq!(file.metadata.created, Some("2025-01-15".to_string()));
         assert_eq!(file.metadata.labels.len(), 2);
     }
@@ -1586,7 +1580,6 @@ More text
         let metadata = extract_file_metadata(&annotations);
 
         assert!(metadata.labels.is_empty());
-        assert_eq!(metadata.status, None);
         assert_eq!(metadata.owner, None);
         assert_eq!(metadata.created, None);
         assert!(metadata.depends_on.is_empty());
@@ -1597,14 +1590,12 @@ More text
     fn test_extract_file_metadata_all_fields() {
         let mut annotations = annotations::AnnotationBlock::new();
         annotations.add("labels".to_string(), "backend, api".to_string());
-        annotations.add("status".to_string(), "in-progress".to_string());
         annotations.add("owner".to_string(), "alice".to_string());
         annotations.add("created".to_string(), "2025-01-15".to_string());
 
         let metadata = extract_file_metadata(&annotations);
 
         assert_eq!(metadata.labels.len(), 2);
-        assert_eq!(metadata.status, Some("in-progress".to_string()));
         assert_eq!(metadata.owner, Some("alice".to_string()));
         assert_eq!(metadata.created, Some("2025-01-15".to_string()));
     }

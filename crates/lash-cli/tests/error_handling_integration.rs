@@ -35,7 +35,6 @@ fn test_parse_error_text_output() {
     let invalid_content = r#"# Invalid Task File
 
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -103,7 +102,6 @@ fn test_parse_error_json_output() {
 
 @id: test.invalid
 @labels: backend, frontend
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -167,7 +165,6 @@ fn test_lint_error_aggregation() {
     // File 1: Missing @id
     let file1_content = r#"# Task File Without ID
 
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -181,7 +178,6 @@ fn test_lint_error_aggregation() {
     let file2_content = r#"# Task File With Invalid Checkbox
 
 @id: tasks.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -195,7 +191,6 @@ fn test_lint_error_aggregation() {
     let file3_content = r#"# Deeply Nested Tasks
 
 @id: tasks.nested
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -255,7 +250,6 @@ fn test_broken_dependency_graceful_handling() {
             r#"# Tasks
 
 @id: tasks
-@status: in-progress
 @created: 2024-01-15
 @depends-on: nonexistent-file.md#task:missing
 
@@ -321,7 +315,6 @@ fn test_multiple_error_types_collection() {
     let index_content = r#"# Project Index
 
 @id: test-project
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -335,7 +328,6 @@ fn test_multiple_error_types_collection() {
     fs::create_dir_all(temp.path().join("tasks")).unwrap();
     let tasks_content = r#"# Tasks Without ID
 
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -348,7 +340,6 @@ fn test_multiple_error_types_collection() {
     let deps_content = r#"# Tasks With Broken Dependency
 
 @id: tasks.broken-dep
-@status: in-progress
 @created: 2024-01-15
 @depends-on: missing-file.md#task:ghost
 
@@ -430,7 +421,6 @@ fn test_multiple_parse_errors_single_file() {
     let content = r#"# File With Multiple Errors
 
 @id: test.multiple-errors
-@status: invalid-status-value
 @created: not-a-date
 
 ## Tasks
@@ -475,7 +465,6 @@ fn test_lint_error_json_structured_diagnostics() {
     let content = r#"# Invalid Checkbox Error
 
 @id: test.invalid-checkbox
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -521,7 +510,6 @@ fn test_error_output_respects_quiet_flag() {
     let invalid_content = r#"# Invalid File
 
 @id: test.invalid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -568,7 +556,6 @@ fn test_exit_codes_for_error_types() {
     let lint_error_content = r#"# Lint Error
 
 @id: test.lint
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -589,7 +576,6 @@ fn test_exit_codes_for_error_types() {
     let valid_content = r#"# Valid Project
 
 @id: test.valid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -636,7 +622,6 @@ fn test_error_messages_include_suggestions() {
     let content = r#"# File With Error
 
 @id: test.error
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks

@@ -25,7 +25,6 @@ fn setup_test_db() -> TuiResult<(TempDir, PathBuf)> {
         r#"# Test File
 
 @id: test-file
-@status: in-progress
 
 ## Description
 
@@ -277,7 +276,6 @@ fn setup_test_db_with_dirs() -> TuiResult<(TempDir, PathBuf)> {
         r#"# Audio Engine
 
 @id: systems.audio
-@status: in-progress
 
 ## Description
 
@@ -299,7 +297,6 @@ Sound engine for music playback, sound effects, and spatial audio.
         r#"# Player Movement
 
 @id: features.movement
-@status: in-progress
 
 ## Description
 

@@ -36,7 +36,6 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// # Feature Implementation
 ///
 /// @id: feature.auth
-/// @status: in-progress
 ///
 /// ## Description
 ///

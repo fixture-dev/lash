@@ -1,7 +1,6 @@
 # Alpha Milestone
 
 @id: milestone.alpha
-@status: in-progress
 @labels: milestone, p0
 @depends-on: features/player-movement.md
 @depends-on: systems/physics.md

@@ -1,7 +1,6 @@
 # Task Nesting Depth Exceeded
 
 @id: depth.exceeded
-@status: open
 
 ## Tasks
 

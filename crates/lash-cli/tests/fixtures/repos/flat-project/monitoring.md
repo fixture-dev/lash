@@ -1,7 +1,6 @@
 # Monitoring
 
 @id: monitoring
-@status: in-progress
 @labels: ops, observability
 @created: 2024-01-17
 

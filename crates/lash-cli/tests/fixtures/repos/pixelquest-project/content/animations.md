@@ -1,7 +1,6 @@
 # Animation Sequences
 
 @id: content.animations
-@status: in-progress
 @labels: art, animation, p1
 @created: 2024-01-15
 

@@ -750,7 +750,6 @@ mod tests {
             r"# Physics & Collision System
 
 @id: systems.physics
-@status: in-progress
 @labels: backend, physics, p0
 
 ## Tasks

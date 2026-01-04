@@ -1,7 +1,6 @@
 # Music & Soundtrack
 
 @id: content.music
-@status: in-progress
 @labels: audio, music, p1
 @created: 2024-01-15
 

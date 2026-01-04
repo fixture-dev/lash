@@ -1,7 +1,6 @@
 # Order Management Service
 
 @id: backend.orders
-@status: open
 @labels: backend, p0
 @created: 2025-09-25
 @owner: backend-team-alpha

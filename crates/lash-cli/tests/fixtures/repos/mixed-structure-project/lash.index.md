@@ -1,7 +1,6 @@
 # Mixed Structure Project
 
 @id: mixed-structure
-@status: in-progress
 @labels: test, structure-variant
 @created: 2024-01-10
 

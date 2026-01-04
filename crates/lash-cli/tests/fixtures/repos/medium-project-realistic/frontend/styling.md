@@ -1,7 +1,6 @@
 # Styling and Theming
 
 @id: frontend-styles
-@status: in-progress
 @labels: frontend, ui
 @created: 2024-01-15
 

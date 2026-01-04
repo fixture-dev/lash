@@ -32,7 +32,6 @@ fn create_multi_file_project() -> TempDir {
         r#"# Project Index
 
 @id: project
-@status: in-progress
 @created: 2024-01-15
 @labels: meta
 
@@ -57,7 +56,6 @@ Main project tracking file.
         r#"# Authentication
 
 @id: features.auth
-@status: in-progress
 @created: 2024-01-15
 @labels: backend, security
 @owner: alice
@@ -78,7 +76,6 @@ Main project tracking file.
         r#"# Database
 
 @id: features.database
-@status: in-progress
 @created: 2024-01-15
 @labels: backend, infrastructure
 @owner: bob
@@ -97,7 +94,6 @@ Main project tracking file.
         r#"# User Interface
 
 @id: features.ui
-@status: in-progress
 @created: 2024-01-15
 @labels: frontend, design
 @owner: alice
@@ -117,7 +113,6 @@ Main project tracking file.
         r#"# Known Bugs
 
 @id: bugs
-@status: in-progress
 @created: 2024-01-15
 @labels: bug, urgent
 

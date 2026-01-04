@@ -1,7 +1,6 @@
 # Graphics & Rendering Pipeline
 
 @id: systems.rendering
-@status: in-progress
 @labels: backend, rendering, p0
 @created: 2024-01-15
 

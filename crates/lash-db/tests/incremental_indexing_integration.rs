@@ -31,7 +31,6 @@ fn create_test_project() -> TempDir {
         r#"# Test Project
 
 @id: test-project
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -48,7 +47,6 @@ fn create_test_project() -> TempDir {
         r#"# Authentication
 
 @id: features.auth
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -64,7 +62,6 @@ fn create_test_project() -> TempDir {
         r#"# Database
 
 @id: features.database
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -81,7 +78,6 @@ fn create_test_project() -> TempDir {
         r#"# Bugs
 
 @id: bugs
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -138,7 +134,6 @@ fn test_incremental_index_modified_file() {
         r#"# Authentication
 
 @id: features.auth
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -202,7 +197,6 @@ fn test_incremental_index_new_file() {
         r#"# API
 
 @id: features.api
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -327,7 +321,6 @@ fn test_incremental_index_task_status_change() {
         r#"# Authentication
 
 @id: features.auth
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -395,7 +388,6 @@ fn test_incremental_index_dependency_update() {
         r#"# Authentication
 
 @id: features.auth
-@status: in-progress
 @created: 2024-01-15
 @depends-on: features/database.md#features.database
 
@@ -459,7 +451,6 @@ fn test_incremental_faster_than_full_reindex() {
         r#"# Authentication
 
 @id: features.auth
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks

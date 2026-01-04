@@ -215,7 +215,7 @@ Implement Markdown generation and file writing for new tasks.
   - [x] @estimate, @owner inline or separate
 - [x] File creation for new files
   - [x] Generate proper header (# Title from filename or user input)
-  - [x] Generate file-level metadata block (@id, @status, @labels, @owner)
+  - [x] Generate file-level metadata block (@id, @labels, @owner)
   - [x] Create optional ## Description section
   - [x] Create ## Tasks section
   - [x] Insert the new task as first task

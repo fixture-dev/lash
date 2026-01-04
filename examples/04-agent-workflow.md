@@ -2,7 +2,6 @@
 
 @id: agent-workflow-demo
 @labels: agent, example, documentation
-@status: in-progress
 @created: 2025-12-14
 
 ## Description

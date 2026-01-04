@@ -1,7 +1,6 @@
 # Frontend
 
 @id: frontend
-@status: in-progress
 @labels: frontend, ui
 @depends-on: api.md
 @created: 2024-01-13

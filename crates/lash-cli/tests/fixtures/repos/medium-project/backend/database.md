@@ -2,7 +2,6 @@
 
 @id: backend.database
 @owner: alice
-@status: done
 @labels: backend, database, infrastructure
 @created: 2024-01-11
 

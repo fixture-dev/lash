@@ -2,7 +2,6 @@
 
 @id: backend.tests
 @owner: bob
-@status: in-progress
 @labels: backend, testing, quality
 @created: 2024-01-14
 @depends-on: backend/api.md#backend.api

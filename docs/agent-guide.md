@@ -74,7 +74,6 @@ Lash task files have four main sections:
 
 @id: unique-identifier
 @labels: tag1, tag2
-@status: overall-status
 @owner: assignee-name
 @created: YYYY-MM-DD
 
@@ -168,7 +167,6 @@ All annotations are optional unless marked required.
 |------------|------|-------------|---------|
 | `@id` | string | Unique identifier within file | `@id: feature-auth` |
 | `@labels` | comma-separated | Tags for filtering | `@labels: backend, api` |
-| `@status` | enum | Overall file status | `@status: in-progress` |
 | `@owner` | string | Person/agent responsible | `@owner: alice` |
 | `@created` | date | Creation date (YYYY-MM-DD) | `@created: 2025-01-15` |
 | `@estimate` | duration | Time estimate | `@estimate: 2d` |
@@ -739,7 +737,6 @@ cat features/auth.md
 
 @id: feature-auth
 @labels: backend, security
-@status: in-progress
 
 ## Description
 
@@ -759,7 +756,6 @@ User authentication system with OAuth 2.0 and JWT tokens.
 
 @id: feature-auth
 @labels: backend, security
-@status: in-progress
 
 ## Description
 
@@ -1094,7 +1090,6 @@ Context and requirements (500-1000 chars recommended).
 
 - `@id` = unique identifier
 - `@labels` = comma-separated tags
-- `@status` = overall file status
 - `@owner` = assignee
 - `@created` = creation date (YYYY-MM-DD)
 - `@estimate` = time estimate

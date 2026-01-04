@@ -339,7 +339,6 @@ Task already complete:
 
    @id: feature-profile
    @labels: frontend, user-mgmt
-   @status: open
    @owner: agent
    @created: 2025-01-15
 
@@ -593,7 +592,6 @@ lash show "${TASK_FILE}#task:${TASK_ID}" --format json > task.json
 # Agent does work here...
 
 # Update task to done
-sed -i "s/@id: ${TASK_ID}/&\n@status: done/" "${TASK_FILE}"
 
 # Validate
 if ! lash lint "${TASK_FILE}"; then
@@ -848,7 +846,6 @@ lash agent-prompt --labels specific-area  # Narrow scope
 |------------|---------|---------|
 | `@id` | Unique identifier | `@id: feature-auth` |
 | `@labels` | Tags for filtering | `@labels: backend, api` |
-| `@status` | Overall status | `@status: in-progress` |
 | `@owner` | Assignee | `@owner: alice` |
 | `@created` | Creation date | `@created: 2025-01-15` |
 | `@estimate` | Time estimate | `@estimate: 2d` |

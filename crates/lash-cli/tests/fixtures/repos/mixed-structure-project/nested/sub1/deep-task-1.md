@@ -1,7 +1,6 @@
 # Deep Task 1
 
 @id: deep-1
-@status: in-progress
 @labels: nested, deep, sub1
 @depends-on: ../nested-task-1.md
 @created: 2024-01-14

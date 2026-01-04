@@ -1,7 +1,6 @@
 # Broken Link - Missing File
 
 @id: broken-link-file
-@status: in-progress
 @labels: invalid, broken-link
 @depends-on: nonexistent-file.md
 @created: 2024-01-10

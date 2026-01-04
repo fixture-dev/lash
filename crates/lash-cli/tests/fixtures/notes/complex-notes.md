@@ -2,7 +2,6 @@
 
 @id: notes.complex
 @labels: testing, notes
-@status: in-progress
 @created: 2025-12-13
 
 ## Tasks

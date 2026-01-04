@@ -474,6 +474,7 @@ fn output_text_tree(
             // Search result node
             let status_indicator = match result.status {
                 lash_types::TaskStatus::Open => "[ ]",
+                lash_types::TaskStatus::InProgress => "[>]",
                 lash_types::TaskStatus::Done => "[x]",
                 lash_types::TaskStatus::Waived => "[-]",
                 lash_types::TaskStatus::Blocked => "[!]",
@@ -483,6 +484,9 @@ fn output_text_tree(
                 let status_styled = match result.status {
                     lash_types::TaskStatus::Done => theme.style_success(status_indicator),
                     lash_types::TaskStatus::Blocked => theme.style_error(status_indicator),
+                    lash_types::TaskStatus::InProgress => {
+                        theme.style_task_status(status_indicator, result.status)
+                    }
                     lash_types::TaskStatus::Open | lash_types::TaskStatus::Waived => {
                         theme.style_muted(status_indicator)
                     }

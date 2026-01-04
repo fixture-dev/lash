@@ -1,7 +1,6 @@
 # Sprite Art
 
 @id: content.sprites
-@status: in-progress
 @labels: art, sprites, p0
 @created: 2024-01-15
 

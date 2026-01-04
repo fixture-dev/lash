@@ -1,7 +1,6 @@
 # Invalid Checkbox Syntax
 
 @id: bad.checkbox
-@status: open
 
 ## Tasks
 

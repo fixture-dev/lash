@@ -1,7 +1,6 @@
 # Flat Project Structure
 
 @id: flat-project
-@status: in-progress
 @labels: test, structure-variant
 @created: 2024-01-10
 

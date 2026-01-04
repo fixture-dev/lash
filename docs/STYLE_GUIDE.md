@@ -117,7 +117,6 @@ Show complete, valid examples:
 
 @id: feature.name
 @labels: backend, api
-@status: in-progress
 @created: 2024-01-15
 
 ## Description

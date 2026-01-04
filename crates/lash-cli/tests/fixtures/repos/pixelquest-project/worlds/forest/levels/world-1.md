@@ -3,7 +3,6 @@
 @id: worlds.forest.levels.world1
 @created: 2024-01-20
 @labels: content, levels, world1, p0
-@status: in-progress
 @depends-on: ../../../features/player-movement.md, ../../../systems/physics.md
 
 ## Description

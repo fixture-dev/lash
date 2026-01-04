@@ -52,8 +52,7 @@ const SIZES: &[ProjectSize] = &[
 
 /// Generate a markdown task file with the specified number of tasks
 fn generate_task_file(file_id: &str, task_count: usize) -> String {
-    let mut content =
-        format!("# Task File {file_id}\n\n@id: {file_id}\n@status: in-progress\n\n## Tasks\n\n");
+    let mut content = format!("# Task File {file_id}\n\n@id: {file_id}\n\n## Tasks\n\n");
 
     for i in 0..task_count {
         content.push_str(&format!("- [ ] Task {} in file {}\n", i + 1, file_id));

@@ -126,7 +126,6 @@ lash/
 
 @id: photo-app.filters.sepia
 @labels: photo-app, filters, image-processing
-@status: in-progress
 @owner: frank
 @created: 2025-11-16
 

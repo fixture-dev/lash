@@ -1,7 +1,6 @@
 # UI Components
 
 @id: frontend-components
-@status: in-progress
 @labels: frontend, ui
 @created: 2024-01-15
 

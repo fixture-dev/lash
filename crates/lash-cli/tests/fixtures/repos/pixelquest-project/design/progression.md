@@ -1,7 +1,6 @@
 # Player Progression
 
 @id: design.progression
-@status: in-progress
 @labels: design, gameplay, p0
 @created: 2024-01-15
 

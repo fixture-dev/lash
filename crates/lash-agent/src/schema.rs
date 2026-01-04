@@ -102,12 +102,6 @@ pub fn generate_schema() -> LashSchema {
                 required: false,
             },
             AnnotationSpec {
-                key: "status".to_string(),
-                description: "Overall status of the file or section".to_string(),
-                example: "@status: in-progress".to_string(),
-                required: false,
-            },
-            AnnotationSpec {
                 key: "owner".to_string(),
                 description: "Person or agent responsible for this task".to_string(),
                 example: "@owner: alice".to_string(),
@@ -149,7 +143,12 @@ pub fn generate_schema() -> LashSchema {
             StatusSpec {
                 symbol: "[ ]".to_string(),
                 name: "open".to_string(),
-                description: "Task not yet started or in progress".to_string(),
+                description: "Task not yet started".to_string(),
+            },
+            StatusSpec {
+                symbol: "[>]".to_string(),
+                name: "in-progress".to_string(),
+                description: "Task actively being worked on".to_string(),
             },
             StatusSpec {
                 symbol: "[x]".to_string(),
@@ -329,7 +328,6 @@ pub fn generate_minimal_example() -> String {
 
 @id: feature-auth
 @labels: backend, security
-@status: in-progress
 @owner: alice
 
 ## Description
@@ -438,7 +436,6 @@ pub fn generate_contextual_notes_example() -> String {
 
 @id: feature-level-gen
 @labels: gameplay, procedural
-@status: in-progress
 
 ## Tasks
 
@@ -492,6 +489,7 @@ mod tests {
             .map(|s| s.symbol.clone())
             .collect();
         assert!(symbols.contains(&"[ ]".to_string()));
+        assert!(symbols.contains(&"[>]".to_string()));
         assert!(symbols.contains(&"[x]".to_string()));
         assert!(symbols.contains(&"[-]".to_string()));
         assert!(symbols.contains(&"[!]".to_string()));

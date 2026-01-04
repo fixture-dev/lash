@@ -1,7 +1,6 @@
 # Database Layer
 
 @id: backend-db
-@status: in-progress
 @labels: backend, infrastructure
 @created: 2024-01-15
 

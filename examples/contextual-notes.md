@@ -2,7 +2,6 @@
 
 @id: examples.contextual-notes
 @labels: documentation, examples
-@status: done
 @created: 2025-12-13
 
 ## Description

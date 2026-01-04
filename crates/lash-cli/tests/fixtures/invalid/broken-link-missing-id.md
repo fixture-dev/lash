@@ -1,7 +1,6 @@
 # Broken Link - Missing ID
 
 @id: broken-link-id
-@status: in-progress
 @labels: invalid, broken-link
 @created: 2024-01-10
 

@@ -24,7 +24,6 @@ fn create_test_project() -> TempDir {
 
 @id: test-project
 @labels: test
-@status: in-progress
 
 A test project for E2E testing.
 
@@ -53,7 +52,6 @@ A test project for E2E testing.
 @id: backend
 @owner: alice
 @labels: backend, api
-@status: in-progress
 @created: 2025-01-15
 
 Backend development tasks.
@@ -79,7 +77,6 @@ Backend development tasks.
 @id: frontend
 @owner: bob
 @labels: frontend, ui
-@status: open
 @created: 2025-01-16
 @depends-on: tasks/backend.md#task:api-endpoints
 
@@ -1036,7 +1033,6 @@ fn test_list_with_show_notes() {
 
 @id: tasks.notes
 @labels: example
-@status: in-progress
 
 ## Tasks
 
@@ -1095,7 +1091,6 @@ fn test_list_without_show_notes() {
 
 @id: tasks.notes
 @labels: example
-@status: in-progress
 
 ## Tasks
 
@@ -1148,7 +1143,6 @@ fn test_list_show_notes_json_output() {
 
 @id: tasks.notes
 @labels: example
-@status: in-progress
 
 ## Tasks
 

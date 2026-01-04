@@ -3,7 +3,6 @@
 @id: worlds.forest.boss
 @created: 2024-01-22
 @labels: content, boss, world1, p0
-@status: in-progress
 @depends-on: levels/world-1.md, ../../../features/boss-fights.md, ../../../features/enemy-ai.md
 
 ## Description

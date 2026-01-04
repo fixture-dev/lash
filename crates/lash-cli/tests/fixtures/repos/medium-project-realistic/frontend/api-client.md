@@ -1,7 +1,6 @@
 # API Client
 
 @id: frontend-api
-@status: in-progress
 @labels: frontend
 @depends-on: backend/api-gateway.md
 @created: 2024-01-15

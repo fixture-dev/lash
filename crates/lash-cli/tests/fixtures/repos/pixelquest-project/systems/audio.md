@@ -1,7 +1,6 @@
 # Audio Engine
 
 @id: systems.audio
-@status: in-progress
 @labels: backend, audio, p1
 @created: 2024-01-15
 

@@ -1,7 +1,6 @@
 # Very Long List (100 tasks)
 
 @id: long-list-100
-@status: in-progress
 @labels: performance, large-list
 @created: 2024-01-10
 

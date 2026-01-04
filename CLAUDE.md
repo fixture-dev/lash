@@ -122,7 +122,6 @@ The project will be implemented in Rust with these main components:
 
 @id: unique.identifier
 @labels: tag1, tag2
-@status: in-progress
 @owner: name
 @created: YYYY-MM-DD
 
@@ -178,7 +177,6 @@ The project will be implemented in Rust with these main components:
 - `@id` - unique within file
 - `@labels` - comma-separated tags
 - `@owner` - assignee
-- `@status` - overall status
 - `@estimate` - time estimate
 - `@depends-on` - explicit dependencies
 - `@agent-note` - hints for LLM agents

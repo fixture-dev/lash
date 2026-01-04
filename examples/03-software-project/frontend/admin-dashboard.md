@@ -1,7 +1,6 @@
 # Admin Dashboard
 
 @id: frontend.admin
-@status: open
 @labels: frontend, p1
 @created: 2025-10-15
 @owner: frontend-team

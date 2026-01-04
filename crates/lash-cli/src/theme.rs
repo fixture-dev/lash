@@ -305,6 +305,7 @@ impl CliTheme {
             TaskStatus::Done => self.theme.task_done(),
             TaskStatus::Blocked => self.theme.task_blocked(),
             TaskStatus::Open => self.theme.task_open(),
+            TaskStatus::InProgress => self.theme.task_in_progress(),
             TaskStatus::Waived => self.theme.task_waived(),
         };
         self.style_text(text, color)

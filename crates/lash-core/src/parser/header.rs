@@ -865,7 +865,6 @@ This is just an overview without any annotations.
 @id: backend-api
 @owner: alice
 @labels: backend, api, database
-@status: in-progress
 @created: 2025-01-15
 
 This file tracks all backend API development tasks.

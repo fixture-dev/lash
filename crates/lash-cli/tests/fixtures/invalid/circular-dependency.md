@@ -1,7 +1,6 @@
 # Task List with Circular Dependency
 
 @id: circular.example
-@status: in-progress
 @depends-on: tests/fixtures/invalid/circular-dependency.md#circular.example
 
 ## Tasks

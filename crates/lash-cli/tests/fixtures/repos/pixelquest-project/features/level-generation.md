@@ -1,7 +1,6 @@
 # Procedural Level Generation
 
 @id: features.level-gen
-@status: in-progress
 @labels: backend, worldgen, p1
 @created: 2024-01-15
 

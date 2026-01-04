@@ -2,7 +2,6 @@
 
 @id: infra.terraform
 @owner: team-ops
-@status: in-progress
 @labels: infrastructure, ops, terraform
 @created: 2024-01-08
 

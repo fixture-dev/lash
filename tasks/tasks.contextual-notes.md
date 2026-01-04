@@ -2,7 +2,6 @@
 
 @id: tasks.contextual-notes
 @labels: feature, parser, linter, database, tui, cli
-@status: done
 @created: 2025-12-13
 @completed: 2025-12-13
 

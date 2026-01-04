@@ -1,7 +1,6 @@
 # Enemy AI & Behavior
 
 @id: features.enemy-ai
-@status: in-progress
 @labels: backend, ai, p0
 @created: 2024-01-15
 

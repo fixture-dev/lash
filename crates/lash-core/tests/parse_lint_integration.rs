@@ -17,7 +17,6 @@ fn test_parse_valid_file_structure() {
     let content = r#"# Test Task File
 
 @id: test.valid
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -53,7 +52,6 @@ fn test_parse_file_with_depth_violations() {
     let content = r#"# Test Task File
 
 @id: test.depth
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -95,7 +93,6 @@ fn test_parse_missing_required_metadata() {
     // Parser should be lenient, linter will flag missing metadata
     let content = r#"# Test Task File
 
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -138,7 +135,6 @@ fn test_parse_complex_file_preserves_structure() {
     let content = r#"# Complex Task File
 
 @id: test.complex
-@status: in-progress
 @created: 2024-01-15
 @owner: test-user
 @labels: backend, testing
@@ -205,7 +201,6 @@ fn test_parse_then_verify_task_hierarchy() {
     let content = r#"# Hierarchy Test
 
 @id: test.hierarchy
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -254,7 +249,6 @@ fn test_parse_preserves_task_order() {
     let content = r#"# Order Test
 
 @id: test.order
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks

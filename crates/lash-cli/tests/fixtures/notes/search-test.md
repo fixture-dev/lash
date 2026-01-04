@@ -2,7 +2,6 @@
 
 @id: notes.search
 @labels: testing, search, fts
-@status: in-progress
 @created: 2025-12-13
 
 ## Description

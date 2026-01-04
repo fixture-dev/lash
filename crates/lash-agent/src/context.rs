@@ -517,6 +517,7 @@ impl<'a> ContextBuilder<'a> {
             for task in file_tasks {
                 let status_symbol = match task.status {
                     TaskStatus::Open => "[ ]",
+                    TaskStatus::InProgress => "[>]",
                     TaskStatus::Done => "[x]",
                     TaskStatus::Waived => "[-]",
                     TaskStatus::Blocked => "[!]",

@@ -1,7 +1,6 @@
 # Deeply Nested Task Hierarchy
 
 @id: nested.example
-@status: open
 @created: 2024-01-15
 
 ## Tasks

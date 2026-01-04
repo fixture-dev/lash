@@ -1,7 +1,6 @@
 # Task List with Agent Notes
 
 @id: agent.example
-@status: in-progress
 @owner: bot
 @created: 2024-01-22
 @agent-note: This task file demonstrates agent-friendly annotations

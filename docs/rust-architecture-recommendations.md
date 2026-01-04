@@ -1397,7 +1397,7 @@ Build a minimal "vertical slice" through all layers to prove the architecture wo
 - [ ] Implement basic Markdown parsing (pulldown-cmark integration)
 - [ ] Parse task checkboxes and status
 - [ ] Parse nested tasks (up to max depth)
-- [ ] Parse annotations (@id, @labels, @status)
+- [ ] Parse annotations (@id, @labels)
 - [ ] Build arena-based TaskTree
 - [ ] Write comprehensive parsing tests
 

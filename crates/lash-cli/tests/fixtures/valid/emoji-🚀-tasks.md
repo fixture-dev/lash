@@ -1,7 +1,6 @@
 # Emoji Tasks 🚀
 
 @id: emoji-tasks
-@status: in-progress
 @labels: unicode, emoji, 🎯
 @created: 2024-01-10
 

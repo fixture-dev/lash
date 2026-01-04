@@ -64,8 +64,7 @@ const QUERY_PATTERNS: &[(&str, &str)] = &[
 
 /// Generate a markdown task file with realistic content
 fn generate_task_file(file_id: &str, task_count: usize, labels: &[&str]) -> String {
-    let mut content =
-        format!("# Task File {file_id}\n\n@id: {file_id}\n@status: in-progress\n\n## Tasks\n\n");
+    let mut content = format!("# Task File {file_id}\n\n@id: {file_id}\n\n## Tasks\n\n");
 
     let task_templates = [
         ("Implement", "functionality", "backend"),

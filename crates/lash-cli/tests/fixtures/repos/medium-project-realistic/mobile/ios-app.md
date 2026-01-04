@@ -1,7 +1,6 @@
 # iOS Application
 
 @id: mobile-ios
-@status: in-progress
 @labels: mobile, ios
 @created: 2024-01-15
 

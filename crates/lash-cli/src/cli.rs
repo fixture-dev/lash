@@ -409,6 +409,17 @@ pub enum Commands {
         dry_run: bool,
     },
 
+    /// Mark one or more tasks as in-progress
+    Start {
+        /// Task ID(s) to mark as in-progress (supports fuzzy matching)
+        #[arg(required = true, num_args = 1..)]
+        task_ids: Vec<String>,
+
+        /// Preview what would be changed without modifying files
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Show project task status summary
     Status {
         /// Maximum tasks per category
@@ -989,6 +1000,44 @@ mod tests {
     #[test]
     fn test_cli_parse_complete_requires_task_id() {
         let result = LashCli::try_parse_from(["lash", "complete"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_start_single() {
+        let cli = LashCli::try_parse_from(["lash", "start", "test#task-1"]).unwrap();
+        if let Commands::Start { task_ids, dry_run } = cli.command {
+            assert_eq!(task_ids, vec!["test#task-1"]);
+            assert!(!dry_run);
+        } else {
+            panic!("Expected Start command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_start_multiple() {
+        let cli = LashCli::try_parse_from(["lash", "start", "test#task-1", "test#task-2"]).unwrap();
+        if let Commands::Start { task_ids, .. } = cli.command {
+            assert_eq!(task_ids, vec!["test#task-1", "test#task-2"]);
+        } else {
+            panic!("Expected Start command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_start_dry_run() {
+        let cli = LashCli::try_parse_from(["lash", "start", "--dry-run", "test#task-1"]).unwrap();
+        if let Commands::Start { task_ids, dry_run } = cli.command {
+            assert_eq!(task_ids, vec!["test#task-1"]);
+            assert!(dry_run);
+        } else {
+            panic!("Expected Start command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_start_requires_task_id() {
+        let result = LashCli::try_parse_from(["lash", "start"]);
         assert!(result.is_err());
     }
 

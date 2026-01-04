@@ -12,7 +12,6 @@ fn test_apply_fixes_to_complex_file() {
     let content = r#"# Complex Task File
 
 @id: test.complex
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks
@@ -107,7 +106,6 @@ fn test_fix_preserves_structure() {
 
 @id: test
 @labels: one, two, three
-@status: in-progress
 
 ## Section 1
 
@@ -150,7 +148,6 @@ fn test_fix_with_unicode() {
     let content = r#"# Tasks with Unicode
 
 @id: test.unicode
-@status: in-progress
 
 ## Tasks
 
@@ -203,7 +200,6 @@ fn test_fix_with_long_lines() {
         r#"# Tasks
 
 @id: test.long
-@status: in-progress
 
 ## Tasks
 
@@ -248,8 +244,7 @@ fn test_fix_with_crlf_line_endings() {
 #[test]
 fn test_fix_large_file() {
     // Generate a file with 100 tasks
-    let mut content =
-        String::from("# Large File\n\n@id: test.large\n@status: in-progress\n\n## Tasks\n\n");
+    let mut content = String::from("# Large File\n\n@id: test.large\n\n## Tasks\n\n");
 
     for i in 0..100 {
         if i % 3 == 0 {

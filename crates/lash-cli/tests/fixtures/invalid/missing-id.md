@@ -1,6 +1,5 @@
 # Task List Missing ID Annotation
 
-@status: in-progress
 @created: 2024-01-20
 
 ## Tasks

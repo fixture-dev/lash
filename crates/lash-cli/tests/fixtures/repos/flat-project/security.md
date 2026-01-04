@@ -1,7 +1,6 @@
 # Security
 
 @id: security
-@status: in-progress
 @labels: security, compliance
 @created: 2024-01-18
 

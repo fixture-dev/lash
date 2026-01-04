@@ -29,7 +29,6 @@ use crate::linter::{Fix, LintContext, LintDiagnostic, LintRule};
 /// # Project Name
 ///
 /// @id: project
-/// @status: in-progress
 ///
 /// ## Tasks
 ///

@@ -1,7 +1,6 @@
 # Large Task List
 
 @id: large.example
-@status: in-progress
 @created: 2024-01-15
 
 ## Tasks

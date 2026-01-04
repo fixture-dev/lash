@@ -1,7 +1,6 @@
 # Level 7 - Transformers
 
 @id: level7-transformers
-@status: in-progress
 @labels: level7
 @depends-on: level1/level2/level3/level4/level5/level6/validators.md
 @created: 2024-01-17

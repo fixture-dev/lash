@@ -1,7 +1,6 @@
 # Documentation
 
 @id: docs
-@status: in-progress
 @labels: docs
 @created: 2024-01-16
 

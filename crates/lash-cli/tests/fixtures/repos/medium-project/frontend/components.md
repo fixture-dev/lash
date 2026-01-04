@@ -2,7 +2,6 @@
 
 @id: frontend.components
 @owner: carol
-@status: in-progress
 @labels: frontend, ui, development
 @created: 2024-01-13
 

@@ -2,7 +2,6 @@
 
 @id: backend.api
 @owner: alice
-@status: in-progress
 @labels: backend, api, development
 @created: 2024-01-12
 @depends-on: backend/database.md#backend.database

@@ -2,7 +2,6 @@
 
 @id: web.frontend
 @owner: team-web
-@status: in-progress
 @labels: web, frontend, ui
 @created: 2024-01-15
 @depends-on: services/api-gateway.md#services.gateway

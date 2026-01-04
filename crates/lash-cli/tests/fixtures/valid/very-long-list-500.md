@@ -1,7 +1,6 @@
 # Very Long List (500 tasks)
 
 @id: long-list-500
-@status: in-progress
 @labels: performance, large-list, stress-test
 @created: 2024-01-10
 

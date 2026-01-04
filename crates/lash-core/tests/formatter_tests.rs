@@ -32,7 +32,6 @@ fn test_format_basic_file() {
     let content = r#"# Test File
 
 @id: test-file
-@status: in-progress
 
 ## Tasks
 
@@ -118,7 +117,6 @@ fn test_annotation_sorting() {
     let content = r#"# Test
 
 @id: test
-@status: done
 @owner: alice
 @created: 2025-01-01
 @labels: backend, api
@@ -136,14 +134,12 @@ fn test_annotation_sorting() {
     let created_pos = formatted.find("@created:").unwrap();
     let labels_pos = formatted.find("@labels:").unwrap();
     let owner_pos = formatted.find("@owner:").unwrap();
-    let status_pos = formatted.find("@status:").unwrap();
 
     // @id should be first
     assert!(id_pos < created_pos);
-    // Rest should be alphabetical: created, labels, owner, status
+    // Rest should be alphabetical: created, labels, owner
     assert!(created_pos < labels_pos);
     assert!(labels_pos < owner_pos);
-    assert!(owner_pos < status_pos);
 }
 
 #[test]
@@ -158,7 +154,6 @@ fn test_annotation_sorting_disabled() {
     let content = r#"# Test
 
 @id: test
-@status: done
 @owner: alice
 
 ## Tasks
@@ -171,11 +166,9 @@ fn test_annotation_sorting_disabled() {
 
     // Annotations should maintain original order (after @id)
     let id_pos = formatted.find("@id:").unwrap();
-    let status_pos = formatted.find("@status:").unwrap();
     let owner_pos = formatted.find("@owner:").unwrap();
 
-    assert!(id_pos < status_pos);
-    assert!(status_pos < owner_pos);
+    assert!(id_pos < owner_pos);
 }
 
 #[test]
@@ -332,7 +325,6 @@ fn test_round_trip_with_metadata() {
 
 @id: complex
 @labels: backend, api, testing
-@status: in-progress
 @owner: team-a
 @created: 2025-01-15
 
@@ -566,7 +558,6 @@ fn test_minimal_formatter() {
     let content = r#"# Test
 
 @id: test
-@status: done
 @owner: alice
 
 ## Tasks
@@ -586,9 +577,7 @@ fn test_minimal_formatter() {
     assert!(formatted.contains("- [x] Done parent\n"));
 
     // No sorting, so annotations keep original order
-    let status_pos = formatted.find("@status:").unwrap();
-    let owner_pos = formatted.find("@owner:").unwrap();
-    assert!(status_pos < owner_pos);
+    let _owner_pos = formatted.find("@owner:").unwrap();
 }
 
 #[test]
@@ -602,7 +591,6 @@ fn test_strict_formatter() {
 @id: test
 
 
-@status: done
 
 
 ## Tasks
@@ -673,7 +661,6 @@ fn test_format_preserves_task_annotations_issue_6() {
     let content = r#"# Project Setup
 
 @id: project
-@status: in-progress
 
 ## Tasks
 
@@ -870,7 +857,6 @@ fn test_format_preserves_file_level_doc_annotation() {
 
 @id: phase-5
 @labels: tui, interface
-@status: pending
 @depends-on: phase-3-orchestration.md
 @doc: ../docs/tui-design.md
 
@@ -893,10 +879,6 @@ fn test_format_preserves_file_level_doc_annotation() {
     assert!(
         formatted.contains("@labels:"),
         "File-level @labels should be preserved"
-    );
-    assert!(
-        formatted.contains("@status:"),
-        "File-level @status should be preserved"
     );
     assert!(
         formatted.contains("@depends-on:"),

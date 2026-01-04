@@ -1,7 +1,6 @@
 # Monitoring & Observability
 
 @id: infra.monitoring
-@status: open
 @labels: infrastructure, observability, p1
 @created: 2025-11-01
 @owner: devops-team

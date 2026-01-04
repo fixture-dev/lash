@@ -860,7 +860,6 @@ CREATE TABLE files (
     file_id TEXT,                      -- @id annotation
     title TEXT,                        -- File title (heading)
     description TEXT,                  -- ## Description section
-    status TEXT,                       -- @status annotation
     owner TEXT,                        -- @owner annotation
     created TEXT,                      -- @created annotation (ISO 8601)
     estimate TEXT,                     -- @estimate annotation

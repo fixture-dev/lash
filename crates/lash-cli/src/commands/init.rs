@@ -212,7 +212,6 @@ fn generate_index_template(project_root: &Path) -> String {
         r"# {project_name}
 
 @id: index
-@status: in-progress
 @created: {date}
 
 ## Overview
@@ -259,7 +258,6 @@ mod tests {
 
         assert!(template.contains("# test-project"));
         assert!(template.contains("@id: index"));
-        assert!(template.contains("@status: in-progress"));
         assert!(template.contains("## Tasks"));
     }
 

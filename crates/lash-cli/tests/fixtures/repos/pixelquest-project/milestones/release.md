@@ -1,7 +1,6 @@
 # Release Milestone
 
 @id: milestone.release
-@status: in-progress
 @labels: milestone, p0
 @depends-on: milestones/beta.md
 @created: 2024-01-15

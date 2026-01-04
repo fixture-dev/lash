@@ -1,7 +1,6 @@
 # Payment Service
 
 @id: backend.payment
-@status: open
 @labels: backend, p1, pci-compliance, security
 @created: 2025-10-01
 @owner: backend-team-beta

@@ -357,12 +357,6 @@ impl Formatter {
         output.push('\n');
 
         // Output other annotations from metadata
-        if let Some(ref status) = file.metadata.status {
-            output.push_str("@status: ");
-            output.push_str(status);
-            output.push('\n');
-        }
-
         if !file.metadata.labels.is_empty() {
             output.push_str("@labels: ");
             // Sort labels for consistency
@@ -468,10 +462,6 @@ impl Formatter {
 
         if let Some(ref owner) = file.metadata.owner {
             annotations.push(("owner", owner.clone()));
-        }
-
-        if let Some(ref status) = file.metadata.status {
-            annotations.push(("status", status.clone()));
         }
 
         // Add custom annotations

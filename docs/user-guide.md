@@ -101,7 +101,6 @@ The generated index file looks like this:
 # my-project
 
 @id: index
-@status: in-progress
 @created: 2025-12-14
 
 ## Overview
@@ -168,7 +167,6 @@ Each task file has four sections:
 
 @id: unique.identifier
 @labels: label1, label2
-@status: in-progress
 @owner: alice
 @created: 2025-12-14
 
@@ -218,20 +216,6 @@ Comma-separated tags for categorization and filtering.
 - Priority: `p0`, `p1`, `p2`
 - Type: `bug`, `feature`, `refactor`
 - Team: `team-platform`, `team-api`
-
-#### @status
-
-Overall file status.
-
-```markdown
-@status: in-progress
-```
-
-**Valid values:**
-- `open` - Not started
-- `in-progress` - Active work
-- `blocked` - Waiting on dependencies
-- `done` - Completed
 
 #### @owner
 
@@ -404,7 +388,6 @@ Reference tasks by their full ID:
 
 @id: features.authentication
 @labels: backend, security, p0
-@status: in-progress
 @owner: alice
 @created: 2025-12-10
 @depends-on: backend/database.md#task:user-schema
@@ -1973,7 +1956,6 @@ git commit -m "Update task tracking"
 
 @id: unique.id
 @labels: tag1, tag2
-@status: in-progress
 @owner: name
 @created: YYYY-MM-DD
 @depends-on: path/to/file.md#task:id

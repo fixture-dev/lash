@@ -124,10 +124,6 @@ pub struct FileMetadata {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub labels: Vec<String>,
 
-    /// Overall status annotation
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
-
     /// File owner
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
@@ -463,7 +459,6 @@ mod tests {
     fn test_file_metadata_serialization() {
         let metadata = FileMetadata {
             labels: vec!["label1".to_string(), "label2".to_string()],
-            status: Some("in-progress".to_string()),
             owner: Some("alice".to_string()),
             created: Some("2024-01-01".to_string()),
             depends_on: vec![],
@@ -475,7 +470,6 @@ mod tests {
         let deserialized: FileMetadata = serde_json::from_str(&json).unwrap();
 
         assert_eq!(deserialized.labels, metadata.labels);
-        assert_eq!(deserialized.status, metadata.status);
         assert_eq!(deserialized.owner, metadata.owner);
         assert_eq!(deserialized.created, metadata.created);
     }

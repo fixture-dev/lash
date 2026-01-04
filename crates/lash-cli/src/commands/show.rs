@@ -780,6 +780,7 @@ fn output_tasks_as_tree(tasks: &[TaskRecord], theme: Option<&CliTheme>, args: &S
     let lines = formatter.format_tree(&roots, |node, fmt| {
         let status_indicator = match node.status {
             lash_types::TaskStatus::Open => "[ ]",
+            lash_types::TaskStatus::InProgress => "[>]",
             lash_types::TaskStatus::Done => "[x]",
             lash_types::TaskStatus::Waived => "[-]",
             lash_types::TaskStatus::Blocked => "[!]",
@@ -1028,6 +1029,7 @@ fn output_text_task(
 fn format_task_status(status: lash_types::TaskStatus, theme: Option<&CliTheme>) -> String {
     let status_str = match status {
         lash_types::TaskStatus::Open => "open",
+        lash_types::TaskStatus::InProgress => "in-progress",
         lash_types::TaskStatus::Done => "done",
         lash_types::TaskStatus::Waived => "waived",
         lash_types::TaskStatus::Blocked => "blocked",
@@ -1044,6 +1046,7 @@ fn format_task_status(status: lash_types::TaskStatus, theme: Option<&CliTheme>) 
 fn format_task_status_icon(status: lash_types::TaskStatus) -> &'static str {
     match status {
         lash_types::TaskStatus::Open => "[ ]",
+        lash_types::TaskStatus::InProgress => "[>]",
         lash_types::TaskStatus::Done => "[x]",
         lash_types::TaskStatus::Waived => "[-]",
         lash_types::TaskStatus::Blocked => "[!]",

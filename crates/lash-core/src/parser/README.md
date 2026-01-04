@@ -164,7 +164,6 @@ The parser operates in four distinct phases:
 **Known Annotations**:
 - `@id`: Unique identifier
 - `@labels`: Comma-separated labels
-- `@status`: File/task status
 - `@owner`: Assigned owner
 - `@created`: Creation date (YYYY-MM-DD)
 - `@estimate`: Time estimate

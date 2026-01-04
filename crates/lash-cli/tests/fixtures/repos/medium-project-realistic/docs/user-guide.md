@@ -1,7 +1,6 @@
 # User Guide
 
 @id: docs-user
-@status: in-progress
 @labels: docs, user-facing
 @created: 2024-01-15
 

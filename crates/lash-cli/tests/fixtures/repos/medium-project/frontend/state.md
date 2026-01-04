@@ -2,7 +2,6 @@
 
 @id: frontend.state
 @owner: carol
-@status: in-progress
 @labels: frontend, state, development
 @created: 2024-01-14
 @depends-on: backend/api.md#backend.api

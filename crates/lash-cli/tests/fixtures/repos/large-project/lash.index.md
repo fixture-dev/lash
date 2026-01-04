@@ -1,7 +1,6 @@
 # Large Test Project
 
 @id: large-project
-@status: in-progress
 @labels: test, demo, enterprise
 @created: 2024-01-01
 

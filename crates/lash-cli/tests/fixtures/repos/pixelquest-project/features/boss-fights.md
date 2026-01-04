@@ -1,7 +1,6 @@
 # Boss Encounters
 
 @id: features.boss-fights
-@status: in-progress
 @labels: backend, gameplay, p1
 @depends-on: features/enemy-ai.md#enemy-behavior-trees
 @created: 2024-01-15

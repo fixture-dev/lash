@@ -1,7 +1,6 @@
 # Order Processing Service
 
 @id: backend-orders
-@status: in-progress
 @labels: backend, feature
 @depends-on: backend/product-catalog.md
 @created: 2024-01-15

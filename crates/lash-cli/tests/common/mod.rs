@@ -245,7 +245,7 @@ impl TestProjectBuilder {
     #[must_use]
     pub fn with_index(mut self, id: &str, title: &str) -> Self {
         let content = format!(
-            "# {title}\n\n@id: {id}\n@status: in-progress\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Example task\n"
+            "# {title}\n\n@id: {id}\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Example task\n"
         );
         self.files.push((PathBuf::from("lash.index.md"), content));
         self
@@ -273,7 +273,7 @@ impl TestProjectBuilder {
     #[must_use]
     pub fn with_task_file(mut self, path: &str, id: &str, title: &str) -> Self {
         let content = format!(
-            "# {title}\n\n@id: {id}\n@status: in-progress\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Example task\n"
+            "# {title}\n\n@id: {id}\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Example task\n"
         );
         self.files.push((PathBuf::from(path), content));
         self

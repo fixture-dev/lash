@@ -1,7 +1,6 @@
 # Android Application
 
 @id: mobile-android
-@status: in-progress
 @labels: mobile, android
 @created: 2024-01-15
 

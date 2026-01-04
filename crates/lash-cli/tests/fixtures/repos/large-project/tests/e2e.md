@@ -2,7 +2,6 @@
 
 @id: tests.e2e
 @owner: team-qa
-@status: in-progress
 @labels: testing, e2e, quality
 @created: 2024-02-15
 @depends-on: web/frontend.md#web.frontend
