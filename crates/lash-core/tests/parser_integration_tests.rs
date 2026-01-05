@@ -678,3 +678,89 @@ fn test_extract_file_metadata_with_all_fields() {
     assert_eq!(file.metadata.owner, Some("alice".to_string()));
     assert_eq!(file.metadata.created, Some("2025-01-15".to_string()));
 }
+
+// ==================== Legacy Annotation Tests ====================
+
+#[test]
+fn test_parse_file_with_legacy_status_annotation() {
+    // Test that files with legacy @status annotation parse without errors
+    // The @status annotation was removed in favor of computed file status,
+    // but is still recognized for backwards compatibility
+    let content = r"# Test File
+
+@id: test.legacy
+@status: in-progress
+@owner: alice
+@created: 2025-01-05
+
+## Tasks
+
+- [ ] Task one
+- [x] Task two
+";
+
+    let config = default_config();
+    let result = parse_file_from_string(content, &config);
+
+    // Should parse successfully without errors
+    assert!(
+        result.is_ok(),
+        "File with @status should parse successfully"
+    );
+
+    let file = result.unwrap();
+
+    // Verify the file metadata was parsed correctly
+    assert_eq!(file.id, "test.legacy");
+    assert_eq!(file.metadata.owner, Some("alice".to_string()));
+    assert_eq!(file.metadata.created, Some("2025-01-05".to_string()));
+
+    // Verify @status is NOT stored in metadata (it's silently ignored)
+    assert!(
+        !file.metadata.custom.contains_key("status"),
+        "@status should not be stored in custom metadata"
+    );
+
+    // Verify tasks were parsed correctly
+    assert_eq!(file.tasks.tasks().len(), 2);
+    assert_eq!(file.tasks.tasks()[0].status, TaskStatus::Open);
+    assert_eq!(file.tasks.tasks()[1].status, TaskStatus::Done);
+}
+
+#[test]
+fn test_parse_file_with_legacy_status_mixed_with_other_annotations() {
+    // Test that @status can appear alongside other annotations
+    let content = r"# Mixed Annotations
+
+@id: mixed.test
+@labels: backend, api
+@status: blocked
+@owner: bob
+@depends-on: other-file.md
+
+## Tasks
+
+- [ ] Some task
+";
+
+    let config = default_config();
+    let result = parse_file_from_string(content, &config);
+
+    assert!(
+        result.is_ok(),
+        "File with mixed annotations should parse successfully"
+    );
+
+    let file = result.unwrap();
+
+    // Verify all other annotations were parsed
+    assert_eq!(file.id, "mixed.test");
+    assert_eq!(file.metadata.labels.len(), 2);
+    assert!(file.metadata.labels.contains(&"backend".to_string()));
+    assert!(file.metadata.labels.contains(&"api".to_string()));
+    assert_eq!(file.metadata.owner, Some("bob".to_string()));
+    assert_eq!(file.metadata.depends_on.len(), 1);
+
+    // Verify @status is ignored
+    assert!(!file.metadata.custom.contains_key("status"));
+}

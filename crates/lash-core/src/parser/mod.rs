@@ -690,10 +690,10 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
     // Extract custom annotations (all others)
     let mut custom = std::collections::HashMap::new();
     for (key, values) in annotations.iter() {
-        // Skip known annotations
+        // Skip known annotations (including legacy @status which is silently ignored)
         if matches!(
             key.as_str(),
-            "id" | "labels" | "owner" | "created" | "depends-on" | "doc"
+            "id" | "labels" | "owner" | "created" | "depends-on" | "doc" | "status"
         ) {
             continue;
         }
