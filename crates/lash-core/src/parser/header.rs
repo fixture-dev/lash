@@ -297,6 +297,57 @@ fn find_tasks_section(content: &str, ctx: &mut ParseContext) -> Option<usize> {
     None
 }
 
+/// Check if content contains a proper ## Tasks section using Markdown parsing
+///
+/// This function uses pulldown-cmark to properly detect H2 headings,
+/// ignoring content inside code blocks or other Markdown constructs.
+/// Unlike `find_tasks_section`, this does not emit any diagnostics.
+///
+/// # Example
+///
+/// ```
+/// use lash_core::parser::header::content_has_tasks_section;
+///
+/// // Real Tasks section
+/// assert!(content_has_tasks_section("# Title\n\n## Tasks\n\n- [ ] Task"));
+///
+/// // Tasks inside code block should NOT be detected
+/// assert!(!content_has_tasks_section("# Title\n\n```markdown\n## Tasks\n```"));
+///
+/// // No Tasks section
+/// assert!(!content_has_tasks_section("# Just a README\n\nSome content"));
+/// ```
+#[must_use]
+pub fn content_has_tasks_section(content: &str) -> bool {
+    let parser = Parser::new(content);
+    let mut in_h2 = false;
+    let mut h2_text = String::new();
+
+    for event in parser {
+        match event {
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H2,
+                ..
+            }) => {
+                in_h2 = true;
+                h2_text.clear();
+            }
+            Event::Text(text) if in_h2 => {
+                h2_text.push_str(&text);
+            }
+            Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
+                if h2_text.trim().eq_ignore_ascii_case("tasks") {
+                    return true;
+                }
+                in_h2 = false;
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
 /// Find the ## Description section heading
 ///
 /// Returns the line number where "## Description" appears (0-indexed).
