@@ -13,6 +13,10 @@
 //! - `@estimate`: Time estimate
 //! - `@depends-on`: Dependencies
 //! - `@agent-note`: Notes for LLM agents
+//! - `@doc`: Documentation references
+//!
+//! Legacy annotations (recognized but ignored):
+//! - `@status`: File status (removed in favor of computed status)
 //!
 //! Custom annotations can be defined in the Lash configuration.
 
@@ -640,9 +644,16 @@ pub mod known_keys {
     /// Documentation reference
     pub const DOC: &str = "doc";
 
+    /// Legacy status annotation (deprecated, silently ignored)
+    ///
+    /// This annotation was removed in favor of computed file status,
+    /// but is still recognized to avoid breaking existing projects.
+    /// Values are parsed but not stored or used.
+    pub const STATUS: &str = "status";
+
     /// All known annotation keys
     pub const ALL: &[&str] = &[
-        ID, LABELS, OWNER, CREATED, ESTIMATE, DEPENDS_ON, AGENT_NOTE, DOC,
+        ID, LABELS, OWNER, CREATED, ESTIMATE, DEPENDS_ON, AGENT_NOTE, DOC, STATUS,
     ];
 }
 
@@ -1089,11 +1100,49 @@ mod tests {
         assert_eq!(known_keys::DEPENDS_ON, "depends-on");
         assert_eq!(known_keys::AGENT_NOTE, "agent-note");
         assert_eq!(known_keys::DOC, "doc");
+        assert_eq!(known_keys::STATUS, "status");
 
-        assert_eq!(known_keys::ALL.len(), 8);
+        assert_eq!(known_keys::ALL.len(), 9);
         assert!(known_keys::ALL.contains(&"id"));
         assert!(known_keys::ALL.contains(&"depends-on"));
         assert!(known_keys::ALL.contains(&"doc"));
+        assert!(known_keys::ALL.contains(&"status"));
+    }
+
+    #[test]
+    fn test_legacy_status_annotation_is_recognized() {
+        // Test that @status is recognized as a known key (doesn't error)
+        let config = ConfigBuilder::new()
+            .root(std::env::temp_dir())
+            .build()
+            .unwrap();
+        let lines = vec!["@status: in-progress"];
+        let result = parse_annotation_block(lines.into_iter(), Some(&config));
+        assert!(
+            result.is_ok(),
+            "Legacy @status annotation should parse without error"
+        );
+
+        let block = result.unwrap();
+        // The annotation is stored in the block but not used by FileMetadata
+        assert_eq!(block.get_single("status"), Some("in-progress"));
+    }
+
+    #[test]
+    fn test_legacy_status_annotation_with_other_annotations() {
+        // Test that @status doesn't interfere with other annotations
+        let config = ConfigBuilder::new()
+            .root(std::env::temp_dir())
+            .build()
+            .unwrap();
+        let lines = vec!["@id: test-file", "@status: in-progress", "@owner: alice"];
+        let result = parse_annotation_block(lines.into_iter(), Some(&config));
+        assert!(result.is_ok());
+
+        let block = result.unwrap();
+        assert_eq!(block.get_single("id"), Some("test-file"));
+        assert_eq!(block.get_single("status"), Some("in-progress"));
+        assert_eq!(block.get_single("owner"), Some("alice"));
     }
 
     // ==================== Integration Tests ====================
