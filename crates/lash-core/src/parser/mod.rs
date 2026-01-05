@@ -718,7 +718,8 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
 
 /// Check if content contains a valid Tasks section header.
 ///
-/// Looks for `## Tasks` (case-insensitive) on its own line.
+/// Uses proper Markdown parsing to detect `## Tasks` (case-insensitive),
+/// correctly ignoring content inside code blocks or other Markdown constructs.
 /// This is used to determine if a file is a valid Lash task file
 /// before attempting to parse it.
 ///
@@ -727,18 +728,18 @@ fn extract_file_metadata(annotations: &annotations::AnnotationBlock) -> FileMeta
 /// ```
 /// use lash_core::parser::has_tasks_section;
 ///
+/// // Real Tasks section
 /// assert!(has_tasks_section("# Title\n\n## Tasks\n\n- [ ] Task"));
+///
+/// // Tasks inside code block should NOT be detected
+/// assert!(!has_tasks_section("# Title\n\n```markdown\n## Tasks\n```"));
+///
+/// // No Tasks section
 /// assert!(!has_tasks_section("# Just a README\n\nSome content"));
 /// ```
 #[must_use]
 pub fn has_tasks_section(content: &str) -> bool {
-    content.lines().any(|line| {
-        let trimmed = line.trim();
-        trimmed.starts_with("## ")
-            && trimmed
-                .get(3..)
-                .is_some_and(|rest| rest.trim().eq_ignore_ascii_case("tasks"))
-    })
+    header::content_has_tasks_section(content)
 }
 
 /// Check if a path represents an index file.
@@ -2006,6 +2007,25 @@ This should fail.
         assert!(!has_tasks_section("# Title\n\nTasks: do things"));
         assert!(!has_tasks_section("# Title\n\n# Tasks\n\n- [ ] Task")); // H1, not H2
         assert!(!has_tasks_section("# Title\n\n### Tasks\n\n- [ ] Task")); // H3, not H2
+    }
+
+    #[test]
+    fn test_has_tasks_section_inside_code_block() {
+        // "## Tasks" inside a fenced code block should NOT be detected
+        // This is a critical test - documentation files often contain example task files
+        assert!(!has_tasks_section(
+            "# Documentation\n\nExample task file:\n\n```markdown\n## Tasks\n\n- [ ] Task\n```"
+        ));
+
+        // Also test with indented code block
+        assert!(!has_tasks_section(
+            "# Documentation\n\nExample:\n\n    ## Tasks\n    - [ ] Task"
+        ));
+
+        // Real Tasks section followed by code block with Tasks should still match
+        assert!(has_tasks_section(
+            "# Title\n\n## Tasks\n\n- [ ] Real task\n\n```\n## Tasks\n- [ ] Example\n```"
+        ));
     }
 
     #[test]
