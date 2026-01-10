@@ -16,16 +16,16 @@ This file tests various patterns of tasks and notes mixed together.
   - [ ] Subtask A
   - [ ] Subtask B
 
-- [ ] Pattern 2: Tasks then notes (invalid)
+- [ ] Pattern 2: Tasks then notes
   - [ ] Subtask A
-  - Note after task (this violates ordering convention)
+  - Note after task (now valid as of issue #7)
 
-- [ ] Pattern 3: Alternating (invalid)
+- [ ] Pattern 3: Alternating notes and tasks
   - Note A
   - [ ] Subtask A
-  - Note B (between tasks, invalid)
+  - Note B (between tasks, now valid)
   - [ ] Subtask B
-  - Note C (after all tasks, invalid)
+  - Note C (after all tasks, now valid)
 
 - [ ] Pattern 4: Notes at each level
   - Top level note
