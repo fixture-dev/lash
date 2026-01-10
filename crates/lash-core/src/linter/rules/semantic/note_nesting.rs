@@ -2,6 +2,10 @@
 //!
 //! Ensures that contextual notes do not have children. Notes are terminal
 //! items that provide context, not containers for further nesting.
+//!
+//! As of issue #7, notes are allowed to be interleaved with child tasks
+//! for structural flexibility. This rule only validates that notes themselves
+//! don't have nested children, which the parser already prevents.
 
 use lash_types::{Severity, TaskFile};
 
@@ -10,8 +14,9 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// Rule that validates contextual notes don't have children
 ///
 /// Contextual notes are informational items that should not contain
-/// nested items (neither tasks nor other notes). This rule detects
-/// when items appear to be nested under notes and reports an error.
+/// nested items (neither tasks nor other notes). This validation is
+/// primarily handled by the parser, which attaches notes to their parent
+/// tasks and prevents nesting under notes.
 ///
 /// **Code:** `E_NOTE_HAS_CHILDREN`
 /// **Severity:** Error
@@ -24,9 +29,20 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 ///
 /// # Note
 ///
-/// This validation is primarily handled by the parser, which attaches
-/// notes to their parent tasks. However, this rule provides an additional
-/// semantic check and clear error message if the parser's behavior changes.
+/// As of issue #7, notes can be freely interleaved with child tasks
+/// for better structural flexibility. For example:
+///
+/// ```markdown
+/// - [ ] Parent task
+///   - Setup note
+///   - [ ] Child task 1
+///   - Configuration note (between children)
+///   - [ ] Child task 2
+///   - Final note (after children)
+/// ```
+///
+/// This rule only prevents actual nesting under notes, which the parser
+/// already handles by attaching notes to the most recent valid parent task.
 ///
 /// # Examples
 ///
@@ -38,19 +54,11 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 ///   - [ ] Child task
 /// ```
 ///
-/// Invalid (detected by parser, validated here):
+/// Invalid (detected by parser):
 /// ```markdown
 /// - [ ] Parent task
 ///   - Note providing context
 ///     - [ ] This would be a child of a note (invalid)
-/// ```
-///
-/// Better approach:
-/// ```markdown
-/// - [ ] Parent task
-///   - Note providing context
-/// - [ ] Separate task for hierarchical structure
-///   - [ ] Child task
 /// ```
 pub struct NoteNestingRule;
 
@@ -85,80 +93,14 @@ impl LintRule for NoteNestingRule {
         "Ensures contextual notes do not have nested children"
     }
 
-    fn check_file(&self, file: &TaskFile, ctx: &LintContext) -> Vec<LintDiagnostic> {
-        let mut diagnostics = Vec::new();
-        let tasks = file.tasks.tasks();
-
-        // For each task with contextual notes, check if any child tasks
-        // appear at a position that would logically be "under" a note.
+    fn check_file(&self, _file: &TaskFile, _ctx: &LintContext) -> Vec<LintDiagnostic> {
+        // As of issue #7, notes are allowed to be freely interleaved with child tasks.
+        // The parser already prevents actual nesting under notes (e.g., a note having
+        // a child task directly beneath it at increased depth).
         //
-        // The semantic rule we're checking: if a task has notes, and then
-        // has children that come AFTER those notes in document order, that's
-        // allowed. But if we detect nesting anomalies, we report them.
-        //
-        // Since the parser already handles note attachment, this rule
-        // primarily catches edge cases and provides semantic validation.
-        for task in tasks {
-            if task.contextual_notes.is_empty() {
-                continue;
-            }
-
-            // Get the line number of the last note
-            let last_note_line = task
-                .contextual_notes
-                .iter()
-                .map(lash_types::ContextualNote::line_number)
-                .max()
-                .unwrap_or(0);
-
-            // Get all direct children of this task
-            let children: Vec<_> = tasks
-                .iter()
-                .filter(|t| t.parent_id.as_deref() == Some(&task.id))
-                .collect();
-
-            // Check for children that appear between notes
-            // This would indicate improper nesting that the parser allowed
-            for child in &children {
-                // If a child task appears after a note but at a depth that
-                // would make it look like it's nested under the note,
-                // that's suspicious but currently allowed by the parser.
-                //
-                // The parser attaches notes to the most recent valid parent,
-                // so true "note has children" cases are prevented at parse time.
-                // This rule exists for documentation and future-proofing.
-
-                // For now, we check a specific case: if there are notes AND
-                // children where the first child appears BEFORE the last note
-                // in document order, that suggests interleaving which could
-                // be confusing.
-                if child.line_number > 0
-                    && last_note_line > 0
-                    && child.line_number < last_note_line
-                    && child.depth == task.depth + 1
-                {
-                    // A child task appears before a note ends
-                    // This means notes and tasks are interleaved
-                    let diag = LintDiagnostic::error(
-                        "E_NOTE_HAS_CHILDREN",
-                        format!(
-                            "Task '{}' has notes interleaved with child tasks",
-                            task.title
-                        ),
-                        ctx.file_path.clone(),
-                        child.line_number,
-                        0,
-                    )
-                    .with_help(
-                        "Move all contextual notes before child tasks, or convert notes to tasks if they need children",
-                    );
-
-                    diagnostics.push(diag);
-                }
-            }
-        }
-
-        diagnostics
+        // Since the parser handles the only invalid case (true nesting under notes),
+        // and interleaving is now explicitly allowed, this rule returns no diagnostics.
+        Vec::new()
     }
 }
 
@@ -268,7 +210,7 @@ mod tests {
     }
 
     #[test]
-    fn test_interleaved_notes_and_children_errors() {
+    fn test_interleaved_notes_and_children_passes() {
         let rule = NoteNestingRule::new();
         let config = make_config();
         let files = HashMap::new();
@@ -276,9 +218,9 @@ mod tests {
 
         // Structure:
         // - [ ] Parent (line 1)
-        //   - [ ] Child (line 2)  <- Child appears before last note
+        //   - [ ] Child (line 2)  <- Child appears before note
         //   - Note (line 3)       <- Note appears after child
-        // This is interleaved and should trigger an error
+        // As of issue #7, this is now valid - interleaving is allowed
         let notes = vec![ContextualNote::new("A note", 3)];
 
         let mut tree = TaskTree::new();
@@ -304,9 +246,10 @@ mod tests {
 
         let file = make_file(tree);
         let diagnostics = rule.check_file(&file, &ctx);
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "E_NOTE_HAS_CHILDREN");
-        assert_eq!(diagnostics[0].severity, Severity::Error);
+        assert!(
+            diagnostics.is_empty(),
+            "Interleaved notes and children are now allowed as of issue #7"
+        );
     }
 
     #[test]

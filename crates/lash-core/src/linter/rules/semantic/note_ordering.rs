@@ -1,7 +1,11 @@
 //! Contextual note ordering style rule
 //!
-//! Suggests that contextual notes should appear before child tasks
-//! for better readability and consistency.
+//! As of issue #7, notes are allowed to be freely interleaved with child tasks
+//! for structural flexibility. This rule is now disabled and always passes.
+//!
+//! Previously, this rule suggested that contextual notes should appear before
+//! child tasks for better readability. However, users have requested the ability
+//! to place notes anywhere among child tasks for better structural flexibility.
 
 use lash_types::{Severity, TaskFile};
 
@@ -9,41 +13,40 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 
 /// Rule that validates contextual note ordering convention
 ///
-/// This style rule suggests that contextual notes should appear before
-/// any child tasks within a parent task. This convention improves
-/// readability by keeping context at the top and actionable items below.
+/// **Note:** As of issue #7, this rule is disabled. Notes can now be freely
+/// interleaved with child tasks for structural flexibility.
 ///
 /// **Code:** `W_NOTE_AFTER_CHILD_TASKS`
-/// **Severity:** Warning
+/// **Severity:** Warning (but always passes)
 ///
-/// # Rationale
+/// # Rationale for Disabling
 ///
-/// When notes appear after child tasks, readers may miss important context
-/// that would help them understand the task structure. Placing notes first:
-/// - Provides context before diving into subtasks
-/// - Makes it easier to scan the task hierarchy
-/// - Follows natural reading order (context → actions)
+/// While placing notes before child tasks provides a clean structure, users
+/// have requested the ability to place contextual notes anywhere among child
+/// tasks. This allows for more flexible documentation patterns like:
 ///
-/// This is a style guideline and not a hard requirement.
+/// ```markdown
+/// - [ ] Create Rust workspace structure
+///   - Set up Cargo.toml as workspace root
+///   - [ ] Create workspace Cargo.toml
+///   - Configure shared dependencies (note between tasks)
+///   - [ ] Create crate directories
+///   - Final validation notes (after all tasks)
+/// ```
+///
+/// This flexibility is particularly useful when notes relate to specific
+/// adjacent tasks or when providing context for groups of tasks.
 ///
 /// # Examples
 ///
-/// Preferred (notes before children):
+/// All patterns are now valid:
 /// ```markdown
-/// - [ ] Implement authentication
-///   - Use OAuth2 with PKCE flow
-///   - Maximum session duration: 24 hours
-///   - [ ] Create login endpoint
-///   - [ ] Create token refresh endpoint
-/// ```
-///
-/// Not preferred (notes after children):
-/// ```markdown
-/// - [ ] Implement authentication
-///   - [ ] Create login endpoint
-///   - [ ] Create token refresh endpoint
-///   - Use OAuth2 with PKCE flow     <- Warning
-///   - Maximum session duration: 24 hours  <- Warning
+/// - [ ] Parent task
+///   - Note before children
+///   - [ ] Child task 1
+///   - Note between children
+///   - [ ] Child task 2
+///   - Note after children
 /// ```
 pub struct NoteOrderingRule;
 
@@ -78,58 +81,10 @@ impl LintRule for NoteOrderingRule {
         "Suggests placing contextual notes before child tasks for better readability"
     }
 
-    fn check_file(&self, file: &TaskFile, ctx: &LintContext) -> Vec<LintDiagnostic> {
-        let mut diagnostics = Vec::new();
-        let tasks = file.tasks.tasks();
-
-        for task in tasks {
-            if task.contextual_notes.is_empty() {
-                continue;
-            }
-
-            // Get the line number of the first child task
-            let first_child_line = tasks
-                .iter()
-                .filter(|t| t.parent_id.as_deref() == Some(&task.id))
-                .filter(|t| t.line_number > 0)
-                .map(|t| t.line_number)
-                .min();
-
-            // If there are no children with line numbers, nothing to check
-            let Some(first_child_line) = first_child_line else {
-                continue;
-            };
-
-            // Check each note to see if it appears after the first child
-            for note in &task.contextual_notes {
-                let note_line = note.line_number();
-
-                // Skip notes without line numbers
-                if note_line == 0 {
-                    continue;
-                }
-
-                // If the note appears after the first child task, warn
-                if note_line > first_child_line {
-                    let diag = LintDiagnostic::warning(
-                        "W_NOTE_AFTER_CHILD_TASKS",
-                        format!(
-                            "Contextual note appears after child tasks in '{}'",
-                            task.title
-                        ),
-                        ctx.file_path.clone(),
-                        note_line,
-                        0,
-                    )
-                    .with_snippet(note.truncated_text(50))
-                    .with_help("Consider moving notes before child tasks for better readability");
-
-                    diagnostics.push(diag);
-                }
-            }
-        }
-
-        diagnostics
+    fn check_file(&self, _file: &TaskFile, _ctx: &LintContext) -> Vec<LintDiagnostic> {
+        // As of issue #7, notes are allowed to be freely interleaved with child tasks.
+        // This rule is disabled to provide structural flexibility.
+        Vec::new()
     }
 }
 
@@ -206,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn test_notes_after_children_warns() {
+    fn test_notes_after_children_passes() {
         let rule = NoteOrderingRule::new();
         let config = make_config();
         let files = HashMap::new();
@@ -215,7 +170,7 @@ mod tests {
         // Structure:
         // - [ ] Parent (line 1)
         //   - [ ] Child (line 2)
-        //   - Note (line 3)  <- Note after child
+        //   - Note (line 3)  <- Note after child (now valid as of issue #7)
         let notes = vec![ContextualNote::new("A note", 3)];
 
         let mut tree = TaskTree::new();
@@ -242,10 +197,8 @@ mod tests {
         let file = make_file(tree);
         let diagnostics = rule.check_file(&file, &ctx);
 
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "W_NOTE_AFTER_CHILD_TASKS");
-        assert_eq!(diagnostics[0].severity, Severity::Warning);
-        assert!(diagnostics[0].message.contains("Parent"));
+        // As of issue #7, this rule is disabled
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -257,10 +210,10 @@ mod tests {
 
         // Structure:
         // - [ ] Parent (line 1)
-        //   - Note 1 (line 2)  <- OK
+        //   - Note 1 (line 2)
         //   - [ ] Child (line 3)
-        //   - Note 2 (line 4)  <- Warning
-        //   - Note 3 (line 5)  <- Warning
+        //   - Note 2 (line 4)  <- Now valid (issue #7)
+        //   - Note 3 (line 5)  <- Now valid (issue #7)
         let notes = vec![
             ContextualNote::new("Note 1", 2),
             ContextualNote::new("Note 2", 4),
@@ -291,11 +244,8 @@ mod tests {
         let file = make_file(tree);
         let diagnostics = rule.check_file(&file, &ctx);
 
-        // Two notes (line 4 and 5) appear after the child (line 3)
-        assert_eq!(diagnostics.len(), 2);
-        assert!(diagnostics
-            .iter()
-            .all(|d| d.code == "W_NOTE_AFTER_CHILD_TASKS"));
+        // As of issue #7, this rule is disabled
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -392,13 +342,13 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_parents_with_issues() {
+    fn test_multiple_parents_with_notes_after_children() {
         let rule = NoteOrderingRule::new();
         let config = make_config();
         let files = HashMap::new();
         let ctx = LintContext::new(&config, PathBuf::from("test.md"), &files);
 
-        // Two parent tasks, both with notes after children
+        // Two parent tasks, both with notes after children (now valid as of issue #7)
         let mut tree = TaskTree::new();
         tree.add_task(
             TaskBuilder::new("Parent 1")
@@ -443,7 +393,8 @@ mod tests {
         let file = make_file(tree);
         let diagnostics = rule.check_file(&file, &ctx);
 
-        assert_eq!(diagnostics.len(), 2);
+        // As of issue #7, this rule is disabled
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
