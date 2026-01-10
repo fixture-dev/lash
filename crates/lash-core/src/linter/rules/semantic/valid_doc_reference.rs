@@ -7,7 +7,7 @@
 //! - Path is not absolute
 
 use lash_types::{dependency::DocRef, Severity, Task, TaskFile};
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use crate::linter::{LintContext, LintDiagnostic, LintRule};
 
@@ -67,12 +67,27 @@ impl ValidDocReferenceRule {
             );
         }
 
-        // Check 2 & 3: Resolve path and verify it doesn't escape project root
-        // We need to check if the path escapes BEFORE normalization removes the ".." components
-        let current_dir = ctx.file_path.parent().unwrap_or(Path::new(""));
-        let joined = current_dir.join(doc_path);
+        // Resolve the doc path to an absolute path
+        // The file_path may be absolute (from file discovery) or relative (from tests)
+        let absolute_path = if ctx.file_path.is_absolute() {
+            // file_path is absolute, join with its parent directory
+            ctx.file_path
+                .parent()
+                .unwrap_or(Path::new(""))
+                .join(doc_path)
+        } else {
+            // file_path is relative, resolve from project root
+            ctx.config
+                .root_path
+                .join(ctx.file_path.parent().unwrap_or(Path::new("")))
+                .join(doc_path)
+        };
 
-        if Self::escapes_project_root(&joined) {
+        // Normalize the path to resolve .. components
+        let normalized = Self::normalize_path(&absolute_path);
+
+        // Check if the normalized path is within the project root
+        if !Self::is_inside_project_root(&normalized, &ctx.config.root_path) {
             return Some(
                 LintDiagnostic::error(
                     self.code(),
@@ -88,21 +103,15 @@ impl ValidDocReferenceRule {
             );
         }
 
-        // Now get the normalized/resolved path for file existence check
-        let resolved_path = ctx.resolve_path(doc_path);
-
-        // Check 4: Verify file exists
-        // Prepend project root to get absolute path for filesystem check
-        let absolute_path = ctx.config.root_path.join(&resolved_path);
-
-        if !absolute_path.exists() {
+        // Check if file exists using the normalized path
+        if !normalized.exists() {
             return Some(
                 LintDiagnostic::error(
                     self.code(),
                     format!(
                         "Documentation file '{}' not found (resolved to: {})",
                         doc.path,
-                        absolute_path.display()
+                        normalized.display()
                     ),
                     ctx.file_path.clone(),
                     0,
@@ -110,7 +119,7 @@ impl ValidDocReferenceRule {
                 )
                 .with_help(format!(
                     "Check that the file exists at: {}",
-                    absolute_path.display()
+                    normalized.display()
                 )),
             );
         }
@@ -118,35 +127,50 @@ impl ValidDocReferenceRule {
         None
     }
 
-    /// Check if a normalized path escapes the project root
+    /// Normalize a path by resolving `.` and `..` components
     ///
-    /// A path escapes the project root if it contains ".." components
-    /// that would navigate above the implicit root.
-    fn escapes_project_root(path: &Path) -> bool {
-        let mut depth = 0i32;
+    /// Unlike `canonicalize()`, this doesn't require the path to exist
+    /// and doesn't resolve symlinks.
+    fn normalize_path(path: &Path) -> PathBuf {
+        let mut components = Vec::new();
 
         for component in path.components() {
             match component {
                 Component::ParentDir => {
-                    depth -= 1;
-                    if depth < 0 {
-                        return true; // Escaped root
+                    // Only pop if we have a Normal component to pop
+                    if matches!(components.last(), Some(Component::Normal(_))) {
+                        components.pop();
+                    } else if !matches!(
+                        components.last(),
+                        Some(Component::RootDir | Component::Prefix(_))
+                    ) {
+                        // Keep ParentDir if we can't go up further (relative path)
+                        components.push(component);
                     }
-                }
-                Component::Normal(_) => {
-                    depth += 1;
+                    // If last is RootDir/Prefix, we're at the root, can't go higher
                 }
                 Component::CurDir => {
-                    // Current directory, no change
+                    // Skip current directory markers
                 }
-                Component::RootDir | Component::Prefix(_) => {
-                    // Absolute paths shouldn't reach here (caught earlier)
-                    return true;
+                comp => {
+                    components.push(comp);
                 }
             }
         }
 
-        false
+        components.iter().collect()
+    }
+
+    /// Check if a path is inside the project root
+    ///
+    /// Returns true if the normalized path starts with the project root.
+    fn is_inside_project_root(path: &Path, root: &Path) -> bool {
+        // Normalize both paths for comparison
+        let normalized_path = Self::normalize_path(path);
+        let normalized_root = Self::normalize_path(root);
+
+        // Check if path starts with root
+        normalized_path.starts_with(&normalized_root)
     }
 }
 
@@ -231,31 +255,67 @@ mod tests {
     }
 
     #[test]
-    fn test_escapes_project_root() {
-        // These should escape
-        assert!(ValidDocReferenceRule::escapes_project_root(Path::new(
-            "../outside"
-        )));
-        assert!(ValidDocReferenceRule::escapes_project_root(Path::new(
-            "../../outside"
-        )));
-        assert!(ValidDocReferenceRule::escapes_project_root(Path::new(
-            "a/b/../../.."
-        )));
+    fn test_normalize_path() {
+        // Simple paths stay the same
+        assert_eq!(
+            ValidDocReferenceRule::normalize_path(Path::new("docs/file.md")),
+            PathBuf::from("docs/file.md")
+        );
 
-        // These should NOT escape
-        assert!(!ValidDocReferenceRule::escapes_project_root(Path::new(
-            "docs/file.md"
-        )));
-        assert!(!ValidDocReferenceRule::escapes_project_root(Path::new(
-            "./docs/file.md"
-        )));
-        assert!(!ValidDocReferenceRule::escapes_project_root(Path::new(
-            "a/../b/file.md"
-        )));
-        assert!(!ValidDocReferenceRule::escapes_project_root(Path::new(
-            "a/b/../../c"
-        )));
+        // Current dir markers are removed
+        assert_eq!(
+            ValidDocReferenceRule::normalize_path(Path::new("./docs/file.md")),
+            PathBuf::from("docs/file.md")
+        );
+
+        // Parent dirs are resolved
+        assert_eq!(
+            ValidDocReferenceRule::normalize_path(Path::new("a/../b/file.md")),
+            PathBuf::from("b/file.md")
+        );
+
+        // Multiple parent dirs
+        assert_eq!(
+            ValidDocReferenceRule::normalize_path(Path::new("a/b/../../c")),
+            PathBuf::from("c")
+        );
+
+        // Absolute paths work too
+        #[cfg(unix)]
+        {
+            assert_eq!(
+                ValidDocReferenceRule::normalize_path(Path::new("/project/tasks/../docs/file.md")),
+                PathBuf::from("/project/docs/file.md")
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_inside_project_root() {
+        #[cfg(unix)]
+        {
+            let root = Path::new("/project");
+
+            // Inside project
+            assert!(ValidDocReferenceRule::is_inside_project_root(
+                Path::new("/project/docs/file.md"),
+                root
+            ));
+            assert!(ValidDocReferenceRule::is_inside_project_root(
+                Path::new("/project/tasks/../docs/file.md"),
+                root
+            ));
+
+            // Outside project
+            assert!(!ValidDocReferenceRule::is_inside_project_root(
+                Path::new("/other/file.md"),
+                root
+            ));
+            assert!(!ValidDocReferenceRule::is_inside_project_root(
+                Path::new("/project/../outside/file.md"),
+                root
+            ));
+        }
     }
 
     #[test]
@@ -471,5 +531,37 @@ mod tests {
         assert_eq!(rule.severity(), Severity::Error);
         assert_eq!(rule.name(), "Documentation reference validation");
         assert!(!rule.description().is_empty());
+    }
+
+    #[test]
+    fn test_absolute_file_path_with_relative_doc_reference() {
+        // This tests the scenario where file discovery returns absolute paths
+        // and the doc reference uses ".." to go up directories
+        let temp_dir = TempDir::new().unwrap();
+        let config = make_config_with_root(temp_dir.path().to_path_buf());
+
+        // Create structure:
+        // - tasks/feature.md (current file, with ABSOLUTE path in context)
+        // - docs/design.md (doc reference using ../docs/design.md)
+        let tasks_dir = temp_dir.path().join("tasks");
+        let docs_dir = temp_dir.path().join("docs");
+        fs::create_dir_all(&tasks_dir).unwrap();
+        fs::create_dir_all(&docs_dir).unwrap();
+        fs::write(docs_dir.join("design.md"), "# Design").unwrap();
+
+        // Use ABSOLUTE path for the file (like file discovery returns)
+        let absolute_file_path = tasks_dir.join("feature.md");
+
+        let files = HashMap::new();
+        let ctx = make_context_with_config(&config, absolute_file_path, &files);
+
+        let rule = ValidDocReferenceRule::new();
+        let doc = DocRef::new("../docs/design.md", None);
+
+        let result = rule.validate_doc_ref(&doc, &ctx);
+        assert!(
+            result.is_none(),
+            "Valid relative doc reference from absolute file path should pass"
+        );
     }
 }

@@ -5,6 +5,7 @@
 //! Error code: `W_INDEX_ORPHAN`
 
 use lash_types::{Severity, TaskFile};
+use std::fs;
 use std::path::Path;
 
 use crate::linter::{LintContext, LintDiagnostic, LintRule};
@@ -44,15 +45,71 @@ impl OrphanedFilesRule {
         matches!(file_name, Some("lash.index.md" | "index.lash.md"))
     }
 
+    /// Check if this file should be excluded from orphan checking
+    ///
+    /// Excludes common non-task files like documentation and configuration files.
+    fn should_skip_orphan_check(file_path: &Path) -> bool {
+        // Common documentation/config file names to exclude
+        const EXCLUDED_FILENAMES: &[&str] = &[
+            "README.md",
+            "CLAUDE.md",
+            "AGENTS.md",
+            "CHANGELOG.md",
+            "CONTRIBUTING.md",
+            "LICENSE.md",
+            "CODE_OF_CONDUCT.md",
+            "SECURITY.md",
+            "SUPPORT.md",
+            "AUTHORS.md",
+            "HISTORY.md",
+            "ROADMAP.md",
+            "CODEOWNERS",
+            "devlog.md",
+        ];
+
+        // Common documentation directory names to exclude
+        const EXCLUDED_DIRS: &[&str] = &["docs", "documentation", "doc", ".github"];
+
+        // Check filename
+        if let Some(file_name) = file_path.file_name().and_then(|n| n.to_str()) {
+            // Case-insensitive check for excluded filenames
+            let file_name_upper = file_name.to_uppercase();
+            if EXCLUDED_FILENAMES
+                .iter()
+                .any(|ex| file_name_upper == ex.to_uppercase())
+            {
+                return true;
+            }
+        }
+
+        // Check if file is in an excluded directory
+        for component in file_path.components() {
+            if let std::path::Component::Normal(dir_name) = component {
+                if let Some(dir_str) = dir_name.to_str() {
+                    let dir_lower = dir_str.to_lowercase();
+                    if EXCLUDED_DIRS.iter().any(|ex| dir_lower == *ex) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
     /// Extract file references from the index file
     ///
     /// Handles both plain path titles and markdown link format:
     /// - Plain: `tasks.md` or `path/to/file.md`
     /// - Markdown link: `[Title](path/to/file.md)`
     /// - Directory reference: `[Title](path/to/dir/)` (ends with /)
+    ///
+    /// Also scans the raw file content for markdown links in non-task content
+    /// (e.g., bullet points that aren't checkboxes).
     fn extract_file_references(file: &TaskFile) -> Vec<String> {
         let mut references = Vec::new();
 
+        // Extract from tasks (checkbox items)
         for task in file.tasks.tasks() {
             let title = task.title.trim();
 
@@ -68,6 +125,27 @@ impl OrphanedFilesRule {
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
             {
                 references.push(title.to_string());
+            }
+        }
+
+        // Also extract from raw content (for non-task markdown links)
+        if let Ok(content) = fs::read_to_string(&file.path) {
+            for line in content.lines() {
+                let line = line.trim();
+                // Skip checkbox items (already handled above as tasks)
+                if line.starts_with("- [ ]")
+                    || line.starts_with("- [x]")
+                    || line.starts_with("- [-]")
+                    || line.starts_with("- [!]")
+                {
+                    continue;
+                }
+                // Check for markdown link on this line
+                if let Some(path) = Self::extract_markdown_link_path(line) {
+                    if !references.contains(&path) {
+                        references.push(path);
+                    }
+                }
             }
         }
 
@@ -129,6 +207,11 @@ impl LintRule for OrphanedFilesRule {
 
         // Skip check if this is the index file itself
         if Self::is_root_index(&file.path) {
+            return diagnostics;
+        }
+
+        // Skip check for common non-task files (README, docs, etc.)
+        if Self::should_skip_orphan_check(&file.path) {
             return diagnostics;
         }
 
@@ -537,5 +620,132 @@ mod tests {
         let orphan = files.get(&PathBuf::from("orphan.md")).unwrap();
         let diagnostics = rule.check_file(orphan, &ctx);
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_should_skip_orphan_check_excluded_files() {
+        // Common documentation files should be skipped
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "README.md"
+        )));
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "CLAUDE.md"
+        )));
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "AGENTS.md"
+        )));
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "CHANGELOG.md"
+        )));
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "devlog.md"
+        )));
+
+        // Case-insensitive
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "readme.md"
+        )));
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "Readme.MD"
+        )));
+    }
+
+    #[test]
+    fn test_should_skip_orphan_check_excluded_directories() {
+        // Files in docs/ directory should be skipped
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "docs/design.md"
+        )));
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "docs/api/reference.md"
+        )));
+
+        // Files in documentation/ directory should be skipped
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "documentation/guide.md"
+        )));
+
+        // Files in .github/ directory should be skipped
+        assert!(OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            ".github/ISSUE_TEMPLATE.md"
+        )));
+    }
+
+    #[test]
+    fn test_should_skip_orphan_check_task_files() {
+        // Regular task files should NOT be skipped
+        assert!(!OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "tasks.md"
+        )));
+        assert!(!OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "tasks/api.md"
+        )));
+        assert!(!OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "tasks/milestone-1.md"
+        )));
+        assert!(!OrphanedFilesRule::should_skip_orphan_check(Path::new(
+            "notes.md"
+        )));
+    }
+
+    #[test]
+    fn test_excluded_files_not_flagged_as_orphan() {
+        let rule = OrphanedFilesRule::new();
+        let config = LashConfig::default();
+
+        let mut files = HashMap::new();
+
+        // Create index with only one task file
+        files.insert(
+            PathBuf::from("lash.index.md"),
+            make_index_file("lash.index.md", &["tasks.md"]),
+        );
+        files.insert(
+            PathBuf::from("tasks.md"),
+            make_regular_file("tasks.md", "tasks"),
+        );
+        // Add files that should be excluded
+        files.insert(
+            PathBuf::from("README.md"),
+            make_regular_file("README.md", "readme"),
+        );
+        files.insert(
+            PathBuf::from("CLAUDE.md"),
+            make_regular_file("CLAUDE.md", "claude"),
+        );
+        files.insert(
+            PathBuf::from("docs/design.md"),
+            make_regular_file("docs/design.md", "design"),
+        );
+
+        // README.md should not be flagged (excluded by filename)
+        let ctx = LintContext::new(&config, PathBuf::from("README.md"), &files);
+        let readme = files.get(&PathBuf::from("README.md")).unwrap();
+        let diagnostics = rule.check_file(readme, &ctx);
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "README.md should not be flagged as orphan"
+        );
+
+        // CLAUDE.md should not be flagged (excluded by filename)
+        let ctx = LintContext::new(&config, PathBuf::from("CLAUDE.md"), &files);
+        let claude = files.get(&PathBuf::from("CLAUDE.md")).unwrap();
+        let diagnostics = rule.check_file(claude, &ctx);
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "CLAUDE.md should not be flagged as orphan"
+        );
+
+        // docs/design.md should not be flagged (excluded by directory)
+        let ctx = LintContext::new(&config, PathBuf::from("docs/design.md"), &files);
+        let design = files.get(&PathBuf::from("docs/design.md")).unwrap();
+        let diagnostics = rule.check_file(design, &ctx);
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "docs/design.md should not be flagged as orphan"
+        );
     }
 }

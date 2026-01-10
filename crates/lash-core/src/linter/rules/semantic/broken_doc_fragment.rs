@@ -178,17 +178,33 @@ impl BrokenDocFragmentRule {
 
     /// Normalize a fragment for matching
     ///
-    /// Converts to lowercase and replaces hyphens with spaces
+    /// Converts to lowercase, replaces hyphens with spaces, and removes
+    /// non-alphanumeric characters for fuzzy matching with headings.
     fn normalize_fragment(fragment: &str) -> String {
-        fragment.to_lowercase().replace('-', " ").trim().to_string()
+        Self::normalize_for_matching(fragment)
     }
 
     /// Normalize a heading for matching
     ///
-    /// Converts to lowercase and removes extra whitespace
+    /// Converts to lowercase, removes non-alphanumeric characters, and
+    /// normalizes whitespace for comparison with fragments.
     fn normalize_heading(heading: &str) -> String {
-        heading
-            .to_lowercase()
+        Self::normalize_for_matching(heading)
+    }
+
+    /// Common normalization for both fragments and headings
+    ///
+    /// This creates a canonical form for matching by:
+    /// 1. Converting to lowercase
+    /// 2. Replacing hyphens with spaces
+    /// 3. Removing non-alphanumeric characters (except spaces)
+    /// 4. Normalizing whitespace
+    fn normalize_for_matching(s: &str) -> String {
+        s.to_lowercase()
+            .replace('-', " ")
+            .chars()
+            .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+            .collect::<String>()
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
@@ -693,5 +709,76 @@ Regular paragraph.
         assert!(result.is_some());
         let diag = result.unwrap();
         assert!(diag.help.as_ref().unwrap().contains("No headings found"));
+    }
+
+    #[test]
+    fn test_normalize_strips_special_characters() {
+        // Parentheses should be stripped
+        assert_eq!(
+            BrokenDocFragmentRule::normalize_heading("JSON schema (canonical)"),
+            "json schema canonical"
+        );
+        assert_eq!(
+            BrokenDocFragmentRule::normalize_fragment("json-schema-canonical"),
+            "json schema canonical"
+        );
+
+        // Backticks should be stripped
+        assert_eq!(
+            BrokenDocFragmentRule::normalize_heading("Configuration (`flawd.toml`)"),
+            "configuration flawdtoml"
+        );
+        assert_eq!(
+            BrokenDocFragmentRule::normalize_fragment("configuration-flawdtoml"),
+            "configuration flawdtoml"
+        );
+
+        // Complex heading with parentheses
+        assert_eq!(
+            BrokenDocFragmentRule::normalize_heading(
+                "Core components (Rust crates/modules inside one workspace)"
+            ),
+            "core components rust cratesmodules inside one workspace"
+        );
+    }
+
+    #[test]
+    fn test_matching_headings_with_special_chars() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = make_config_with_root(temp_dir.path().to_path_buf());
+
+        // Create a doc file with headings containing special characters
+        fs::write(
+            temp_dir.path().join("design.md"),
+            "# Design\n\n\
+             ## JSON schema (canonical)\n\n\
+             Some content.\n\n\
+             ## Configuration (`flawd.toml`)\n\n\
+             More content.\n\n\
+             ## Core components (Rust crates/modules inside one workspace)\n\n\
+             Even more content.\n",
+        )
+        .unwrap();
+
+        let files = HashMap::new();
+        let ctx = make_context_with_config(&config, PathBuf::from("test.md"), &files);
+
+        let rule = BrokenDocFragmentRule::new();
+
+        // Test matching json-schema-canonical to "JSON schema (canonical)"
+        let doc = DocRef::new("design.md", Some("json-schema-canonical".to_string()));
+        let result = rule.validate_fragment(&doc, &ctx);
+        assert!(
+            result.is_none(),
+            "json-schema-canonical should match 'JSON schema (canonical)'"
+        );
+
+        // Test matching configuration-flawdtoml to "Configuration (`flawd.toml`)"
+        let doc = DocRef::new("design.md", Some("configuration-flawdtoml".to_string()));
+        let result = rule.validate_fragment(&doc, &ctx);
+        assert!(
+            result.is_none(),
+            "configuration-flawdtoml should match 'Configuration (`flawd.toml`)'"
+        );
     }
 }
