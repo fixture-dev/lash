@@ -19,8 +19,6 @@ warning[W_INDEX_ORPHAN]: File './frontend.md' is not referenced in the root inde
   at ./frontend.md:0:0
 warning[W_INDEX_ORPHAN]: File './monitoring.md' is not referenced in the root index
   at ./monitoring.md:0:0
-warning[W_INDEX_ORPHAN]: File './security.md' is not referenced in the root index
-  at ./security.md:0:0
 warning[W_SEM_STATUS_INCONSISTENT]: Parent task "Unit tests" is marked complete but has 1 incomplete child(ren)
   at ./testing.md:0:0
 warning[W_INDEX_ORPHAN]: File './testing.md' is not referenced in the root index
@@ -28,5 +26,5 @@ warning[W_INDEX_ORPHAN]: File './testing.md' is not referenced in the root index
 ✓ Linting passed (with warnings)
 
 Summary:
-  0 errors, 10 warnings, 0 info, 0 hints
-  9 files affected
+  0 errors, 9 warnings, 0 info, 0 hints
+  8 files affected

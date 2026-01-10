@@ -11,10 +11,6 @@ warning[W_INDEX_ORPHAN]: File './backend/database.md' is not referenced in the r
   at ./backend/database.md:0:0
 warning[W_INDEX_ORPHAN]: File './backend/tests.md' is not referenced in the root index
   at ./backend/tests.md:0:0
-warning[W_INDEX_ORPHAN]: File './docs/api-docs.md' is not referenced in the root index
-  at ./docs/api-docs.md:0:0
-warning[W_INDEX_ORPHAN]: File './docs/user-guide.md' is not referenced in the root index
-  at ./docs/user-guide.md:0:0
 warning[W_INDEX_ORPHAN]: File './frontend/components.md' is not referenced in the root index
   at ./frontend/components.md:0:0
 warning[W_INDEX_ORPHAN]: File './frontend/state.md' is not referenced in the root index
@@ -24,5 +20,5 @@ warning[W_INDEX_ORPHAN]: File './frontend/tests.md' is not referenced in the roo
 ✓ Linting passed (with warnings)
 
 Summary:
-  0 errors, 8 warnings, 0 info, 0 hints
-  8 files affected
+  0 errors, 6 warnings, 0 info, 0 hints
+  6 files affected
