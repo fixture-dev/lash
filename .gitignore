@@ -25,6 +25,9 @@ Thumbs.db
 
 ## Lash testing/demo
 playground/
+demos/*.gif
+demos/*.mp4
+demos/*.webm
 
 # Test artifacts
 /tests/tmp/
