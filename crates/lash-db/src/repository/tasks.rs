@@ -702,6 +702,46 @@ impl<'conn> TaskRepository<'conn> {
         Ok(tasks)
     }
 
+    /// Find recently created tasks
+    ///
+    /// Finds tasks with status 'open' in files modified since the given timestamp.
+    /// This serves as a proxy for recently created tasks since task creation
+    /// updates the file's modification time.
+    /// Results are ordered by file modification time (most recent first).
+    ///
+    /// # Arguments
+    ///
+    /// * `since_timestamp` - Unix timestamp (seconds since epoch)
+    /// * `limit` - Maximum number of tasks to return
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails
+    pub fn find_recently_created(
+        &self,
+        since_timestamp: i64,
+        limit: usize,
+    ) -> DbResult<Vec<TaskRecord>> {
+        #[allow(clippy::cast_possible_wrap)]
+        let limit_i64 = limit as i64;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata, t.contextual_notes
+             FROM tasks t
+             JOIN files f ON t.file_id = f.id
+             WHERE t.status = 'open'
+               AND f.mtime >= ?1
+             ORDER BY f.mtime DESC
+             LIMIT ?2",
+        )?;
+
+        let tasks = stmt
+            .query_map([since_timestamp, limit_i64], Self::row_to_task_record)?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(tasks)
+    }
+
     /// Helper to convert a row to `TaskRecord`
     fn row_to_task_record(row: &rusqlite::Row) -> rusqlite::Result<TaskRecord> {
         let metadata_json: String = row.get(12)?;
@@ -2007,5 +2047,37 @@ mod tests {
         assert_eq!(ids[0], "test#alpha");
         assert_eq!(ids[1], "test#mike");
         assert_eq!(ids[2], "test#zulu");
+    }
+
+    #[test]
+    fn test_find_recently_created() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Create open tasks
+        let task1 = create_test_task("task1", "Open Task 1", 0, None, 0);
+        task_repo.insert(&task1, file_db_id, "test").unwrap();
+
+        let task2 = create_test_task("task2", "Open Task 2", 0, None, 1);
+        task_repo.insert(&task2, file_db_id, "test").unwrap();
+
+        // Create a done task
+        let mut task3 = create_test_task("task3", "Done Task", 0, None, 2);
+        task3.status = TaskStatus::Done;
+        task_repo.insert(&task3, file_db_id, "test").unwrap();
+
+        // Find recently created (should only return open tasks)
+        // Using timestamp 0 to get all tasks
+        let recently_created = task_repo.find_recently_created(0, 10).unwrap();
+        assert_eq!(recently_created.len(), 2);
+        assert!(recently_created
+            .iter()
+            .all(|t| t.status == TaskStatus::Open));
     }
 }

@@ -52,6 +52,7 @@ pub struct StatusOutput {
     pub in_progress: Vec<TaskSummary>,
     pub blocked: Vec<TaskSummary>,
     pub recently_completed: Vec<TaskSummary>,
+    pub recently_created: Vec<TaskSummary>,
     pub summary: StatusSummary,
 }
 
@@ -108,6 +109,7 @@ impl From<StatusCounts> for StatusSummary {
 /// # Returns
 ///
 /// Exit code: 0 (success), 3 (DB error)
+#[allow(clippy::too_many_lines)]
 pub fn execute(args: &StatusArgs) -> Result<i32> {
     // Determine project root
     let project_root = if let Some(ref root) = args.project_root {
@@ -185,9 +187,9 @@ pub fn execute(args: &StatusArgs) -> Result<i32> {
         .get_status_counts()
         .context("Failed to query status counts")?;
 
-    // Get in-progress tasks
+    // Get in-progress tasks (explicitly marked as in-progress)
     let in_progress = task_repo
-        .find_by_status(TaskStatus::Open)
+        .find_by_status(TaskStatus::InProgress)
         .context("Failed to query in-progress tasks")?;
     let in_progress: Vec<TaskRecord> = in_progress.into_iter().take(args.limit).collect();
 
@@ -203,16 +205,34 @@ pub fn execute(args: &StatusArgs) -> Result<i32> {
         .find_recently_completed(since_timestamp, args.limit)
         .context("Failed to query recently completed tasks")?;
 
+    // Get recently created tasks
+    let recently_created = task_repo
+        .find_recently_created(since_timestamp, args.limit)
+        .context("Failed to query recently created tasks")?;
+
     // Output results
     if args.json {
-        output_json(&in_progress, &blocked, &recently_completed, &counts)?;
+        output_json(
+            &in_progress,
+            &blocked,
+            &recently_completed,
+            &recently_created,
+            &counts,
+        )?;
     } else if args.compact {
-        output_compact(&in_progress, &blocked, &recently_completed, &counts);
+        output_compact(
+            &in_progress,
+            &blocked,
+            &recently_completed,
+            &recently_created,
+            &counts,
+        );
     } else {
         output_text(
             &in_progress,
             &blocked,
             &recently_completed,
+            &recently_created,
             &counts,
             &args.since,
             theme.as_ref(),
@@ -275,6 +295,7 @@ fn output_json(
     in_progress: &[TaskRecord],
     blocked: &[TaskRecord],
     recently_completed: &[TaskRecord],
+    recently_created: &[TaskRecord],
     counts: &StatusCounts,
 ) -> Result<()> {
     let output = StatusOutput {
@@ -284,6 +305,7 @@ fn output_json(
             .iter()
             .map(|t| t.clone().into())
             .collect(),
+        recently_created: recently_created.iter().map(|t| t.clone().into()).collect(),
         summary: counts.clone().into(),
     };
 
@@ -296,11 +318,13 @@ fn output_compact(
     in_progress: &[TaskRecord],
     blocked: &[TaskRecord],
     recently_completed: &[TaskRecord],
+    recently_created: &[TaskRecord],
     counts: &StatusCounts,
 ) {
     println!("in_progress: {}", in_progress.len());
     println!("blocked: {}", blocked.len());
     println!("recent_done: {}", recently_completed.len());
+    println!("recent_created: {}", recently_created.len());
     println!(
         "total: {} open: {} done: {} waived: {} blocked: {}",
         counts.total, counts.open, counts.done, counts.waived, counts.blocked
@@ -313,6 +337,7 @@ fn output_text(
     in_progress: &[TaskRecord],
     blocked: &[TaskRecord],
     recently_completed: &[TaskRecord],
+    recently_created: &[TaskRecord],
     counts: &StatusCounts,
     since: &str,
     theme: Option<&CliTheme>,
@@ -371,6 +396,27 @@ fn output_text(
         }
 
         for task in recently_completed {
+            print_task_summary(task, theme);
+        }
+        println!();
+    }
+
+    // Recently Created section
+    if !recently_created.is_empty() {
+        if let Some(t) = theme {
+            println!(
+                "{} ({} in last {since})",
+                t.style_info("Recently Created"),
+                recently_created.len()
+            );
+        } else {
+            println!(
+                "Recently Created ({} in last {since})",
+                recently_created.len()
+            );
+        }
+
+        for task in recently_created {
             print_task_summary(task, theme);
         }
         println!();
