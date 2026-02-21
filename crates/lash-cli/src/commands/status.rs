@@ -422,50 +422,11 @@ fn output_text(
         println!();
     }
 
-    // Summary section
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
-    let open_pct = if counts.total > 0 {
-        (counts.open as f64 / counts.total as f64 * 100.0) as u32
-    } else {
-        0
-    };
-
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
-    let done_pct = if counts.total > 0 {
-        (counts.done as f64 / counts.total as f64 * 100.0) as u32
-    } else {
-        0
-    };
-
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
-    let waived_pct = if counts.total > 0 {
-        (counts.waived as f64 / counts.total as f64 * 100.0) as u32
-    } else {
-        0
-    };
-
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
-    let blocked_pct = if counts.total > 0 {
-        (counts.blocked as f64 / counts.total as f64 * 100.0) as u32
-    } else {
-        0
-    };
+    // Summary section - use largest-remainder rounding so percentages sum to 100%
+    let [open_pct, done_pct, waived_pct, blocked_pct] = round_percentages(
+        counts.total,
+        [counts.open, counts.done, counts.waived, counts.blocked],
+    );
 
     if let Some(t) = theme {
         println!("{}", t.style_label("Summary"));
@@ -480,6 +441,42 @@ fn output_text(
             counts.total, counts.open, counts.done, counts.waived, counts.blocked
         );
     }
+}
+
+/// Round percentages using the largest-remainder method so they always sum to 100%.
+///
+/// Given a total and an array of counts, returns an array of integer percentages
+/// that sum to exactly 100 (or all zeros if total is 0).
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn round_percentages<const N: usize>(total: usize, counts: [usize; N]) -> [u32; N] {
+    if total == 0 {
+        return [0; N];
+    }
+
+    let total_f = total as f64;
+    let exact: Vec<f64> = counts.iter().map(|&c| c as f64 / total_f * 100.0).collect();
+    let mut floored: Vec<u32> = exact.iter().map(|&v| v as u32).collect();
+    let remainder: u32 = 100 - floored.iter().sum::<u32>();
+
+    // Distribute remaining points to entries with largest fractional parts
+    let mut indices: Vec<usize> = (0..N).collect();
+    indices.sort_by(|&a, &b| {
+        let frac_a = exact[a] - f64::from(floored[a]);
+        let frac_b = exact[b] - f64::from(floored[b]);
+        frac_b.partial_cmp(&frac_a).unwrap()
+    });
+
+    for &i in indices.iter().take(remainder as usize) {
+        floored[i] += 1;
+    }
+
+    let mut result = [0u32; N];
+    result.copy_from_slice(&floored);
+    result
 }
 
 /// Print a single task summary line
@@ -616,5 +613,42 @@ mod tests {
         assert_eq!(summary.done, 30);
         assert_eq!(summary.waived, 15);
         assert_eq!(summary.blocked, 5);
+    }
+
+    #[test]
+    fn test_round_percentages_exact() {
+        // 25+25+25+25 = 100, no rounding needed
+        let result = round_percentages(100, [25, 25, 25, 25]);
+        assert_eq!(result, [25, 25, 25, 25]);
+        assert_eq!(result.iter().sum::<u32>(), 100);
+    }
+
+    #[test]
+    fn test_round_percentages_zero_total() {
+        let result = round_percentages(0, [0, 0, 0, 0]);
+        assert_eq!(result, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_round_percentages_172_of_173() {
+        // The reported bug: 172/173 = 99.42%, 1/173 = 0.58%
+        // Should round to 99% + 1% = 100%, not 99% + 0% = 99%
+        let result = round_percentages(173, [0, 172, 1, 0]);
+        assert_eq!(result, [0, 99, 1, 0]);
+        assert_eq!(result.iter().sum::<u32>(), 100);
+    }
+
+    #[test]
+    fn test_round_percentages_thirds() {
+        // 1/3 each ≈ 33.33% — two get 33%, one gets 34%
+        let result = round_percentages(3, [1, 1, 1]);
+        assert_eq!(result.iter().sum::<u32>(), 100);
+        assert!(result.iter().all(|&v| v == 33 || v == 34));
+    }
+
+    #[test]
+    fn test_round_percentages_all_in_one() {
+        let result = round_percentages(50, [50, 0, 0, 0]);
+        assert_eq!(result, [100, 0, 0, 0]);
     }
 }
