@@ -450,6 +450,17 @@ fn output_text(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss
     )]
+    let waived_pct = if counts.total > 0 {
+        (counts.waived as f64 / counts.total as f64 * 100.0) as u32
+    } else {
+        0
+    };
+
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     let blocked_pct = if counts.total > 0 {
         (counts.blocked as f64 / counts.total as f64 * 100.0) as u32
     } else {
@@ -459,14 +470,14 @@ fn output_text(
     if let Some(t) = theme {
         println!("{}", t.style_label("Summary"));
         println!(
-            "  Total: {} | Open: {} ({open_pct}%) | Done: {} ({done_pct}%) | Blocked: {} ({blocked_pct}%)",
-            counts.total, counts.open, counts.done, counts.blocked
+            "  Total: {} | Open: {} ({open_pct}%) | Done: {} ({done_pct}%) | Waived: {} ({waived_pct}%) | Blocked: {} ({blocked_pct}%)",
+            counts.total, counts.open, counts.done, counts.waived, counts.blocked
         );
     } else {
         println!("Summary");
         println!(
-            "  Total: {} | Open: {} ({open_pct}%) | Done: {} ({done_pct}%) | Blocked: {} ({blocked_pct}%)",
-            counts.total, counts.open, counts.done, counts.blocked
+            "  Total: {} | Open: {} ({open_pct}%) | Done: {} ({done_pct}%) | Waived: {} ({waived_pct}%) | Blocked: {} ({blocked_pct}%)",
+            counts.total, counts.open, counts.done, counts.waived, counts.blocked
         );
     }
 }
