@@ -36,3 +36,6 @@ demos/*.webm
 *.profraw
 *.profdata
 coverage/
+
+# Mutation testing
+.flawd/
