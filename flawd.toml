@@ -1,0 +1,34 @@
+[languages]
+enabled = ["rs"]
+
+[coverage]
+inputs = [
+  { format = "lcov", path = "coverage/lcov.info" }
+]
+command = "cargo llvm-cov --lcov --output-path coverage/lcov.info"
+timeout_seconds = 300
+
+[test]
+command = "cargo test"
+timeout_seconds = 120
+baseline_required = true
+
+[mutations]
+budget = 400
+per_file_budget = 80
+operators = ["core", "comparisons", "boolean", "returns"]
+risky_operators = false
+
+[pare]
+dedupe = true
+sampling = "weighted"
+cache = true
+
+[llm]
+mode = "off"
+max_edit_chars = 120
+
+[docker]
+dockerfile = "Dockerfile"
+workdir = "/app"
+network = "bridge"
