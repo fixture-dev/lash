@@ -5,7 +5,7 @@ enabled = ["rs"]
 inputs = [
   { format = "lcov", path = "coverage/lcov.info" }
 ]
-command = "cargo llvm-cov --lcov --output-path coverage/lcov.info"
+command = "LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata cargo llvm-cov --lcov --output-path coverage/lcov.info"
 timeout_seconds = 300
 
 [test]
