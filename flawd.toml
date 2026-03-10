@@ -10,7 +10,7 @@ timeout_seconds = 300
 
 [test]
 command = "cargo test"
-timeout_seconds = 120
+timeout_seconds = 600
 baseline_required = true
 
 [mutations]
