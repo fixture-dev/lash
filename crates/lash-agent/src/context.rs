@@ -747,4 +747,425 @@ mod tests {
         // Should handle empty graph gracefully
         assert!(context.included_tasks.is_empty());
     }
+
+    // --- Mutant-killing tests ---
+
+    #[test]
+    fn test_inclusion_rules_default_values() {
+        // Kills mut-000000 (true→false for include_dependencies in default()):
+        // Verify every default field has the exact expected value.
+        let rules = InclusionRules::default();
+        assert!(
+            rules.include_dependencies,
+            "include_dependencies default must be true"
+        );
+        assert!(
+            rules.include_blockers,
+            "include_blockers default must be true"
+        );
+        assert!(
+            !rules.include_completed,
+            "include_completed default must be false"
+        );
+        assert_eq!(rules.max_dependency_depth, 2);
+    }
+
+    #[test]
+    fn test_build_truncated_false_when_no_budget() {
+        // Kills mut-000006 (false→true in the else branch when token_budget is None):
+        // With no token budget, truncated must be exactly false.
+        let graph = create_test_graph();
+        let mut builder = ContextBuilder::new("test#task1");
+        builder.with_graph(&graph);
+        // Do NOT call with_token_budget
+
+        let context = builder.build();
+        assert!(
+            !context.truncated,
+            "truncated must be false when no budget is set"
+        );
+    }
+
+    #[test]
+    fn test_build_truncated_true_when_over_budget() {
+        // Kills mut-000004 (> vs >=) and mut-000005 (> vs <=):
+        // Set a budget of 1 token so token_count > budget is guaranteed.
+        let graph = create_test_graph();
+        let mut builder = ContextBuilder::new("test#task1");
+        builder.with_graph(&graph);
+        builder.with_token_budget(1);
+
+        let context = builder.build();
+        assert!(
+            context.truncated,
+            "truncated must be true when token_count > budget"
+        );
+    }
+
+    #[test]
+    fn test_build_truncated_false_when_exactly_at_budget() {
+        // Kills mut-000004 (> vs >=): when token_count == budget, truncated must be false.
+        let graph = create_test_graph();
+        let mut builder = ContextBuilder::new("test#task1");
+        builder.with_graph(&graph);
+        let ctx_no_budget = {
+            let mut b = ContextBuilder::new("test#task1");
+            b.with_graph(&graph);
+            b.build()
+        };
+        // Use exact token count as budget — not over budget, so not truncated.
+        builder.with_token_budget(ctx_no_budget.token_count);
+
+        let context = builder.build();
+        assert!(
+            !context.truncated,
+            "truncated must be false when token_count == budget"
+        );
+    }
+
+    #[test]
+    fn test_excluded_tasks_are_not_included_tasks() {
+        // Kills mut-000008 (negation of !included_ids.contains(*id)):
+        // Excluded tasks should be those NOT in included_tasks.
+        let graph = create_test_graph();
+        let mut builder = ContextBuilder::new("test#task1");
+
+        // Use rules that only include the target (no deps, no blockers)
+        let rules = InclusionRules {
+            include_dependencies: false,
+            include_blockers: false,
+            ..Default::default()
+        };
+        builder.with_graph(&graph);
+        builder.with_rules(rules);
+
+        let context = builder.build();
+
+        // task1 is included, task2 and task3 must be excluded
+        assert!(context.included_tasks.contains(&"test#task1".to_string()));
+        assert!(context.excluded_tasks.contains(&"test#task2".to_string()));
+        assert!(context.excluded_tasks.contains(&"test#task3".to_string()));
+
+        // No overlap between included and excluded
+        for included in &context.included_tasks {
+            assert!(
+                !context.excluded_tasks.contains(included),
+                "task {included} should not be in both included and excluded"
+            );
+        }
+    }
+
+    #[test]
+    fn test_add_dependencies_starts_at_depth_zero() {
+        // Kills mut-000011 (0→1 in the initial add_dependencies call):
+        // With max_dependency_depth=1, starting at depth=0 should traverse one level.
+        // Starting at depth=1 would immediately return without adding any deps.
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "root#main".to_string(),
+            NodeData::new("Main".to_string(), TaskStatus::Open, "root".to_string(), 0),
+        );
+        graph.add_node(
+            "root#dep1".to_string(),
+            NodeData::new("Dep1".to_string(), TaskStatus::Open, "root".to_string(), 0),
+        );
+        graph.add_edge(
+            "root#main".to_string(),
+            "root#dep1".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        let mut builder = ContextBuilder::new("root#main");
+        builder.with_graph(&graph);
+        let rules = InclusionRules {
+            max_dependency_depth: 1,
+            include_blockers: false,
+            ..Default::default()
+        };
+        builder.with_rules(rules);
+
+        let context = builder.build();
+        // dep1 should be included because we start at depth 0, which is < max (1)
+        assert!(
+            context.included_tasks.contains(&"root#dep1".to_string()),
+            "dep1 should be included when starting depth is 0 and max_depth is 1"
+        );
+    }
+
+    #[test]
+    fn test_add_dependencies_depth_limit_exact_boundary() {
+        // Kills mut-000013 (negation), mut-000014 (>= vs >), mut-000015 (>= vs <):
+        // At max_dependency_depth, recursion stops — so a dep-of-dep is NOT included
+        // when max_depth=1 but the chain is 2 levels deep.
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "a#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "a".to_string(), 0),
+        );
+        graph.add_node(
+            "a#level1".to_string(),
+            NodeData::new("Level1".to_string(), TaskStatus::Open, "a".to_string(), 0),
+        );
+        graph.add_node(
+            "a#level2".to_string(),
+            NodeData::new("Level2".to_string(), TaskStatus::Open, "a".to_string(), 0),
+        );
+        graph.add_edge(
+            "a#root".to_string(),
+            "a#level1".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "a#level1".to_string(),
+            "a#level2".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        let mut builder = ContextBuilder::new("a#root");
+        builder.with_graph(&graph);
+        let rules = InclusionRules {
+            include_dependencies: true,
+            include_blockers: false,
+            include_completed: true,
+            max_dependency_depth: 1,
+        };
+        builder.with_rules(rules);
+
+        let context = builder.build();
+        // level1 is at depth 0 < 1, so it should be included
+        assert!(
+            context.included_tasks.contains(&"a#level1".to_string()),
+            "level1 (depth 0) should be included with max_depth=1"
+        );
+        // level2 would be added at depth 1, which >= max_depth (1), so it should NOT be included
+        assert!(
+            !context.included_tasks.contains(&"a#level2".to_string()),
+            "level2 (depth 1) should be excluded when max_depth=1"
+        );
+    }
+
+    #[test]
+    fn test_add_dependencies_deduplication() {
+        // Kills mut-000017 (negation of tasks.iter().any) and mut-000018 (== vs !=):
+        // A task that is already in the list must not be added again.
+        // Create a diamond dependency: root->a, root->b, a->c, b->c
+        // c should appear only once.
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "d#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "d".to_string(), 0),
+        );
+        graph.add_node(
+            "d#a".to_string(),
+            NodeData::new("A".to_string(), TaskStatus::Open, "d".to_string(), 0),
+        );
+        graph.add_node(
+            "d#b".to_string(),
+            NodeData::new("B".to_string(), TaskStatus::Open, "d".to_string(), 0),
+        );
+        graph.add_node(
+            "d#c".to_string(),
+            NodeData::new("C".to_string(), TaskStatus::Open, "d".to_string(), 0),
+        );
+        graph.add_edge(
+            "d#root".to_string(),
+            "d#a".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "d#root".to_string(),
+            "d#b".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "d#a".to_string(),
+            "d#c".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "d#b".to_string(),
+            "d#c".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        let mut builder = ContextBuilder::new("d#root");
+        builder.with_graph(&graph);
+        let rules = InclusionRules {
+            include_dependencies: true,
+            include_blockers: false,
+            include_completed: true,
+            max_dependency_depth: 3,
+        };
+        builder.with_rules(rules);
+
+        let context = builder.build();
+        let c_count = context
+            .included_tasks
+            .iter()
+            .filter(|id| *id == "d#c")
+            .count();
+        assert_eq!(
+            c_count, 1,
+            "d#c should appear exactly once despite diamond dependency"
+        );
+    }
+
+    #[test]
+    fn test_add_dependencies_skips_completed_when_not_requested() {
+        // Kills mut-000021 (&& vs || for !include_completed && is_complete()):
+        // When include_completed=false (default), a completed dependency must be skipped.
+        // The && means BOTH conditions must be true to skip: not-include AND is-complete.
+        // With || it would skip if EITHER is true — so an open dep would also be skipped.
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "e#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "e".to_string(), 0),
+        );
+        graph.add_node(
+            "e#done_dep".to_string(),
+            NodeData::new("DoneDep".to_string(), TaskStatus::Done, "e".to_string(), 0),
+        );
+        graph.add_node(
+            "e#open_dep".to_string(),
+            NodeData::new("OpenDep".to_string(), TaskStatus::Open, "e".to_string(), 0),
+        );
+        graph.add_edge(
+            "e#root".to_string(),
+            "e#done_dep".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "e#root".to_string(),
+            "e#open_dep".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        let mut builder = ContextBuilder::new("e#root");
+        builder.with_graph(&graph);
+        let rules = InclusionRules {
+            include_dependencies: true,
+            include_blockers: false,
+            include_completed: false, // <-- do not include completed
+            max_dependency_depth: 2,
+        };
+        builder.with_rules(rules);
+
+        let context = builder.build();
+        // done_dep is complete and include_completed=false → must be excluded
+        assert!(
+            !context.included_tasks.contains(&"e#done_dep".to_string()),
+            "completed dep must be excluded when include_completed=false"
+        );
+        // open_dep is not complete → must be included
+        assert!(
+            context.included_tasks.contains(&"e#open_dep".to_string()),
+            "open dep must be included when include_completed=false"
+        );
+    }
+
+    #[test]
+    fn test_generate_markdown_include_dependencies_flag() {
+        // Kills mut-000033 (negation of self.rules.include_dependencies in generate_markdown):
+        // When include_dependencies=true, the "Dependencies" line appears.
+        // When false, it does not.
+        let graph = create_test_graph();
+
+        let mut builder_with_deps = ContextBuilder::new("test#task1");
+        builder_with_deps.with_graph(&graph);
+        let rules_with = InclusionRules {
+            include_dependencies: true,
+            ..Default::default()
+        };
+        builder_with_deps.with_rules(rules_with);
+        let ctx_with = builder_with_deps.build();
+        assert!(
+            ctx_with.content.contains("Dependencies"),
+            "markdown must mention Dependencies when include_dependencies=true"
+        );
+
+        let mut builder_without = ContextBuilder::new("test#task1");
+        builder_without.with_graph(&graph);
+        let rules_without = InclusionRules {
+            include_dependencies: false,
+            ..Default::default()
+        };
+        builder_without.with_rules(rules_without);
+        let ctx_without = builder_without.build();
+        assert!(
+            !ctx_without.content.contains("Dependencies (up to"),
+            "markdown must not mention Dependencies when include_dependencies=false"
+        );
+    }
+
+    #[test]
+    fn test_generate_markdown_include_blockers_flag() {
+        // Kills mut-000034 (negation of self.rules.include_blockers):
+        // When include_blockers=true, the "Blocked tasks" line appears.
+        // When false, it does not.
+        let graph = create_test_graph();
+
+        let mut builder_with = ContextBuilder::new("test#task1");
+        builder_with.with_graph(&graph);
+        let rules_with = InclusionRules {
+            include_blockers: true,
+            ..Default::default()
+        };
+        builder_with.with_rules(rules_with);
+        let ctx_with = builder_with.build();
+        assert!(
+            ctx_with.content.contains("Blocked tasks"),
+            "markdown must mention Blocked tasks when include_blockers=true"
+        );
+
+        let mut builder_without = ContextBuilder::new("test#task1");
+        builder_without.with_graph(&graph);
+        let rules_without = InclusionRules {
+            include_blockers: false,
+            ..Default::default()
+        };
+        builder_without.with_rules(rules_without);
+        let ctx_without = builder_without.build();
+        assert!(
+            !ctx_without.content.contains("Blocked tasks"),
+            "markdown must not mention Blocked tasks when include_blockers=false"
+        );
+    }
+
+    #[test]
+    fn test_generate_markdown_include_completed_flag() {
+        // Kills mut-000035 (negation of !self.rules.include_completed):
+        // When include_completed=false (default), the "Completed dependencies are excluded" note appears.
+        // When include_completed=true, it does not.
+        let graph = create_test_graph();
+
+        let mut builder_excl = ContextBuilder::new("test#task1");
+        builder_excl.with_graph(&graph);
+        let rules_excl = InclusionRules {
+            include_completed: false,
+            ..Default::default()
+        };
+        builder_excl.with_rules(rules_excl);
+        let ctx_excl = builder_excl.build();
+        assert!(
+            ctx_excl
+                .content
+                .contains("Completed dependencies are excluded"),
+            "must show exclusion note when include_completed=false"
+        );
+
+        let mut builder_incl = ContextBuilder::new("test#task1");
+        builder_incl.with_graph(&graph);
+        let rules_incl = InclusionRules {
+            include_completed: true,
+            ..Default::default()
+        };
+        builder_incl.with_rules(rules_incl);
+        let ctx_incl = builder_incl.build();
+        assert!(
+            !ctx_incl
+                .content
+                .contains("Completed dependencies are excluded"),
+            "must not show exclusion note when include_completed=true"
+        );
+    }
 }

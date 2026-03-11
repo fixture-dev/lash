@@ -1,6 +1,6 @@
 //! Core fix recovery workflow tests
 //!
-//! These tests verify the FixApplicator and ErrorValidator work together correctly
+//! These tests verify the `FixApplicator` and `ErrorValidator` work together correctly
 //! for the complete fix recovery workflow, without relying on specific linter rules.
 
 mod common;

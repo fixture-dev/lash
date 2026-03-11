@@ -7,7 +7,7 @@
 //! Currently these tests verify:
 //! - Command handles missing database correctly
 //! - Command returns appropriate "not implemented" messages
-//! - SearchArgs and SearchResult structures work correctly
+//! - `SearchArgs` and `SearchResult` structures work correctly
 
 mod common;
 
@@ -16,7 +16,7 @@ use lash_db::SearchResult;
 use lash_types::TaskStatus;
 use std::path::PathBuf;
 
-/// Mirror of SearchArgs for testing (since the commands module is private)
+/// Mirror of `SearchArgs` for testing (since the commands module is private)
 #[derive(Debug, Clone)]
 struct SearchArgs {
     query: String,
@@ -59,7 +59,7 @@ fn test_search_accepts_limit() {
     assert!(result.is_ok(), "Should parse search command with --limit");
 }
 
-/// Test SearchArgs structure
+/// Test `SearchArgs` structure
 #[test]
 fn test_search_args_construction() {
     let args = SearchArgs {
@@ -79,7 +79,7 @@ fn test_search_args_construction() {
     assert_eq!(args.color_scheme, Some("Dracula".to_string()));
 }
 
-/// Test SearchResult serialization
+/// Test `SearchResult` serialization
 #[test]
 fn test_search_result_serialization() {
     let result = SearchResult {
@@ -116,7 +116,7 @@ fn test_search_result_serialization() {
     assert_eq!(deserialized.score, result.score);
 }
 
-/// Test SearchResult with empty fields
+/// Test `SearchResult` with empty fields
 #[test]
 fn test_search_result_empty_fields() {
     let result = SearchResult {

@@ -1081,4 +1081,520 @@ mod tests {
         let filtered = filter_by_severity(diagnostics.clone(), None);
         assert_eq!(filtered.len(), 3);
     }
+
+    // ---- configure_linter tests (kill mut-000479, 480, 481) ----
+
+    /// When rules are specified, only those rules appear in `enabled_rules`.
+    #[test]
+    fn test_configure_linter_rules_override_replaces_enabled_set() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let args = LintArgs {
+            paths: vec![],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec!["E_SYNTAX_DEPTH".to_string()],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let config = configure_linter(&args, Some(temp_dir.path())).unwrap();
+
+        // Exactly one rule should be enabled
+        assert_eq!(config.enabled_rules.len(), 1);
+        assert!(config.enabled_rules.contains("E_SYNTAX_DEPTH"));
+    }
+
+    /// When rules list is empty, `enabled_rules` stays empty (all rules run).
+    #[test]
+    fn test_configure_linter_empty_rules_does_not_restrict() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let args = LintArgs {
+            paths: vec![],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let config = configure_linter(&args, Some(temp_dir.path())).unwrap();
+
+        // No restriction - all rules enabled
+        assert!(config.enabled_rules.is_empty());
+    }
+
+    /// When fix=true, `configure_linter` sets `auto_fix=true` in the config.
+    #[test]
+    fn test_configure_linter_fix_flag_enables_auto_fix() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let args = LintArgs {
+            paths: vec![],
+            json: false,
+            fix: true,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let config = configure_linter(&args, Some(temp_dir.path())).unwrap();
+
+        assert!(
+            config.auto_fix,
+            "fix=true must set auto_fix=true in LintConfig"
+        );
+    }
+
+    /// When fix=false, `configure_linter` leaves `auto_fix` as the config default (false).
+    #[test]
+    fn test_configure_linter_no_fix_flag_leaves_auto_fix_false() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let args = LintArgs {
+            paths: vec![],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let config = configure_linter(&args, Some(temp_dir.path())).unwrap();
+
+        assert!(!config.auto_fix, "fix=false must not set auto_fix=true");
+    }
+
+    // ---- load_project_config tests (kill mut-000478) ----
+
+    /// When a .lash/config.toml is present, `load_project_config` reads it.
+    /// The `LashConfig` file sets `max_depth=4` which differs from the default of 3.
+    #[test]
+    fn test_load_project_config_with_config_file() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let lash_dir = temp_dir.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+
+        // Write a LashConfig TOML that overrides max_depth (default is 3)
+        let config_content = format!(
+            "root_path = {:?}\nindex_file = \"lash.index.md\"\nmax_depth = 4\nindent_spaces = 2\ndb_path = {:?}\ncustom_annotation_keys = []\n",
+            temp_dir.path().display(),
+            lash_dir.join("lash.db").display(),
+        );
+        fs::write(lash_dir.join("config.toml"), &config_content).unwrap();
+
+        // Create a dummy markdown file inside the temp dir
+        let md_file = temp_dir.path().join("tasks.md");
+        fs::write(&md_file, "# Tasks\n").unwrap();
+
+        let config = load_project_config(&[md_file]).unwrap();
+        // The config file was loaded - max_depth should reflect the file, not the default
+        assert_eq!(
+            config.max_depth, 4,
+            "Config file should have been read when it exists"
+        );
+    }
+
+    /// When no config file exists, `load_project_config` returns the default config.
+    #[test]
+    fn test_load_project_config_without_config_file_returns_default() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("tasks.md");
+        fs::write(&md_file, "# Tasks\n").unwrap();
+
+        let config = load_project_config(&[md_file]).unwrap();
+
+        // Default LashConfig has max_depth = 3
+        assert_eq!(
+            config.max_depth,
+            LashConfig::default().max_depth,
+            "Default config should be returned when no config file exists"
+        );
+    }
+
+    // ---- execute() exit code tests (kill mut-000428, 431, 437, 438, 439) ----
+
+    /// `execute()` returns exactly 0 when linting a clean file.
+    #[test]
+    fn test_execute_returns_0_for_clean_file() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("tasks.md");
+        // Minimal valid lash task file
+        fs::write(
+            &md_file,
+            "# My Tasks\n\n@id: my-tasks\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] A task\n",
+        )
+        .unwrap();
+
+        let args = LintArgs {
+            paths: vec![md_file],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let result = execute(args).unwrap();
+        assert_eq!(
+            result, 0,
+            "Clean file should produce exit code 0, not {result}"
+        );
+    }
+
+    /// `execute()` returns exactly 2 when linting a file with errors.
+    #[test]
+    fn test_execute_returns_2_for_file_with_errors() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("bad.md");
+        // Bad indentation triggers a parse error
+        fs::write(
+            &md_file,
+            "# Bad\n\n@id: bad\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task A\n - [ ] Bad indent\n",
+        )
+        .unwrap();
+
+        let args = LintArgs {
+            paths: vec![md_file],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let result = execute(args).unwrap();
+        assert_eq!(
+            result, 2,
+            "File with errors should produce exit code 2, not {result}"
+        );
+    }
+
+    /// `execute()` returns 0 for a directory with no markdown files (not 2).
+    #[test]
+    fn test_execute_returns_0_for_empty_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        let args = LintArgs {
+            paths: vec![temp_dir.path().to_path_buf()],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let result = execute(args).unwrap();
+        assert_eq!(result, 0, "Empty directory should produce exit code 0");
+    }
+
+    /// When paths are explicitly specified, those paths (not project root) are linted.
+    /// The test verifies that explicit paths trigger linting of exactly those files.
+    #[test]
+    fn test_execute_explicit_paths_lints_specified_files() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let clean_file = temp_dir.path().join("clean.md");
+        let bad_file = temp_dir.path().join("bad.md");
+
+        fs::write(
+            &clean_file,
+            "# Clean\n\n@id: clean\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] A task\n",
+        )
+        .unwrap();
+        // Bad indentation triggers a parse error
+        fs::write(
+            &bad_file,
+            "# Bad\n\n@id: bad\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task A\n - [ ] Bad indent\n",
+        )
+        .unwrap();
+
+        // Lint only the clean file - should be exit code 0
+        let args_clean = LintArgs {
+            paths: vec![clean_file],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+        assert_eq!(execute(args_clean).unwrap(), 0);
+
+        // Lint only the bad file - should be exit code 2
+        let args_bad = LintArgs {
+            paths: vec![bad_file],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+        assert_eq!(execute(args_bad).unwrap(), 2);
+    }
+
+    // ---- JSON output path test (kill mut-000436) ----
+
+    /// `execute()` with json=true produces JSON output (exercises the json branch).
+    /// We validate the exit code path; output format is verified in integration tests.
+    #[test]
+    fn test_execute_json_flag_is_respected_for_clean_file() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("tasks.md");
+        fs::write(
+            &md_file,
+            "# My Tasks\n\n@id: my-tasks\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] A task\n",
+        )
+        .unwrap();
+
+        let args = LintArgs {
+            paths: vec![md_file],
+            json: true,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        // json=true path must not error and must return 0 for a clean file
+        let result = execute(args).unwrap();
+        assert_eq!(result, 0);
+    }
+
+    /// `execute()` with json=true on a file with errors returns exit code 2.
+    #[test]
+    fn test_execute_json_flag_is_respected_for_file_with_errors() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("bad.md");
+        // Bad indentation triggers a parse error
+        fs::write(
+            &md_file,
+            "# Bad\n\n@id: bad\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task A\n - [ ] Bad indent\n",
+        )
+        .unwrap();
+
+        let args = LintArgs {
+            paths: vec![md_file],
+            json: true,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let result = execute(args).unwrap();
+        assert_eq!(result, 2);
+    }
+
+    // ---- interactive-without-fix warning (kill mut-000432, 433, 434) ----
+
+    /// `execute()` with interactive=true and fix=false must not fail (warning path exercised).
+    #[test]
+    fn test_execute_interactive_without_fix_completes_without_error() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("tasks.md");
+        fs::write(
+            &md_file,
+            "# My Tasks\n\n@id: my-tasks\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] A task\n",
+        )
+        .unwrap();
+
+        let args = LintArgs {
+            paths: vec![md_file],
+            json: false,
+            fix: false,
+            interactive: true, // interactive=true without fix
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        // The warning branch (args.interactive && !args.fix) should be taken
+        let result = execute(args).unwrap();
+        assert_eq!(result, 0);
+    }
+
+    /// `execute()` with interactive=true AND fix=true does not warn (different branch).
+    #[test]
+    fn test_execute_interactive_with_fix_does_not_enter_warning_branch() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("tasks.md");
+        fs::write(
+            &md_file,
+            "# My Tasks\n\n@id: my-tasks\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] A task\n",
+        )
+        .unwrap();
+
+        let args = LintArgs {
+            paths: vec![md_file],
+            json: false,
+            fix: true,
+            interactive: true,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        // interactive=true AND fix=true: warning branch is NOT taken, apply_fixes IS called
+        let result = execute(args).unwrap();
+        assert_eq!(result, 0);
+    }
+
+    // ---- suggest flag (kill mut-000446, 474) ----
+
+    /// `execute()` with suggest=true on a file with diagnostics exercises the suggest branch.
+    #[test]
+    fn test_execute_suggest_flag_with_file_having_diagnostics() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("bad.md");
+        // Bad indentation triggers a parse error
+        fs::write(
+            &md_file,
+            "# Bad\n\n@id: bad\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task A\n - [ ] Bad indent\n",
+        )
+        .unwrap();
+
+        let args = LintArgs {
+            paths: vec![md_file],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: true, // suggest=true exercises the if suggest {} branch
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let result = execute(args).unwrap();
+        assert_eq!(result, 2);
+    }
+
+    /// `execute()` with suggest=false does not enter the suggest branch.
+    #[test]
+    fn test_execute_suggest_false_skips_suggest_branch() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("bad.md");
+        // Bad indentation triggers a parse error
+        fs::write(
+            &md_file,
+            "# Bad\n\n@id: bad\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task A\n - [ ] Bad indent\n",
+        )
+        .unwrap();
+
+        let args = LintArgs {
+            paths: vec![md_file],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false, // suggest=false stays out of the suggest branch
+            rules: vec![],
+            min_severity: None,
+            no_color: true,
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        let result = execute(args).unwrap();
+        assert_eq!(result, 2);
+    }
+
+    // ---- no_color tests (kill mut-000427) ----
+
+    /// `execute()` with `no_color=true` loads no theme (None); must not fail.
+    #[test]
+    fn test_execute_no_color_true_does_not_fail() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let md_file = temp_dir.path().join("tasks.md");
+        fs::write(
+            &md_file,
+            "# My Tasks\n\n@id: my-tasks\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] A task\n",
+        )
+        .unwrap();
+
+        let args = LintArgs {
+            paths: vec![md_file],
+            json: false,
+            fix: false,
+            interactive: false,
+            suggest: false,
+            rules: vec![],
+            min_severity: None,
+            no_color: true, // CliTheme::load(None, false) -> Ok(None)
+            project_root: None,
+            verbosity: lash_cli::formatter::Verbosity::Normal,
+        };
+
+        assert_eq!(execute(args).unwrap(), 0);
+    }
 }

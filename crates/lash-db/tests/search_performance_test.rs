@@ -1,7 +1,7 @@
 //! Performance validation tests for search
 //!
 //! These tests verify that search meets basic performance targets.
-//! They are less rigorous than the benchmarks in benches/search_bench.rs
+//! They are less rigorous than the benchmarks in `benches/search_bench.rs`
 //! but provide a quick sanity check during development.
 
 use lash_db::{

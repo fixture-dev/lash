@@ -146,7 +146,7 @@ fn test_help_modal() {
 }
 
 /// Helper to create a test database with multiple files in directories
-/// This simulates a project structure like the PixelQuest example
+/// This simulates a project structure like the `PixelQuest` example
 fn setup_test_db_with_directory_structure() -> (TempDir, std::path::PathBuf) {
     let temp_dir = TempDir::new().unwrap();
     let project_root = temp_dir.path();

@@ -597,4 +597,30 @@ mod tests {
         assert!(example.contains("  - JWT tokens should expire"));
         assert!(example.contains("  - Validate email format"));
     }
+
+    // --- Mutant-killing test ---
+
+    #[test]
+    fn test_schema_text_no_required_marker_for_optional_annotations() {
+        // Kills mut-000095 (ann.required → !ann.required):
+        // All annotations in the schema are optional (required=false), so
+        // "(required)" must NOT appear anywhere in the annotations section.
+        // If the negation were applied, every annotation would show "(required)".
+        let text = generate_schema_text();
+
+        // None of the current annotations have required=true, so the text must
+        // not contain the "(required)" suffix for any annotation line.
+        assert!(
+            !text.contains("(required)"),
+            "No annotation is required, so '(required)' should not appear in schema text"
+        );
+
+        // Additionally verify the schema itself has no required=true annotations,
+        // to document the expectation explicitly.
+        let schema = generate_schema();
+        assert!(
+            schema.annotations.iter().all(|a| !a.required),
+            "All standard annotations should be optional"
+        );
+    }
 }

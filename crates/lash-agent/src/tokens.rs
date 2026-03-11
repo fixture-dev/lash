@@ -326,4 +326,113 @@ mod tests {
         assert_eq!(allocations[0], ("schema", 0));
         assert_eq!(allocations[1], ("tasks", 0));
     }
+
+    // --- Mutant-killing tests ---
+
+    #[test]
+    fn test_summarize_task_file_zero_total_gives_zero_percent() {
+        // Kills mut-000101 (> vs >=), mut-000103 (0→1 in total>0 branch),
+        // and mut-000107 (0→1 in else branch): when total is 0, percent must be exactly 0.
+        let summary = summarize_task_file("empty.md", 0, 0, 0, 0);
+        assert_eq!(summary, "empty.md, 0 tasks, 0% complete");
+    }
+
+    #[test]
+    fn test_summarize_task_file_zero_open_not_in_output() {
+        // Kills mut-000107 (0→1 for open_tasks > 0 else branch):
+        // When open_tasks is exactly 0, "open" must not appear.
+        let summary = summarize_task_file("tasks.md", 5, 5, 0, 0);
+        assert!(!summary.contains("open"));
+        assert!(!summary.contains("blocked"));
+    }
+
+    #[test]
+    fn test_summarize_task_file_one_open_appears() {
+        // Confirms boundary: open_tasks=1 should appear (kills > vs >= for open_tasks).
+        let summary = summarize_task_file("tasks.md", 5, 4, 1, 0);
+        assert!(summary.contains("1 open"));
+    }
+
+    #[test]
+    fn test_summarize_dependencies_zero_done_not_in_output() {
+        // Kills mut-000113 (> vs >= for done), mut-000115 (0→1 for done>0):
+        // When done=0 it must not appear in output.
+        let summary = summarize_dependencies(3, "core.md", 0, 3, 0);
+        assert!(!summary.contains("done"));
+    }
+
+    #[test]
+    fn test_summarize_dependencies_one_done_appears() {
+        // Confirms boundary: done=1 must appear (kills > vs >= for done).
+        let summary = summarize_dependencies(3, "core.md", 1, 2, 0);
+        assert!(summary.contains("1 done"));
+    }
+
+    #[test]
+    fn test_summarize_dependencies_zero_open_not_in_output() {
+        // Kills mut-000117 (> vs >= for open), mut-000119 (0→1 for open>0):
+        // When open=0 it must not appear in output.
+        let summary = summarize_dependencies(3, "core.md", 3, 0, 0);
+        assert!(!summary.contains("open"));
+    }
+
+    #[test]
+    fn test_summarize_dependencies_one_open_appears() {
+        // Confirms boundary: open=1 must appear (kills > vs >= for open).
+        let summary = summarize_dependencies(3, "core.md", 2, 1, 0);
+        assert!(summary.contains("1 open"));
+    }
+
+    #[test]
+    fn test_summarize_dependencies_zero_blocked_not_in_output() {
+        // Kills mut-000120 (negation), mut-000121 (> vs >=), mut-000122 (> vs <=),
+        // mut-000123 (0→1): when blocked=0 it must not appear.
+        let summary = summarize_dependencies(3, "core.md", 2, 1, 0);
+        assert!(!summary.contains("blocked"));
+    }
+
+    #[test]
+    fn test_summarize_dependencies_one_blocked_appears() {
+        // Confirms boundary: blocked=1 must appear (kills all blocked>0 mutations).
+        let summary = summarize_dependencies(3, "core.md", 1, 1, 1);
+        assert!(summary.contains("1 blocked"));
+    }
+
+    #[test]
+    fn test_truncate_to_budget_exact_fit_not_truncated() {
+        // Kills mut-000125 (<= vs <): text whose token count equals the budget
+        // should NOT be truncated (current_tokens <= token_budget returns unchanged).
+        // "hello world" = 2 words * 1.3 = ceil(2.6) = 3 tokens
+        let text = "hello world";
+        assert_eq!(estimate_tokens(text), 3);
+        let result = truncate_to_budget(text, 3);
+        assert_eq!(result, text);
+    }
+
+    #[test]
+    fn test_truncate_to_budget_tiny_budget_returns_ellipsis() {
+        // Kills mut-000127 (negation of char_budget < 10) and mut-000128 (< vs <=)
+        // and mut-000129 (< vs >=): when char_budget < 10, returns "...".
+        // token_budget=2 → char_budget=8, which is < 10.
+        // But we need to ensure the text actually has more tokens than the budget.
+        // Use a longer text: "one two three four five" = 5 words → 7 tokens.
+        let text = "one two three four five";
+        assert!(estimate_tokens(text) > 2);
+        let result = truncate_to_budget(text, 2);
+        assert_eq!(result, "...");
+    }
+
+    #[test]
+    fn test_truncate_to_budget_char_budget_exactly_10_not_ellipsis() {
+        // Kills mut-000128 (< vs <=) for the char_budget < 10 boundary.
+        // token_budget=3 → char_budget=12, which is >= 10, so should NOT return "...".
+        // But we need enough tokens to trigger truncation: need tokens > 3.
+        // "alpha beta gamma delta epsilon" = 5 words → 7 tokens.
+        let text = "alpha beta gamma delta epsilon";
+        assert!(estimate_tokens(text) > 3);
+        let result = truncate_to_budget(text, 3);
+        // Should not be just "..." since char_budget=12 >= 10
+        assert_ne!(result, "...");
+        assert!(result.ends_with("..."));
+    }
 }

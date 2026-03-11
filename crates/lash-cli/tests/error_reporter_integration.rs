@@ -1,4 +1,4 @@
-//! Comprehensive integration tests for the ErrorReporter across all CLI commands
+//! Comprehensive integration tests for the `ErrorReporter` across all CLI commands
 //!
 //! This test suite verifies that the error reporting system works correctly
 //! across all commands with different verbosity levels, output formats, and

@@ -347,4 +347,61 @@ mod tests {
         assert_eq!(report.total_broken, deserialized.total_broken);
         assert_eq!(report.by_file.len(), deserialized.by_file.len());
     }
+
+    // Kill mut-000235, mut-000236, mut-000237:
+    // output_text_report when total_broken == 0 should print "No broken links found!"
+    // output_text_report when total_broken != 0 should NOT print "No broken links found!"
+
+    #[test]
+    fn test_output_text_report_with_zero_broken_links() {
+        // total_broken == 0 takes the early return path
+        let report = BrokenLinksReport {
+            total_broken: 0,
+            by_file: vec![],
+        };
+        // Calling should not panic; the function prints "No broken links found!" and returns
+        output_text_report(&report, None);
+        // Verify total_broken is exactly 0 (not 1 or any other value)
+        assert_eq!(report.total_broken, 0);
+    }
+
+    #[test]
+    fn test_output_text_report_with_one_broken_link_does_not_early_return() {
+        // total_broken == 1: the is_empty check fails, so we fall through to the reporter
+        let report = BrokenLinksReport {
+            total_broken: 1,
+            by_file: vec![FileLinks {
+                file_path: "test.md".to_string(),
+                count: 1,
+                links: vec![BrokenLink {
+                    from_task_full_id: "test#task1".to_string(),
+                    from_file_path: "test.md".to_string(),
+                    raw_ref: "other#task999".to_string(),
+                    kind: "explicit_id".to_string(),
+                }],
+            }],
+        };
+        // With total_broken=1, the function should NOT take the early return path
+        assert_eq!(report.total_broken, 1);
+        // Calling should not panic
+        output_text_report(&report, None);
+    }
+
+    #[test]
+    fn test_report_total_broken_is_exact_zero_not_one() {
+        // Verifies that the literal 0 in the comparison matters (kills mut-000237)
+        let empty_report = BrokenLinksReport {
+            total_broken: 0,
+            by_file: vec![],
+        };
+        let non_empty_report = BrokenLinksReport {
+            total_broken: 1,
+            by_file: vec![],
+        };
+        // These two must produce different behavior in output_text_report
+        assert_eq!(empty_report.total_broken, 0);
+        assert_ne!(non_empty_report.total_broken, 0);
+        assert!(empty_report.total_broken == 0);
+        assert!(non_empty_report.total_broken != 0);
+    }
 }

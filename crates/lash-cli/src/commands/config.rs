@@ -510,4 +510,40 @@ mod tests {
         let mut config = Config::default();
         assert!(set_config_value(&mut config, "unknown.key", "value").is_err());
     }
+
+    // Kill mut-000248: || vs && in "value == "[]" || value.is_empty()"
+    // Test where ONLY one condition is true:
+    //   - value == "[]" is true, value.is_empty() is false
+    //   - value == "[]" is false, value.is_empty() is true
+    // Both should clear the rules list with || but NOT with &&.
+
+    #[test]
+    fn test_set_linter_rules_empty_string_clears_list() {
+        // value.is_empty() is true, value == "[]" is false
+        // With ||: clears the list (correct)
+        // With &&: would NOT clear the list (wrong)
+        let mut config = Config::default();
+        config.linter.rules = vec!["existing_rule".to_string()];
+
+        set_config_value(&mut config, "linter.rules", "").unwrap();
+        assert!(
+            config.linter.rules.is_empty(),
+            "Empty string should clear linter.rules"
+        );
+    }
+
+    #[test]
+    fn test_set_linter_rules_bracket_notation_clears_list() {
+        // value == "[]" is true, value.is_empty() is false
+        // With ||: clears the list (correct)
+        // With &&: would NOT clear the list (wrong - "[]" is not empty)
+        let mut config = Config::default();
+        config.linter.rules = vec!["existing_rule".to_string()];
+
+        set_config_value(&mut config, "linter.rules", "[]").unwrap();
+        assert!(
+            config.linter.rules.is_empty(),
+            "'[]' should clear linter.rules"
+        );
+    }
 }

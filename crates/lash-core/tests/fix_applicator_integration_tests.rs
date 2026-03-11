@@ -1,6 +1,6 @@
-//! Integration tests for FixApplicator
+//! Integration tests for `FixApplicator`
 //!
-//! These tests verify the FixApplicator's behavior in realistic scenarios
+//! These tests verify the `FixApplicator`'s behavior in realistic scenarios
 //! including edge cases and error conditions.
 
 use lash_core::linter::{Fix, FixApplicator, LintDiagnostic};
