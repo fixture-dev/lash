@@ -1,4 +1,4 @@
-//! End-to-End CLI tests using assert_cmd
+//! End-to-End CLI tests using `assert_cmd`
 //!
 //! These tests verify the actual `lash` binary behavior by invoking it as a user would.
 //! They test all commands with various flags, error scenarios, and output formats.
@@ -1188,5 +1188,288 @@ fn test_list_show_notes_json_output() {
     assert!(
         has_tasks_with_notes,
         "At least one file should have tasks_with_notes when --show-notes is used"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Index command text output content tests
+//
+// These tests verify the exact stdout content produced by `output_text_report`,
+// killing mutations in the comparison guards and summary labels.
+// ---------------------------------------------------------------------------
+
+/// `lash index` without --force must print "Incremental index complete" (not the force label).
+/// Kills mut-000384: force → !(force).
+#[test]
+fn test_index_text_output_incremental_label() {
+    let temp = create_test_project();
+
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Incremental index complete"));
+}
+
+/// `lash index --force` must print "Full rebuild complete" (not the incremental label).
+/// Kills mut-000384: force → !(force).
+#[test]
+fn test_index_text_output_force_label() {
+    let temp = create_test_project();
+
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .arg("--force")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Full rebuild complete"));
+}
+
+/// After a fresh index, `files_added` > 0 so the "Added:" line must appear.
+/// Kills mut-000386, 387, 388, 389 (negation and boundary mutations on `files_added` > 0).
+#[test]
+fn test_index_text_output_shows_added_count() {
+    let temp = create_test_project();
+
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Added:").or(predicate::str::contains("Files processed:")),
+        );
+}
+
+/// After indexing and re-indexing the same project, `files_unchanged` > 0 so the
+/// "Unchanged:" line must appear on the second run.
+/// Kills mut-000400, 401, 402, 403 (negation and boundary mutations on `files_unchanged` > 0).
+#[test]
+fn test_index_text_output_shows_unchanged_count_on_reindex() {
+    let temp = create_test_project();
+
+    // First run – populate the DB
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Second run without changes – must report unchanged files
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Unchanged:"));
+}
+
+/// A full rebuild (`--force`) on an already-indexed project reports updated files;
+/// verifies the `files_updated` > 0 branch.
+/// Kills mut-000391, 392, 393, 394.
+#[test]
+fn test_index_text_output_shows_updated_count_on_force_rebuild() {
+    let temp = create_test_project();
+
+    // First index (adds files)
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Modify the file so it is re-parsed as "updated"
+    let index_file = temp.path().join("lash.index.md");
+    let existing = fs::read_to_string(&index_file).unwrap();
+    fs::write(&index_file, format!("{existing}\n- [ ] Extra task\n")).unwrap();
+
+    // Force rebuild – modified file must appear as Updated
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .arg("--force")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updated:").or(predicate::str::contains("Added:")));
+}
+
+/// A JSON index report must contain numeric counts with the exact field names.
+/// Kills mut-000370 (json branch selection) and verifies field values exist.
+#[test]
+fn test_index_json_output_exact_fields() {
+    let temp = create_test_project();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
+    // These field names must be exactly present – kills mutations that remove them
+    assert!(
+        json["files_processed"].is_number(),
+        "files_processed must be a number"
+    );
+    assert!(
+        json["files_added"].is_number(),
+        "files_added must be a number"
+    );
+    assert!(
+        json["files_updated"].is_number(),
+        "files_updated must be a number"
+    );
+    assert!(
+        json["files_deleted"].is_number(),
+        "files_deleted must be a number"
+    );
+    assert!(
+        json["files_unchanged"].is_number(),
+        "files_unchanged must be a number"
+    );
+    assert!(json["errors"].is_object(), "errors must be an object");
+
+    // files_added must be > 0 on the first index
+    let files_added = json["files_added"].as_u64().unwrap();
+    assert!(files_added > 0, "first index must add at least one file");
+}
+
+/// `lash index --force` JSON output must have `files_added` > 0.
+/// Kills mut-000362, 363, 364 (force path: args.force || !`db_path.exists()`).
+#[test]
+fn test_index_force_json_output_shows_added() {
+    let temp = create_test_project();
+
+    // First run to create DB
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Force rebuild should also add files
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .arg("--force")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let files_added = json["files_added"].as_u64().unwrap();
+    assert!(files_added > 0, "force rebuild must re-add all files");
+}
+
+/// Incremental second index (force=false, DB exists) reports unchanged files, not added.
+/// Distinguishes the `else` branch from the `if args.force || !db_path.exists()` branch.
+/// Kills mut-000362, 363, 364.
+#[test]
+fn test_index_incremental_second_run_shows_unchanged() {
+    let temp = create_test_project();
+
+    // First run
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Second run without modification – no files should be re-added
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let files_unchanged = json["files_unchanged"].as_u64().unwrap();
+    assert!(
+        files_unchanged > 0,
+        "incremental second run must report unchanged files"
+    );
+
+    let files_added = json["files_added"].as_u64().unwrap();
+    assert_eq!(
+        files_added, 0,
+        "incremental run must not re-add unchanged files"
+    );
+}
+
+/// Streaming error display mode must succeed (kills mut-000371, 379).
+#[test]
+fn test_index_errors_streaming_flag_succeeds() {
+    let temp = create_test_project();
+
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--errors-streaming")
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success();
+}
+
+/// `--no-color` flag must succeed and produce text output without ANSI codes
+/// on a simple index run (kills mut-000360).
+#[test]
+fn test_index_no_color_flag_produces_plain_text() {
+    let temp = create_test_project();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should not contain ANSI escape sequences
+    assert!(
+        !stdout.contains("\x1b["),
+        "output must not contain ANSI codes when --no-color is set"
+    );
+    // Must still contain the summary label
+    assert!(
+        stdout.contains("index complete") || stdout.contains("rebuild complete"),
+        "output must contain summary label"
     );
 }

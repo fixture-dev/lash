@@ -1335,4 +1335,235 @@ mod tests {
         assert_eq!(task_files.len(), 1);
         assert!(task_files[0]["description"].is_null());
     }
+
+    // --- Mutant-killing tests ---
+
+    #[test]
+    fn test_task_file_summary_new_all_counts_zero() {
+        // Kills mut-000041/42/43/44 (0→1 for total/completed/open/blocked in new()):
+        // A freshly created summary must have all numeric counts at exactly 0.
+        let summary = TaskFileSummary::new("test.md");
+        assert_eq!(summary.total, 0);
+        assert_eq!(summary.completed, 0);
+        assert_eq!(summary.open, 0);
+        assert_eq!(summary.blocked, 0);
+        assert!(summary.doc_refs.is_empty());
+        assert!(summary.description.is_none());
+        assert!(summary.contextual_notes.is_empty());
+    }
+
+    #[test]
+    fn test_to_summary_string_zero_total_gives_zero_percent() {
+        // Kills mut-000046 (> vs >=) and mut-000048 (0→1 in else branch):
+        // When total=0, percent must be exactly 0, and the string must show "0% complete".
+        let summary = TaskFileSummary::new("empty.md");
+        let s = summary.to_summary_string();
+        assert!(
+            s.contains("0% complete"),
+            "percent must be 0 when total is 0, got: {s}"
+        );
+        assert!(
+            !s.contains("1% complete"),
+            "must not show 1% when total is 0"
+        );
+    }
+
+    #[test]
+    fn test_to_summary_string_total_one_gives_correct_percent() {
+        // Kills mut-000046 (> vs >=): with total=1, the > 0 branch must be taken.
+        let summary = TaskFileSummary::new("one.md").with_counts(1, 1, 0, 0);
+        let s = summary.to_summary_string();
+        assert!(
+            s.contains("100% complete"),
+            "1/1 tasks should be 100%, got: {s}"
+        );
+    }
+
+    #[test]
+    fn test_format_with_docs_multiline_description_uses_correct_index() {
+        // Kills mut-000057 (1→0 in desc_lines[1..] for subsequent lines):
+        // With a two-line description, the second line must appear once, NOT twice.
+        // If [1..] were replaced with [0..], both lines would appear including the
+        // first line a second time indented.
+        let summary = TaskFileSummary::new("test.md")
+            .with_counts(5, 2, 3, 0)
+            .with_description(Some("First line\nSecond line".to_string()));
+
+        let formatted = summary.format_with_docs(true, false);
+        assert!(
+            formatted.contains("Description: First line"),
+            "first line must appear after label"
+        );
+        assert!(formatted.contains("Second line"), "second line must appear");
+
+        // Count occurrences of "First line" — should be exactly 1 (on the label line)
+        let first_line_count = formatted.matches("First line").count();
+        assert_eq!(
+            first_line_count, 1,
+            "First line must appear exactly once, not repeated in indented section"
+        );
+    }
+
+    #[test]
+    fn test_build_json_no_examples_when_disabled() {
+        // Kills mut-000077 (negation of include_examples): when include_examples=false,
+        // the examples array must be empty in JSON output.
+        let config = PromptConfig {
+            format: PromptFormat::Json,
+            include_examples: false,
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        let parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
+        let examples = parsed["examples"].as_array().unwrap();
+        assert!(
+            examples.is_empty(),
+            "examples must be empty when include_examples=false"
+        );
+    }
+
+    #[test]
+    fn test_build_json_examples_present_when_enabled() {
+        // Confirms the true branch: examples must be present when include_examples=true.
+        let config = PromptConfig {
+            format: PromptFormat::Json,
+            include_examples: true,
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+
+        let parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
+        let examples = parsed["examples"].as_array().unwrap();
+        assert!(
+            !examples.is_empty(),
+            "examples must be present when include_examples=true"
+        );
+    }
+
+    #[test]
+    fn test_build_json_include_tasks_false_gives_no_task_files() {
+        // Kills mut-000079 (&& vs || for include_tasks && !is_empty()):
+        // When include_tasks=false but summaries exist, task_files must be null.
+        let config = PromptConfig {
+            format: PromptFormat::Json,
+            include_tasks: false,
+            ..Default::default()
+        };
+        let mut builder = PromptBuilder::new(config);
+        let summary = TaskFileSummary::new("test.md").with_counts(5, 2, 3, 0);
+        builder.add_task_file_summary(summary);
+
+        let prompt = builder.build();
+
+        let parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
+        // With include_tasks=false, task_files must be null (not an array with entries)
+        assert!(
+            parsed["task_files"].is_null(),
+            "task_files must be null when include_tasks=false"
+        );
+    }
+
+    #[test]
+    fn test_build_json_truncated_is_false() {
+        // Kills mut-000083 (false→true for truncated in build_json):
+        // build_json never truncates, so truncated must always be false.
+        let config = PromptConfig {
+            format: PromptFormat::Json,
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+        assert!(
+            !prompt.truncated,
+            "build_json must always produce truncated=false"
+        );
+    }
+
+    #[test]
+    fn test_build_claude_skill_truncated_is_false() {
+        // Kills mut-000084 (false→true for truncated in build_claude_skill):
+        let config = PromptConfig {
+            format: PromptFormat::ClaudeSkill,
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+        assert!(
+            !prompt.truncated,
+            "build_claude_skill must always produce truncated=false"
+        );
+    }
+
+    #[test]
+    fn test_build_agents_md_truncated_is_false() {
+        // Kills mut-000085 (false→true for truncated in build_agents_md):
+        let config = PromptConfig {
+            format: PromptFormat::AgentsMd,
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+        assert!(
+            !prompt.truncated,
+            "build_agents_md must always produce truncated=false"
+        );
+    }
+
+    #[test]
+    fn test_apply_budget_not_truncated_when_budget_sufficient() {
+        // Kills mut-000086 (false→true for initial truncated value) and confirms
+        // that a budget-unlimited path returns truncated=false.
+        let config = PromptConfig {
+            token_budget: Some(100_000), // enormous budget — nothing should be cut
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+        assert!(
+            !prompt.truncated,
+            "truncated must be false when budget is more than enough"
+        );
+    }
+
+    #[test]
+    fn test_apply_budget_zero_allocation_sets_truncated() {
+        // Kills mut-000087 (negation of *allocation == 0), mut-000088 (== vs !=),
+        // mut-000089 (0→1 in *allocation == 0):
+        // A very small budget forces some allocations to 0, which must set truncated=true.
+        let config = PromptConfig {
+            token_budget: Some(1), // so small that many sections get 0 allocation
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+        assert!(
+            prompt.truncated,
+            "truncated must be true when budget forces zero allocations"
+        );
+    }
+
+    #[test]
+    fn test_apply_budget_section_truncated_when_over_allocation() {
+        // Kills mut-000092 (> vs >= for estimated > *allocation) and
+        // mut-000094 (true→false for truncated=true when section is truncated):
+        // A budget just barely too small for the content triggers truncation.
+        // We need a situation where a section's token count exceeds its allocation.
+        // Use a moderate budget that's enough for some sections but not all.
+        let config = PromptConfig {
+            token_budget: Some(100), // small enough to truncate some sections
+            ..Default::default()
+        };
+        let builder = PromptBuilder::new(config);
+        let prompt = builder.build();
+        // With 100 tokens for the entire prompt, truncation must occur
+        assert!(
+            prompt.truncated,
+            "truncated must be true when sections are over-budget"
+        );
+        // And the content must still be non-empty (something was included)
+        assert!(!prompt.content.is_empty());
+    }
 }

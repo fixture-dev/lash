@@ -1,6 +1,6 @@
 //! Integration test that generates the medium-project-realistic fixture
 //!
-//! Run with: cargo test --test generate_realistic_project -- --ignored
+//! Run with: cargo test --test `generate_realistic_project` -- --ignored
 
 #![allow(clippy::uninlined_format_args)]
 

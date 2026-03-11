@@ -1,8 +1,8 @@
 //! Example demonstrating the CLI theme module
 //!
-//! This example shows how to load and use the CliTheme for terminal styling.
+//! This example shows how to load and use the `CliTheme` for terminal styling.
 //!
-//! Run with: cargo run --example theme_example
+//! Run with: cargo run --example `theme_example`
 
 use lash_cli::theme::CliTheme;
 use lash_types::TaskStatus;

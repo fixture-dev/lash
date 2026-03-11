@@ -1,7 +1,7 @@
 //! Integration tests for color output handling
 //!
 //! Tests verify that:
-//! 1. NO_COLOR environment variable disables all colors
+//! 1. `NO_COLOR` environment variable disables all colors
 //! 2. --no-color flag disables all colors
 //! 3. --no-color flag takes priority over color scheme selection
 //! 4. Non-TTY output disables colors automatically

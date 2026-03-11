@@ -971,4 +971,880 @@ mod tests {
         assert!(output.contains("#p1"));
         assert!(!output.contains("core.md")); // Path should be stripped
     }
+
+    // --- Tests targeting surviving mutants ---
+
+    /// mut-000153: `truncated = false` → `true`
+    /// A simple graph with no depth truncation must NOT produce a truncation notice.
+    #[test]
+    fn test_no_truncation_notice_when_not_needed() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#task1".to_string(),
+            create_test_node("Task 1", TaskStatus::Open, "test"),
+        );
+
+        // Wide terminal ensures no depth truncation
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            ..Default::default()
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(!output.contains("Note: Graph truncated"));
+    }
+
+    /// mut-000154/155/156/157: boundary conditions on `file_idx > 0`
+    /// Two file groups must be separated by exactly one blank line, and the first
+    /// group must NOT be preceded by a blank line.
+    #[test]
+    fn test_multiple_files_separator_newline() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "aaa#task1".to_string(),
+            create_test_node("Task A", TaskStatus::Open, "aaa"),
+        );
+        graph.add_node(
+            "zzz#task1".to_string(),
+            create_test_node("Task Z", TaskStatus::Open, "zzz"),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            ..Default::default()
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // The output must start directly with the first file header (─── aaa ...),
+        // not with a blank line.
+        assert!(output.starts_with("─── aaa"), "output = {output:?}");
+
+        // There must be exactly one blank line between the two file sections.
+        // The separator is a bare '\n' pushed before the second file header.
+        // So we expect "\n\n─── zzz" in the output.
+        assert!(
+            output.contains("\n\n─── zzz"),
+            "expected blank-line separator before second file; output = {output:?}"
+        );
+    }
+
+    /// mut-000158/159: `root_idx == roots.len() - 1`
+    /// With two root tasks in the same file, the first must use `├` and the last `└`.
+    #[test]
+    fn test_multiple_roots_last_branch_character() {
+        let mut graph = DependencyGraph::new();
+        // Two independent roots sorted alphabetically: "aaa" before "zzz"
+        graph.add_node(
+            "test#aaa".to_string(),
+            create_test_node("Alpha Task", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#zzz".to_string(),
+            create_test_node("Zeta Task", TaskStatus::Open, "test"),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            ..Default::default()
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // "Alpha Task" is first root → rendered with ├
+        // "Zeta Task" is last root  → rendered with └
+        let alpha_pos = output.find("Alpha Task").expect("Alpha Task not found");
+        let zeta_pos = output.find("Zeta Task").expect("Zeta Task not found");
+
+        // Extract the branch character preceding each task
+        let alpha_line = output[..alpha_pos]
+            .rfind('\n')
+            .map_or(&output[..alpha_pos], |p| &output[p + 1..alpha_pos]);
+        let zeta_line = output[..zeta_pos]
+            .rfind('\n')
+            .map_or(&output[..zeta_pos], |p| &output[p + 1..zeta_pos]);
+
+        assert!(
+            alpha_line.contains('├'),
+            "first root should use ├; line = {alpha_line:?}"
+        );
+        assert!(
+            zeta_line.contains('└'),
+            "last root should use └; line = {zeta_line:?}"
+        );
+    }
+
+    /// mut-000194/195: `idx == child_count - 1` for child rendering
+    /// A parent with two children must use `├` for the first child and `└` for the last.
+    #[test]
+    fn test_multiple_children_branch_characters() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#parent".to_string(),
+            create_test_node("Parent Task", TaskStatus::Open, "test"),
+        );
+        // Children are sorted alphabetically: "child_a" before "child_z"
+        graph.add_node(
+            "test#child_a".to_string(),
+            create_test_node("Alpha Child", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#child_z".to_string(),
+            create_test_node("Zeta Child", TaskStatus::Open, "test"),
+        );
+        graph.add_edge(
+            "test#parent".to_string(),
+            "test#child_a".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#parent".to_string(),
+            "test#child_z".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            ..Default::default()
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        let alpha_pos = output.find("Alpha Child").expect("Alpha Child not found");
+        let zeta_pos = output.find("Zeta Child").expect("Zeta Child not found");
+
+        let alpha_line = output[..alpha_pos]
+            .rfind('\n')
+            .map_or(&output[..alpha_pos], |p| &output[p + 1..alpha_pos]);
+        let zeta_line = output[..zeta_pos]
+            .rfind('\n')
+            .map_or(&output[..zeta_pos], |p| &output[p + 1..zeta_pos]);
+
+        assert!(
+            alpha_line.contains('├'),
+            "first child should use ├; line = {alpha_line:?}"
+        );
+        assert!(
+            zeta_line.contains('└'),
+            "last child should use └; line = {zeta_line:?}"
+        );
+    }
+
+    /// mut-000196: `current_depth + 1` in recursive `render_tree` call
+    /// A three-level hierarchy must place the grandchild at a deeper indentation
+    /// than the child, proving the depth counter increments correctly.
+    ///
+    /// Node `depth` fields are set to match their nesting level so that
+    /// `calculate_total_depth` returns 3 and the wide terminal allows all levels.
+    #[test]
+    fn test_depth_increments_in_tree() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#kid".to_string(),
+            NodeData::new("Kid".to_string(), TaskStatus::Open, "test".to_string(), 1),
+        );
+        graph.add_node(
+            "test#grandkid".to_string(),
+            NodeData::new(
+                "Grandkid".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                2,
+            ),
+        );
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#kid".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#kid".to_string(),
+            "test#grandkid".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // total_depth = 2+1 = 3; wide terminal → max_depth = min(58, 3) = 3
+        // So all three levels render without truncation.
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(output.contains("Root"), "output = {output:?}");
+        assert!(output.contains("Kid"), "output = {output:?}");
+        assert!(output.contains("Grandkid"), "output = {output:?}");
+
+        // Measure leading-space indentation of each task line
+        let lines: Vec<&str> = output.lines().collect();
+        let root_line = lines
+            .iter()
+            .find(|l| l.contains("Root"))
+            .expect("Root line not found");
+        let kid_line = lines
+            .iter()
+            .find(|l| l.contains("Kid") && !l.contains("Grand"))
+            .expect("Kid line not found");
+        let grandkid_line = lines
+            .iter()
+            .find(|l| l.contains("Grandkid"))
+            .expect("Grandkid line not found");
+
+        let root_indent: usize = root_line.chars().take_while(|c| *c == ' ').count();
+        let kid_indent: usize = kid_line.chars().take_while(|c| *c == ' ').count();
+        let grandkid_indent: usize = grandkid_line.chars().take_while(|c| *c == ' ').count();
+
+        // Each level must be indented strictly more than the one above
+        assert!(
+            kid_indent > root_indent,
+            "kid indent ({kid_indent}) must exceed root indent ({root_indent}); output = {output:?}"
+        );
+        assert!(
+            grandkid_indent > kid_indent,
+            "grandkid indent ({grandkid_indent}) must exceed kid indent ({kid_indent}); output = {output:?}"
+        );
+    }
+
+    /// mut-000161/197: `truncated || tree_truncated` / `truncated || child_truncated` → `&&`
+    /// When a child subtree is truncated but earlier trees are not, the truncation notice
+    /// must still appear (OR behaviour, not AND).
+    ///
+    /// Node `depth` fields are set to match their graph nesting so `calculate_total_depth`
+    /// returns the correct value and `render_tree` actually hits the depth limit.
+    #[test]
+    fn test_truncation_notice_appears_when_any_child_truncated() {
+        let mut graph = DependencyGraph::new();
+        // Chain: root(depth=0) → d1(depth=1) → d2(depth=2) → d3(depth=3)
+        // total_depth = 3+1 = 4
+        graph.add_node(
+            "test#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#d1".to_string(),
+            NodeData::new(
+                "Depth1".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                1,
+            ),
+        );
+        graph.add_node(
+            "test#d2".to_string(),
+            NodeData::new(
+                "Depth2".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                2,
+            ),
+        );
+        graph.add_node(
+            "test#d3".to_string(),
+            NodeData::new(
+                "Depth3".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                3,
+            ),
+        );
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#d1".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#d1".to_string(),
+            "test#d2".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#d2".to_string(),
+            "test#d3".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // terminal=27 → available=3 → max_depth_avail=1, min(1,4)=1 < 4 → truncation notice
+        let config = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "expected truncation notice; output = {output:?}"
+        );
+    }
+
+    /// mut-000162/163/164/165: `truncated || max_depth < total_depth` conditions
+    /// When `max_depth` equals `total_depth` (no depth gap), and no tree is truncated,
+    /// the truncation notice must NOT appear.
+    #[test]
+    fn test_no_truncation_notice_when_depth_fits() {
+        let mut graph = DependencyGraph::new();
+        // root(depth=0) → child(depth=1) → total_depth = 2
+        graph.add_node(
+            "test#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#child".to_string(),
+            NodeData::new("Child".to_string(), TaskStatus::Open, "test".to_string(), 1),
+        );
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#child".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // Wide terminal: max_depth_avail=58, min(58,2)=2 = total_depth → no truncation
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            !output.contains("Note: Graph truncated"),
+            "unexpected truncation notice; output = {output:?}"
+        );
+    }
+
+    /// mut-000162/163: only `max_depth < total_depth` is true (not truncated)
+    /// Verifies OR semantics: the notice appears even without `truncated == true`,
+    /// purely because `max_depth` < `total_depth`.
+    #[test]
+    fn test_truncation_notice_from_depth_comparison_alone() {
+        let mut graph = DependencyGraph::new();
+        // Chain: root(depth=0) → d1(depth=1) → d2(depth=2)
+        // total_depth = 2+1 = 3
+        graph.add_node(
+            "test#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#d1".to_string(),
+            NodeData::new("D1".to_string(), TaskStatus::Open, "test".to_string(), 1),
+        );
+        graph.add_node(
+            "test#d2".to_string(),
+            NodeData::new("D2".to_string(), TaskStatus::Open, "test".to_string(), 2),
+        );
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#d1".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#d1".to_string(),
+            "test#d2".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // terminal=25 → available=1 → max_depth_avail=0 → min(0,3)=0 < 3 → notice must appear
+        let config = AsciiGraphConfig {
+            terminal_width: Some(25),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "expected truncation notice when max_depth < total_depth; output = {output:?}"
+        );
+    }
+
+    /// mut-000164: `<` → `<=` in `max_depth < total_depth`
+    /// When `max_depth` == `total_depth` (equal), no truncation notice should appear.
+    #[test]
+    fn test_no_truncation_when_max_depth_equals_total_depth() {
+        let mut graph = DependencyGraph::new();
+        // Single flat node: total_depth = 1, depth 0-indexed
+        graph.add_node(
+            "test#task1".to_string(),
+            create_test_node("Flat Task", TaskStatus::Open, "test"),
+        );
+
+        // Wide terminal: max_depth will be very large, min(max_depth, total_depth) = total_depth
+        // So max_depth returned == total_depth == 1; condition max_depth < total_depth is false
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            !output.contains("Note: Graph truncated"),
+            "unexpected truncation notice; output = {output:?}"
+        );
+    }
+
+    /// mut-000166: `reserved = 3 + 1 + min_title_width` literal mutation
+    /// Verifies that the reserved width calculation uses the correct value (24 by default)
+    /// by checking that truncation behaviour changes at the expected terminal width boundary.
+    ///
+    /// Node `depth` fields must match their nesting level so that `calculate_total_depth`
+    /// returns the correct value (not just 1 for every flat-depth node).
+    #[test]
+    fn test_max_displayable_depth_calculation() {
+        let mut graph = DependencyGraph::new();
+        // Two-level hierarchy: root at depth=0, child at depth=1 → total_depth = 1+1 = 2
+        graph.add_node(
+            "test#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#child".to_string(),
+            NodeData::new("Child".to_string(), TaskStatus::Open, "test".to_string(), 1),
+        );
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#child".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // reserved = 3+1+20 = 24, terminal = 24 → available = 0 → max_depth = 0
+        // total_depth = 2 → min(0,2)=0 < 2 → truncation notice expected
+        let config_narrow = AsciiGraphConfig {
+            terminal_width: Some(24),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer_narrow = AsciiGraphRenderer::new(&graph, None).with_config(config_narrow);
+        let output_narrow = renderer_narrow.render(&FilterOptions::default());
+        assert!(
+            output_narrow.contains("Note: Graph truncated"),
+            "should truncate at terminal_width=24; output = {output_narrow:?}"
+        );
+
+        // terminal = 27 → available = 3 → max_depth_avail = 3/3 = 1, min(1,2) = 1 < 2 → notice expected
+        let config_27 = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer_27 = AsciiGraphRenderer::new(&graph, None).with_config(config_27);
+        let output_27 = renderer_27.render(&FilterOptions::default());
+        assert!(
+            output_27.contains("Note: Graph truncated"),
+            "should truncate at terminal_width=27; output = {output_27:?}"
+        );
+
+        // terminal = 30 → available = 6 → max_depth_avail = 6/3 = 2, min(2,2) = 2 == total_depth → no notice
+        let config_wide = AsciiGraphConfig {
+            terminal_width: Some(30),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer_wide = AsciiGraphRenderer::new(&graph, None).with_config(config_wide);
+        let output_wide = renderer_wide.render(&FilterOptions::default());
+        assert!(
+            !output_wide.contains("Note: Graph truncated"),
+            "should NOT truncate at terminal_width=30; output = {output_wide:?}"
+        );
+    }
+
+    /// mut-000167: `max_depth + 1` → `max_depth + 0` in `calculate_total_depth`
+    /// A graph with a single node at depth 0 must report `total_depth=1` (0-indexed + 1).
+    /// If the `+1` were `+0`, `max_depth` would be 0 and `max_depth` < `total_depth` would be 0 < 0 = false,
+    /// but we'd get no entries rendered. The simplest proof is that flat graphs render without
+    /// truncation (`total_depth=1`, `max_depth` clamped to 1 on a wide terminal).
+    #[test]
+    fn test_calculate_total_depth_single_node() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#only".to_string(),
+            NodeData::new(
+                "Only Task".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                0,
+            ),
+        );
+
+        // Wide terminal: max_depth_available = very large; min(large, 1) = 1 = total_depth
+        // So returned max_depth == total_depth == 1 → no truncation notice
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(output.contains("Only Task"));
+        assert!(!output.contains("Note: Graph truncated"));
+    }
+
+    /// mut-000183: `roots.is_empty() && !file_nodes.is_empty()` → `||`
+    /// When all nodes in a file form a cycle the fallback must trigger only when
+    /// `file_nodes` is non-empty. The test verifies the correct (first-alphabetically)
+    /// node is chosen as the cycle entry point.
+    ///
+    /// Node `depth` values must allow `render_tree` to reach the cycle before hitting
+    /// the depth limit.  A wide terminal with depth=0 on all nodes gives `total_depth=1`
+    /// and `max_depth=1`, so depth-2 calls are truncated rather than marked as cycles.
+    /// Setting nodes to depth=0,1,2 gives `total_depth=3`, `max_depth=3` on a wide terminal,
+    /// letting the renderer traverse all the way to the back-edge.
+    #[test]
+    fn test_cycle_fallback_picks_first_alphabetically() {
+        let mut graph = DependencyGraph::new();
+        // Cycle: aaa→mmm→zzz→aaa
+        // Assign increasing depths so total_depth=3 and the chain is fully traversable.
+        graph.add_node(
+            "test#aaa".to_string(),
+            NodeData::new("Alpha".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#mmm".to_string(),
+            NodeData::new(
+                "Middle".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                1,
+            ),
+        );
+        graph.add_node(
+            "test#zzz".to_string(),
+            NodeData::new("Zeta".to_string(), TaskStatus::Open, "test".to_string(), 2),
+        );
+        graph.add_edge(
+            "test#aaa".to_string(),
+            "test#mmm".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "test#mmm".to_string(),
+            "test#zzz".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "test#zzz".to_string(),
+            "test#aaa".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        // Wide terminal: total_depth=3, max_depth=min(58,3)=3 — enough for the full cycle
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // "Alpha" corresponds to test#aaa (sorted[0]) and should be the root.
+        assert!(output.contains("Alpha"), "output = {output:?}");
+        // The cycle marker must appear as zzz tries to visit aaa again
+        assert!(
+            output.contains("cycle"),
+            "expected cycle marker; output = {output:?}"
+        );
+    }
+
+    /// mut-000185: `sorted[0]` → `sorted[1]`
+    /// Same cycle setup as above — the first-alphabetically node must be chosen,
+    /// not the second. With only two nodes in a pure cycle, sorted[0] != sorted[1].
+    #[test]
+    fn test_cycle_fallback_first_not_second() {
+        let mut graph = DependencyGraph::new();
+        // Use depth=0 for aaa (root), depth=1 for zzz so total_depth=2, max_depth=2 on wide terminal
+        graph.add_node(
+            "test#aaa".to_string(),
+            NodeData::new(
+                "AlphaNode".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                0,
+            ),
+        );
+        graph.add_node(
+            "test#zzz".to_string(),
+            NodeData::new(
+                "ZetaNode".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                1,
+            ),
+        );
+        // Pure cycle: aaa → zzz → aaa
+        graph.add_edge(
+            "test#aaa".to_string(),
+            "test#zzz".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "test#zzz".to_string(),
+            "test#aaa".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // "AlphaNode" is sorted first; it must be the root (appear as a non-cycle line)
+        // while "ZetaNode" is its child and will show as a cycle when aaa is revisited.
+        let alpha_pos = output.find("AlphaNode").expect("AlphaNode not found");
+        let zeta_pos = output.find("ZetaNode").expect("ZetaNode not found");
+
+        // AlphaNode is the root so it appears first in the output
+        assert!(
+            alpha_pos < zeta_pos,
+            "AlphaNode (sorted[0]) should appear before ZetaNode (sorted[1]); output = {output:?}"
+        );
+    }
+
+    /// mut-000186/188/189: cycle rendering booleans and branch characters
+    /// The cycle return value must be `(output, false)` — cycles themselves are not
+    /// "truncated". Also verifies that `is_last` controls the branch character.
+    #[test]
+    fn test_cycle_rendering_uses_correct_branch_and_returns_false_truncated() {
+        let mut graph = DependencyGraph::new();
+        // Two-node cycle: aaa → zzz → aaa
+        // aaa will be the root (sorted[0] via fallback), zzz is the sole child (is_last=true)
+        // so the cycle marker when zzz tries to visit aaa again must use └.
+        // depth=0 for aaa, depth=1 for zzz → total_depth=2, max_depth=2 on wide terminal
+        graph.add_node(
+            "test#aaa".to_string(),
+            NodeData::new("Alpha".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#zzz".to_string(),
+            NodeData::new("Zeta".to_string(), TaskStatus::Open, "test".to_string(), 1),
+        );
+        graph.add_edge(
+            "test#aaa".to_string(),
+            "test#zzz".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        graph.add_edge(
+            "test#zzz".to_string(),
+            "test#aaa".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // The cycle marker line should contain "(cycle)"
+        assert!(output.contains("(cycle)"), "output = {output:?}");
+
+        // Cycle return value is (output, false): so the overall graph must NOT show a
+        // truncation notice purely due to cycles
+        assert!(
+            !output.contains("Note: Graph truncated"),
+            "cycles should not trigger truncation notice; output = {output:?}"
+        );
+
+        // zzz has only one dependency (aaa) so the back-edge is is_last=true → └
+        let cycle_line = output.lines().find(|l| l.contains("(cycle)")).unwrap();
+        assert!(
+            cycle_line.contains('└'),
+            "cycle line should use └ (is_last=true); cycle_line = {cycle_line:?}"
+        );
+    }
+
+    /// mut-000188: `is_last` → `!(is_last)` in cycle branch-character selection
+    /// Verifies that when a visited node is rendered as a non-last child, `is_last=false`
+    /// produces `├` in the cycle marker line (not `└`).
+    ///
+    /// In `render_tree`, `is_last` is passed by the caller based on whether the current
+    /// node is the last item in the parent's dependency list.  When a cycle is detected,
+    /// the same `is_last` value controls the branch character.
+    ///
+    /// Setup: root → `child_z` (only child of root, so `child_z` is `is_last=true`).
+    /// `child_z` has two dependencies: [root (cycle), `zzz_extra`] sorted alphabetically as
+    /// "test#root" < "`test#zzz_extra`", so root is idx=0 (NOT last, `is_last=false`) → ├.
+    #[test]
+    fn test_cycle_branch_character_not_last() {
+        let mut graph = DependencyGraph::new();
+        // root(depth=0) is the tree root.
+        // child_z(depth=1) is root's only child.
+        // child_z has two deps: root (cycle, sorted first) and zzz_extra (no cycle, sorted last).
+        // When rendering root inside child_z's subtree, root is visited and is_last=false → ├.
+        graph.add_node(
+            "test#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#zchild".to_string(),
+            NodeData::new(
+                "ZChild".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                1,
+            ),
+        );
+        graph.add_node(
+            "test#zzz_extra".to_string(),
+            NodeData::new(
+                "ZzzExtra".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                2,
+            ),
+        );
+
+        // root → zchild (root's only dep; zchild is last child of root, is_last=true)
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#zchild".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        // zchild → root (back-edge; root sorts before zzz_extra → idx=0, is_last=false)
+        graph.add_edge(
+            "test#zchild".to_string(),
+            "test#root".to_string(),
+            EdgeData::new(DependencyKind::ExplicitId, None),
+        );
+        // zchild → zzz_extra (normal edge; zzz_extra is last dep of zchild)
+        graph.add_edge(
+            "test#zchild".to_string(),
+            "test#zzz_extra".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // total_depth = max(0,1,2)+1 = 3; wide terminal → max_depth=3 → no depth truncation
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // The cycle marker for root (inside zchild's subtree) must use ├ (not last child)
+        let cycle_line = output
+            .lines()
+            .find(|l| l.contains("(cycle)"))
+            .expect("expected a cycle line; output = {output:?}");
+        assert!(
+            cycle_line.contains('├'),
+            "cycle for non-last dependency should use ├; line = {cycle_line:?}; output = {output:?}"
+        );
+    }
+
+    /// mut-000199: `is_index` → `!is_index` in `render_node`
+    /// A non-index task with a raw markdown link must NOT have the link extracted —
+    /// the full `[text](url)` syntax should remain in the output.
+    #[test]
+    fn test_non_index_task_preserves_markdown_link() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "tasks#task1".to_string(),
+            create_test_node_with_path(
+                "[Some Link](some/path.md)",
+                TaskStatus::Open,
+                "tasks",
+                "tasks.md",
+            ),
+        );
+
+        let renderer = AsciiGraphRenderer::new(&graph, None);
+        let output = renderer.render(&FilterOptions::default());
+
+        // Non-index files must NOT have links extracted — full markdown link preserved
+        assert!(
+            output.contains("[Some Link](some/path.md)"),
+            "non-index task should preserve raw markdown link; output = {output:?}"
+        );
+    }
+
+    /// mut-000199: second branch — index task DOES extract the link text
+    #[test]
+    fn test_index_task_extracts_link_text() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "proj#task1".to_string(),
+            create_test_node_with_path(
+                "[Index Link](index/path.md)",
+                TaskStatus::Open,
+                "proj",
+                "lash.index.md",
+            ),
+        );
+
+        let renderer = AsciiGraphRenderer::new(&graph, None);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            output.contains("Index Link"),
+            "index task should extract link text; output = {output:?}"
+        );
+        assert!(
+            !output.contains("index/path.md"),
+            "index task should strip the URL; output = {output:?}"
+        );
+    }
+
+    /// mut-000202/205: boundary condition on `title.len() > max_title_len`
+    /// At exactly `max_title_len` characters the title must NOT be truncated.
+    /// At `max_title_len` + 1 characters it MUST be truncated.
+    #[test]
+    fn test_truncate_title_boundary() {
+        let mut graph = DependencyGraph::new();
+
+        // terminal_width=44: max_title_len = 44 - 20 = 24
+        // A title of exactly 24 chars must NOT be truncated (len > 24 is false)
+        let title_24 = "A".repeat(24);
+        graph.add_node(
+            "test#t24".to_string(),
+            create_test_node(&title_24, TaskStatus::Open, "test"),
+        );
+
+        // A title of 25 chars MUST be truncated (25 > 24 is true, and 24 > 3 is true)
+        let title_25 = "B".repeat(25);
+        graph.add_node(
+            "test#t25".to_string(),
+            create_test_node(&title_25, TaskStatus::Open, "test"),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(44),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // The 24-char title should appear verbatim
+        assert!(
+            output.contains(&title_24),
+            "24-char title should not be truncated; output = {output:?}"
+        );
+        // The 25-char title should be replaced with a truncated form ending in "..."
+        assert!(
+            !output.contains(&title_25),
+            "25-char title should be truncated; output = {output:?}"
+        );
+        assert!(
+            output.contains("..."),
+            "truncated title should end with ...; output = {output:?}"
+        );
+    }
 }

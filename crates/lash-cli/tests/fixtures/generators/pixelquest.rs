@@ -1,4 +1,4 @@
-//! PixelQuest 2D Platformer - Realistic Game Development Fixture
+//! `PixelQuest` 2D Platformer - Realistic Game Development Fixture
 //!
 //! This module generates a comprehensive demo project for a fictional 2D platformer
 //! game to showcase all of Lash's features in an engaging, realistic context.
@@ -13,7 +13,7 @@
 use super::ProjectGenerator;
 use std::path::Path;
 
-/// Generate the PixelQuest 2D platformer demo project
+/// Generate the `PixelQuest` 2D platformer demo project
 ///
 /// Creates ~45 task files demonstrating:
 /// - Game features (player movement, enemy AI, level generation, power-ups, boss fights)

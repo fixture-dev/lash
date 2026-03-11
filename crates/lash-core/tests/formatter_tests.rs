@@ -649,7 +649,7 @@ fn test_format_with_custom_annotations() {
 }
 
 /// Regression test for GitHub Issue #6:
-/// https://github.com/fixture-dev/lash/issues/6
+/// <https://github.com/fixture-dev/lash/issues/6>
 ///
 /// The formatter was stripping task-level annotations (@id, @owner, etc.)
 /// and contextual notes (plain bullet points) from task files.

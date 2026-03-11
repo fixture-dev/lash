@@ -1,6 +1,6 @@
-//! Integration test for generating the PixelQuest playground fixture
+//! Integration test for generating the `PixelQuest` playground fixture
 //!
-//! Run with: cargo test --test test_pixelquest_generator -- --ignored --nocapture
+//! Run with: cargo test --test `test_pixelquest_generator` -- --ignored --nocapture
 
 #![allow(clippy::uninlined_format_args)]
 
