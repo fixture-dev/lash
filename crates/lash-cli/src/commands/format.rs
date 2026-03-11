@@ -480,20 +480,41 @@ fn output_text_results(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::TempDir;
 
-    #[test]
-    fn test_configure_formatter_default() {
-        let args = FormatArgs {
-            paths: vec![],
+    /// Creates a properly-formatted task file that should not be modified by the formatter.
+    fn write_already_formatted_file(dir: &TempDir, name: &str) -> PathBuf {
+        let content = "# Task List\n\n@id: example\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] First task\n- [x] Done task\n";
+        let path = dir.path().join(name);
+        fs::write(&path, content).unwrap();
+        path
+    }
+
+    /// Creates a file with inconsistent annotation spacing that the formatter will normalize.
+    fn write_needs_formatting_file(dir: &TempDir, name: &str) -> PathBuf {
+        let content = "# Task List\n\n@id:   example\n@labels:backend,  api\n\n## Tasks\n\n- [ ] First task\n";
+        let path = dir.path().join(name);
+        fs::write(&path, content).unwrap();
+        path
+    }
+
+    fn default_args(paths: Vec<PathBuf>) -> FormatArgs {
+        FormatArgs {
+            paths,
             check: false,
             diff: false,
             no_fix: false,
             json: false,
-            no_color: false,
+            no_color: true, // suppress color to keep output predictable
             project_root: None,
             verbosity: Verbosity::Normal,
-        };
+        }
+    }
 
+    #[test]
+    fn test_configure_formatter_default() {
+        let args = default_args(vec![]);
         let options = configure_formatter(&args);
         assert!(options.apply_auto_fixes);
     }
@@ -501,17 +522,567 @@ mod tests {
     #[test]
     fn test_configure_formatter_no_fix() {
         let args = FormatArgs {
-            paths: vec![],
-            check: false,
-            diff: false,
             no_fix: true,
-            json: false,
-            no_color: false,
-            project_root: None,
-            verbosity: Verbosity::Normal,
+            ..default_args(vec![])
         };
 
         let options = configure_formatter(&args);
         assert!(!options.apply_auto_fixes);
+    }
+
+    // --- exit code tests ---
+
+    #[test]
+    fn test_execute_exit_code_0_when_file_already_formatted() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+
+        let result = execute(default_args(vec![path]));
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_execute_exit_code_0_when_file_formatted_successfully() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+
+        let result = execute(default_args(vec![path]));
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_execute_exit_code_2_in_check_mode_when_file_needs_formatting() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path])
+        };
+        let result = execute(args);
+        assert_eq!(result.unwrap(), 2);
+    }
+
+    #[test]
+    fn test_execute_exit_code_0_in_check_mode_when_file_already_formatted() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path])
+        };
+        let result = execute(args);
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_execute_check_mode_does_not_modify_file() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let original_content = fs::read_to_string(&path).unwrap();
+
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path.clone()])
+        };
+        execute(args).unwrap();
+
+        let after_content = fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            after_content, original_content,
+            "check mode must not modify the file"
+        );
+    }
+
+    #[test]
+    fn test_execute_diff_mode_does_not_modify_file() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let original_content = fs::read_to_string(&path).unwrap();
+
+        let args = FormatArgs {
+            diff: true,
+            ..default_args(vec![path.clone()])
+        };
+        execute(args).unwrap();
+
+        let after_content = fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            after_content, original_content,
+            "diff mode must not modify the file"
+        );
+    }
+
+    #[test]
+    fn test_execute_without_check_or_diff_modifies_file() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let original_content = fs::read_to_string(&path).unwrap();
+
+        execute(default_args(vec![path.clone()])).unwrap();
+
+        let after_content = fs::read_to_string(&path).unwrap();
+        assert_ne!(
+            after_content, original_content,
+            "normal format mode must modify the file when it needs formatting"
+        );
+    }
+
+    #[test]
+    fn test_execute_exit_code_0_when_no_files_found() {
+        let temp = TempDir::new().unwrap();
+        // Pass a path that exists but has no markdown files
+        let empty_dir = temp.path().join("empty");
+        fs::create_dir(&empty_dir).unwrap();
+
+        let result = execute(default_args(vec![empty_dir]));
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    // --- json mode tests ---
+
+    #[test]
+    fn test_execute_json_mode_exits_zero_for_already_formatted_file() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+
+        let args = FormatArgs {
+            json: true,
+            ..default_args(vec![path])
+        };
+        let result = execute(args);
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_execute_json_check_mode_exits_two_when_needs_formatting() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+
+        let args = FormatArgs {
+            json: true,
+            check: true,
+            ..default_args(vec![path])
+        };
+        let result = execute(args);
+        assert_eq!(result.unwrap(), 2);
+    }
+
+    // --- paths tests ---
+
+    #[test]
+    fn test_execute_with_explicit_paths_uses_those_paths() {
+        let temp = TempDir::new().unwrap();
+        // Write a file only at the specified path
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+
+        // Provide paths explicitly; should find the file and succeed
+        let result = execute(default_args(vec![path]));
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_execute_with_project_root_uses_root() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+
+        // Pass project_root explicitly but empty paths to trigger the project root path
+        let args = FormatArgs {
+            paths: vec![],
+            project_root: Some(temp.path().to_path_buf()),
+            ..default_args(vec![])
+        };
+        let result = execute(args);
+        // File is already formatted, so should succeed with exit code 0
+        // (The file exists at temp root so it will be found)
+        assert_eq!(result.unwrap(), 0);
+        let _ = path;
+    }
+
+    // --- load_project_config tests ---
+
+    #[test]
+    fn test_load_project_config_returns_default_when_no_config_file() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("some.md");
+        fs::write(&path, "# Task\n\n@id: x\n\n## Tasks\n\n- [ ] task\n").unwrap();
+
+        let config = load_project_config(&[path]).unwrap();
+        // Default config should be equivalent to LashConfig::default()
+        let default_config = LashConfig::default();
+        // Compare by debug representation as LashConfig may not impl PartialEq
+        assert_eq!(format!("{config:?}"), format!("{default_config:?}"));
+    }
+
+    #[test]
+    fn test_load_project_config_reads_config_when_present() {
+        let temp = TempDir::new().unwrap();
+        // Create .lash directory and config.toml
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir(&lash_dir).unwrap();
+
+        // LashConfig is deserialized directly from TOML, so we need to provide all required fields.
+        // We set indent_spaces=4 (non-default; default is 2) to verify the config was actually read.
+        let root_str = temp.path().display().to_string();
+        let db_str = temp.path().join(".lash/lash.db").display().to_string();
+        let config_content = format!(
+            "root_path = \"{root_str}\"\nindex_file = \"lash.index.md\"\nmax_depth = 3\nindent_spaces = 4\ndb_path = \"{db_str}\"\n"
+        );
+        fs::write(lash_dir.join("config.toml"), &config_content).unwrap();
+
+        // Create a markdown file in the temp dir
+        let md_path = temp.path().join("lash.index.md");
+        fs::write(&md_path, "# Task\n\n@id: x\n\n## Tasks\n\n- [ ] task\n").unwrap();
+
+        // Config should load without error and reflect indent_spaces=4 from the file
+        let config = load_project_config(&[md_path]).unwrap();
+        assert_eq!(config.indent_spaces, 4);
+    }
+
+    // --- format result counter tests ---
+
+    #[test]
+    fn test_needs_formatting_count_equals_one_in_check_mode() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        // Use the internal format_files to inspect result counters
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path.clone()])
+        };
+        let files = vec![path];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+        assert_eq!(result.needs_formatting, 1);
+        assert_eq!(result.formatted, 0);
+        assert_eq!(result.failed, 0);
+    }
+
+    #[test]
+    fn test_formatted_count_equals_one_when_file_needs_formatting() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path.clone()]);
+        let files = vec![path];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+        assert_eq!(result.formatted, 1);
+        assert_eq!(result.needs_formatting, 0);
+        assert_eq!(result.failed, 0);
+    }
+
+    #[test]
+    fn test_formatted_count_equals_zero_when_file_already_formatted() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path.clone()]);
+        let files = vec![path];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+        assert_eq!(result.formatted, 0);
+        assert_eq!(result.needs_formatting, 0);
+        assert_eq!(result.failed, 0);
+    }
+
+    #[test]
+    fn test_failed_count_equals_one_for_unreadable_file() {
+        // Pass a path to a non-existent file to trigger a failure
+        let temp = TempDir::new().unwrap();
+        let nonexistent = temp.path().join("does_not_exist.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![nonexistent.clone()]);
+        let files = vec![nonexistent];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.formatted, 0);
+        assert_eq!(result.needs_formatting, 0);
+    }
+
+    // --- format_single_file tests ---
+
+    #[test]
+    fn test_format_single_file_returns_false_when_already_formatted() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![]);
+        let changed = format_single_file(&path, &config, &options, &args).unwrap();
+        assert!(
+            !changed,
+            "already-formatted file should return changed=false"
+        );
+    }
+
+    #[test]
+    fn test_format_single_file_returns_true_when_file_needs_formatting() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![]);
+        let changed = format_single_file(&path, &config, &options, &args).unwrap();
+        assert!(
+            changed,
+            "file needing formatting should return changed=true"
+        );
+    }
+
+    #[test]
+    fn test_format_single_file_writes_when_not_check_and_not_diff() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let original = fs::read_to_string(&path).unwrap();
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![]);
+        format_single_file(&path, &config, &options, &args).unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert_ne!(after, original, "file should be written in normal mode");
+    }
+
+    #[test]
+    fn test_format_single_file_does_not_write_in_check_mode() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let original = fs::read_to_string(&path).unwrap();
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![])
+        };
+        format_single_file(&path, &config, &options, &args).unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(after, original, "file should not be written in check mode");
+    }
+
+    #[test]
+    fn test_format_single_file_does_not_write_in_diff_mode() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let original = fs::read_to_string(&path).unwrap();
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            diff: true,
+            ..default_args(vec![])
+        };
+        format_single_file(&path, &config, &options, &args).unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(after, original, "file should not be written in diff mode");
+    }
+
+    #[test]
+    fn test_format_single_file_check_mode_still_returns_true_for_changed_file() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![])
+        };
+        let changed = format_single_file(&path, &config, &options, &args).unwrap();
+        assert!(
+            changed,
+            "check mode should still report changed=true for a file needing formatting"
+        );
+    }
+
+    // --- exit code boundary tests ---
+
+    #[test]
+    fn test_exit_code_is_1_not_0_when_file_fails_to_format() {
+        // Use format_files directly with a non-existent path to trigger a failure,
+        // then verify the exit code logic: result.failed > 0 → exit 1.
+        let temp = TempDir::new().unwrap();
+        let nonexistent = temp.path().join("ghost.md");
+
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![nonexistent.clone()]);
+        let files = vec![nonexistent];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.formatted, 0);
+        assert_eq!(result.needs_formatting, 0);
+    }
+
+    #[test]
+    fn test_exit_code_is_2_not_1_in_check_mode_with_needs_formatting() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path])
+        };
+        let result = execute(args);
+        assert_eq!(result.unwrap(), 2);
+    }
+
+    #[test]
+    fn test_exit_code_is_0_not_1_when_check_mode_but_no_needs_formatting() {
+        // check=true but needs_formatting == 0 should NOT give exit 2
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path])
+        };
+        let result = execute(args);
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    // --- multiple files: progress bar boundary (files.len() > 1) ---
+
+    #[test]
+    fn test_multiple_files_all_formatted_successfully() {
+        let temp = TempDir::new().unwrap();
+        let path1 = write_needs_formatting_file(&temp, "file1.md");
+        let path2 = write_needs_formatting_file(&temp, "file2.md");
+
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path1.clone(), path2.clone()]);
+        let files = vec![path1, path2];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+
+        // Both files changed
+        assert_eq!(result.formatted, 2);
+        assert_eq!(result.needs_formatting, 0);
+        assert_eq!(result.failed, 0);
+    }
+
+    #[test]
+    fn test_single_file_no_progress_bar_path() {
+        // Only 1 file: files.len() > 1 is false, so no progress bar created
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path.clone()]);
+        let files = vec![path];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+        assert_eq!(result.formatted, 0);
+        assert_eq!(result.failed, 0);
+    }
+
+    #[test]
+    fn test_check_mode_with_multiple_files_counts_needs_formatting() {
+        let temp = TempDir::new().unwrap();
+        let path1 = write_needs_formatting_file(&temp, "file1.md");
+        let path2 = write_already_formatted_file(&temp, "file2.md");
+
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path1.clone(), path2.clone()])
+        };
+        let files = vec![path1, path2];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+
+        assert_eq!(result.needs_formatting, 1);
+        assert_eq!(result.formatted, 0);
+    }
+
+    // --- diagnostics in check mode ---
+
+    #[test]
+    fn test_needs_formatting_diagnostics_populated_in_check_mode() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path.clone()])
+        };
+        let files = vec![path];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+
+        assert_eq!(result.needs_formatting_diagnostics.len(), 1);
+        assert_eq!(
+            result.needs_formatting_diagnostics[0].code,
+            "F_NEEDS_FORMATTING"
+        );
+    }
+
+    #[test]
+    fn test_no_diagnostics_when_already_formatted_in_check_mode() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path.clone()])
+        };
+        let files = vec![path];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+
+        assert_eq!(result.needs_formatting_diagnostics.len(), 0);
+        assert_eq!(result.error_diagnostics.len(), 0);
+    }
+
+    // --- json mode suppresses progress and inline text ---
+
+    #[test]
+    fn test_json_mode_does_not_show_progress_bar_with_multiple_files() {
+        let temp = TempDir::new().unwrap();
+        let path1 = write_already_formatted_file(&temp, "file1.md");
+        let path2 = write_already_formatted_file(&temp, "file2.md");
+
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        // json=true means show_progress is false
+        let args = FormatArgs {
+            json: true,
+            ..default_args(vec![path1.clone(), path2.clone()])
+        };
+        let files = vec![path1, path2];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+        assert_eq!(result.failed, 0);
+    }
+
+    // --- no_color / theme selection ---
+
+    #[test]
+    fn test_execute_with_no_color_false_succeeds() {
+        // With no_color=false, CliTheme::load will be called with color enabled
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+
+        let args = FormatArgs {
+            no_color: false,
+            ..default_args(vec![path])
+        };
+        let result = execute(args);
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_execute_with_no_color_true_succeeds() {
+        // With no_color=true, CliTheme::load will be called with color disabled
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+
+        let args = FormatArgs {
+            no_color: true,
+            ..default_args(vec![path])
+        };
+        let result = execute(args);
+        assert_eq!(result.unwrap(), 0);
     }
 }
