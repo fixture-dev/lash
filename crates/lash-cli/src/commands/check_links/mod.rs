@@ -463,4 +463,61 @@ mod tests {
         assert_ne!(report.total_broken, 0);
         assert_eq!(report.total_broken, 1);
     }
+
+    // Kill mut-000241, mut-000242, mut-000243, mut-000245:
+    // execute() with a real empty DB should return Ok(0) because total_broken == 0.
+    // If the literal 0 is changed to 1, an empty DB would NOT take the early-return path
+    // and the function would return Ok(1) instead of Ok(0).
+    #[test]
+    fn test_execute_returns_0_when_no_broken_links_in_empty_db() {
+        use lash_db::init_database;
+        use std::fs;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        let args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp.path().to_path_buf()),
+            fix: false,
+            yes: false,
+            dry_run: false,
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        let result = execute(&args).unwrap();
+        // Empty DB has 0 broken links, so execute returns exactly 0 (not 1)
+        assert_eq!(result, 0);
+        assert_ne!(result, 1);
+    }
+
+    // Kill mut-000240: !db_path.exists() when db IS present (complementary to the no-db test)
+    // The mutation negates the check, so having a real DB tests the "db exists" branch.
+    #[test]
+    fn test_execute_with_real_db_does_not_return_3() {
+        use lash_db::init_database;
+        use std::fs;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        let args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp.path().to_path_buf()),
+            fix: false,
+            yes: false,
+            dry_run: false,
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        let result = execute(&args).unwrap();
+        // With a real DB, should NOT return 3 (DB error code)
+        assert_ne!(result, 3);
+    }
 }
