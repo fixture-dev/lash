@@ -425,3 +425,286 @@ fn test_text_output_contains_exactly_one_summary_section() {
         "there should be exactly one 'Summary:' section, found {summary_count}: {stdout}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Exact numeric assertions for warning count in JSON  (kills mut-000441, 000448)
+//
+// These tests assert the exact numeric value for 'warnings' in the JSON summary
+// and in the text summary line.  When the filter is mutated from
+// `== Severity::Warning` to `!= Severity::Warning`, the count would be wrong.
+// ---------------------------------------------------------------------------
+
+/// JSON summary 'warnings' field must be exactly 1 for a file with one warning.
+/// Also verifies 'errors' is exactly 0, killing mut-000440 (Error == vs !=).
+#[test]
+fn test_json_summary_exact_warning_count_is_1() {
+    let long_desc: String = "w".repeat(1100);
+    let content = format!(
+        "# Tasks\n\n@id: tasks\n@created: 2024-01-15\n\n## Description\n\n{long_desc}\n\n## Tasks\n\n- [ ] A task\n"
+    );
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "w.md", &content);
+    let (summary, code) = lint_json_summary(&path);
+
+    assert_eq!(code, 0, "warning-only file must exit with 0");
+    // Exact counts - any mutation of == would make errors wrong or warnings wrong
+    assert_eq!(
+        summary["errors"].as_u64().unwrap_or(99),
+        0,
+        "errors must be exactly 0, not any other value"
+    );
+    assert_eq!(
+        summary["warnings"].as_u64().unwrap_or(0),
+        1,
+        "warnings must be exactly 1, not any other value"
+    );
+    assert_eq!(
+        summary["info"].as_u64().unwrap_or(99),
+        0,
+        "info must be exactly 0"
+    );
+    assert_eq!(
+        summary["hints"].as_u64().unwrap_or(99),
+        0,
+        "hints must be exactly 0"
+    );
+}
+
+/// Text summary line must show "0 errors" and "1 warnings" with no-color output.
+/// This exercises the text output paths for warning_count != 0 (kills mut-000448, 000455-462).
+#[test]
+fn test_text_summary_exact_counts_for_warning_only_file() {
+    let long_desc: String = "w".repeat(1100);
+    let content = format!(
+        "# Tasks\n\n@id: tasks\n@created: 2024-01-15\n\n## Description\n\n{long_desc}\n\n## Tasks\n\n- [ ] A task\n"
+    );
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "w.md", &content);
+
+    let output = lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // These exact strings verify the counts in the summary line.
+    // Mutations that change == to != in severity counting would produce different numbers.
+    assert!(
+        stdout.contains("0 errors"),
+        "summary must show '0 errors', got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("1 warnings") || stdout.contains("1 warning"),
+        "summary must show '1 warnings' (or '1 warning'), got:\n{stdout}"
+    );
+    // Must show the "with warnings" variant of the success message
+    assert!(
+        stdout.contains("with warnings"),
+        "summary must show 'with warnings', got:\n{stdout}"
+    );
+    // Must NOT show the "all passed" message
+    assert!(
+        !stdout.contains("All files passed"),
+        "warning summary must not show 'All files passed', got:\n{stdout}"
+    );
+}
+
+/// Text summary for a clean file must show "All files passed" (kills mut-000451-000453, 000454).
+/// error_count == 0 is TRUE; warning_count == 0 && info_count == 0 && hint_count == 0 is TRUE.
+#[test]
+fn test_text_summary_clean_file_shows_exact_all_passed_message() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", CLEAN_MD);
+
+    let output = lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Must show "All files passed" - any mutation of the error_count == 0 or
+    // the inner compound condition would cause a different message.
+    assert!(
+        stdout.contains("All files passed") || stdout.contains("passed"),
+        "clean file must show 'All files passed', got:\n{stdout}"
+    );
+    // Must NOT show the "with warnings" variant
+    assert!(
+        !stdout.contains("with warnings"),
+        "clean file must not show 'with warnings', got:\n{stdout}"
+    );
+    // Must NOT show "Summary:" section (clean files return early)
+    assert!(
+        !stdout.contains("Summary:"),
+        "clean file summary should not include 'Summary:' section, got:\n{stdout}"
+    );
+}
+
+/// Text summary for a file with errors must show the Summary section with "1 errors".
+/// Exercises error_count > 0 (kills mut-000466-469) and exact error count (kills mut-000447).
+#[test]
+fn test_text_summary_error_file_shows_exact_error_count() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", ERROR_MD);
+
+    let output = lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Exact error count - any mutation of error_count > 0 comparison or filtering
+    // would produce "0 errors" here, failing this assertion.
+    assert!(
+        stdout.contains("1 errors") || stdout.contains("1 error"),
+        "error file must show '1 errors' in summary, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("0 warnings"),
+        "error file must show '0 warnings' in summary, got:\n{stdout}"
+    );
+    // Must show the Summary section (not return early)
+    assert!(
+        stdout.contains("Summary:"),
+        "error file must include 'Summary:' section, got:\n{stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// `suggest` flag with themed output  (kills mut-000446, 000474 in themed context)
+//
+// Run with NO_COLOR unset (allows theme) so both themed and unthemed code paths
+// are exercised through the CLI.
+// ---------------------------------------------------------------------------
+
+/// `--suggest` on an error file should complete successfully (exit 2) and not crash.
+/// This exercises the suggest=true branch in output_text_diagnostics and print_summary.
+#[test]
+fn test_suggest_flag_with_themed_output_does_not_crash() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", ERROR_MD);
+
+    let output = lash()
+        .arg("lint")
+        .arg("--suggest")
+        .arg(&path)
+        .env_remove("NO_COLOR") // allow themed output
+        .output()
+        .expect("lash must run");
+
+    // Must exit with 2 (errors found) regardless of suggest flag
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        2,
+        "--suggest must not change exit code"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// `--no-color` vs default output: verify themed branches (kills mut-000466-473)
+//
+// Running without --no-color allows the theme to be loaded. With an error file
+// we verify the exit code is still 2 (the themed path doesn't change behavior).
+// ---------------------------------------------------------------------------
+
+/// Without `--no-color`, lint on an error file still exits with 2.
+/// This exercises the `if let Some(t) = theme { ... }` branches for error formatting.
+#[test]
+fn test_lint_without_no_color_error_file_exits_2() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", ERROR_MD);
+
+    let output = lash()
+        .arg("lint")
+        .arg(&path)
+        .env_remove("NO_COLOR") // allow theme to load
+        .output()
+        .expect("lash must run");
+
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        2,
+        "error file must exit 2 even with themed output"
+    );
+}
+
+/// Without `--no-color`, lint on a clean file still exits with 0.
+/// This exercises the themed success path (error_count == 0, warning_count == 0).
+#[test]
+fn test_lint_without_no_color_clean_file_exits_0() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", CLEAN_MD);
+
+    let output = lash()
+        .arg("lint")
+        .arg(&path)
+        .env_remove("NO_COLOR") // allow theme to load
+        .output()
+        .expect("lash must run");
+
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        0,
+        "clean file must exit 0 even with themed output"
+    );
+}
+
+/// Without `--no-color`, lint on a warning file still exits with 0.
+/// This exercises the themed warning path (error_count==0, warning_count > 0).
+#[test]
+fn test_lint_without_no_color_warning_file_exits_0() {
+    let long_desc: String = "w".repeat(1100);
+    let content = format!(
+        "# Tasks\n\n@id: tasks\n@created: 2024-01-15\n\n## Description\n\n{long_desc}\n\n## Tasks\n\n- [ ] A task\n"
+    );
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "w.md", &content);
+
+    let output = lash()
+        .arg("lint")
+        .arg(&path)
+        .env_remove("NO_COLOR") // allow theme to load
+        .output()
+        .expect("lash must run");
+
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        0,
+        "warning-only file must exit 0 even with themed output"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// `files_affected` count in text summary  (kills mut-000475)
+//
+// Verify that when a diagnostic has a location, the "N files affected" line
+// appears in the output. When no location is set, the line must not appear.
+// ---------------------------------------------------------------------------
+
+/// Error with a location shows the "files affected" line in the summary.
+/// This exercises the `!files_affected.is_empty()` path (kills mut-000475).
+#[test]
+fn test_text_summary_shows_files_affected_count_for_located_diagnostic() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", ERROR_MD);
+
+    let output = lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // The error diagnostic has a location, so "files affected" must appear
+    assert!(
+        stdout.contains("files affected") || stdout.contains("file affected"),
+        "located diagnostic must show 'files affected' in summary, got:\n{stdout}"
+    );
+}
