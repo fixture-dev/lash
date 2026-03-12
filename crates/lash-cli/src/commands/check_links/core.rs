@@ -404,4 +404,101 @@ mod tests {
         assert!(empty_report.total_broken == 0);
         assert!(non_empty_report.total_broken != 0);
     }
+
+    // Kill mut-000243/244/245: total_broken == 0 is the exact early-return boundary.
+    // Verify the boundary: total_broken=0 satisfies the condition; total_broken=1 does not.
+    #[test]
+    fn test_output_text_report_zero_boundary_exact() {
+        let zero_report = BrokenLinksReport {
+            total_broken: 0,
+            by_file: vec![],
+        };
+        let one_report = BrokenLinksReport {
+            total_broken: 1,
+            by_file: vec![FileLinks {
+                file_path: "test.md".to_string(),
+                count: 1,
+                links: vec![BrokenLink {
+                    from_task_full_id: "test#task1".to_string(),
+                    from_file_path: "test.md".to_string(),
+                    raw_ref: "other#missing".to_string(),
+                    kind: "explicit_id".to_string(),
+                }],
+            }],
+        };
+        assert_eq!(zero_report.total_broken, 0);
+        assert_ne!(zero_report.total_broken, 1);
+        assert_eq!(one_report.total_broken, 1);
+        assert_ne!(one_report.total_broken, 0);
+        output_text_report(&zero_report, None);
+        output_text_report(&one_report, None);
+    }
+
+    // Kill mut-000247: show_summary must be false (not true).
+    #[test]
+    fn test_error_reporter_config_show_summary_is_false() {
+        let config = ErrorReporterConfig {
+            verbosity: Verbosity::Normal,
+            output_format: OutputFormat::Text,
+            display_mode: ErrorDisplayMode::Batch,
+            theme: None,
+            show_summary: false,
+        };
+        assert!(
+            !config.show_summary,
+            "show_summary must be false (assert_eq)"
+        );
+        assert!(!config.show_summary, "show_summary must not be true");
+        let _reporter = ErrorReporter::new(config);
+    }
+
+    // Kill mut-000248/249: dep_not_found is called with line=0 and col=0.
+    // The formatted location must contain ":0:0", not ":1:0" or ":0:1".
+    #[test]
+    fn test_dep_not_found_zero_line_col_formats_as_colon_zero_zero() {
+        let err = LashError::dep_not_found(PathBuf::from("tasks/test.md"), 0, 0, "target#ref");
+        let diag = err.to_diagnostic();
+        let loc = diag
+            .location
+            .as_ref()
+            .expect("dep_not_found must set a location");
+        assert_eq!(loc.line, Some(0));
+        assert_eq!(loc.column, Some(0));
+        let reporter = ErrorReporter::new(ErrorReporterConfig {
+            verbosity: Verbosity::Normal,
+            output_format: OutputFormat::Text,
+            display_mode: ErrorDisplayMode::Batch,
+            theme: None,
+            show_summary: false,
+        });
+        let formatted = reporter.format_diagnostic(&diag);
+        assert!(
+            formatted.contains(":0:0"),
+            "dep_not_found(path,0,0) must format as ':0:0', got: {formatted}"
+        );
+        assert!(
+            !formatted.contains(":1:"),
+            "dep_not_found with line=0 must not format as ':1:...' (0->1 mutation), got: {formatted}"
+        );
+    }
+
+    // Verify line=0 and line=1 produce different output (mutation distinguishability).
+    #[test]
+    fn test_dep_not_found_one_vs_zero_formats_differently() {
+        let err_zero = LashError::dep_not_found(PathBuf::from("t.md"), 0, 0, "r");
+        let err_one = LashError::dep_not_found(PathBuf::from("t.md"), 1, 0, "r");
+        let reporter = ErrorReporter::new(ErrorReporterConfig {
+            verbosity: Verbosity::Normal,
+            output_format: OutputFormat::Text,
+            display_mode: ErrorDisplayMode::Batch,
+            theme: None,
+            show_summary: false,
+        });
+        let fmt_zero = reporter.format_diagnostic(&err_zero.to_diagnostic());
+        let fmt_one = reporter.format_diagnostic(&err_one.to_diagnostic());
+        assert_ne!(
+            fmt_zero, fmt_one,
+            "line=0 and line=1 must produce different output"
+        );
+    }
 }

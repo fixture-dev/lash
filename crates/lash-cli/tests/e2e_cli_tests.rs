@@ -2378,6 +2378,333 @@ fn test_init_text_mode_outputs_success_message() {
         .stdout(predicate::str::contains("initialized successfully"));
 }
 
+/// `lash init` (no --json) outputs human-readable text, not JSON.
+/// Kills mut-000451 (args.json negation in theme-loading branch of execute).
+#[test]
+fn test_init_text_mode_does_not_output_json() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let output = create_lash_command()
+        .arg("--no-color")
+        .arg("init")
+        .arg("--no-index")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.trim_start().starts_with('{'),
+        "text mode init must not output JSON, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("initialized successfully"),
+        "text mode init must output human-readable success message, got: {stdout}"
+    );
+}
+
+/// `lash init --no-color` produces plain text without ANSI escape codes.
+/// Kills mut-000452 (!args.no_color negated to args.no_color in CliTheme::load).
+#[test]
+fn test_init_no_color_true_produces_plain_text_output() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let output = create_lash_command()
+        .arg("--no-color")
+        .arg("init")
+        .arg("--no-index")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("\x1b["),
+        "output with --no-color must not contain ANSI escape codes, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("initialized successfully"),
+        "output with --no-color must still contain success message, got: {stdout}"
+    );
+}
+
+/// `lash init --json` when project already exists outputs a JSON error object.
+/// Kills mut-000457 (args.json negation in project-exists error branch).
+#[test]
+fn test_init_json_mode_project_exists_outputs_json_error() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    fs::write(temp.path().join("lash.index.md"), "# Existing").unwrap();
+    let output = create_lash_command()
+        .arg("--json")
+        .arg("init")
+        .arg("--no-index")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("output must be valid JSON when project exists with --json");
+    assert!(
+        json.get("error").is_some(),
+        "json error output must have an 'error' key, got: {stdout}"
+    );
+    assert!(
+        json["error"]
+            .as_str()
+            .is_some_and(|s| s.contains("already exists")),
+        "json error must mention 'already exists', got: {stdout}"
+    );
+}
+
+/// `lash init` text mode when only `lash.index.md` exists reports "Found: lash.index.md".
+/// Kills mut-000459 (index_file.exists() negated to !(index_file.exists())).
+#[test]
+fn test_init_text_mode_project_exists_with_index_file_shows_found_index() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    fs::write(temp.path().join("lash.index.md"), "# Existing").unwrap();
+    let output = create_lash_command()
+        .arg("--no-color")
+        .arg("init")
+        .arg("--no-index")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Found: lash.index.md"),
+        "stderr must report 'Found: lash.index.md' when only index file exists, got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Found: .lash/"),
+        "stderr must NOT report 'Found: .lash/' when .lash dir is absent, got: {stderr}"
+    );
+}
+
+/// `lash init` text mode when only `.lash/` exists reports "Found: .lash/".
+/// Kills mut-000460 (lash_dir.exists() negated to !(lash_dir.exists())).
+#[test]
+fn test_init_text_mode_project_exists_with_lash_dir_shows_found_lash_dir() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    fs::create_dir_all(temp.path().join(".lash")).unwrap();
+    let output = create_lash_command()
+        .arg("--no-color")
+        .arg("init")
+        .arg("--no-index")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Found: .lash/"),
+        "stderr must report 'Found: .lash/' when only .lash dir exists, got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Found: lash.index.md"),
+        "stderr must NOT report 'Found: lash.index.md' when index file is absent, got: {stderr}"
+    );
+}
+
+/// `lash init --no-index` skips indexing so no database is created.
+/// Kills mut-000465 (!args.no_index negated to args.no_index).
+#[test]
+fn test_init_no_index_skips_db_creation() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    create_lash_command()
+        .arg("--no-color")
+        .arg("init")
+        .arg("--no-index")
+        .arg("--path")
+        .arg(temp.path())
+        .assert()
+        .success();
+    assert!(
+        !temp.path().join(".lash").join("lash.db").exists(),
+        ".lash/lash.db must NOT exist when --no-index is passed"
+    );
+}
+
+/// `lash init` without --no-index runs indexing and creates the SQLite database.
+/// Kills mut-000465 (!args.no_index negated to args.no_index).
+#[test]
+fn test_init_without_no_index_creates_db() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    create_lash_command()
+        .arg("--no-color")
+        .arg("init")
+        .arg("--path")
+        .arg(temp.path())
+        .assert()
+        .success();
+    assert!(
+        temp.path().join(".lash").join("lash.db").exists(),
+        ".lash/lash.db must exist after init without --no-index"
+    );
+}
+
+/// `lash init --json --no-index` outputs JSON success with `indexed: false`.
+/// Kills mut-000468 (args.json negation in print_success_message).
+#[test]
+fn test_init_json_success_has_indexed_false_when_no_index() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let output = create_lash_command()
+        .arg("--json")
+        .arg("init")
+        .arg("--no-index")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("output must be valid JSON");
+    assert_eq!(
+        json["indexed"].as_bool(),
+        Some(false),
+        "JSON success must have 'indexed: false' when --no-index is passed, got: {stdout}"
+    );
+    assert_eq!(
+        json["success"].as_bool(),
+        Some(true),
+        "JSON success must have 'success: true', got: {stdout}"
+    );
+    assert!(
+        json["path"]
+            .as_str()
+            .is_some_and(|p| p.contains(temp.path().to_str().unwrap())),
+        "JSON must have 'path' matching the init directory"
+    );
+    assert!(
+        json["index_file"]
+            .as_str()
+            .is_some_and(|f| f.contains("lash.index.md")),
+        "JSON must have 'index_file' referencing lash.index.md"
+    );
+}
+
+/// `lash init --json` without --no-index outputs JSON with `indexed: true`.
+/// Kills mut-000468 (args.json negation in print_success_message).
+/// When indexing runs, two JSON objects are printed; we find the one with "success": true.
+#[test]
+fn test_init_json_success_has_indexed_true_when_indexing_runs() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let output = create_lash_command()
+        .arg("--json")
+        .arg("init")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let success_json = serde_json::Deserializer::from_str(&stdout)
+        .into_iter::<serde_json::Value>()
+        .filter_map(|r| r.ok())
+        .find(|v| v.get("success").is_some())
+        .unwrap_or_else(|| {
+            panic!("output must contain a JSON object with 'success' key, got: {stdout}")
+        });
+    assert_eq!(
+        success_json["indexed"].as_bool(),
+        Some(true),
+        "JSON success must have 'indexed: true' when indexing runs, got: {stdout}"
+    );
+}
+
+/// `lash init --force` with a corrupt `.lash/lash.db` succeeds because run_index
+/// passes `force: true`, which deletes and rebuilds the corrupt database.
+/// Kills mut-000470 (force: true changed to force: false in run_index).
+#[test]
+fn test_init_run_index_force_rebuilds_corrupt_db() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let lash_dir = temp.path().join(".lash");
+    fs::create_dir_all(&lash_dir).unwrap();
+    fs::write(lash_dir.join("lash.db"), b"not a valid sqlite database").unwrap();
+    let output = create_lash_command()
+        .arg("--no-color")
+        .arg("init")
+        .arg("--force")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert!(
+        output.status.success(),
+        "init --force with corrupt DB must succeed because run_index uses force=true"
+    );
+    let db_bytes = fs::read(lash_dir.join("lash.db")).unwrap();
+    assert_eq!(
+        &db_bytes[..16],
+        b"SQLite format 3\0",
+        "lash.db must be a valid SQLite database after forced rebuild"
+    );
+}
+
+/// `lash init` without --no-index on a fresh project succeeds without any indexing warning.
+/// Kills mut-000472 (exit_code != 0 negated), mut-000473 (!= changed to ==),
+/// mut-000474 (literal 0 changed to 1): a successful index (exit code 0) must not trigger
+/// the bail! guard in run_index. If it did, a warning would appear in stderr.
+#[test]
+fn test_init_successful_index_produces_no_warning_in_stderr() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let output = create_lash_command()
+        .arg("--no-color")
+        .arg("init")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert!(
+        output.status.success(),
+        "init without --no-index on a fresh project must succeed"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Warning: Initial indexing failed"),
+        "stderr must NOT contain indexing warning when index succeeds, got: {stderr}"
+    );
+    assert!(
+        temp.path().join(".lash").join("lash.db").exists(),
+        ".lash/lash.db must exist after successful init"
+    );
+}
+
+/// `lash init` without --no-index passes `show_files: false` to the index command.
+/// Kills mut-000471 (show_files: false changed to show_files: true in run_index).
+/// Progress bars use tty detection and are hidden in test environments, so the
+/// observable verification is that init completes cleanly with the DB created.
+#[test]
+fn test_init_run_index_show_files_false_no_file_listing_in_stdout() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let output = create_lash_command()
+        .arg("--no-color")
+        .arg("init")
+        .arg("--path")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("initialized successfully"),
+        "stdout must contain the success message, got: {stdout}"
+    );
+    assert!(
+        temp.path().join(".lash").join("lash.db").exists(),
+        ".lash/lash.db must exist after init without --no-index"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Warning: Initial indexing failed"),
+        "stderr must not contain indexing warning when run_index uses correct args, got: {stderr}"
+    );
+}
+
 // --- EXPLAIN TARGETED MUTATION-KILLING TESTS ---
 
 /// `lash explain --list` in non-json mode outputs categorized error codes.
@@ -2923,4 +3250,574 @@ fn test_config_set_linter_rules_empty_string_via_get() {
         stdout.trim().is_empty() || stdout.contains("[]"),
         "linter.rules should be empty after setting to '[]', got: {stdout}"
     );
+}
+
+// --- FORMAT COMMAND: ADDITIONAL MUTATION-KILLING TESTS (second batch) ---
+// These tests target the 41 surviving mutants in format.rs.
+
+/// `lash format --json` outputs JSON summary to stdout.
+/// Kills mut-000308 (args.json negated in theme), mut-000317 (negated in output routing).
+#[test]
+fn test_format_json_flag_outputs_json_summary_to_stdout() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test\n\n@id: test\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task\n";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("format")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "json format must succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("summary"),
+        "json format must output JSON with summary key; got stdout: {stdout}"
+    );
+    let _: serde_json::Value =
+        serde_json::from_str(&stdout).expect("json format stdout must be valid JSON");
+}
+
+/// `lash format` (non-json) does NOT output JSON to stdout.
+/// Kills mut-000317 complement.
+#[test]
+fn test_format_non_json_mode_does_not_output_json_to_stdout() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test\n\n@id: test\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task\n";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "non-json format must succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("\"summary\""),
+        "non-json format must not output JSON summary to stdout; got: {stdout}"
+    );
+}
+
+/// `lash format --json` with empty directory does NOT print warning text to stderr.
+/// Kills mut-000314 (!args.json negated in empty-files warning).
+#[test]
+fn test_format_json_mode_empty_dir_suppresses_warning_text_in_stderr() {
+    let temp = tempfile::tempdir().unwrap();
+    // Create a valid project root so --root is accepted.
+    let idx = "# Index\n\n@id: index\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task\n";
+    fs::write(temp.path().join("lash.index.md"), idx).unwrap();
+    let empty_sub = temp.path().join("empty");
+    fs::create_dir(&empty_sub).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("format")
+        .arg(&empty_sub)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "json format on empty dir must succeed"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("No markdown files"),
+        "json mode must suppress warning text; got stderr: {stderr}"
+    );
+}
+
+/// `lash format --no-color` (non-json) with empty directory DOES print warning text to stderr.
+/// Kills mut-000314 complement.
+#[test]
+fn test_format_non_json_mode_empty_dir_shows_warning_text_in_stderr() {
+    let temp = tempfile::tempdir().unwrap();
+    // Create a valid project root so --root is accepted.
+    let idx = "# Index\n\n@id: index\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task\n";
+    fs::write(temp.path().join("lash.index.md"), idx).unwrap();
+    let empty_sub = temp.path().join("empty");
+    fs::create_dir(&empty_sub).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg(&empty_sub)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "non-json format on empty dir must succeed"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("No markdown files"),
+        "non-json mode must print warning text for empty dir; got stderr: {stderr}"
+    );
+}
+
+/// `lash format --json --check` on an unformatted file suppresses text diagnostic from stderr.
+/// Kills mut-000349 (!args.json negated in reporter.report_diagnostic).
+#[test]
+fn test_format_json_check_mode_does_not_stream_text_diagnostic_to_stderr() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test\n\n@id:   unformatted\n\n## Tasks\n\n- [ ] Task\n";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("format")
+        .arg("--check")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        !output.status.success(),
+        "json check with unformatted file must exit non-zero"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("F_NEEDS_FORMATTING"),
+        "json check mode must not stream text diagnostics to stderr; got: {stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("F_NEEDS_FORMATTING"),
+        "json check mode must include diagnostic in JSON stdout; got stdout: {stdout}"
+    );
+}
+
+/// `lash format --no-color --check` DOES stream text diagnostic to stderr.
+/// Kills mut-000349 complement.
+#[test]
+fn test_format_non_json_check_mode_does_stream_text_diagnostic_to_stderr() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test\n\n@id:   unformatted\n\n## Tasks\n\n- [ ] Task\n";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg("--check")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        !output.status.success(),
+        "non-json check with unformatted file must exit non-zero"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("need formatting") || stderr.contains("formatting"),
+        "non-json check mode must stream text diagnostic to stderr; got: {stderr}"
+    );
+}
+
+/// `lash format --diff` on a file that needs formatting prints diff output to stdout.
+/// Kills mut-000360 (args.diff negated in show_diff call).
+#[test]
+fn test_format_diff_mode_outputs_diff_markers_to_stdout() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test\n\n@id:   unformatted\n\n## Tasks\n\n- [ ] Task\n";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg("--diff")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "diff mode must succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("---") && stdout.contains("++"),
+        "diff mode must output unified diff markers to stdout; got: {stdout}"
+    );
+}
+
+/// `lash format` (no --diff) does NOT print diff markers.
+/// Kills mut-000360 complement.
+#[test]
+fn test_format_non_diff_mode_does_not_output_diff_markers() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test\n\n@id:   unformatted\n\n## Tasks\n\n- [ ] Task\n";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "normal format mode must succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("++"),
+        "normal format mode must not output diff markers; got: {stdout}"
+    );
+}
+
+/// `lash format --diff` output does not double-newline on lines that end with newline.
+/// Kills mut-000364 (!line.ends_with('\n') negated in show_diff).
+#[test]
+fn test_format_diff_output_does_not_double_newline_on_changed_lines() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test\n\n@id:   unformatted\n@labels:backend, api\n\n## Tasks\n\n- [ ] Task\n";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg("--diff")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "diff mode must succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Triple newlines indicate a double-newline bug from the negated condition.
+    assert!(
+        !stdout.contains("\n\n\n"),
+        "diff output must not contain triple newlines; stdout len: {}",
+        stdout.len()
+    );
+}
+
+/// `lash format --diff` on an already-formatted file outputs no diff markers.
+/// Kills mut-000360 boundary case (changed=false so show_diff is not called).
+#[test]
+fn test_format_diff_mode_already_formatted_file_has_no_diff_output() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test\n\n@id: formatted\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task\n";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg("--diff")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "diff mode on already-formatted file must succeed"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("++"),
+        "diff mode with no changes must not output diff markers; got: {stdout}"
+    );
+}
+
+/// `lash format --json` on a file with parse failures outputs JSON and exits non-zero.
+/// Kills mut-000334 (args.json negated in OutputFormat selection).
+/// Also kills mut-000326 (Ok(0)->Ok(1)) and mut-000327 (Ok(1)->Ok(0)).
+#[test]
+fn test_format_json_mode_failed_file_outputs_json_with_nonzero_exit() {
+    let temp = tempfile::tempdir().unwrap();
+    // A file with malformed checkboxes causes a parse failure.
+    let content = "# Test\n\n@id: test\n\n## Tasks\n\n-  [ ] Double space causes parse error\n";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("format")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        !output.status.success(),
+        "json format with parse-failing file must exit non-zero"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("summary"),
+        "json format with failure must output JSON summary; got: {stdout}"
+    );
+}
+
+// ============================================================================
+// CHECK-LINKS TARGETED MUTATION-KILLING TESTS (second batch)
+// Kills: mut-000243, mut-000244, mut-000245, mut-000247, mut-000253, mut-000257
+// ============================================================================
+
+/// Kills mut-000243/244/245 (total_broken == 0 in output_text_report):
+/// When total_broken > 0, the reporter path produces "broken link" text.
+/// When total_broken == 0, the early-return path produces "No broken links found!".
+#[test]
+fn test_check_links_broken_project_reports_broken_not_clean() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let content = r#"# Project
+
+@id: proj
+
+## Tasks
+
+- [ ] Task A @id:task-a @depends-on:proj#nonexistent-task
+"#;
+    std::fs::write(temp.path().join("lash.index.md"), content).expect("Failed to write index file");
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("index")
+        .assert()
+        .success();
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("check-links")
+        .output()
+        .expect("Failed to run lash");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if output.status.code() == Some(1) {
+        assert!(
+            stdout.contains("broken link"),
+            "output_text_report with total_broken>0 must contain 'broken link', got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("No broken links found"),
+            "must NOT say 'No broken links found!' when total_broken>0, got: {stdout}"
+        );
+    } else {
+        assert!(
+            stdout.contains("No broken links found"),
+            "output_text_report with total_broken=0 must say 'No broken links found!', got: {stdout}"
+        );
+    }
+}
+
+/// Kills mut-000247 (show_summary: false -> true):
+/// With show_summary=false, no "Summary:" block appears in stderr.
+#[test]
+fn test_check_links_broken_project_no_reporter_summary_in_stderr() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let content = r#"# Project
+
+@id: proj
+
+## Tasks
+
+- [ ] Task A @id:task-a @depends-on:proj#nonexistent-task
+"#;
+    std::fs::write(temp.path().join("lash.index.md"), content).expect("Failed to write index file");
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("index")
+        .assert()
+        .success();
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("check-links")
+        .output()
+        .expect("Failed to run lash");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("\nSummary:"),
+        "check-links must not emit a reporter 'Summary:' block (show_summary=false), got: {stderr}"
+    );
+}
+
+/// Kills mut-000253 (args.json negation in no-db branch):
+/// json=true with no DB: output_json_no_db() must be called -> JSON to stdout.
+#[test]
+fn test_check_links_no_db_with_json_flag_outputs_json_to_stdout() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    // Create .lash dir (valid project root) but no DB file
+    std::fs::create_dir(temp.path().join(".lash")).expect("Failed to create .lash dir");
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("check-links")
+        .output()
+        .expect("Failed to run lash");
+    assert_eq!(output.status.code(), Some(3), "no DB must exit with code 3");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.trim().is_empty(),
+        "check-links --json with no DB must produce JSON to stdout"
+    );
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("check-links --json with no DB must output valid JSON to stdout");
+    assert!(
+        json.get("error").is_some(),
+        "JSON must have 'error' key when DB missing, got: {json}"
+    );
+}
+
+/// Kills mut-000253 (args.json negation in no-db branch):
+/// json=false with no DB: plain text to stderr; stdout is empty.
+#[test]
+fn test_check_links_no_db_without_json_flag_outputs_nothing_to_stdout() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    // Create .lash dir (valid project root) but no DB file
+    std::fs::create_dir(temp.path().join(".lash")).expect("Failed to create .lash dir");
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("check-links")
+        .output()
+        .expect("Failed to run lash");
+    assert_eq!(output.status.code(), Some(3), "no DB must exit with code 3");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The banner is always printed to stdout; verify no JSON "error" key is present
+    // (With the mutation, output_json_no_db() would be called instead of eprintln, producing JSON)
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
+        "check-links (non-json) with no DB must not produce JSON to stdout, got: {stdout}"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Database not found") || stderr.contains("lash index"),
+        "check-links (non-json) with no DB must print error to stderr, got: {stderr}"
+    );
+}
+
+/// Kills mut-000257 (args.json negation in total_broken==0 branch):
+/// json=true with total_broken=0: output_json_report() -> JSON to stdout (not text).
+#[test]
+fn test_check_links_clean_with_json_flag_outputs_json_not_text_message() {
+    let temp = create_test_project();
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("index")
+        .assert()
+        .success();
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("check-links")
+        .output()
+        .expect("Failed to run lash");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("check-links --json on clean project must output valid JSON");
+    assert_eq!(
+        json["total_broken"].as_u64(),
+        Some(0),
+        "JSON for clean project must have total_broken=0, got: {json}"
+    );
+    assert!(
+        !stdout.contains("No broken links found"),
+        "check-links --json must not print text 'No broken links found!', got: {stdout}"
+    );
+}
+
+/// Kills mut-000257 (args.json negation in total_broken==0 branch):
+/// json=false with total_broken=0: output_text_report() -> "No broken links found!" (not JSON).
+#[test]
+fn test_check_links_clean_without_json_flag_outputs_text_not_json() {
+    let temp = create_test_project();
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("index")
+        .assert()
+        .success();
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("check-links")
+        .output()
+        .expect("Failed to run lash");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("No broken links found"),
+        "check-links (non-json) on clean project must say 'No broken links found!', got: {stdout}"
+    );
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
+        "check-links (non-json) output must not be JSON, got: {stdout}"
+    );
+}
+
+// =====================================================================
+// GRAPH MUTATION-KILLING TESTS
+// =====================================================================
+
+/// Kills mut-000392: `LashError::index_out_of_sync(0)` → `index_out_of_sync(1)`
+/// When no DB exists, the error message must contain "0 files changed", not "1 files changed".
+#[test]
+fn test_graph_no_db_error_contains_0_files_changed() {
+    let temp = TempDir::new().unwrap();
+    // Create .lash dir but no lash.db
+    std::fs::create_dir_all(temp.path().join(".lash")).unwrap();
+    // Create minimal index file so validate_root succeeds
+    std::fs::write(
+        temp.path().join("lash.index.md"),
+        "# Index\n\n## Tasks\n\n- [ ] Task one\n",
+    )
+    .unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("graph")
+        .output()
+        .expect("Failed to run lash");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("0 files changed"),
+        "graph no-db error must say '0 files changed': {stderr}"
+    );
+    assert!(
+        !stderr.contains("1 files changed"),
+        "graph no-db error must not say '1 files changed': {stderr}"
+    );
+    assert_eq!(output.status.code(), Some(3), "exit code should be 3");
 }

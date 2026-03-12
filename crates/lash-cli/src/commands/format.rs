@@ -1802,4 +1802,579 @@ mod tests {
         let result = format_files(&[path], &config, &options, &args, None).unwrap();
         assert_eq!(result.failed, 0);
     }
+
+    // --- mut-000312: true -> false in discover_markdown_files recursive flag ---
+    // When recursive=true, files in subdirectories are discovered and formatted.
+    // When recursive=false, only files directly in the given paths are found.
+
+    #[test]
+    fn test_format_discovers_files_in_subdirectories_recursively() {
+        let temp = TempDir::new().unwrap();
+        // Create a subdirectory with an unformatted file.
+        let sub = temp.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        let sub_file = sub.join("task.md");
+        let unformatted = "# Task\n\n@id:   spacing\n\n## Tasks\n\n- [ ] item\n";
+        fs::write(&sub_file, unformatted).unwrap();
+
+        // Pass the parent directory; with recursive=true the subdirectory file is found.
+        let result = execute(default_args(vec![temp.path().to_path_buf()]));
+        assert_eq!(result.unwrap(), 0, "recursive discovery must succeed");
+
+        // The file in the subdirectory must have been formatted (content changed).
+        let after = fs::read_to_string(&sub_file).unwrap();
+        assert_ne!(
+            after, unformatted,
+            "recursive discovery must format files in subdirectories"
+        );
+    }
+
+    // --- mut-000326: Ok(0) -> Ok(1) in the final else branch ---
+    // When no files fail and check is false, exit code must be exactly 0, not 1.
+
+    #[test]
+    fn test_exit_code_zero_in_normal_mode_with_formatted_file_is_not_one() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let result = execute(default_args(vec![path])).unwrap();
+        assert_eq!(result, 0, "normal format mode must return exactly 0, not 1");
+        assert_ne!(result, 1, "normal format mode must not return 1");
+    }
+
+    // --- mut-000327: Ok(1) -> Ok(0) in the failed > 0 branch ---
+    // When any file fails to format, exit code must be exactly 1, not 0.
+
+    #[test]
+    fn test_exit_code_one_for_failed_file_is_not_zero() {
+        let temp = TempDir::new().unwrap();
+        let nonexistent = temp.path().join("ghost.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![nonexistent.clone()]);
+        let files = vec![nonexistent];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+        assert_eq!(result.failed, 1);
+        assert_ne!(
+            result.formatted, 1,
+            "failed file must not count as formatted"
+        );
+        assert_ne!(
+            result.needs_formatting, 1,
+            "failed file must not count as needs_formatting"
+        );
+    }
+
+    // --- mut-000334: args.json -> negated in OutputFormat selection ---
+    // json=true -> OutputFormat::Json; json=false -> OutputFormat::Text.
+    // Both produce the same format result counters.
+
+    #[test]
+    fn test_format_files_reporter_format_json_true_and_false_produce_same_counters() {
+        let temp = TempDir::new().unwrap();
+        let path_json = write_needs_formatting_file(&temp, "json_file.md");
+        let path_text = write_needs_formatting_file(&temp, "text_file.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+
+        let args_json = FormatArgs {
+            json: true,
+            ..default_args(vec![path_json.clone()])
+        };
+        let result_json = format_files(&[path_json], &config, &options, &args_json, None).unwrap();
+
+        let args_text = FormatArgs {
+            json: false,
+            ..default_args(vec![path_text.clone()])
+        };
+        let result_text = format_files(&[path_text], &config, &options, &args_text, None).unwrap();
+
+        assert_eq!(result_json.formatted, 1, "json mode: must format one file");
+        assert_eq!(result_text.formatted, 1, "text mode: must format one file");
+        assert_eq!(result_json.failed, 0);
+        assert_eq!(result_text.failed, 0);
+    }
+
+    // --- mut-000335,336,337: files.len() > 1 boundary mutations ---
+    // > replaced by >= or <=, and 1 replaced by 0.
+    // We verify both the single-file (boundary) and two-file cases.
+
+    #[test]
+    fn test_format_files_boundary_single_file_formats_without_progress_bar() {
+        // files.len() == 1 -> show_progress = false (since 1 > 1 is false).
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path.clone()]);
+        let result = format_files(&[path], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.formatted, 1,
+            "single file: formatted must be exactly 1"
+        );
+        assert_eq!(result.failed, 0);
+    }
+
+    #[test]
+    fn test_format_files_boundary_two_files_format_with_progress_bar_path() {
+        // files.len() == 2 -> show_progress = true.
+        let temp = TempDir::new().unwrap();
+        let p1 = write_needs_formatting_file(&temp, "file1.md");
+        let p2 = write_needs_formatting_file(&temp, "file2.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![p1.clone(), p2.clone()]);
+        let result = format_files(&[p1, p2], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.formatted, 2,
+            "two files: formatted must be exactly 2"
+        );
+        assert_eq!(result.failed, 0);
+    }
+
+    // --- mut-000338,339,340: && replaced by || in show_progress ---
+
+    #[test]
+    fn test_format_files_check_mode_two_files_counts_not_disrupted_by_show_progress() {
+        let temp = TempDir::new().unwrap();
+        let p1 = write_needs_formatting_file(&temp, "file1.md");
+        let p2 = write_needs_formatting_file(&temp, "file2.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![p1.clone(), p2.clone()])
+        };
+        let result = format_files(&[p1, p2], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.needs_formatting, 2,
+            "check mode 2 files: needs_formatting=2"
+        );
+        assert_eq!(
+            result.formatted, 0,
+            "check mode must not increment formatted"
+        );
+    }
+
+    // --- mut-000339: !args.check -> args.check ---
+
+    #[test]
+    fn test_show_progress_false_in_check_mode_two_files_formats_correctly() {
+        let temp = TempDir::new().unwrap();
+        let p1 = write_already_formatted_file(&temp, "file1.md");
+        let p2 = write_already_formatted_file(&temp, "file2.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![p1.clone(), p2.clone()])
+        };
+        let result = format_files(&[p1, p2], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.needs_formatting, 0,
+            "already formatted: needs_formatting=0"
+        );
+        assert_eq!(result.formatted, 0);
+        assert_eq!(result.failed, 0);
+    }
+
+    // --- mut-000341: !args.diff -> args.diff ---
+
+    #[test]
+    fn test_show_progress_false_in_diff_mode_two_files_does_not_write() {
+        let temp = TempDir::new().unwrap();
+        let p1 = write_needs_formatting_file(&temp, "file1.md");
+        let p2 = write_needs_formatting_file(&temp, "file2.md");
+        let original1 = fs::read_to_string(&p1).unwrap();
+        let original2 = fs::read_to_string(&p2).unwrap();
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            diff: true,
+            ..default_args(vec![p1.clone(), p2.clone()])
+        };
+        let result =
+            format_files(&[p1.clone(), p2.clone()], &config, &options, &args, None).unwrap();
+        assert_eq!(result.failed, 0, "diff mode must not fail");
+        assert_eq!(
+            fs::read_to_string(&p1).unwrap(),
+            original1,
+            "diff mode: file1 must not be modified"
+        );
+        assert_eq!(
+            fs::read_to_string(&p2).unwrap(),
+            original2,
+            "diff mode: file2 must not be modified"
+        );
+    }
+
+    // --- mut-000343: !args.json -> args.json in show_progress ---
+
+    #[test]
+    fn test_show_progress_false_in_json_mode_two_files_formats_correctly() {
+        let temp = TempDir::new().unwrap();
+        let p1 = write_needs_formatting_file(&temp, "file1.md");
+        let p2 = write_needs_formatting_file(&temp, "file2.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            json: true,
+            ..default_args(vec![p1.clone(), p2.clone()])
+        };
+        let result = format_files(&[p1, p2], &config, &options, &args, None).unwrap();
+        assert_eq!(result.formatted, 2, "json mode 2 files: formatted=2");
+        assert_eq!(result.failed, 0);
+    }
+
+    // --- mut-000344: show_progress -> negated in if condition ---
+
+    #[test]
+    fn test_show_progress_negation_does_not_affect_format_results() {
+        let temp = TempDir::new().unwrap();
+        let p1 = write_needs_formatting_file(&temp, "file1.md");
+        let p2 = write_needs_formatting_file(&temp, "file2.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![p1.clone(), p2.clone()]);
+        let result = format_files(&[p1, p2], &config, &options, &args, None).unwrap();
+        assert_eq!(result.formatted, 2);
+        assert_eq!(result.failed, 0);
+        assert_eq!(result.needs_formatting, 0);
+    }
+
+    // --- mut-000349: !args.json -> args.json in reporter.report_diagnostic ---
+    // In check mode + json=true: reporter.report_diagnostic must NOT be called.
+    // We verify needs_formatting_diagnostics is populated in both cases.
+
+    #[test]
+    fn test_json_check_mode_collects_diagnostic_without_text_streaming() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            json: true,
+            check: true,
+            ..default_args(vec![path.clone()])
+        };
+        let files = vec![path];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.needs_formatting_diagnostics.len(),
+            1,
+            "json check: must collect diagnostic"
+        );
+        assert_eq!(
+            result.needs_formatting, 1,
+            "json check: needs_formatting must be 1"
+        );
+    }
+
+    #[test]
+    fn test_non_json_check_mode_also_collects_diagnostic() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            json: false,
+            check: true,
+            ..default_args(vec![path.clone()])
+        };
+        let files = vec![path];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.needs_formatting_diagnostics.len(),
+            1,
+            "text check: must collect diagnostic"
+        );
+        assert_eq!(
+            result.needs_formatting, 1,
+            "text check: needs_formatting must be 1"
+        );
+    }
+
+    // --- mut-000356: pb.inc(1) -> pb.inc(0) ---
+    // Only affects progress bar display, not the format result.
+
+    #[test]
+    fn test_pb_inc_does_not_affect_format_result_for_two_files() {
+        let temp = TempDir::new().unwrap();
+        let p1 = write_needs_formatting_file(&temp, "file1.md");
+        let p2 = write_needs_formatting_file(&temp, "file2.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![p1.clone(), p2.clone()]);
+        let result = format_files(&[p1, p2], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.formatted, 2,
+            "both files must be formatted regardless of pb.inc value"
+        );
+        assert_eq!(result.failed, 0);
+    }
+
+    // --- mut-000360: args.diff -> negated in show_diff call ---
+    // When diff=true and file changed, show_diff IS called.
+
+    #[test]
+    fn test_diff_mode_true_changed_file_does_not_write_and_returns_changed_true() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let original = fs::read_to_string(&path).unwrap();
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            diff: true,
+            check: false,
+            ..default_args(vec![])
+        };
+        let changed = format_single_file(&path, &config, &options, &args).unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            original,
+            "diff mode must not write"
+        );
+        assert!(
+            changed,
+            "diff mode: changed must be true for a file that needs formatting"
+        );
+    }
+
+    #[test]
+    fn test_diff_mode_false_already_formatted_returns_changed_false() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+        let original = fs::read_to_string(&path).unwrap();
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            diff: false,
+            check: false,
+            ..default_args(vec![])
+        };
+        let changed = format_single_file(&path, &config, &options, &args).unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            original,
+            "no change: file must remain identical"
+        );
+        assert!(
+            !changed,
+            "no diff: changed must be false for already-formatted file"
+        );
+    }
+
+    // --- mut-000365: args.check -> negated in output_text_results ---
+
+    #[test]
+    fn test_check_mode_and_non_check_produce_different_counters_for_unformatted_file() {
+        let temp = TempDir::new().unwrap();
+        let check_path = write_needs_formatting_file(&temp, "check.md");
+        let fmt_path = write_needs_formatting_file(&temp, "fmt.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+
+        let check_args = FormatArgs {
+            check: true,
+            ..default_args(vec![check_path.clone()])
+        };
+        let check_result =
+            format_files(&[check_path], &config, &options, &check_args, None).unwrap();
+
+        let fmt_args = default_args(vec![fmt_path.clone()]);
+        let fmt_result = format_files(&[fmt_path], &config, &options, &fmt_args, None).unwrap();
+
+        assert_eq!(
+            check_result.needs_formatting, 1,
+            "check: needs_formatting must be 1"
+        );
+        assert_eq!(check_result.formatted, 0, "check: formatted must be 0");
+        assert_eq!(fmt_result.formatted, 1, "format: formatted must be 1");
+        assert_eq!(
+            fmt_result.needs_formatting, 0,
+            "format: needs_formatting must be 0"
+        );
+    }
+
+    // --- mut-000366,367,368,369: needs_formatting > 0 boundary ---
+
+    #[test]
+    fn test_check_mode_needs_formatting_exactly_one_triggers_count_message() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path.clone()])
+        };
+        let result = format_files(&[path], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.needs_formatting, 1,
+            "exactly one unformatted: needs_formatting=1"
+        );
+        let temp2 = TempDir::new().unwrap();
+        let path2 = write_needs_formatting_file(&temp2, "lash.index.md");
+        assert_eq!(
+            execute(FormatArgs {
+                check: true,
+                ..default_args(vec![path2])
+            })
+            .unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn test_check_mode_needs_formatting_zero_does_not_trigger_count_message_path() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path.clone()])
+        };
+        let result = format_files(&[path], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.needs_formatting, 0,
+            "already formatted: needs_formatting=0"
+        );
+        let temp2 = TempDir::new().unwrap();
+        let path2 = write_already_formatted_file(&temp2, "lash.index.md");
+        assert_eq!(
+            execute(FormatArgs {
+                check: true,
+                ..default_args(vec![path2])
+            })
+            .unwrap(),
+            0
+        );
+    }
+
+    // --- mut-000371,372,373: result.failed == 0 in check mode ---
+
+    #[test]
+    fn test_check_mode_failed_zero_and_needs_formatting_zero_has_zero_failed() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![path.clone()])
+        };
+        let result = format_files(&[path], &config, &options, &args, None).unwrap();
+        assert_eq!(result.failed, 0, "all ok: failed must be exactly 0");
+        assert_eq!(
+            result.needs_formatting, 0,
+            "all ok: needs_formatting must be 0"
+        );
+    }
+
+    #[test]
+    fn test_check_mode_failed_one_prevents_properly_formatted_message_path() {
+        let temp = TempDir::new().unwrap();
+        let nonexistent = temp.path().join("ghost.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = FormatArgs {
+            check: true,
+            ..default_args(vec![nonexistent.clone()])
+        };
+        let result = format_files(&[nonexistent], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.failed, 1,
+            "failed file in check mode: failed must be 1"
+        );
+        assert_ne!(
+            result.failed, 0,
+            "failed must not be 0 when file is unreadable"
+        );
+    }
+
+    // --- mut-000375,376,377,378: result.formatted > 0 in format mode ---
+
+    #[test]
+    fn test_format_mode_formatted_exactly_one_triggers_success_message_path() {
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path.clone()]);
+        let result = format_files(&[path], &config, &options, &args, None).unwrap();
+        assert_eq!(result.formatted, 1, "one changed file: formatted must be 1");
+        assert_eq!(result.failed, 0);
+    }
+
+    #[test]
+    fn test_format_mode_formatted_zero_does_not_trigger_success_message_path() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path.clone()]);
+        let result = format_files(&[path], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.formatted, 0,
+            "already formatted: formatted must be 0"
+        );
+        assert_eq!(result.failed, 0);
+    }
+
+    // --- mut-000380,381,382: result.failed == 0 in format mode else-if ---
+
+    #[test]
+    fn test_format_mode_failed_zero_and_formatted_zero_enables_already_formatted_path() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path.clone()]);
+        let result = format_files(&[path], &config, &options, &args, None).unwrap();
+        assert_eq!(result.failed, 0, "no failures: failed must be 0");
+        assert_eq!(result.formatted, 0, "no changes: formatted must be 0");
+    }
+
+    #[test]
+    fn test_format_mode_failed_one_bypasses_already_formatted_path() {
+        let temp = TempDir::new().unwrap();
+        let nonexistent = temp.path().join("ghost.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![nonexistent.clone()]);
+        let result = format_files(&[nonexistent], &config, &options, &args, None).unwrap();
+        assert_eq!(result.failed, 1, "one failure: failed must be exactly 1");
+        assert_ne!(result.failed, 0, "one failure: failed must not be 0");
+    }
+
+    // --- mut-000384,385,386,387: result.failed > 0 in final reporting section ---
+
+    #[test]
+    fn test_failed_gt_zero_final_section_triggers_for_one_failure() {
+        let temp = TempDir::new().unwrap();
+        let nonexistent = temp.path().join("missing.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![nonexistent.clone()]);
+        let result = format_files(&[nonexistent], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.failed, 1,
+            "failure: failed must be 1 for final reporting branch"
+        );
+        assert_ne!(result.failed, 0, "failure: failed must not be 0");
+    }
+
+    #[test]
+    fn test_failed_zero_final_section_not_triggered_for_successful_run() {
+        let temp = TempDir::new().unwrap();
+        let path = write_already_formatted_file(&temp, "lash.index.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path.clone()]);
+        let result = format_files(&[path], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.failed, 0,
+            "success: failed must be 0 for final reporting branch"
+        );
+    }
 }

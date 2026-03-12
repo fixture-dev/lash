@@ -1979,4 +1979,238 @@ mod tests {
             "truncated title should end with ...; output = {output:?}"
         );
     }
+
+    // --- Mutation-killing tests ---
+
+    /// Kills mut-000164: `truncated = truncated || tree_truncated` → `&&`
+    /// Need a case where truncated is false before the loop, but one root's subtree
+    /// returns `tree_truncated=true`. With `&&`: `false && true = false` (no notice).
+    /// Use all depth-0 nodes so `calculate_total_depth` returns 1, then set terminal
+    /// width so `max_depth=1`. A grandchild at `current_depth=2` > `max_depth=1`
+    /// triggers `tree_truncated`. But since `max_depth == total_depth`, the
+    /// `max_depth < total_depth` condition is false, so only the `||` propagation
+    /// can trigger the notice.
+    #[test]
+    fn test_tree_truncated_propagates_via_or_not_and() {
+        let mut graph = DependencyGraph::new();
+        // All nodes at depth=0 so calculate_total_depth returns 0+1=1
+        graph.add_node(
+            "test#root".to_string(),
+            create_test_node("Root", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#child".to_string(),
+            create_test_node("Child", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#grandchild".to_string(),
+            create_test_node("GrandchildX", TaskStatus::Open, "test"),
+        );
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#child".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#child".to_string(),
+            "test#grandchild".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // total_depth=1, terminal_width=27 → available=3 → max_depth_avail=1
+        // max_depth = min(1,1) = 1 = total_depth, so max_depth < total_depth is false
+        // But grandchild is at current_depth=2 > max_depth=1 → returns (_, true)
+        let config = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "truncation notice must appear via || propagation; output = {output:?}"
+        );
+        assert!(
+            !output.contains("GrandchildX"),
+            "grandchild should be depth-limited; output = {output:?}"
+        );
+    }
+
+    /// Kills mut-000170: `max_depth = 0` → `max_depth = 1` in `calculate_total_depth`.
+    /// With a single depth-0 node: original `total_depth` = 0+1 = 1.
+    /// If initial `max_depth` is 1 instead of 0, `total_depth` = max(1,0)+1 = 2.
+    /// Use `terminal_width=27` → `max_depth_avail=1`. With `total_depth=1`: no notice.
+    /// With `total_depth=2`: notice. So this test asserts no notice.
+    #[test]
+    fn test_calculate_total_depth_single_node_no_truncation_notice() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#only".to_string(),
+            create_test_node("OnlyTask", TaskStatus::Open, "test"),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            !output.contains("Note: Graph truncated"),
+            "single depth-0 node should not trigger truncation; output = {output:?}"
+        );
+    }
+
+    /// Kills mut-000196: `return (String::new(), true)` → `return (String::new(), false)`
+    /// When depth limit is hit, the return must be `(_, true)` to propagate truncation.
+    /// Same setup as `test_tree_truncated_propagates_via_or_not_and`: the grandchild
+    /// exceeds `max_depth` and must return true.
+    #[test]
+    fn test_depth_limit_return_true_not_false() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#r".to_string(),
+            create_test_node("R", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#c".to_string(),
+            create_test_node("C", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#gc".to_string(),
+            create_test_node("GC", TaskStatus::Open, "test"),
+        );
+        graph.add_edge(
+            "test#r".to_string(),
+            "test#c".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#c".to_string(),
+            "test#gc".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // The grandchild must not appear (depth-limited)
+        assert!(
+            !output.contains("GC"),
+            "GC should be hidden; output = {output:?}"
+        );
+        // The truncation notice must appear (the depth-limit return must be true)
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "depth limit must trigger notice; output = {output:?}"
+        );
+    }
+
+    /// Kills mut-000200: `current_depth + 1` → `current_depth + 0`
+    /// If depth never increments, grandchild renders at depth 0 bypassing the limit.
+    #[test]
+    fn test_depth_increment_prevents_grandchild() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#a".to_string(),
+            create_test_node("NodeA", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#b".to_string(),
+            create_test_node("NodeB", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#deep".to_string(),
+            create_test_node("DeepNode", TaskStatus::Open, "test"),
+        );
+        graph.add_edge(
+            "test#a".to_string(),
+            "test#b".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#b".to_string(),
+            "test#deep".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // max_depth=1 via terminal constraints
+        let config = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            !output.contains("DeepNode"),
+            "DeepNode should be hidden at depth 2 > max_depth 1; output = {output:?}"
+        );
+    }
+
+    /// Kills mut-000201: `truncated = truncated || child_truncated` → `&&`
+    /// Parent has two children. First child is a leaf (`child_truncated=false`).
+    /// Second child has a grandchild that gets depth-limited (`child_truncated=true`).
+    /// After first child: `truncated = false || false = false`.
+    /// After second child: `truncated = false || true = true`. With `&&`: `false && true = false`.
+    #[test]
+    fn test_child_truncated_propagates_via_or() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#parent".to_string(),
+            create_test_node("Parent", TaskStatus::Open, "test"),
+        );
+        // First child: leaf, no truncation
+        graph.add_node(
+            "test#achild".to_string(),
+            create_test_node("AChild", TaskStatus::Open, "test"),
+        );
+        // Second child: has a grandchild that will be depth-limited
+        graph.add_node(
+            "test#bchild".to_string(),
+            create_test_node("BChild", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#bgrand".to_string(),
+            create_test_node("BGrand", TaskStatus::Open, "test"),
+        );
+        graph.add_edge(
+            "test#parent".to_string(),
+            "test#achild".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#parent".to_string(),
+            "test#bchild".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#bchild".to_string(),
+            "test#bgrand".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "truncation from second child must propagate; output = {output:?}"
+        );
+    }
 }

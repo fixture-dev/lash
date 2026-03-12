@@ -1301,3 +1301,375 @@ fn test_themed_summary_zero_warnings_for_clean_file() {
         "clean file with themed output must show 0 errors"
     );
 }
+
+// ===========================================================================
+// Tests targeting surviving mutants identified in the second flawd pass
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// mut-000475: !args.no_color → args.no_color  in execute()
+//
+// CliTheme::load(None, !args.no_color) is the call site.  When mutated the
+// logic inverts: --no-color enables color and the default disables it.  Two
+// complementary tests confirm the correct branch is taken each time.
+// ---------------------------------------------------------------------------
+
+/// With `--no-color`, lint stdout must contain no ANSI escape codes.
+/// Kills mut-000475: !args.no_color → args.no_color.
+#[test]
+fn test_mut000475_no_color_suppresses_ansi_in_lint_stdout() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", ERROR_MD);
+
+    let output = lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg(&path)
+        .env_remove("NO_COLOR")
+        .output()
+        .expect("lash must run");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains('\x1b'),
+        "--no-color must suppress ANSI in lint stdout (mut-000475):\n{stdout}"
+    );
+    assert!(
+        stdout.contains("error") || stdout.contains("Summary"),
+        "--no-color lint must still print summary text (mut-000475):\n{stdout}"
+    );
+}
+
+/// Without `--no-color`, lint exits 2 on an error file (color-enabled path).
+/// Kills mut-000475: distinguishes !no_color=true from !no_color=false.
+#[test]
+fn test_mut000475_without_no_color_lint_exits_2() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", ERROR_MD);
+
+    let output = lash()
+        .arg("lint")
+        .arg(&path)
+        .env_remove("NO_COLOR")
+        .output()
+        .expect("lash must run");
+
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        2,
+        "lint without --no-color must exit 2 for an error file (mut-000475)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// mut-000478: true → false  in discover_markdown_files(&paths, true)
+//
+// The recursive flag enables descent into subdirectories.  With the mutation
+// (false), nested files are missed → exit 0 instead of 2.
+// ---------------------------------------------------------------------------
+
+/// Files nested two levels deep must be found with recursive=true.
+/// Kills mut-000478: true → false in discover_markdown_files.
+#[test]
+fn test_mut000478_recursive_discovery_finds_deeply_nested_files() {
+    let td = TempDir::new().unwrap();
+    let deep = td.path().join("a").join("b");
+    fs::create_dir_all(&deep).unwrap();
+    fs::write(deep.join("deep.md"), ERROR_MD).unwrap();
+
+    let output = lash()
+        .arg("--json")
+        .arg("lint")
+        .arg(td.path())
+        .output()
+        .expect("lash must run");
+
+    let code = output.status.code().unwrap_or(-1);
+    assert_eq!(
+        code, 2,
+        "recursive discovery must find nested error file (mut-000478); exit={code}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("not valid JSON: {e}\nstdout={stdout}"));
+    assert_eq!(
+        json["summary"]["files_checked"].as_u64().unwrap_or(0),
+        1,
+        "recursive discovery must check the 1 nested file (mut-000478)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// mut-000482: !(args.interactive && !args.fix)  – full negation
+// mut-000483: && → ||  in args.interactive && !args.fix
+// mut-000484: !args.fix → args.fix
+//
+// The compound condition guards the "--interactive without --fix" warning.
+// Three tests cover the three mutation cases:
+//   1. interactive=true,  fix=false → warning present  (base case)
+//   2. interactive=true,  fix=true  → warning absent   (kills 000483, 000484)
+//   3. interactive=false, fix=false → warning absent   (kills 000482)
+// ---------------------------------------------------------------------------
+
+/// --interactive without --fix emits the warning on stderr.
+/// Kills mut-000482 (full negation) and mut-000484 (!args.fix → args.fix).
+#[test]
+fn test_mut000482_interactive_without_fix_warns() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", CLEAN_MD);
+
+    let output = lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg("--interactive")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("no effect without --fix"),
+        "--interactive without --fix must warn (mut-000482/484):\n{stderr}"
+    );
+}
+
+/// --interactive WITH --fix must not emit the warning.
+/// Kills mut-000483 (&& → ||): with ||, fix=true still triggers the warn.
+/// Also kills mut-000484: if !args.fix → args.fix, fix=true triggers warn.
+#[test]
+fn test_mut000483_interactive_with_fix_no_warn() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", CLEAN_MD);
+
+    let output = lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg("--interactive")
+        .arg("--fix")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("no effect without --fix"),
+        "--interactive with --fix must not warn (mut-000483):\n{stderr}"
+    );
+}
+
+/// Neither --interactive nor --fix: no warning.
+/// Kills mut-000482 (full negation would invert: warn here, not warn above).
+#[test]
+fn test_mut000482_no_interactive_no_warn() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", CLEAN_MD);
+
+    let output = lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("no effect without --fix"),
+        "lint without --interactive must not warn (mut-000482):\n{stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// mut-000486: args.fix → !(args.fix)  in `if args.fix { apply_fixes(...) }`
+//
+// With mutation, fixes run without --fix and are skipped with --fix.
+// ---------------------------------------------------------------------------
+
+/// --fix on a file with a non-ISO date normalizes it; content must change.
+/// Kills mut-000486: args.fix → !(args.fix).
+#[test]
+fn test_mut000486_fix_flag_applies_fixes() {
+    let fixable = "# Tasks\n\n@id: my-id\n@created: 2024-1-5\n\n## Tasks\n\n- [ ] A task\n";
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "fixable.md", fixable);
+    let before = fs::read_to_string(&path).unwrap();
+
+    lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg("--fix")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    let after = fs::read_to_string(&path).unwrap();
+    assert_ne!(before, after, "--fix must modify the file (mut-000486)");
+    assert!(
+        after.contains("2024-01-05"),
+        "--fix must normalize date to 2024-01-05 (mut-000486); got:\n{after}"
+    );
+}
+
+/// Without --fix, the file must remain unchanged.
+/// Confirms the non-fix branch (mut-000486 would change content here).
+#[test]
+fn test_mut000486_without_fix_file_unchanged() {
+    let fixable = "# Tasks\n\n@id: my-id\n@created: 2024-1-5\n\n## Tasks\n\n- [ ] A task\n";
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "fixable.md", fixable);
+    let before = fs::read_to_string(&path).unwrap();
+
+    lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    let after = fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        before, after,
+        "without --fix, file must not change (mut-000486)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// mut-000487: args.json → !(args.json)  in `if args.json { output_json... }`
+//
+// With mutation, --json gives text and no-json gives JSON.
+// ---------------------------------------------------------------------------
+
+/// --json produces valid JSON with a "summary" key.
+/// Kills mut-000487: args.json → !(args.json).
+#[test]
+fn test_mut000487_json_flag_gives_json_stdout() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", ERROR_MD);
+
+    let output = lash()
+        .arg("--json")
+        .arg("lint")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: Result<serde_json::Value, _> = serde_json::from_str(&stdout);
+    assert!(
+        parsed.is_ok(),
+        "--json must produce valid JSON (mut-000487):\n{stdout}"
+    );
+    assert!(
+        parsed.unwrap().get("summary").is_some(),
+        "--json JSON must have 'summary' key (mut-000487)"
+    );
+}
+
+/// Without --json, stdout is plain text (not parseable as JSON).
+/// Kills mut-000487: the mutated code produces JSON here.
+#[test]
+fn test_mut000487_no_json_flag_gives_plain_text() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "t.md", ERROR_MD);
+
+    let output = lash()
+        .arg("--no-color")
+        .arg("lint")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
+        "lint without --json must give plain text, not JSON (mut-000487):\n{stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// mut-000491: d.severity == Severity::Error  → !=
+// mut-000492: d.severity == Severity::Warning → !=
+// mut-000493: d.severity == Severity::Info    → !=
+// mut-000494: d.severity == Severity::Hint    → !=
+//
+// Strategy: assert every severity bucket at its exact expected value for files
+// that produce a non-zero count in exactly one bucket.  Any `==` → `!=`
+// mutation misroutes that diagnostic into the wrong bucket, causing the
+// numerical assertion for the wrong bucket to fail.
+//
+// No linter rule produces Severity::Info or Hint through the integration path
+// (the parser pre-waives children before the linter sees them).  We rely on
+// cross-bucket assertions: an Error file has info==0 and hints==0; with
+// mut-000493/494 those become 1.
+// ---------------------------------------------------------------------------
+
+/// Error file: every severity counter must be at its exact expected value.
+///
+/// - mut-000491: errors becomes 0 instead of 1.
+/// - mut-000492: warnings becomes 1 instead of 0.
+/// - mut-000493: info    becomes 1 instead of 0.
+/// - mut-000494: hints   becomes 1 instead of 0.
+#[test]
+fn test_mut000491_494_exact_severity_counts_error_file() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "bad.md", ERROR_MD);
+    let (summary, _) = lint_json_summary(&path);
+
+    assert_eq!(
+        summary["errors"].as_u64().unwrap_or(0),
+        1,
+        "errors must be 1 (mut-000491); summary={summary}"
+    );
+    assert_eq!(
+        summary["warnings"].as_u64().unwrap_or(99),
+        0,
+        "warnings must be 0 (mut-000492); summary={summary}"
+    );
+    assert_eq!(
+        summary["info"].as_u64().unwrap_or(99),
+        0,
+        "info must be 0 (mut-000493); summary={summary}"
+    );
+    assert_eq!(
+        summary["hints"].as_u64().unwrap_or(99),
+        0,
+        "hints must be 0 (mut-000494); summary={summary}"
+    );
+}
+
+/// Warning file: every severity counter must be at its exact expected value.
+///
+/// - mut-000491: errors   becomes 1 instead of 0.
+/// - mut-000492: warnings becomes 0 instead of 1.
+/// - mut-000493: info     becomes 1 instead of 0.
+/// - mut-000494: hints    becomes 1 instead of 0.
+#[test]
+fn test_mut000491_494_exact_severity_counts_warning_file() {
+    let long_desc: String = "w".repeat(1100);
+    let content = format!(
+        "# Tasks\n\n@id: tasks\n@created: 2024-01-15\n\n## Description\n\n{long_desc}\n\n## Tasks\n\n- [ ] A task\n"
+    );
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "warn.md", &content);
+    let (summary, _) = lint_json_summary(&path);
+
+    assert_eq!(
+        summary["errors"].as_u64().unwrap_or(99),
+        0,
+        "errors must be 0 (mut-000491); summary={summary}"
+    );
+    assert_eq!(
+        summary["warnings"].as_u64().unwrap_or(0),
+        1,
+        "warnings must be 1 (mut-000492); summary={summary}"
+    );
+    assert_eq!(
+        summary["info"].as_u64().unwrap_or(99),
+        0,
+        "info must be 0 (mut-000493); summary={summary}"
+    );
+    assert_eq!(
+        summary["hints"].as_u64().unwrap_or(99),
+        0,
+        "hints must be 0 (mut-000494); summary={summary}"
+    );
+}
