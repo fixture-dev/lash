@@ -1802,6 +1802,138 @@ mod tests {
         );
     }
 
+    /// mut-000166: `reserved = 3 + 1 + min_title_width` — the literal `1` (space) → `0`
+    ///
+    /// With the default `min_title_width=20` and `indent_width=3`:
+    ///   original:  `reserved = 24`, `available = terminal - 24`, `max_depth = floor(available/3)`
+    ///   mutant:    `reserved = 23`, `available = terminal - 23`
+    ///
+    /// At `terminal_width = 29`:
+    ///   original:  `available = 5`, `max_depth_avail = 1`, `min(1, 2) = 1 < 2` → notice
+    ///   mutant:    `available = 6`, `max_depth_avail = 2`, `min(2, 2) = 2 = total_depth` → NO notice
+    ///
+    /// The test asserts the notice DOES appear at `terminal_width=29`, which fails for the mutant.
+    #[test]
+    fn test_reserved_width_boundary_at_29() {
+        let mut graph = DependencyGraph::new();
+        // Two-level hierarchy: root(depth=0) → child(depth=1) → total_depth = 2
+        graph.add_node(
+            "test#root".to_string(),
+            NodeData::new("Root".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#child".to_string(),
+            NodeData::new("Child".to_string(), TaskStatus::Open, "test".to_string(), 1),
+        );
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#child".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // terminal=29, min_title_width=20, indent_width=3
+        // Original: available = 29-24=5, max_depth_avail=1, min(1,2)=1 < 2 → notice
+        // Mutant:   available = 29-23=6, max_depth_avail=2, min(2,2)=2 = total_depth → no notice
+        let config = AsciiGraphConfig {
+            terminal_width: Some(29),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "truncation notice must appear at terminal_width=29 (reserved=24); output = {output:?}"
+        );
+    }
+
+    /// mut-000163: `truncated || max_depth < total_depth` → `truncated && max_depth < total_depth`
+    ///
+    /// When `truncated = false` but `max_depth < total_depth`, the notice must still appear
+    /// (OR semantics). With AND semantics the notice would be suppressed.
+    ///
+    /// `truncated` stays `false` when no `render_tree` call returns `true`. This happens for
+    /// a flat node (no children) even though its `depth` field is large (which drives up
+    /// `total_depth` so that `max_depth < total_depth`).
+    #[test]
+    fn test_truncation_notice_from_depth_field_alone() {
+        let mut graph = DependencyGraph::new();
+        // A single flat node with depth=5 and no children.
+        // calculate_total_depth() returns 5+1=6.
+        // With terminal_width=40: available=16, max_depth_avail=5, min(5,6)=5 < 6 → notice.
+        // render_tree for this node returns truncated=false (no children to recurse into).
+        // So: outer truncated=false, max_depth<total_depth=true.
+        // OR: true → notice appears.  AND: false → notice suppressed (mutant fails).
+        graph.add_node(
+            "test#deep".to_string(),
+            NodeData::new(
+                "Deep Node".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                5,
+            ),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(40),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "notice must appear when max_depth < total_depth even if no tree was truncated; output = {output:?}"
+        );
+    }
+
+    /// mut-000183: `roots.is_empty() && !file_nodes.is_empty()` → `||`
+    ///
+    /// When `roots` is NOT empty (normal graph), the fallback must NOT run.
+    /// With `||`, `!file_nodes.is_empty()` is always true for a non-empty file, so the
+    /// fallback would always execute, adding a duplicate root entry.
+    ///
+    /// In a parent→child graph, only the parent is a root. With the `||` mutant,
+    /// the fallback also runs and pushes the alphabetically-first node (the child) as
+    /// an additional root, causing the child to be rendered twice: once as a child of
+    /// the parent and once as a standalone root with its own tree header.
+    #[test]
+    fn test_find_roots_fallback_does_not_run_when_roots_found() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#parent".to_string(),
+            create_test_node("ParentOnly", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#child".to_string(),
+            create_test_node("ChildOnly", TaskStatus::Open, "test"),
+        );
+        graph.add_edge(
+            "test#parent".to_string(),
+            "test#child".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // Count occurrences of "ChildOnly" in the output.
+        // With normal && semantics: child appears exactly once (as a child of parent).
+        // With || mutation: child also appears as a standalone root → appears twice.
+        let child_count = output.matches("ChildOnly").count();
+        assert_eq!(
+            child_count, 1,
+            "child should appear exactly once (not as a spurious extra root); output = {output:?}"
+        );
+    }
+
     /// mut-000202/205: boundary condition on `title.len() > max_title_len`
     /// At exactly `max_title_len` characters the title must NOT be truncated.
     /// At `max_title_len` + 1 characters it MUST be truncated.
