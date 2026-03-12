@@ -1436,6 +1436,35 @@ mod tests {
         assert_eq!(result.failed, 1);
     }
 
+    // --- format_files: error classification parse branch (mut-000323) ---
+    // When e.to_string().contains("Failed to parse") is true, the parse-error branch
+    // is taken: LashError::internal with context="The file may have syntax errors...".
+    // With the negated mutation, the general branch is taken: context=None.
+    // The observable difference: parse-error diagnostic has a non-None labels field
+    // (from the context), while the general error has labels=None.
+
+    #[test]
+    fn test_parse_error_diagnostic_has_context_label_with_syntax_hint() {
+        let temp = TempDir::new().unwrap();
+        // A non-existent file causes parse_file to fail with "Failed to parse ..."
+        // which triggers the parse-error branch in format_files.
+        let nonexistent = temp.path().join("no_such_parse.md");
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![nonexistent.clone()]);
+        let files = vec![nonexistent];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+
+        assert_eq!(result.failed, 1, "one failure expected");
+        let diag = &result.error_diagnostics[0];
+        // The parse-error branch includes context "The file may have syntax errors..."
+        // which becomes a label in the diagnostic.  The general branch has labels=None.
+        assert!(
+            diag.labels.is_some(),
+            "parse-error diagnostic must have a context label (syntax hint); got labels=None"
+        );
+    }
+
     // --- format_single_file: != vs == for changed (mut-000326) ---
     // When file content differs from formatted output, changed must be true.
     // When identical, changed must be false.  Already covered by existing tests,
