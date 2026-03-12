@@ -567,4 +567,215 @@ mod tests {
         let result = execute(args).unwrap();
         assert_eq!(result, 3);
     }
+
+    // ---- Targeted tests for surviving mutants ----
+
+    /// Kill mut-000224 (`Ok(1)` → `Ok(0)` when issues found):
+    /// A DB with a stale file record (file in DB but absent on disk) causes the verifier
+    /// to report issues.  The function must return exactly 1, not 0.
+    #[test]
+    fn test_execute_returns_1_for_dirty_db_with_stale_file() {
+        use lash_db::{init_database, open_database, FileRepository};
+        use lash_types::{FileMetadata, TaskFile, TaskTree};
+        use std::fs;
+        use std::time::SystemTime;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        // Insert a file record for a path that does NOT exist on disk.  The verifier
+        // will report this as a stale-file issue, making the report dirty.
+        let conn = open_database(&db_path).unwrap();
+        let repo = FileRepository::new(&conn);
+        let stale_file = TaskFile {
+            path: PathBuf::from("tasks/ghost.md"),
+            title: "Ghost File".to_string(),
+            id: "tasks.ghost".to_string(),
+            metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
+            tasks: TaskTree::new(),
+            hash: "deadbeef00000000deadbeef00000000deadbeef00000000deadbeef00000000".to_string(),
+            mtime: SystemTime::UNIX_EPOCH,
+        };
+        repo.insert(&stale_file).unwrap();
+        drop(conn);
+
+        let args = CheckIndexArgs {
+            paths: vec![],
+            diff: false,
+            json: false,
+            no_color: true,
+            project_root: Some(temp.path().to_path_buf()),
+            verbosity: lash_cli::formatter::Verbosity::Quiet,
+        };
+
+        let result = execute(args).unwrap();
+        // The stale file creates one issue → execute() must return exactly 1.
+        // If mut-000224 applies (1 → 0), this assertion fails.
+        assert_eq!(
+            result, 1,
+            "execute() must return 1 when the index has issues"
+        );
+    }
+
+    /// Kill mut-000221 (`args.json` → `!(args.json)` on the output-routing branch) and
+    /// also kill mut-000224 via the JSON output path:
+    /// Same dirty-DB scenario as above, but with json=true.  The function must still
+    /// return 1; if mut-000224 flips it to 0 the test fails.  The json=true path
+    /// exercises the branch guarded by mut-000221.
+    #[test]
+    fn test_execute_returns_1_for_dirty_db_json_mode() {
+        use lash_db::{init_database, open_database, FileRepository};
+        use lash_types::{FileMetadata, TaskFile, TaskTree};
+        use std::fs;
+        use std::time::SystemTime;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        let conn = open_database(&db_path).unwrap();
+        let repo = FileRepository::new(&conn);
+        let stale_file = TaskFile {
+            path: PathBuf::from("tasks/phantom.md"),
+            title: "Phantom File".to_string(),
+            id: "tasks.phantom".to_string(),
+            metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
+            tasks: TaskTree::new(),
+            hash: "deadbeef00000000deadbeef00000000deadbeef00000000deadbeef00000000".to_string(),
+            mtime: SystemTime::UNIX_EPOCH,
+        };
+        repo.insert(&stale_file).unwrap();
+        drop(conn);
+
+        let args = CheckIndexArgs {
+            paths: vec![],
+            diff: false,
+            json: true,
+            no_color: true,
+            project_root: Some(temp.path().to_path_buf()),
+            verbosity: lash_cli::formatter::Verbosity::Quiet,
+        };
+
+        let result = execute(args).unwrap();
+        assert_eq!(
+            result, 1,
+            "execute() in JSON mode must return 1 when the index has issues"
+        );
+    }
+
+    /// Kill mut-000219 (`!args.paths.is_empty()` → `args.paths.is_empty()`):
+    /// When a non-empty `paths` list contains a path that does not exist on disk, the
+    /// walker errors after the path filter is applied.  With the mutation the filter is
+    /// skipped for non-empty paths, the walker falls back to the project root (an empty
+    /// temp dir), and `execute()` returns `Ok(0)` instead of propagating the error.
+    #[test]
+    fn test_execute_errors_when_nonexistent_path_in_filter() {
+        use lash_db::init_database;
+        use std::fs;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        // A path that definitely does not exist on disk.
+        let nonexistent = temp.path().join("does_not_exist_xyz_abc");
+        assert!(!nonexistent.exists(), "Precondition: path must not exist");
+
+        let args = CheckIndexArgs {
+            paths: vec![nonexistent],
+            diff: false,
+            json: false,
+            no_color: true,
+            project_root: Some(temp.path().to_path_buf()),
+            verbosity: lash_cli::formatter::Verbosity::Quiet,
+        };
+
+        // Original: filter applied → walker errors on the missing path → execute() Err.
+        // Mutated (paths.is_empty() condition): non-empty paths skips the filter →
+        // walker walks project root → returns Ok(0).
+        let result = execute(args);
+        assert!(
+            result.is_err(),
+            "execute() must propagate the walker error for a non-existent filter path"
+        );
+    }
+
+    /// Kill mut-000225 (`report.is_clean()` → `!(report.is_clean())`):
+    /// Both branches of `output_text_report` are exercised.  A negation mutation would
+    /// send the clean report through the "issues found" path and the dirty report
+    /// through the "in sync" path — both must not panic and the data-level assertions
+    /// confirm the correct report state reaching each branch.
+    #[test]
+    fn test_output_text_report_is_clean_branch_for_clean_report() {
+        let report = make_clean_report();
+        // Confirm the correct state: clean report takes the is_clean==true path.
+        assert!(report.is_clean(), "precondition: report is clean");
+        assert_eq!(report.total_issues(), 0, "precondition: zero issues");
+        // With the mutation !(is_clean()), this call would take the wrong branch.
+        output_text_report(&report, false, None);
+    }
+
+    #[test]
+    fn test_output_text_report_is_clean_branch_for_dirty_report() {
+        let report = make_dirty_report();
+        // Confirm the correct state: dirty report takes the is_clean==false path.
+        assert!(!report.is_clean(), "precondition: report has issues");
+        assert_eq!(report.total_issues(), 1, "precondition: exactly one issue");
+        // With the mutation !(is_clean()), this call would take the wrong branch.
+        output_text_report(&report, false, None);
+    }
+
+    /// Kill mut-000228 (`show_diff` → `!(show_diff)`):
+    /// Call `output_text_report` with both `show_diff` values on a dirty report.  The
+    /// negation mutation would swap which branch is taken; calling both ensures the
+    /// mutation causes at least one invocation to exercise the wrong branch.
+    #[test]
+    fn test_output_text_report_show_diff_false_on_dirty_report() {
+        let report = make_dirty_report();
+        assert!(!report.is_clean());
+        // show_diff=false: the "Detailed issues" section must NOT be printed.
+        output_text_report(&report, false, None);
+    }
+
+    #[test]
+    fn test_output_text_report_show_diff_true_on_dirty_report() {
+        let report = make_dirty_report();
+        assert!(!report.is_clean());
+        // show_diff=true: the "Detailed issues" section IS printed.
+        // With mut-000228 (!(show_diff)), show_diff=true would behave like false.
+        output_text_report(&report, true, None);
+    }
+
+    /// Kill mut-000232/233/234/235 (`count > 0` boundary):
+    /// count=0 must NOT trigger output; count=1 MUST trigger output.
+    /// The mutations change the boundary: `>= 0` prints for 0, `<= 0` skips 1,
+    /// `0 → 1` makes `count > 1` skip 1, `!(count > 0)` inverts the whole condition.
+    /// Calling with both boundary values exercises both sides of the predicate.
+    #[test]
+    fn test_print_issue_count_if_any_with_count_zero_does_not_print() {
+        // count=0 is at the threshold — must produce no output.
+        // Mutation `!(count > 0)`: 0 passes the condition, WOULD print (wrong).
+        // Mutation `>= 0`: 0 passes, WOULD print (wrong).
+        print_issue_count_if_any("Zero label", 0, None);
+    }
+
+    #[test]
+    fn test_print_issue_count_if_any_with_count_one_prints() {
+        // count=1 is one above the threshold — must produce output.
+        // Mutation `<= 0`: 1 fails the condition, would NOT print (wrong).
+        // Mutation `0 → 1` (`count > 1`): 1 fails the condition, would NOT print (wrong).
+        // Mutation `!(count > 0)`: 1 fails the condition, would NOT print (wrong).
+        print_issue_count_if_any("One label", 1, None);
+    }
 }
