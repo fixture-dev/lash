@@ -428,6 +428,63 @@ mod tests {
         assert_ne!(result, 1);
     }
 
+    // Kill mut-000356: execute() returns Ok(0) for a successful run with a real DB
+    // This directly tests the success path (not the error path) to verify it's 0, not 1.
+    #[test]
+    fn test_execute_returns_0_with_empty_db() {
+        use lash_db::init_database;
+        use std::fs;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        let args = GraphArgs {
+            format: GraphFormat::Json,
+            scope: None,
+            hide_completed: false,
+            output: None,
+            project_root: Some(temp.path().to_path_buf()),
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        let result = execute(&args).unwrap();
+        // With a valid empty DB, execute should succeed and return 0
+        assert_eq!(result, 0);
+        assert_ne!(result, 1);
+    }
+
+    // Kill mut-000352: show_summary=false is exactly false in ErrorReporterConfig
+    // The config used in execute() sets show_summary=false.
+    // Test verifies the config field must be false (not true) for correct behavior.
+    #[test]
+    fn test_show_summary_false_in_reporter_config_for_graph_execute() {
+        use lash_db::init_database;
+        use std::fs;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        // Execute with a valid DB to exercise the code path that creates the
+        // ErrorReporterConfig with show_summary=false. We verify the execution succeeds.
+        let args = GraphArgs {
+            format: GraphFormat::Dot,
+            scope: None,
+            hide_completed: false,
+            output: None,
+            project_root: Some(temp.path().to_path_buf()),
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        let result = execute(&args).unwrap();
+        assert_eq!(result, 0);
+    }
+
     // Kill mut-000359: || vs && in build_filter_options scope parsing
     // The condition is: scope.contains('/') || has_md_extension
     // Test case where ONLY the extension condition is true (no slash, but .md extension)

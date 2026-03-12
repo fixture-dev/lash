@@ -1233,6 +1233,9 @@ fn test_index_text_output_force_label() {
 
 /// After a fresh index, `files_added` > 0 so the "Added:" line must appear.
 /// Kills mut-000386, 387, 388, 389 (negation and boundary mutations on `files_added` > 0).
+///
+/// Using a strict `contains("Added:")` without any `or` alternative ensures that
+/// mutants which suppress the "Added:" line (e.g. `!(files_added > 0)`) are caught.
 #[test]
 fn test_index_text_output_shows_added_count() {
     let temp = create_test_project();
@@ -1244,9 +1247,35 @@ fn test_index_text_output_shows_added_count() {
         .arg("index")
         .assert()
         .success()
-        .stdout(
-            predicate::str::contains("Added:").or(predicate::str::contains("Files processed:")),
-        );
+        .stdout(predicate::str::contains("Added:"));
+}
+
+/// On a second index run with no changes, `files_added = 0` so the "Added:" line
+/// must NOT appear.  This is the boundary case that distinguishes `> 0` from `>= 0`
+/// and `<= 0` on the `files_added` guard.
+/// Kills mut-000387 (>= 0 would print on zero) and mut-000388 (<= 0 would print on zero).
+#[test]
+fn test_index_text_output_no_added_line_on_second_run() {
+    let temp = create_test_project();
+
+    // First run – create the DB
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Second run with no changes – files_added must be 0, so "Added:" must not appear
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Added:").not());
 }
 
 /// After indexing and re-indexing the same project, `files_unchanged` > 0 so the
@@ -1276,14 +1305,14 @@ fn test_index_text_output_shows_unchanged_count_on_reindex() {
         .stdout(predicate::str::contains("Unchanged:"));
 }
 
-/// A full rebuild (`--force`) on an already-indexed project reports updated files;
-/// verifies the `files_updated` > 0 branch.
-/// Kills mut-000391, 392, 393, 394.
+/// An incremental index after modifying a file shows "Updated:" in output.
+/// The `files_updated > 0` guard must be true for this to print.
+/// Kills mut-000391, 392, 393, 394 (negation and boundary mutations on `files_updated > 0`).
 #[test]
-fn test_index_text_output_shows_updated_count_on_force_rebuild() {
+fn test_index_text_output_shows_updated_count_after_modification() {
     let temp = create_test_project();
 
-    // First index (adds files)
+    // First index – establish a baseline
     create_lash_command()
         .arg("--root")
         .arg(temp.path())
@@ -1292,21 +1321,42 @@ fn test_index_text_output_shows_updated_count_on_force_rebuild() {
         .assert()
         .success();
 
-    // Modify the file so it is re-parsed as "updated"
+    // Modify a file so the incremental index sees it as updated
     let index_file = temp.path().join("lash.index.md");
     let existing = fs::read_to_string(&index_file).unwrap();
-    fs::write(&index_file, format!("{existing}\n- [ ] Extra task\n")).unwrap();
+    fs::write(
+        &index_file,
+        format!("{existing}\n- [ ] Extra task added for update test\n"),
+    )
+    .unwrap();
 
-    // Force rebuild – modified file must appear as Updated
+    // Incremental re-index (no --force) – the modified file must appear as "Updated:"
     create_lash_command()
         .arg("--root")
         .arg(temp.path())
         .arg("--no-color")
         .arg("index")
-        .arg("--force")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Updated:").or(predicate::str::contains("Added:")));
+        .stdout(predicate::str::contains("Updated:"));
+}
+
+/// On a fresh index (no prior DB), `files_updated = 0` so "Updated:" must NOT appear.
+/// This boundary case distinguishes `> 0` from `>= 0` on the `files_updated` guard.
+/// Kills mut-000392 (>= 0 always true) and mut-000393 (<= 0 only true for zero).
+#[test]
+fn test_index_text_output_no_updated_line_on_fresh_index() {
+    let temp = create_test_project();
+
+    // Fresh index – no prior DB means everything is "added", not "updated"
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updated:").not());
 }
 
 /// A JSON index report must contain numeric counts with the exact field names.
