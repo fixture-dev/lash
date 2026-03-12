@@ -1,0 +1,7 @@
+target/
+coverage/
+flawd-report/
+.git/
+.DS_Store
+*.swp
+*.swo
