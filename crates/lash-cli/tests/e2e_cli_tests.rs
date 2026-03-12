@@ -2530,6 +2530,305 @@ fn test_agent_prompt_text_mode_outputs_content() {
         .success();
 }
 
+// --- FORMAT COMMAND TARGETED MUTATION-KILLING TESTS ---
+//
+// These e2e tests target mutations that only affect stderr output in the private
+// `output_text_results` function, which cannot be observed from unit tests without
+// stderr capture.
+
+/// check mode with unformatted file must report "need formatting" in stderr.
+/// Kills mut-000332 (args.check negation), mut-000333 (needs_formatting > 0 negation),
+/// mut-000334/335/336 (boundary mutations around the > 0 comparison).
+#[test]
+fn test_format_check_mode_stderr_reports_needs_formatting_count() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test
+
+@id:   unformatted
+
+## Tasks
+
+- [ ] Task 1
+";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg("--check")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        !output.status.success(),
+        "check mode with unformatted file must exit non-zero"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("need formatting"),
+        "check mode must report needs-formatting; got stderr: {stderr}"
+    );
+}
+
+/// check mode on already-formatted file must report "properly formatted" in stderr.
+/// Kills mut-000333 (> 0 false path when 0), mut-000343/344/345 (failed == 0 boundary).
+#[test]
+fn test_format_check_mode_stderr_reports_all_properly_formatted() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test
+
+@id: formatted
+@created: 2024-01-15
+
+## Tasks
+
+- [ ] Task 1
+";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg("--check")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "check mode on already-formatted file must succeed"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("properly formatted"),
+        "check mode on formatted file must report properly formatted; got: {stderr}"
+    );
+}
+
+/// format mode on file that needs formatting must report "Formatted N file(s) successfully".
+/// Kills mut-000332 (check negation), mut-000338/339/340/341 (formatted > 0 boundary).
+#[test]
+fn test_format_mode_stderr_reports_formatted_count() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test
+
+@id:   unformatted
+
+## Tasks
+
+- [ ] Task 1
+";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "format mode must succeed");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Formatted") && stderr.contains("successfully"),
+        "format mode must report formatted count; got: {stderr}"
+    );
+}
+
+/// format mode on already-formatted file must report "All files already formatted".
+/// Kills mut-000338 (formatted > 0 false path), mut-000343/344/345 (failed == 0 boundary).
+#[test]
+fn test_format_mode_stderr_reports_all_already_formatted() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test
+
+@id: formatted
+@created: 2024-01-15
+
+## Tasks
+
+- [ ] Task 1
+";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "format mode on already-formatted file must succeed"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("already formatted"),
+        "format mode with no changes must report already formatted; got: {stderr}"
+    );
+}
+
+/// format mode must NOT print check-mode messages (distinguishes branches for mut-000332).
+#[test]
+fn test_format_mode_does_not_print_check_mode_messages() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test
+
+@id:   unformatted
+
+## Tasks
+
+- [ ] Task 1
+";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "format mode must succeed");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("need formatting"),
+        "format mode must not print need formatting; got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("properly formatted"),
+        "format mode must not print properly formatted; got: {stderr}"
+    );
+}
+
+/// check mode must NOT print format-mode messages (reinforces mut-000332 branch distinction).
+#[test]
+fn test_format_check_mode_does_not_print_format_mode_messages() {
+    let temp = tempfile::tempdir().unwrap();
+    let content = "# Test
+
+@id:   unformatted
+
+## Tasks
+
+- [ ] Task 1
+";
+    let file_path = temp.path().join("lash.index.md");
+    fs::write(&file_path, content).unwrap();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg("--check")
+        .arg(&file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        !output.status.success(),
+        "check mode with unformatted file must exit non-zero"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("already formatted"),
+        "check mode must not print already formatted; got: {stderr}"
+    );
+}
+
+/// format command respects .gitignore when discovering files in a directory.
+///
+/// Kills mut-000284 (true -> false in discover_markdown_files(&paths, true)):
+/// - With respect_gitignore=true: gitignored file is excluded and not formatted.
+/// - With respect_gitignore=false: gitignored file is discovered and its content changes.
+///
+/// The ignore crate requires a real git repository (.git directory) to honor .gitignore.
+#[test]
+fn test_format_respects_gitignore() {
+    let temp = tempfile::tempdir().unwrap();
+
+    // Initialize a git repository so that .gitignore is honored by the ignore crate
+    std::process::Command::new("git")
+        .args(["init", temp.path().to_str().unwrap()])
+        .output()
+        .expect("git init failed");
+
+    // Create a project root marker
+    let index_content = "# Index
+
+@id: index
+@created: 2024-01-15
+
+## Tasks
+
+- [ ] Top task
+";
+    fs::write(temp.path().join("lash.index.md"), index_content).unwrap();
+
+    // Create a subdirectory with a markdown file that has formatting issues
+    let subdir = temp.path().join("subdir");
+    fs::create_dir(&subdir).unwrap();
+    let unformatted_content = "# Subfile
+
+@id:   ignored-subfile
+
+## Tasks
+
+- [ ] Task
+";
+    let ignored_file = subdir.join("ignored.md");
+    fs::write(&ignored_file, unformatted_content).unwrap();
+
+    // .gitignore at root excludes the entire subdir
+    fs::write(
+        temp.path().join(".gitignore"),
+        "subdir/
+",
+    )
+    .unwrap();
+
+    // Format the directory (triggers file discovery with respect_gitignore=true)
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("format")
+        .arg(temp.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "format must succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // The gitignored file must NOT have been formatted
+    let after = fs::read_to_string(&ignored_file).unwrap();
+    assert_eq!(
+        after, unformatted_content,
+        "gitignored file must not be formatted (respect_gitignore=true must exclude it)"
+    );
+}
+
 /// format command reports 'N file(s) failed to format' in stderr when a file fails.
 ///
 /// Kills mut-000346 (result.failed > 0 negation in output_text_results),
