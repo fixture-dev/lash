@@ -1523,3 +1523,463 @@ fn test_index_no_color_flag_produces_plain_text() {
         "output must contain summary label"
     );
 }
+
+// ---------------------------------------------------------------------------
+// files_deleted > 0 boundary tests
+// Kills mut-000396 (negation), mut-000397 (>= 0), mut-000398 (<= 0), mut-000399 (0 → 1)
+// ---------------------------------------------------------------------------
+
+/// After removing a previously-indexed file, the "Deleted:" line must appear.
+/// Verifies the `files_deleted > 0` branch is entered when a file has been removed.
+#[test]
+fn test_index_text_output_shows_deleted_count_after_file_removal() {
+    let temp = create_test_project();
+
+    // First run – index all files including backend.md and frontend.md
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Remove one of the indexed task files
+    fs::remove_file(temp.path().join("tasks").join("backend.md")).unwrap();
+
+    // Incremental re-index – the removed file must appear as "Deleted:"
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deleted:"));
+}
+
+/// On a fresh index no files are deleted, so "Deleted:" must NOT appear.
+/// Kills mut-000397 (>= 0 always true) and mut-000398 (<= 0 only true for zero).
+#[test]
+fn test_index_text_output_no_deleted_line_on_fresh_index() {
+    let temp = create_test_project();
+
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deleted:").not());
+}
+
+// ---------------------------------------------------------------------------
+// files_unchanged > 0 boundary tests
+// Kills mut-000400 (negation), mut-000401 (>= 0), mut-000402 (<= 0), mut-000403 (0 → 1)
+// ---------------------------------------------------------------------------
+
+/// On a fresh index, files_unchanged = 0, so "Unchanged:" must NOT appear.
+/// Kills mut-000401 (>= 0 always true) and mut-000402 (<= 0 only true for zero).
+#[test]
+fn test_index_text_output_no_unchanged_line_on_fresh_index() {
+    let temp = create_test_project();
+
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Unchanged:").not());
+}
+
+// ---------------------------------------------------------------------------
+// summary.error_count > 0 boundary tests (text report error section)
+// Kills mut-000404 (negation), mut-000405 (>= 0), mut-000406 (<= 0), mut-000407 (0 → 1)
+// ---------------------------------------------------------------------------
+
+/// On a valid project, error_count = 0, so the "Errors:" summary section must NOT appear.
+/// Kills mut-000405 (>= 0 always true), mut-000406 (<= 0 only true for zero).
+#[test]
+fn test_index_text_output_no_error_section_on_valid_project() {
+    let temp = create_test_project();
+
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Errors:").not());
+}
+
+// ---------------------------------------------------------------------------
+// Exit code and JSON field exact-value tests
+// Kills mut-000381 (has_errors negation), mut-000382 (exit code 0 → 1),
+// mut-000386-394, mut-000396-407
+// ---------------------------------------------------------------------------
+
+/// A successful index must exit with code 0, not 3 or 1.
+/// Kills mut-000381 (negation of has_errors) and mut-000382 (exit code 0 → 1).
+#[test]
+fn test_index_exits_zero_on_success_e2e() {
+    let temp = create_test_project();
+
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        .code(0);
+}
+
+/// JSON output on fresh index must have files_added > 0 (not zero).
+/// Kills mut-000386 (negation), mut-000388 (<= 0), mut-000389 (literal 0→1).
+#[test]
+fn test_index_json_files_added_is_positive_on_fresh_index() {
+    let temp = create_test_project();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("must be valid JSON");
+
+    let files_added = json["files_added"]
+        .as_u64()
+        .expect("files_added must be a number");
+    assert!(
+        files_added > 0,
+        "fresh index must add at least 1 file, got files_added={files_added}"
+    );
+}
+
+/// JSON output on unchanged re-index must have files_added = 0.
+/// Kills mut-000387 (>= 0 makes 0 pass) and mut-000389 (literal 0→1 changes boundary).
+#[test]
+fn test_index_json_files_added_is_zero_on_unchanged_reindex() {
+    let temp = create_test_project();
+
+    // First run
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Second run with no changes
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("must be valid JSON");
+
+    let files_added = json["files_added"]
+        .as_u64()
+        .expect("files_added must be a number");
+    assert_eq!(
+        files_added, 0,
+        "second index with no changes must have files_added=0"
+    );
+}
+
+/// JSON output on unchanged re-index must have files_updated = 0.
+/// Kills boundary mutations on `files_updated > 0` (mut-000392, 393, 394).
+#[test]
+fn test_index_json_files_updated_is_zero_on_unchanged_reindex() {
+    let temp = create_test_project();
+
+    // First run
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Second run with no changes
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("must be valid JSON");
+
+    let files_updated = json["files_updated"]
+        .as_u64()
+        .expect("files_updated must be a number");
+    assert_eq!(
+        files_updated, 0,
+        "second index with no changes must have files_updated=0"
+    );
+}
+
+/// JSON output after modifying a file must have files_updated > 0.
+/// Kills mut-000391 (negation) and mut-000393 (<= 0) on `files_updated`.
+#[test]
+fn test_index_json_files_updated_is_positive_after_modification() {
+    let temp = create_test_project();
+
+    // First run
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Modify a file
+    let index_file = temp.path().join("lash.index.md");
+    let existing = fs::read_to_string(&index_file).unwrap();
+    fs::write(
+        &index_file,
+        format!("{existing}\n- [ ] JSON update test task\n"),
+    )
+    .unwrap();
+
+    // Incremental re-index
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("must be valid JSON");
+
+    let files_updated = json["files_updated"]
+        .as_u64()
+        .expect("files_updated must be a number");
+    assert!(
+        files_updated > 0,
+        "incremental index after modification must have files_updated>0, got {files_updated}"
+    );
+}
+
+/// JSON output after file removal must have files_deleted > 0.
+/// Kills mut-000396 (negation), mut-000398 (<= 0), mut-000399 (literal 0→1).
+#[test]
+fn test_index_json_files_deleted_is_positive_after_removal() {
+    let temp = create_test_project();
+
+    // First run
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Remove a file
+    fs::remove_file(temp.path().join("tasks").join("frontend.md")).unwrap();
+
+    // Incremental re-index
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("must be valid JSON");
+
+    let files_deleted = json["files_deleted"]
+        .as_u64()
+        .expect("files_deleted must be a number");
+    assert!(
+        files_deleted > 0,
+        "index after file removal must have files_deleted>0, got {files_deleted}"
+    );
+}
+
+/// JSON output on fresh index must have files_deleted = 0.
+/// Kills mut-000397 (>= 0 always true) and mut-000399 (literal 0→1).
+#[test]
+fn test_index_json_files_deleted_is_zero_on_fresh_index() {
+    let temp = create_test_project();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("must be valid JSON");
+
+    let files_deleted = json["files_deleted"]
+        .as_u64()
+        .expect("files_deleted must be a number");
+    assert_eq!(
+        files_deleted, 0,
+        "fresh index must have files_deleted=0, got {files_deleted}"
+    );
+}
+
+/// JSON output on second index (no changes) must have files_unchanged > 0.
+/// Kills mut-000400 (negation), mut-000401 (>= 0), mut-000402 (<= 0), mut-000403 (0→1).
+#[test]
+fn test_index_json_files_unchanged_is_positive_on_reindex() {
+    let temp = create_test_project();
+
+    // First run
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .assert()
+        .success();
+
+    // Second run with no changes
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("must be valid JSON");
+
+    let files_unchanged = json["files_unchanged"]
+        .as_u64()
+        .expect("files_unchanged must be a number");
+    assert!(
+        files_unchanged > 0,
+        "second index with no changes must have files_unchanged>0, got {files_unchanged}"
+    );
+}
+
+/// JSON output on fresh index must have files_unchanged = 0.
+/// Kills mut-000401 (>= 0 always true) and mut-000403 (literal 0→1).
+#[test]
+fn test_index_json_files_unchanged_is_zero_on_fresh_index() {
+    let temp = create_test_project();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("must be valid JSON");
+
+    let files_unchanged = json["files_unchanged"]
+        .as_u64()
+        .expect("files_unchanged must be a number");
+    assert_eq!(
+        files_unchanged, 0,
+        "fresh index must have files_unchanged=0, got {files_unchanged}"
+    );
+}
+
+/// JSON error count must be 0 on a valid project.
+/// Kills mut-000404 (negation on error section guard), mut-000405 (>= 0),
+/// mut-000406 (<= 0), mut-000407 (literal 0→1 in comparison).
+#[test]
+fn test_index_json_error_count_is_zero_on_valid_project() {
+    let temp = create_test_project();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("must be valid JSON");
+
+    let error_count = json["errors"]["count"]
+        .as_u64()
+        .expect("errors.count must be a number");
+    assert_eq!(
+        error_count, 0,
+        "valid project must produce error_count=0, got {error_count}"
+    );
+}
+
+/// `lash index --show-files` without --json must succeed and produce text output.
+/// Kills mut-000373 (!args.json negation), mut-000374 (&& replaced by ||).
+#[test]
+fn test_index_show_files_flag_produces_text_output() {
+    let temp = create_test_project();
+
+    create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .arg("--show-files")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Files processed:"));
+}
+
+/// `lash index --show-files --json` must suppress the file progress bar (json takes precedence).
+/// The progress bar condition is `!args.json && args.show_files`, so json=true disables it.
+/// Kills mut-000373 (!args.json negation) and mut-000374 (&& replaced with ||).
+#[test]
+fn test_index_show_files_with_json_produces_json_output() {
+    let temp = create_test_project();
+
+    let output = create_lash_command()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--json")
+        .arg("index")
+        .arg("--show-files")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    // Output must still be valid JSON (progress bar suppressed by --json)
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output must be valid JSON with --json --show-files");
+    assert!(json["files_indexed"].is_number() || json["files_processed"].is_number());
+}
