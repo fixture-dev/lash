@@ -1,5 +1,26 @@
 # Lash Development Log
 
+## 2026-03-12 - Rustdoc Coverage and v1.0 Completion
+
+### Summary
+
+Completed the final open documentation task (Task 4: API Documentation / Rustdoc) and reached v1.0 completion for all planned phases.
+
+**Work done:**
+- Added field-level `///` doc comments to all public enum variant fields that were missing them: `LashError` variants in `lash-types/src/error.rs`, deprecated alias constants, `BlockerSuggestion` variants in `lash-core/src/dependency/blocker_analyzer.rs`, `NodeHasDependents` in `lash-core/src/dependency/graph.rs`, `ResolutionErrorKind` variants in `lash-core/src/dependency/resolver.rs`, `SchemaMismatch`/`MigrationFailed` in `lash-db/src/error.rs`, and several enum variants/fields in `lash-cli/src/cli.rs` (`Commands`, `SeverityLevel`, `TaskStatus`, `OutputFormat`, `AgentFormat`, `Shell`)
+- Added `#![warn(missing_docs)]` to all five crate `lib.rs` files to enforce ongoing documentation coverage
+- Verified `cargo doc --workspace --no-deps` builds cleanly with zero missing-documentation warnings
+- All 1,600+ tests continue to pass
+
+**Commits:** 10bc13a, 800399a, c3a5fdc
+
+### Phase 8 Complete
+
+With Task 4 done, all planned v1.0 work is complete:
+- All 9 phases finished
+- All Must Have success criteria met
+- Full documentation: README, user guide, developer guide, agent guide, error code reference, examples, Rustdoc
+
 ## 2025-11-25 - Color Handling Verification and Testing (Task 9)
 
 ### Summary
