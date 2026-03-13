@@ -4,10 +4,10 @@ This directory contains the comprehensive task breakdown for implementing Lash v
 
 ## Project Status
 
-**Current Phase:** Phase 8 - Testing & Documentation
+**Current Phase:** v1.0 COMPLETE
 **Target:** v1.0 Production Release
 **Estimated Duration:** 40-60 days (8-13 weeks)
-**Completed:** Project Setup, Core Data Model, Error Handling, Markdown Parser, Linter & Formatter, SQLite Schema, Indexing, Dependency Resolution, CLI Framework, CLI Commands, Fuzzy Search, Agent Integration, TUI, Testing
+**Completed:** Project Setup, Core Data Model, Error Handling, Markdown Parser, Linter & Formatter, SQLite Schema, Indexing, Dependency Resolution, CLI Framework, CLI Commands, Fuzzy Search, Agent Integration, TUI, Testing, Documentation
 
 ## Task Organization
 
@@ -53,7 +53,7 @@ Tasks are organized by major module/component. Each task file contains:
 
 ### Quality & Documentation
 - [x] [tasks.testing.md](tasks.testing.md) - Test strategy, integration tests, benchmarks, CI/CD (Tasks 1-9 complete) ✅
-- [ ] [tasks.documentation.md](tasks.documentation.md) - User guide, developer docs, examples, README
+- [x] [tasks.documentation.md](tasks.documentation.md) - User guide, developer docs, examples, README ✅
 
 ## Implementation Phases
 
@@ -124,14 +124,14 @@ Tasks are organized by major module/component. Each task file contains:
 **Deliverable:** `lash tui` command provides interactive interface
 **Status:** Complete. Full TUI with navigation pane, detail view, search modal, label filter, theme selector (300+ Gogh schemes), tree view with expand/collapse. Task 5 (Agent View Mode) deferred intentionally.
 
-### Phase 8: Testing & Documentation (Week 13) - IN PROGRESS ⚙️
+### Phase 8: Testing & Documentation (Week 13) - COMPLETE ✅
 **Goal:** Polish and prepare for release
 
 1. ✅ tasks.testing (ALL) - Complete
-2. tasks.documentation#1-8 - Not started
+2. ✅ tasks.documentation#1-8 - Complete
 
 **Deliverable:** Production-ready v1.0 release
-**Status:** Testing complete with 1,604+ tests, >80% coverage, CI/CD configured. Documentation tasks not yet started.
+**Status:** Complete. Testing: 1,604+ tests, >80% coverage, CI/CD configured. Documentation: README, user guide, developer guide, agent guide, error code reference, examples, and Rustdoc coverage enforced with `#![warn(missing_docs)]` across all crates.
 
 ### Phase 9: Content Features (Week 14) - COMPLETE ✅
 **Goal:** Add description section feature for richer file context
@@ -166,7 +166,7 @@ Parallelization opportunities exist within each phase (see individual task files
 - ✅ `lash graph` exports dependency graph (ASCII, DOT, Mermaid, JSON formats)
 - ✅ Agent integration (`lash agent-prompt`)
 - ✅ Comprehensive test coverage (>80%)
-- [ ] User documentation
+- ✅ User documentation
 
 ### Should Have
 - ✅ TUI for interactive use (Tasks 1-4, 6-10 complete; Task 5 Agent View deferred)

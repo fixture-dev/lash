@@ -265,39 +265,40 @@ Write comprehensive Rustdoc comments for all public APIs.
 
 ### Subtasks
 
-- [ ] Add module-level documentation
-  - [ ] `lash-core`: purpose and overview
-  - [ ] `lash-db`: database layer overview
-  - [ ] `lash-cli`: CLI framework overview
-  - [ ] `lash-tui`: TUI overview
-  - [ ] `lash-agent`: agent utilities overview
-- [ ] Document all public types
-  - [ ] Structs: purpose, fields, usage examples
-  - [ ] Enums: variants and when to use each
-  - [ ] Traits: contract and implementation notes
-- [ ] Document all public functions
-  - [ ] Purpose and behavior
-  - [ ] Parameters and return values
-  - [ ] Error conditions
-  - [ ] Examples
-  - [ ] Panics (if any)
-- [ ] Add usage examples
-  - [ ] Show common use cases
-  - [ ] Executable examples (doc tests)
-  - [ ] Complex scenarios
-- [ ] Document invariants and assumptions
-  - [ ] Preconditions
-  - [ ] Postconditions
-  - [ ] Thread safety
-  - [ ] Performance characteristics
-- [ ] Add links between related items
-  - [ ] Cross-reference types and functions
-  - [ ] Link to design document sections
-- [ ] Generate and review Rustdoc
-  - [ ] `cargo doc --open`
-  - [ ] Verify formatting and clarity
-  - [ ] Fix broken links
-  - [ ] Ensure examples run
+- [x] Add module-level documentation
+  - [x] `lash-core`: purpose and overview
+  - [x] `lash-db`: database layer overview
+  - [x] `lash-cli`: CLI framework overview
+  - [-] `lash-tui`: TUI overview (internal crate, not published)
+  - [x] `lash-agent`: agent utilities overview
+- [x] Document all public types
+  - [x] Structs: purpose, fields, usage examples
+  - [x] Enums: variants and when to use each
+  - [x] Traits: contract and implementation notes
+- [x] Document all public functions
+  - [x] Purpose and behavior
+  - [x] Parameters and return values
+  - [x] Error conditions
+  - [x] Examples
+  - [-] Panics (none in public API)
+- [x] Add usage examples
+  - [x] Show common use cases
+  - [x] Executable examples (doc tests)
+  - [-] Complex scenarios (covered by integration tests)
+- [x] Document invariants and assumptions
+  - [x] Preconditions (documented in relevant functions)
+  - [-] Postconditions (not applicable)
+  - [-] Thread safety (single-threaded CLI)
+  - [x] Performance characteristics (benchmarks documented)
+- [x] Add links between related items
+  - [x] Cross-reference types and functions (deprecated aliases link to canonical names)
+  - [-] Link to design document sections (design doc linked from README)
+- [x] Generate and review Rustdoc
+  - [x] `cargo doc --open`
+  - [x] Verify formatting and clarity
+  - [x] Fix broken links
+  - [x] Ensure examples run
+- [x] Enforce documentation coverage with `#![warn(missing_docs)]` in all crates
 
 ### Success Criteria
 
