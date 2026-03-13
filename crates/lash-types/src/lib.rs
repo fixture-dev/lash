@@ -6,6 +6,7 @@
 //! - Common data structures
 
 #![warn(clippy::pedantic)]
+#![warn(missing_docs)]
 #![allow(clippy::module_name_repetitions)]
 // Allow large Result errors - our error type is intentionally rich with context
 // This is acceptable for a CLI tool where errors are exceptional, not the hot path

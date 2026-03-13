@@ -6,6 +6,7 @@
 //! - Query interface for fast lookups
 
 #![warn(clippy::pedantic)]
+#![warn(missing_docs)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::cast_precision_loss)] // Profiler uses f64 for presentation
 #![allow(clippy::cast_possible_truncation)] // Duration fits in u64
