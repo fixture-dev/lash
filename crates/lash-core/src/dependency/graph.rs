@@ -65,7 +65,9 @@ pub enum GraphError {
 
     /// Attempted to remove a node that still has dependencies
     NodeHasDependents {
+        /// ID of the node that cannot be removed
         node_id: String,
+        /// Number of other nodes that depend on this node
         dependent_count: usize,
     },
 }
