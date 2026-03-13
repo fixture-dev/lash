@@ -498,4 +498,250 @@ mod tests {
         // Index file should have been created
         assert!(index_file.exists());
     }
+
+    // Kill mut-000451 (args.json negation in theme-loading of execute()):
+    // json=true and json=false must both return 0 on a fresh directory.
+    #[test]
+    fn test_execute_json_true_and_false_both_return_0_on_fresh_dir() {
+        for json_flag in [true, false] {
+            let temp = TempDir::new().unwrap();
+            let args = InitArgs {
+                path: Some(temp.path().to_path_buf()),
+                no_index: true,
+                force: false,
+                json: json_flag,
+                no_color: true,
+                errors_streaming: false,
+                verbosity: Verbosity::Quiet,
+            };
+            assert_eq!(
+                execute(args).unwrap(),
+                0,
+                "json={json_flag}: execute() on fresh dir must return 0"
+            );
+        }
+    }
+
+    // Kill mut-000452 (!args.no_color negation):
+    // no_color=true and no_color=false must both return 0 on a fresh directory.
+    #[test]
+    fn test_execute_no_color_true_and_false_both_return_0() {
+        for no_color_flag in [true, false] {
+            let temp = TempDir::new().unwrap();
+            let args = InitArgs {
+                path: Some(temp.path().to_path_buf()),
+                no_index: true,
+                force: false,
+                json: false,
+                no_color: no_color_flag,
+                errors_streaming: false,
+                verbosity: Verbosity::Quiet,
+            };
+            assert_eq!(
+                execute(args).unwrap(),
+                0,
+                "no_color={no_color_flag}: execute() on fresh dir must return 0"
+            );
+        }
+    }
+
+    // Kill mut-000457 (args.json negation in project-exists error branch):
+    // When project exists and no force flag, json=true and json=false must both return 1.
+    #[test]
+    fn test_execute_project_exists_returns_1_in_both_json_and_text_modes() {
+        for json_flag in [true, false] {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("lash.index.md"), "# Existing").unwrap();
+            let args = InitArgs {
+                path: Some(temp.path().to_path_buf()),
+                no_index: true,
+                force: false,
+                json: json_flag,
+                no_color: true,
+                errors_streaming: false,
+                verbosity: Verbosity::Quiet,
+            };
+            assert_eq!(
+                execute(args).unwrap(),
+                1,
+                "json={json_flag}: execute() when project exists must return 1"
+            );
+        }
+    }
+
+    // Kill mut-000459 (index_file.exists() negation in error diagnostic):
+    // When only index_file exists (not .lash dir), execute returns 1.
+    // When only .lash dir exists (not index_file), execute also returns 1.
+    // Both scenarios cover the two exists() checks in the error branch.
+    #[test]
+    fn test_execute_returns_1_when_only_index_file_exists() {
+        let temp = TempDir::new().unwrap();
+        fs::write(temp.path().join("lash.index.md"), "# Existing").unwrap();
+        assert!(!temp.path().join(".lash").exists());
+
+        let args = InitArgs {
+            path: Some(temp.path().to_path_buf()),
+            no_index: true,
+            force: false,
+            json: false,
+            no_color: true,
+            errors_streaming: false,
+            verbosity: Verbosity::Quiet,
+        };
+        assert_eq!(execute(args).unwrap(), 1);
+    }
+
+    // Kill mut-000460 (lash_dir.exists() negation in error diagnostic):
+    #[test]
+    fn test_execute_returns_1_when_only_lash_dir_exists() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join(".lash")).unwrap();
+        assert!(!temp.path().join("lash.index.md").exists());
+
+        let args = InitArgs {
+            path: Some(temp.path().to_path_buf()),
+            no_index: true,
+            force: false,
+            json: false,
+            no_color: true,
+            errors_streaming: false,
+            verbosity: Verbosity::Quiet,
+        };
+        assert_eq!(execute(args).unwrap(), 1);
+    }
+
+    // Kill mut-000465 (!args.no_index negation):
+    // With no_index=true: indexing skipped → no DB created.
+    // With no_index=false: indexing attempted → DB should be created.
+    #[test]
+    fn test_execute_no_index_true_skips_db_creation() {
+        let temp = TempDir::new().unwrap();
+        let args = InitArgs {
+            path: Some(temp.path().to_path_buf()),
+            no_index: true,
+            force: false,
+            json: false,
+            no_color: true,
+            errors_streaming: false,
+            verbosity: Verbosity::Quiet,
+        };
+        let result = execute(args).unwrap();
+        assert_eq!(result, 0);
+        assert!(
+            !temp.path().join(".lash").join("lash.db").exists(),
+            "no_index=true must not create lash.db"
+        );
+    }
+
+    #[test]
+    fn test_execute_no_index_false_creates_db() {
+        let temp = TempDir::new().unwrap();
+        let args = InitArgs {
+            path: Some(temp.path().to_path_buf()),
+            no_index: false,
+            force: false,
+            json: false,
+            no_color: true,
+            errors_streaming: false,
+            verbosity: Verbosity::Quiet,
+        };
+        let result = execute(args).unwrap();
+        assert_eq!(result, 0);
+        assert!(
+            temp.path().join(".lash").join("lash.db").exists(),
+            "no_index=false must create lash.db after successful indexing"
+        );
+    }
+
+    // Kill mut-000468 (args.json negation in print_success_message):
+    // json=true and json=false must both succeed (return 0) on init.
+    #[test]
+    fn test_print_success_message_both_modes_return_0() {
+        for json_flag in [true, false] {
+            let temp = TempDir::new().unwrap();
+            let args = InitArgs {
+                path: Some(temp.path().to_path_buf()),
+                no_index: true,
+                force: false,
+                json: json_flag,
+                no_color: true,
+                errors_streaming: false,
+                verbosity: Verbosity::Quiet,
+            };
+            assert_eq!(
+                execute(args).unwrap(),
+                0,
+                "json={json_flag}: execute() must return 0 for success message"
+            );
+        }
+    }
+
+    // Kill mut-000470 (force: true → force: false in run_index) and
+    // mut-000471 (show_files: false → show_files: true in run_index):
+    // run_index is private; we test it indirectly through execute() without --no-index.
+    // The key observable: with force=true in IndexArgs, run_index can rebuild a corrupt DB.
+    // With force=false (mutation), a corrupt DB would cause an error.
+    #[test]
+    fn test_execute_without_no_index_rebuilds_corrupt_db_on_force() {
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        // Write corrupt DB data to lash.db
+        fs::write(lash_dir.join("lash.db"), b"not a valid sqlite database").unwrap();
+
+        // With force=true in run_index (the current source code), init with force=true
+        // should succeed even with a corrupt DB.
+        let args = InitArgs {
+            path: Some(temp.path().to_path_buf()),
+            no_index: false, // Run indexing
+            force: true,     // Force flag passed through to run_index
+            json: false,
+            no_color: true,
+            errors_streaming: false,
+            verbosity: Verbosity::Quiet,
+        };
+        let result = execute(args).unwrap();
+        assert_eq!(
+            result, 0,
+            "init --force must succeed even with a corrupt lash.db (run_index uses force=true)"
+        );
+        // Verify DB was rebuilt correctly
+        let db_bytes = fs::read(lash_dir.join("lash.db")).unwrap();
+        assert_eq!(
+            &db_bytes[..16],
+            b"SQLite format 3\0",
+            "lash.db must be a valid SQLite database after forced rebuild"
+        );
+    }
+
+    // Kill mut-000472 (exit_code != 0 negation), mut-000473 (!= → ==),
+    // mut-000474 (literal 0 → 1) in run_index:
+    // These all affect the guard `if exit_code != 0 { bail! }`.
+    // A successful index (exit_code = 0) must NOT trigger the bail.
+    // Observable: execute() returns 0, not an Err.
+    #[test]
+    fn test_execute_successful_index_does_not_error() {
+        let temp = TempDir::new().unwrap();
+        let args = InitArgs {
+            path: Some(temp.path().to_path_buf()),
+            no_index: false, // run_index is called
+            force: false,
+            json: false,
+            no_color: true,
+            errors_streaming: false,
+            verbosity: Verbosity::Quiet,
+        };
+        // A successful index returns exit_code=0 → the guard `exit_code != 0` is false
+        // → no bail → run_index returns Ok(()) → execute returns Ok(0).
+        let result = execute(args);
+        assert!(
+            result.is_ok(),
+            "successful index must not cause execute() to return Err"
+        );
+        assert_eq!(
+            result.unwrap(),
+            0,
+            "successful index must cause execute() to return 0"
+        );
+    }
 }

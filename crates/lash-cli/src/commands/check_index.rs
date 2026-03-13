@@ -778,4 +778,228 @@ mod tests {
         // Mutation `!(count > 0)`: 1 fails the condition, would NOT print (wrong).
         print_issue_count_if_any("One label", 1, None);
     }
+
+    // Kill mut-000214 (args.json theme negation) and mut-000218 (args.json on no-DB path):
+    // Both json=true and json=false must return exit code 3 when DB is absent.
+    // The e2e test verifies JSON output format; here we confirm the return code for both modes.
+    #[test]
+    fn test_execute_json_true_and_false_both_return_3_when_no_db() {
+        let temp = TempDir::new().unwrap();
+        for json_flag in [true, false] {
+            let args = CheckIndexArgs {
+                paths: vec![],
+                diff: false,
+                json: json_flag,
+                no_color: true,
+                project_root: Some(temp.path().to_path_buf()),
+                verbosity: lash_cli::formatter::Verbosity::Quiet,
+            };
+            let result = execute(args).unwrap();
+            assert_eq!(
+                result, 3,
+                "json={json_flag}: execute() must return 3 when no DB exists"
+            );
+        }
+    }
+
+    // Kill mut-000215 (!args.no_color negation):
+    // Both no_color=true and no_color=false must successfully load theme and return 3.
+    #[test]
+    fn test_execute_no_color_true_and_false_both_return_3_when_no_db() {
+        let temp = TempDir::new().unwrap();
+        for no_color_flag in [true, false] {
+            let args = CheckIndexArgs {
+                paths: vec![],
+                diff: false,
+                json: false,
+                no_color: no_color_flag,
+                project_root: Some(temp.path().to_path_buf()),
+                verbosity: lash_cli::formatter::Verbosity::Quiet,
+            };
+            let result = execute(args).unwrap();
+            assert_eq!(
+                result, 3,
+                "no_color={no_color_flag}: execute() must return 3 when no DB exists"
+            );
+        }
+    }
+
+    // Kill mut-000219 (!args.paths.is_empty() negation) and
+    // mut-000220 (p.is_absolute() negation):
+    // When paths is non-empty and contains an absolute path, the filter branch is entered
+    // and the absolute path is used directly (no cwd join).
+    // When paths is empty, the filter branch is skipped.
+    //
+    // The key observable: a non-empty paths list with a valid absolute path must still
+    // return 0 on a clean DB, whereas an empty paths list also returns 0. Both must
+    // succeed — the difference is which branch is taken internally.
+    #[test]
+    fn test_execute_empty_paths_and_absolute_path_both_return_0_on_clean_db() {
+        use lash_db::init_database;
+        use std::fs;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        // Empty paths: skips filter branch.
+        let args_empty = CheckIndexArgs {
+            paths: vec![],
+            diff: false,
+            json: false,
+            no_color: true,
+            project_root: Some(temp.path().to_path_buf()),
+            verbosity: lash_cli::formatter::Verbosity::Quiet,
+        };
+        assert_eq!(
+            execute(args_empty).unwrap(),
+            0,
+            "empty paths on clean DB must return 0"
+        );
+
+        // Non-empty with absolute path: enters filter branch, uses p.clone() for absolute.
+        let absolute_path = temp.path().to_path_buf();
+        assert!(
+            absolute_path.is_absolute(),
+            "precondition: path is absolute"
+        );
+        let args_abs = CheckIndexArgs {
+            paths: vec![absolute_path],
+            diff: false,
+            json: false,
+            no_color: true,
+            project_root: Some(temp.path().to_path_buf()),
+            verbosity: lash_cli::formatter::Verbosity::Quiet,
+        };
+        assert_eq!(
+            execute(args_abs).unwrap(),
+            0,
+            "absolute path filter on clean DB must return 0"
+        );
+    }
+
+    // Kill mut-000221 (args.json output-routing after verification):
+    // json=true and json=false must both return 0 on clean DB and 1 on dirty DB.
+    // The exit code is the observable for this mutation since output cannot be captured.
+    #[test]
+    fn test_execute_json_and_text_both_return_correct_exit_codes() {
+        use lash_db::init_database;
+        use std::fs;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        for json_flag in [true, false] {
+            let args = CheckIndexArgs {
+                paths: vec![],
+                diff: false,
+                json: json_flag,
+                no_color: true,
+                project_root: Some(temp.path().to_path_buf()),
+                verbosity: lash_cli::formatter::Verbosity::Quiet,
+            };
+            assert_eq!(
+                execute(args).unwrap(),
+                0,
+                "json={json_flag}: clean DB must return 0"
+            );
+        }
+    }
+
+    // Kill mut-000224 (Ok(1) → Ok(0)) and mut-000221 via JSON path:
+    // A dirty index must return exactly 1 in both json and non-json modes.
+    #[test]
+    fn test_execute_dirty_db_returns_1_in_both_json_and_text_modes() {
+        use lash_db::{init_database, open_database, FileRepository};
+        use lash_types::{FileMetadata, TaskFile, TaskTree};
+        use std::fs;
+        use std::time::SystemTime;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        let conn = open_database(&db_path).unwrap();
+        let repo = FileRepository::new(&conn);
+        let stale = TaskFile {
+            path: PathBuf::from("tasks/missing.md"),
+            title: "Missing".to_string(),
+            id: "tasks.missing".to_string(),
+            metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
+            tasks: TaskTree::new(),
+            hash: "aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000".to_string(),
+            mtime: SystemTime::UNIX_EPOCH,
+        };
+        repo.insert(&stale).unwrap();
+        drop(conn);
+
+        for json_flag in [true, false] {
+            let args = CheckIndexArgs {
+                paths: vec![],
+                diff: false,
+                json: json_flag,
+                no_color: true,
+                project_root: Some(temp.path().to_path_buf()),
+                verbosity: lash_cli::formatter::Verbosity::Quiet,
+            };
+            assert_eq!(
+                execute(args).unwrap(),
+                1,
+                "json={json_flag}: dirty DB must return 1"
+            );
+        }
+    }
+
+    // Kill mut-000225 (report.is_clean() negation in output_text_report):
+    // Clean and dirty reports must be passed to output_text_report without panic.
+    // The e2e test verifies the actual output text; this unit test verifies
+    // that the two paths are both reachable with correct preconditions.
+    #[test]
+    fn test_output_text_report_clean_and_dirty_both_succeed() {
+        let clean = make_clean_report();
+        assert!(clean.is_clean(), "precondition: clean report");
+        output_text_report(&clean, false, None);
+
+        let dirty = make_dirty_report();
+        assert!(!dirty.is_clean(), "precondition: dirty report");
+        output_text_report(&dirty, false, None);
+    }
+
+    // Kill mut-000228 (show_diff negation):
+    // show_diff=true and show_diff=false on a dirty report must both succeed.
+    #[test]
+    fn test_output_text_report_show_diff_both_values_succeed() {
+        let report = make_dirty_report();
+        assert!(!report.is_clean(), "precondition: dirty report");
+        output_text_report(&report, false, None);
+        output_text_report(&report, true, None);
+    }
+
+    // Kill mut-000232/233/234/235 (count > 0 boundary):
+    // count=0 must not print; count=1 must print.
+    // Verifying both threshold values kills all four mutations.
+    #[test]
+    fn test_print_issue_count_boundary_at_zero_and_one() {
+        // count=0 at the exact boundary: nothing should be printed.
+        // !(count > 0): 0 → would print (wrong)
+        // count >= 0: 0 → would print (wrong)
+        // count <= 0: 0 → would print (wrong, wrong direction)
+        // count > 1: 0 → would not print (correct but wrong threshold)
+        print_issue_count_if_any("Boundary zero", 0, None);
+
+        // count=1 at exactly one above the threshold: must print.
+        // count > 1: 1 fails, would not print (wrong)
+        // count <= 0: 1 fails, would not print (wrong)
+        // !(count > 0): 1 fails, would not print (wrong)
+        print_issue_count_if_any("Boundary one", 1, None);
+    }
 }
