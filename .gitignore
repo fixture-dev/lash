@@ -39,4 +39,4 @@ coverage/
 
 # Mutation testing
 .flawd/
-flawd-report/
+flawd-report*/
