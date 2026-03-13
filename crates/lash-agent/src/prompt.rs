@@ -1566,4 +1566,32 @@ mod tests {
         // And the content must still be non-empty (something was included)
         assert!(!prompt.content.is_empty());
     }
+
+    /// Kills mut-000096: `truncated = true` → `truncated = false` on line 861
+    /// (inside the `estimated > *allocation` branch).
+    ///
+    /// Uses a single section whose token estimate exceeds its non-zero allocation,
+    /// so ONLY the `estimated > allocation` path (line 861) can set `truncated`.
+    /// With the mutation, `truncated` stays false; this test detects that.
+    #[test]
+    fn test_apply_budget_sets_truncated_true_when_section_exceeds_non_zero_allocation() {
+        // "word word word word word" → 5 words → ceil(5 * 1.3) = 7 tokens estimated.
+        // Budget = 3: distribute_budget gives allocation = min(7, 3) = 3 (non-zero).
+        // Since 7 > 3, line 858-861 fires: truncate_to_budget is called and
+        // truncated must be set to true.
+        // With mut-000096 (true→false), truncated would remain false.
+        let sections: &[(&str, String, u8)] =
+            &[("test", "word word word word word".to_string(), 5)];
+        let (content, truncated) = PromptBuilder::apply_budget(sections, 3);
+
+        assert!(
+            truncated,
+            "truncated must be true when section estimate (7) exceeds non-zero allocation (3)"
+        );
+        // Content must be non-empty (some truncated text was included)
+        assert!(
+            !content.is_empty(),
+            "content must not be empty after partial allocation"
+        );
+    }
 }
