@@ -118,10 +118,12 @@ pub struct LashCli {
     #[arg(long, global = true, help_heading = "Global Options")]
     pub errors_streaming: bool,
 
+    /// The subcommand to execute
     #[command(subcommand)]
     pub command: Commands,
 }
 
+/// Top-level CLI subcommands
 #[derive(Subcommand, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum Commands {
@@ -394,6 +396,7 @@ pub enum Commands {
 
     /// Manage configuration settings
     Config {
+        /// The config subcommand to execute
         #[command(subcommand)]
         command: ConfigCommand,
     },
@@ -563,26 +566,37 @@ pub enum PlaygroundCommand {
 /// Severity levels for diagnostics
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SeverityLevel {
+    /// Only show errors
     Error,
+    /// Show errors and warnings
     Warning,
+    /// Show errors, warnings, and informational messages
     Info,
+    /// Show all diagnostics including hints
     Hint,
 }
 
 /// Task status values
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum TaskStatus {
+    /// Task is not yet started
     Open,
+    /// Task has been completed
     Done,
+    /// Task has been waived (not applicable)
     Waived,
+    /// Task is blocked by a dependency
     Blocked,
 }
 
 /// Output format options
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum OutputFormat {
+    /// Human-readable plain text
     Text,
+    /// Compact JSON (single line)
     Json,
+    /// Pretty-printed JSON with indentation
     JsonPretty,
 }
 
@@ -602,19 +616,28 @@ pub enum GraphFormat {
 /// Agent prompt formats
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum AgentFormat {
+    /// Plain text prompt suitable for any LLM
     Plain,
+    /// Structured JSON prompt
     Json,
+    /// Claude Code skill specification format
     ClaudeSkill,
+    /// AGENTS.md format for agent documentation
     AgentsMd,
 }
 
 /// Shell types for completion generation
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Shell {
+    /// Bash shell completions
     Bash,
+    /// Zsh shell completions
     Zsh,
+    /// Fish shell completions
     Fish,
+    /// `PowerShell` completions
     Powershell,
+    /// Elvish shell completions
     Elvish,
 }
 
