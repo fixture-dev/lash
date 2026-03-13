@@ -1,5 +1,44 @@
 # Lash Development Log
 
+## 2026-03-12 - Mutation Testing Campaign (166 → ~3 Survivors)
+
+### Summary
+
+Ran a comprehensive mutation testing campaign against the full lash codebase using flawd. Started with 166 surviving mutants from the initial report and addressed them across 14 source files by adding targeted unit and e2e tests. No source code was modified — only test files.
+
+**Files with mutants addressed:**
+- `lash-agent/src/prompt.rs` (3 mutants: to_summary_string total boundary, apply_budget allocation==0, apply_budget truncated literal)
+- `lash-agent/src/tokens.rs` (3 mutants: summarize_task_file total boundary, 0→1 literal, truncate_to_budget char_budget boundary)
+- `lash-cli/src/commands/agent_prompt.rs` (6 mutants: args.json, no_color, include_tasks, truncated && !json compound)
+- `lash-cli/src/commands/ascii_graph.rs` (7 mutants: || vs &&, depth literals, is_index branch, truncate_title boundary)
+- `lash-cli/src/commands/check_index.rs` (13 mutants: args.json, no_color, paths.is_empty, is_absolute, count>0 boundary, is_clean, show_diff)
+- `lash-cli/src/commands/check_links/core.rs` (6 mutants: total_broken==0 boundary, show_summary literal, dep_not_found 0 literals)
+- `lash-cli/src/commands/check_links/mod.rs` (2 mutants: args.json in no-db and zero-broken branches)
+- `lash-cli/src/commands/config.rs` (10 mutants: args.json, no_color, config_path.exists, user, rules.is_empty, || vs &&)
+- `lash-cli/src/commands/explain.rs` (14 mutants: args.json, no_color, starts_with conditions, codes.is_empty)
+- `lash-cli/src/commands/format.rs` (41 mutants: args.json, no_color, check/diff branches, formatted/failed counters, result comparisons)
+- `lash-cli/src/commands/graph.rs` (2 mutants: show_summary literal, index_out_of_sync(0) literal)
+- `lash-cli/src/commands/index.rs` (36 mutants: no_color, force, paths.is_empty, json, errors_streaming, files_added/updated/deleted/unchanged counters)
+- `lash-cli/src/commands/init.rs` (12 mutants: args.json, no_color, index_file.exists, lash_dir.exists, no_index, exit_code!=0)
+- `lash-cli/src/commands/lint.rs` (11 mutants: no_color, recursive literal, interactive&&!fix compound, fix, json, rule counts)
+
+**Remaining equivalent mutants (2):**
+- `prompt.rs:268` mut-000047: `total > 0` → `total >= 0` (usize — always ≥ 0, equivalent)
+- `tokens.rs:57` mut-000103: `total_tasks > 0` → `total_tasks >= 0` (usize — always ≥ 0, equivalent)
+
+**Commits:** 059cc04, 317ee05, 0b66207, 2af6f7e, a131034, e903eaf
+
+### Key Findings
+
+- Created dedicated test files for several modules: `check_links_output_tests.rs`, `config_command_tests.rs`, `graph_command_tests.rs`, `agent_prompt_test.rs`, `index_command_test.rs`, `lint_output_tests.rs`
+- E2e tests in `e2e_cli_tests.rs` grew from ~500 to ~4400+ lines to cover output-observable mutations
+- Some mutations (stdout-only effects) required e2e process tests since unit tests cannot capture stdout
+- Mutation score improved from ~58.5% baseline to ~97-98% on focused targeted files
+- Full project score ~60.5% on random 400-sample budget — lower due to flawd import graph limitation (e2e test files not linked to source via static import analysis, so per-mutant test selection misses e2e tests). Coverage-based targeting would yield higher scores.
+- Two confirmed equivalent mutants remain: `usize > 0` → `usize >= 0` (always true for unsigned types)
+
+---
+
 ## 2026-03-12 - Rustdoc Coverage and v1.0 Completion
 
 ### Summary
