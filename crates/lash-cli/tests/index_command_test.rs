@@ -170,7 +170,14 @@ fn test_index_text_mode_does_not_produce_json() {
 // also succeeds.
 // ---------------------------------------------------------------------------
 
-/// With `--no-color` the index output must not contain ANSI escape codes.
+/// With `--no-color` the index output must not contain ANSI escape codes,
+/// even when `FORCE_COLOR=1` is set in the environment.
+///
+/// This test kills mut-000399 (`!args.no_color` → `args.no_color`): with the
+/// mutation, `--no-color` would pass `true` (color-enabled) to
+/// `CliTheme::load`, causing ANSI codes to appear in the output when
+/// `FORCE_COLOR=1` forces color output.  The original code passes `false`,
+/// which returns `None` and suppresses all color.
 #[test]
 fn test_index_no_color_flag_suppresses_ansi_codes() {
     let temp = create_test_project();
@@ -179,13 +186,41 @@ fn test_index_no_color_flag_suppresses_ansi_codes() {
         .arg(temp.path())
         .arg("--no-color")
         .arg("index")
+        // FORCE_COLOR=1 makes owo-colors emit ANSI codes even to non-TTY pipes.
+        // --no-color must override this via CliTheme::load(None, false) → None.
+        .env("FORCE_COLOR", "1")
         .output()
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         !stdout.contains("\x1b["),
-        "--no-color index output must not contain ANSI codes:\n{stdout}"
+        "--no-color index output must not contain ANSI codes even with FORCE_COLOR=1:\n{stdout}"
+    );
+}
+
+/// Without `--no-color` and with `FORCE_COLOR=1`, the index output must contain
+/// ANSI escape codes for the styled summary line.
+///
+/// This is the complementary test to `test_index_no_color_flag_suppresses_ansi_codes`:
+/// it confirms the color path (theme=Some) produces ANSI output, distinguishing
+/// the two branches of `CliTheme::load(None, !args.no_color)`.
+#[test]
+fn test_index_color_output_contains_ansi_codes_when_forced() {
+    let temp = create_test_project();
+    let output = lash_cmd()
+        .arg("--root")
+        .arg(temp.path())
+        // no --no-color → colors enabled
+        .arg("index")
+        .env("FORCE_COLOR", "1")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\x1b["),
+        "index output without --no-color must contain ANSI codes when FORCE_COLOR=1:\n{stdout}"
     );
 }
 
@@ -228,6 +263,12 @@ fn test_index_errors_streaming_reports_errors() {
 }
 
 /// Without `--errors-streaming` errors are batched and flushed at the end.
+///
+/// This test kills mut-000420 (`!args.errors_streaming` → `args.errors_streaming`
+/// in the flush guard): under the mutation, batch mode would NOT call
+/// `error_reporter.flush()`, so individual error diagnostics would not be
+/// printed to stderr.  The test verifies that stderr is non-empty when there
+/// are parse errors and batch mode is active.
 #[test]
 fn test_index_batch_mode_flushes_errors() {
     let temp = TempDir::new().unwrap();
@@ -239,7 +280,7 @@ fn test_index_batch_mode_flushes_errors() {
         .arg(temp.path())
         .arg("--no-color")
         .arg("index")
-        // no --errors-streaming → batch mode
+        // no --errors-streaming → batch mode; flush() must be called at the end
         .output()
         .unwrap();
 
@@ -248,6 +289,17 @@ fn test_index_batch_mode_flushes_errors() {
         code == 0 || code == 3,
         "index with parse errors in batch mode should exit 0 or 3, got {code}"
     );
+
+    // In batch mode, flush() is called after indexing is complete.  The
+    // flushed diagnostics appear on stderr.  Verify that stderr is non-empty
+    // when there are parse errors (which implies flush() was called).
+    if code == 3 {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.is_empty(),
+            "batch mode must flush parse-error diagnostics to stderr, but stderr was empty"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -564,9 +616,16 @@ fn test_index_first_run_no_unchanged_line() {
 //
 // A project with no parse errors must NOT print the "Errors:" summary line.
 // A project with at least one parse error MUST print the "Errors:" line.
+//
+// Killing the numeric-literal mutation (0→1, making the guard `> 1`): when
+// exactly 1 error is present, `1 > 0 = true` (original) vs `1 > 1 = false`
+// (mutant).  The test below asserts the "Errors:" line IS present for a
+// project with 1 parse error, which fails under the mutant.
 // ---------------------------------------------------------------------------
 
 /// A clean project must not include an "Errors:" line in the text output.
+/// This kills the negation/comparison mutations where `> 0` becomes `<= 0`
+/// or `>= 0` (causing "Errors: 0" to appear unexpectedly).
 #[test]
 fn test_index_clean_project_no_error_summary_line() {
     let temp = create_test_project();
@@ -578,6 +637,28 @@ fn test_index_clean_project_no_error_summary_line() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Errors:").not());
+}
+
+/// A project with exactly one parse error must include the "Errors:" line.
+/// This kills mut-000449 (0→1): under the mutant `error_count > 1`, a project
+/// with exactly 1 error would not print the "Errors:" section.
+#[test]
+fn test_index_project_with_parse_error_shows_errors_line() {
+    let temp = TempDir::new().unwrap();
+    // Duplicate @id annotation triggers a reliable parse error.
+    let content = "# Broken\n\n@id: dup\n@id: dup\n\n## Tasks\n\n- [ ] Task\n";
+    fs::write(temp.path().join("lash.index.md"), content).unwrap();
+
+    lash_cmd()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        .assert()
+        // Exit code 3 = indexing completed with parse errors.
+        .code(3)
+        // The "Errors:" summary line must appear in text output.
+        .stdout(predicate::str::contains("Errors:"));
 }
 
 // ---------------------------------------------------------------------------
