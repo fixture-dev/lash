@@ -1594,4 +1594,32 @@ mod tests {
             "content must not be empty after partial allocation"
         );
     }
+
+    #[test]
+    fn test_apply_budget_allocation_one_section_not_skipped() {
+        // Kills mut-000091 (0→1 in `*allocation == 0`):
+        // When allocation == 1 the ORIGINAL skips nothing (only allocation == 0 is
+        // skipped). With the mutation (`== 1` guard), the section would be skipped
+        // entirely, leaving content empty.
+        //
+        // "hello" → estimate_tokens = ceil(1 * 1.3) = ceil(1.3) = 2 tokens.
+        // budget = 1 → distribute_budget gives allocation = min(2, 1) = 1.
+        //
+        // Original path (allocation != 0): estimate (2) > allocation (1) →
+        //   truncate_to_budget("hello", 1): char_budget = 4 < 10 → returns "...".
+        //   content = "..."
+        //
+        // Mutation path (allocation == 1 → skip): content remains "" (empty).
+        let sections: &[(&str, String, u8)] = &[("sec", "hello".to_string(), 5)];
+        let (content, truncated) = PromptBuilder::apply_budget(sections, 1);
+
+        assert!(
+            truncated,
+            "truncated must be true: estimate(2) > allocation(1)"
+        );
+        assert_eq!(
+            content, "...",
+            "section with allocation=1 must produce truncated content ('...'), not be skipped"
+        );
+    }
 }
