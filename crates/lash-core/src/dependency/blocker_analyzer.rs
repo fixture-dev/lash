@@ -179,19 +179,36 @@ impl BlockerChain {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlockerSuggestion {
     /// Complete the blocking task
-    CompleteTask { task_id: String, title: String },
+    CompleteTask {
+        /// ID of the task that must be completed
+        task_id: String,
+        /// Human-readable title of the blocking task
+        title: String,
+    },
 
     /// Waive the blocking task (mark as not applicable)
-    WaiveTask { task_id: String, title: String },
+    WaiveTask {
+        /// ID of the task to waive
+        task_id: String,
+        /// Human-readable title of the task to waive
+        title: String,
+    },
 
     /// Remove the dependency relationship
     RemoveDependency {
+        /// ID of the dependent task (the one that is blocked)
         from_task_id: String,
+        /// ID of the blocking task (the dependency to remove)
         to_task_id: String,
     },
 
     /// Waive the dependent task itself
-    WaiveDependentTask { task_id: String, title: String },
+    WaiveDependentTask {
+        /// ID of the dependent task to waive
+        task_id: String,
+        /// Human-readable title of the dependent task
+        title: String,
+    },
 }
 
 /// Formatted blocker report for user display

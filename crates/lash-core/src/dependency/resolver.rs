@@ -187,16 +187,30 @@ impl ResolutionError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolutionErrorKind {
     /// Referenced file does not exist
-    FileNotFound { path: PathBuf },
+    FileNotFound {
+        /// Path to the file that could not be found
+        path: PathBuf,
+    },
 
     /// Referenced task does not exist in the target file
-    TaskNotFound { file_path: PathBuf, task_id: String },
+    TaskNotFound {
+        /// Path to the file that was found but did not contain the task
+        file_path: PathBuf,
+        /// ID of the task that was not found in the file
+        task_id: String,
+    },
 
     /// Reference has invalid syntax or format
-    InvalidReference { reason: String },
+    InvalidReference {
+        /// Explanation of what is wrong with the reference syntax
+        reason: String,
+    },
 
     /// Referenced directory does not exist or contains no task files
-    DirectoryNotFound { path: PathBuf },
+    DirectoryNotFound {
+        /// Path to the directory that could not be found
+        path: PathBuf,
+    },
 }
 
 /// Result of dependency resolution

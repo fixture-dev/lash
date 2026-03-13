@@ -14,11 +14,21 @@ pub enum DbError {
 
     /// Schema version mismatch
     #[error("Schema version mismatch: expected {expected}, found {found}")]
-    SchemaMismatch { expected: i32, found: i32 },
+    SchemaMismatch {
+        /// The schema version the code expects
+        expected: i32,
+        /// The schema version found in the database
+        found: i32,
+    },
 
     /// Migration failed
     #[error("Migration to version {version} failed: {reason}")]
-    MigrationFailed { version: i32, reason: String },
+    MigrationFailed {
+        /// The target schema version the migration was attempting to reach
+        version: i32,
+        /// Human-readable explanation of why the migration failed
+        reason: String,
+    },
 
     /// Serialization/deserialization error
     #[error("JSON serialization error: {0}")]
