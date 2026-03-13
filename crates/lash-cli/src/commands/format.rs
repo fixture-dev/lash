@@ -724,8 +724,14 @@ mod tests {
 
         // LashConfig is deserialized directly from TOML, so we need to provide all required fields.
         // We set indent_spaces=4 (non-default; default is 2) to verify the config was actually read.
-        let root_str = temp.path().display().to_string();
-        let db_str = temp.path().join(".lash/lash.db").display().to_string();
+        // Use forward slashes for paths to avoid TOML escape issues on Windows.
+        let root_str = temp.path().display().to_string().replace('\\', "/");
+        let db_str = temp
+            .path()
+            .join(".lash/lash.db")
+            .display()
+            .to_string()
+            .replace('\\', "/");
         let config_content = format!(
             "root_path = \"{root_str}\"\nindex_file = \"lash.index.md\"\nmax_depth = 3\nindent_spaces = 4\ndb_path = \"{db_str}\"\n"
         );
