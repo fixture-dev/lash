@@ -511,6 +511,35 @@ mod tests {
         assert!(set_config_value(&mut config, "unknown.key", "value").is_err());
     }
 
+    // Kill mut-000270: config.linter.rules.is_empty() → !(config.linter.rules.is_empty())
+    // get_config_value must return "[]" for empty rules and "[rule]" for non-empty rules.
+    // With the negation, empty rules would return the join format and non-empty would return "[]".
+
+    #[test]
+    fn test_get_config_value_linter_rules_empty_returns_bracket_notation() {
+        let config = Config::default(); // default has no rules
+        assert!(
+            config.linter.rules.is_empty(),
+            "default config must have empty rules"
+        );
+        assert_eq!(
+            get_config_value(&config, "linter.rules"),
+            Some("[]".to_string()),
+            "empty rules must return '[]'"
+        );
+    }
+
+    #[test]
+    fn test_get_config_value_linter_rules_non_empty_returns_formatted_list() {
+        let mut config = Config::default();
+        config.linter.rules = vec!["rule-a".to_string(), "rule-b".to_string()];
+        assert_eq!(
+            get_config_value(&config, "linter.rules"),
+            Some("[rule-a, rule-b]".to_string()),
+            "non-empty rules must return formatted list"
+        );
+    }
+
     // Kill mut-000248: || vs && in "value == "[]" || value.is_empty()"
     // Test where ONLY one condition is true:
     //   - value == "[]" is true, value.is_empty() is false

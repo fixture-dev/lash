@@ -338,6 +338,15 @@ mod tests {
     }
 
     #[test]
+    fn test_summarize_task_file_one_total_complete_gives_100_percent() {
+        // Kills mut-000105 (0→1 literal in total_tasks > 0 condition, making it total_tasks > 1):
+        // With total=1 and completed=1, percent must be 100%, not 0%.
+        // The mutated code (total_tasks > 1) would take the else branch for total=1, giving 0%.
+        let summary = summarize_task_file("one.md", 1, 1, 0, 0);
+        assert_eq!(summary, "one.md, 1 tasks, 100% complete");
+    }
+
+    #[test]
     fn test_summarize_task_file_zero_open_not_in_output() {
         // Kills mut-000107 (0→1 for open_tasks > 0 else branch):
         // When open_tasks is exactly 0, "open" must not appear.
