@@ -5,6 +5,7 @@
 //! execution framework, and project root detection.
 
 #![warn(clippy::pedantic)]
+#![warn(missing_docs)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)] // Result types in traits are self-explanatory
 #![allow(clippy::must_use_candidate)] // Avoid excessive #[must_use] attributes

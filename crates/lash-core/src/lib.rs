@@ -7,6 +7,7 @@
 //! - Dependency resolution
 
 #![warn(clippy::pedantic)]
+#![warn(missing_docs)]
 #![allow(clippy::module_name_repetitions)]
 
 // Parser module - implemented

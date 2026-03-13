@@ -6,6 +6,7 @@
 //! - Agent-friendly output formats
 
 #![warn(clippy::pedantic)]
+#![warn(missing_docs)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::cast_precision_loss)] // Acceptable for token estimation
 #![allow(clippy::cast_possible_truncation)] // Acceptable for token estimation
