@@ -168,73 +168,106 @@ pub enum LashError {
     /// Markdown parsing failures
     #[error("parse error: {message}")]
     Parse {
+        /// Stable error code identifying the specific parse failure
         code: &'static str,
+        /// Human-readable description of what went wrong
         message: String,
+        /// File and line/column where the parse error occurred
         location: Option<Location>,
+        /// The offending source text, for context
         snippet: Option<String>,
+        /// Suggestion for how to fix the error
         help: Option<String>,
     },
 
     /// Validation/linting failures
     #[error("lint error: {message}")]
     Lint {
+        /// Stable error code identifying the specific lint rule violated
         code: &'static str,
+        /// Human-readable description of the violation
         message: String,
+        /// File and line/column where the violation occurred
         location: Option<Location>,
+        /// The offending source text, for context
         snippet: Option<String>,
+        /// Suggestion for how to fix the violation
         help: Option<String>,
     },
 
     /// Database indexing errors
     #[error("index error: {message}")]
     Index {
+        /// Stable error code identifying the specific indexing failure
         code: &'static str,
+        /// Human-readable description of the indexing failure
         message: String,
+        /// Additional context about what was being indexed when the error occurred
         context: Option<String>,
+        /// Suggestion for how to resolve the error
         help: Option<String>,
     },
 
     /// Dependency resolution errors
     #[error("dependency error: {message}")]
     Dependency {
+        /// Stable error code identifying the specific dependency issue
         code: &'static str,
+        /// Human-readable description of the dependency problem
         message: String,
+        /// File and line/column of the dependency reference
         location: Option<Location>,
+        /// The dependency chain that led to this error (e.g., cycle path)
         chain: Option<Vec<String>>,
+        /// Suggestion for how to resolve the dependency issue
         help: Option<String>,
     },
 
     /// Query/search errors
     #[error("query error: {message}")]
     Query {
+        /// Stable error code identifying the specific query failure
         code: &'static str,
+        /// Human-readable description of the query failure
         message: String,
+        /// Suggestion for how to fix the query
         help: Option<String>,
     },
 
     /// Configuration errors
     #[error("configuration error: {message}")]
     Config {
+        /// Stable error code identifying the specific configuration issue
         code: &'static str,
+        /// Human-readable description of the configuration problem
         message: String,
+        /// Path to the configuration file or project root that caused the error
         path: Option<PathBuf>,
+        /// Suggestion for how to fix the configuration
         help: Option<String>,
     },
 
     /// File system errors
     #[error("I/O error: {message}")]
     IO {
+        /// Stable error code identifying the specific I/O failure
         code: &'static str,
+        /// Human-readable description of the I/O failure
         message: String,
+        /// Path to the file or directory that caused the error
         path: Option<PathBuf>,
+        /// The underlying OS error message, if available
         io_error: Option<String>,
     },
 
     /// Internal/unexpected errors
     #[error("internal error: {message}")]
     Internal {
+        /// Stable error code identifying the specific internal failure
         code: &'static str,
+        /// Human-readable description of the internal error
         message: String,
+        /// Additional context about the internal state when the error occurred
         context: Option<String>,
     },
 }
@@ -1208,30 +1241,43 @@ pub mod codes {
 
     // Legacy error code aliases (for backward compatibility with existing code)
     // These should be removed once all code is updated to use the new naming
+    /// Deprecated alias for [`E_PARSE_INVALID_CHECKBOX`]
     #[deprecated(note = "Use E_PARSE_INVALID_CHECKBOX instead")]
     pub const E_PARSE_BAD_CHECKBOX: &str = E_PARSE_INVALID_CHECKBOX;
+    /// Deprecated alias for [`E_PARSE_INVALID_HEADER`]
     #[deprecated(note = "Use E_PARSE_INVALID_HEADER instead")]
     pub const E_PARSE_MALFORMED_HEADING: &str = E_PARSE_INVALID_HEADER;
+    /// Deprecated alias for [`E_LINT_MISSING_ANNOTATION`]
     #[deprecated(note = "Use E_LINT_MISSING_ANNOTATION instead")]
     pub const E_LINT_MISSING_ID: &str = E_LINT_MISSING_ANNOTATION;
+    /// Deprecated alias for [`E_LINT_STATUS_INCONSISTENCY`]
     #[deprecated(note = "Use E_LINT_STATUS_INCONSISTENCY instead")]
     pub const E_LINT_INVALID_STATUS: &str = E_LINT_STATUS_INCONSISTENCY;
+    /// Deprecated alias for [`E_INDEX_CORRUPTED`]
     #[deprecated(note = "Use E_INDEX_CORRUPTED instead")]
     pub const E_DB_CONNECTION: &str = E_INDEX_CORRUPTED;
+    /// Deprecated alias for [`E_INDEX_CORRUPTED`]
     #[deprecated(note = "Use E_INDEX_CORRUPTED instead")]
     pub const E_DB_QUERY: &str = E_INDEX_CORRUPTED;
+    /// Deprecated alias for [`E_INDEX_CORRUPTED`]
     #[deprecated(note = "Use E_INDEX_CORRUPTED instead")]
     pub const E_DB_CONSTRAINT: &str = E_INDEX_CORRUPTED;
+    /// Deprecated alias for [`E_INDEX_VERSION_MISMATCH`]
     #[deprecated(note = "Use E_INDEX_VERSION_MISMATCH instead")]
     pub const E_DB_MIGRATION: &str = E_INDEX_VERSION_MISMATCH;
+    /// Deprecated alias for [`E_CONFIG_ROOT_NOT_FOUND`]
     #[deprecated(note = "Use E_CONFIG_ROOT_NOT_FOUND instead")]
     pub const E_CFG_ROOT_NOT_FOUND: &str = E_CONFIG_ROOT_NOT_FOUND;
+    /// Deprecated alias for [`E_CONFIG_INVALID_VALUE`]
     #[deprecated(note = "Use E_CONFIG_INVALID_VALUE instead")]
     pub const E_CFG_INVALID_VALUE: &str = E_CONFIG_INVALID_VALUE;
+    /// Deprecated alias for [`E_CONFIG_PARSE_ERROR`]
     #[deprecated(note = "Use E_CONFIG_PARSE_ERROR instead")]
     pub const E_CFG_PARSE_ERROR: &str = E_CONFIG_PARSE_ERROR;
+    /// Deprecated alias for [`E_CONFIG_MISSING_INDEX`]
     #[deprecated(note = "Use E_CONFIG_MISSING_INDEX instead")]
     pub const E_CFG_MISSING_INDEX: &str = E_CONFIG_MISSING_INDEX;
+    /// Deprecated alias for [`E_LINT_INVALID_LABEL`]
     #[deprecated(note = "Use E_LINT_INVALID_LABEL instead")]
     pub const E_LINT_INVALID_LABEL_FORMAT: &str = E_LINT_INVALID_LABEL;
 }
