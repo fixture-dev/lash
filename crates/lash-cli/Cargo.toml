@@ -47,3 +47,4 @@ predicates = { workspace = true }
 insta = { workspace = true }
 rstest = { workspace = true }
 serial_test = { workspace = true }
+libc = { workspace = true }

@@ -29,6 +29,19 @@ use tempfile::TempDir;
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+/// Returns true when running as root (euid 0), e.g. inside Docker containers.
+/// Used to skip tests that rely on file-permission enforcement.
+#[cfg(unix)]
+fn is_effectively_root() -> bool {
+    // SAFETY: geteuid is a simple, side-effect-free syscall.
+    unsafe { libc::geteuid() == 0 }
+}
+
+#[cfg(not(unix))]
+fn is_effectively_root() -> bool {
+    false
+}
+
 /// A properly-formatted task file that the formatter will not change.
 const ALREADY_FORMATTED: &str =
     "# Task List\n\n@id: example\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] First task\n- [x] Done task\n";
@@ -409,6 +422,12 @@ fn test_format_text_mode_already_formatted_prints_already_formatted() {
 #[test]
 fn test_format_text_mode_failed_file_prints_failed_message_and_exits_one() {
     use std::os::unix::fs::PermissionsExt;
+
+    // Skip when running as root (e.g. in Docker) — root bypasses file permission checks.
+    if is_effectively_root() {
+        eprintln!("skipping: test requires non-root to enforce read-only permissions");
+        return;
+    }
 
     let td = TempDir::new().unwrap();
     // Write a file that the formatter will attempt to modify.

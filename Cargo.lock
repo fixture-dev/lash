@@ -1056,6 +1056,7 @@ dependencies = [
  "lash-db",
  "lash-tui",
  "lash-types",
+ "libc",
  "owo-colors",
  "predicates",
  "ratatui",
