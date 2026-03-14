@@ -31,6 +31,7 @@ demos/*.webm
 
 # Test artifacts
 /tests/tmp/
+rust_out
 
 # Coverage
 *.profraw
