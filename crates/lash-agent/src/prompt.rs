@@ -1369,6 +1369,22 @@ mod tests {
     }
 
     #[test]
+    fn test_to_summary_string_zero_total_nonzero_completed_gives_zero_percent() {
+        // Kills mut-000047 (> replaced with >=): the condition `self.total > 0` guards
+        // against division by zero. When total=0 but completed=5 (degenerate input),
+        // the ORIGINAL takes the else branch and returns 0%.
+        // The MUTANT (`>= 0`, always true for usize) takes the division branch and
+        // computes (5.0 / 0.0 * 100.0) as usize = f64::INFINITY as usize = usize::MAX.
+        // Asserting "0% complete" fails for the mutant, killing it.
+        let summary = TaskFileSummary::new("broken.md").with_counts(0, 5, 0, 0);
+        let s = summary.to_summary_string();
+        assert!(
+            s.contains("0% complete"),
+            "percent must be 0 when total is 0 even if completed is non-zero, got: {s}"
+        );
+    }
+
+    #[test]
     fn test_to_summary_string_total_one_gives_correct_percent() {
         // Kills mut-000046 (> vs >=): with total=1, the > 0 branch must be taken.
         let summary = TaskFileSummary::new("one.md").with_counts(1, 1, 0, 0);
