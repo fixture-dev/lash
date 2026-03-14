@@ -399,17 +399,25 @@ fn test_format_text_mode_already_formatted_prints_already_formatted() {
     );
 }
 
-/// Format mode with a failing file (non-existent): stderr must contain
-/// "failed to format". Exit code must be 1.
-/// Kills mut-000327 (Ok(1) → Ok(0)), mut-000384..387 (failed > 0 mutations).
+/// Format mode with a failing file (read-only, needs formatting): exit code must be
+/// exactly 1. A file that exists and needs formatting but cannot be written back
+/// triggers the `result.failed > 0` path in execute(), which must return Ok(1).
+///
+/// Kills mut-000327 (Ok(1) → Ok(0) in failed > 0 branch) and
+/// mut-000384..387 (failed > 0 condition mutations in output_text_results).
+#[cfg(unix)]
 #[test]
 fn test_format_text_mode_failed_file_prints_failed_message_and_exits_one() {
+    use std::os::unix::fs::PermissionsExt;
+
     let td = TempDir::new().unwrap();
-    // Pass an explicit path that does not exist (not a directory, so discover won't silently skip)
-    // We need a file path that will be found by discover but fail to parse.
-    // The simplest approach: write a completely empty/invalid file.
-    let path = td.path().join("corrupt.md");
-    fs::write(&path, "").unwrap(); // empty file = parse failure
+    // Write a file that the formatter will attempt to modify.
+    let path = write_md(&td, "needs_format.md", NEEDS_FORMATTING);
+
+    // Make the file read-only so the write-back in format_single_file fails.
+    let mut perms = fs::metadata(&path).unwrap().permissions();
+    perms.set_mode(0o444);
+    fs::set_permissions(&path, perms).unwrap();
 
     let output = lash()
         .arg("format")
@@ -421,37 +429,36 @@ fn test_format_text_mode_failed_file_prints_failed_message_and_exits_one() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let code = output.status.code().unwrap_or(-1);
 
-    // Either exits with 1 (failed) or 0 if empty file is treated as already formatted.
-    // The important thing: if there's a failure, exit code must NOT be 0 when file fails.
-    // We verify the failed path: if the parse failed, the exit code must be 1 not 0.
-    // Use a file that actually triggers a parse error by providing bad markdown.
-    let _ = (stderr, code); // Allow empty file to succeed or fail either way
+    // Restore permissions so TempDir cleanup can delete the file.
+    let mut perms = fs::metadata(&path).unwrap().permissions();
+    perms.set_mode(0o644);
+    fs::set_permissions(&path, perms).unwrap();
 
-    // Instead, use a truly non-existent explicit path via format_files — but that
-    // requires unit test access. Use integration approach with a bad file.
+    assert_eq!(
+        code, 1,
+        "failed file (read-only, needs formatting) must exit exactly 1, not 0; stderr={stderr}"
+    );
+    assert_ne!(code, 0, "failed file must not exit 0");
+    assert!(
+        stderr.contains("failed") || stderr.contains("Failed"),
+        "stderr must mention failure; got: {stderr}"
+    );
 }
 
 /// Format mode with a failing file — verify exit code is exactly 1, not 0.
-/// Kills mut-000327 (Ok(1) → Ok(0) in failed > 0 branch).
+/// Also verifies exit code 0 for the successful paths (already formatted and
+/// needs formatting), confirming the else-branches return 0.
+///
+/// Kills mut-000327 (Ok(1) → Ok(0) in failed > 0 branch) via the unix test above.
+/// This non-unix test kills mut-000326 (Ok(0) → Ok(1) in else branch).
 #[test]
 fn test_format_failed_file_exits_exactly_one_not_zero() {
     let td = TempDir::new().unwrap();
-    // Write a file with unparseable content to trigger a format failure.
-    // The lash format command uses parse_file which requires proper task file structure.
-    // However, an empty file might be handled gracefully. Let's use content that
-    // definitely causes a parse failure: missing required sections.
-    // Actually, the parser may succeed on arbitrary markdown — let's try a different
-    // approach: write a file that is readable but can't be formatted (e.g., bad annotations).
-    //
-    // Since we can't easily cause a write error or other failure in integration tests,
-    // we focus on files that succeed (exit 0) vs check+unformatted (exit 2).
-    // The exit code 1 path requires a file that fails parsing/formatting.
-    //
-    // For now, this test verifies the exact exit codes for the known-working paths:
     let path_clean = write_md(&td, "clean.md", ALREADY_FORMATTED);
     let path_needs = write_md(&td, "needs.md", NEEDS_FORMATTING);
 
-    // Non-check, already-formatted: exit 0 (the "else Ok(0)" branch)
+    // Non-check, already-formatted: exit 0 (the "else Ok(0)" branch).
+    // If this mutated to Ok(1), this assert would catch it.
     let code_clean = lash()
         .arg("format")
         .arg("--no-color")
@@ -462,7 +469,8 @@ fn test_format_failed_file_exits_exactly_one_not_zero() {
         .code()
         .unwrap_or(-1);
 
-    // Non-check, needs formatting: exit 0 after formatting
+    // Non-check, needs formatting: exit 0 after formatting.
+    // If this mutated to Ok(1), this assert would catch it.
     let code_needs = lash()
         .arg("format")
         .arg("--no-color")
