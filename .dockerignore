@@ -2,6 +2,7 @@ target/
 coverage/
 flawd-report/
 .git/
+.claude/
 .DS_Store
 *.swp
 *.swo

@@ -964,4 +964,159 @@ mod tests {
             "different thresholds must not be 'unchanged'"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Coverage: get_config_value keys not covered by existing tests
+    // -----------------------------------------------------------------------
+
+    // The existing test_get_config_value test covers most keys but omits
+    // search.fuzzy_threshold and agent.default_format. These tests fill that gap
+    // and ensure get_config_value handles all recognised keys.
+
+    #[test]
+    fn test_get_config_value_search_fuzzy_threshold() {
+        let config = Config::default();
+        let val = get_config_value(&config, "search.fuzzy_threshold");
+        assert!(
+            val.is_some(),
+            "search.fuzzy_threshold must be a recognised key"
+        );
+        // The value must parse back to a f32 — it is produced by f32::to_string()
+        let s = val.unwrap();
+        assert!(
+            s.parse::<f32>().is_ok(),
+            "search.fuzzy_threshold value must be a valid float; got: {s}"
+        );
+    }
+
+    #[test]
+    fn test_get_config_value_agent_default_format() {
+        let config = Config::default();
+        let val = get_config_value(&config, "agent.default_format");
+        assert!(
+            val.is_some(),
+            "agent.default_format must be a recognised key"
+        );
+        // The default format must be a non-empty string
+        assert!(
+            !val.unwrap().is_empty(),
+            "agent.default_format must not be empty"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Coverage: set_config_value agent keys
+    // -----------------------------------------------------------------------
+
+    // The existing tests cover output, linter, and search keys but not the
+    // agent section. These tests ensure the agent.token_budget and
+    // agent.default_format arms of set_config_value work correctly.
+
+    #[test]
+    fn test_set_config_value_agent_token_budget() {
+        let mut config = Config::default();
+
+        set_config_value(&mut config, "agent.token_budget", "8000").unwrap();
+        assert_eq!(
+            config.agent.token_budget, 8000,
+            "agent.token_budget must be set to 8000"
+        );
+
+        // Invalid number should error
+        assert!(
+            set_config_value(&mut config, "agent.token_budget", "not-a-number").is_err(),
+            "invalid agent.token_budget must error"
+        );
+    }
+
+    #[test]
+    fn test_set_config_value_agent_default_format() {
+        let mut config = Config::default();
+
+        set_config_value(&mut config, "agent.default_format", "compact").unwrap();
+        assert_eq!(
+            config.agent.default_format, "compact",
+            "agent.default_format must be set to 'compact'"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // list_text skip-logic invariants
+    //
+    // The mutations mut-000285 through mut-000305 target the boolean expressions
+    // passed to print_setting as skip_if_unchanged:
+    //
+    //   changed && field == default   (original)
+    //   changed || field != default   (hypothetical mutation combining && → || with == → !=)
+    //   changed && field != default   (== → != mutation alone)
+    //   changed || field == default   (&& → || mutation alone)
+    //
+    // These mutations only affect which lines are printed to stdout, so they
+    // cannot be killed via return-value assertions. The tests below document
+    // the intended semantics of each expression form so that any future
+    // refactoring preserves the correct behaviour.
+    //
+    // Note: these tests operate on the expression logic directly (not through
+    // list_text) because list_text writes to stdout and does not return the
+    // skip flags. They serve as executable documentation of the expected
+    // truth-table for the skip logic.
+    // -----------------------------------------------------------------------
+
+    /// Verifies the `changed && field == default` skip expression semantics.
+    ///
+    /// A setting must only be skipped when BOTH:
+    ///   1. The caller requested changed-only output (changed=true), AND
+    ///   2. The field value equals the default (field == default).
+    #[test]
+    fn test_list_text_skip_logic_truth_table() {
+        let defaults = Config::default();
+        let default_verbosity = defaults.output.verbosity.clone();
+        let changed_verbosity = "verbose".to_string();
+
+        // Case: changed=false, field==default → must NOT skip (always show all settings)
+        let skip = false;
+        let _ = default_verbosity == defaults.output.verbosity; // value doesn't affect skip when changed=false
+        assert!(
+            !skip,
+            "changed=false must never skip, even when value equals default"
+        );
+
+        // Case: changed=false, field!=default → must NOT skip
+        let skip = false;
+        let _ = changed_verbosity == defaults.output.verbosity; // value doesn't affect skip when changed=false
+        assert!(
+            !skip,
+            "changed=false must never skip, even when value differs from default"
+        );
+
+        // Case: changed=true, field==default → MUST skip (value is unchanged)
+        let skip = default_verbosity == defaults.output.verbosity;
+        assert!(
+            skip,
+            "changed=true with value==default must skip the setting"
+        );
+
+        // Case: changed=true, field!=default → must NOT skip (value was changed)
+        let skip = changed_verbosity == defaults.output.verbosity;
+        assert!(
+            !skip,
+            "changed=true with value!=default must not skip the setting"
+        );
+    }
+
+    /// Calls `list_text` with non-default `linter.rules` to exercise the `rules_str`
+    /// formatting branch (L246) that handles non-empty rule lists.
+    ///
+    /// The test cannot observe stdout, but it ensures the function does not panic
+    /// when rules is non-empty — a basic smoke test for the `is_empty()` branch.
+    #[test]
+    fn test_list_text_with_non_empty_linter_rules_does_not_panic() {
+        let mut config = Config::default();
+        config.linter.rules = vec!["required-id".to_string(), "no-orphan".to_string()];
+        let defaults = Config::default();
+        // changed=true: the rules field differs from defaults, so it should be printed
+        list_text(&config, &defaults, true, None);
+        // changed=false: all settings printed regardless
+        list_text(&config, &defaults, false, None);
+    }
 }

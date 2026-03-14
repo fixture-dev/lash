@@ -249,7 +249,23 @@ Add references to your task files here:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use tempfile::TempDir;
+
+    /// Create a temporary HOME directory with a `~/.lash/config.toml` that specifies
+    /// an invalid color-scheme name.  When `CliTheme::load` is called with
+    /// `colors_enabled=true`, it reads the bad scheme name and returns Err.
+    fn make_bad_scheme_home() -> TempDir {
+        let home = TempDir::new().unwrap();
+        let lash_dir = home.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        fs::write(
+            lash_dir.join("config.toml"),
+            "color_scheme = \"NonExistentSchemeForMutationKillTest\"\n",
+        )
+        .unwrap();
+        home
+    }
 
     #[test]
     fn test_generate_index_template() {
@@ -742,6 +758,104 @@ mod tests {
             result.unwrap(),
             0,
             "successful index must cause execute() to return 0"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // mut-000409 (L46): `args.json` → `!(args.json)` in theme-loading guard
+    //
+    // Original:  if args.json { None } else { CliTheme::load(None, !no_color)? }
+    // Mutation:  if !(args.json) { None } else { CliTheme::load(None, !no_color)? }
+    //
+    // With json=true and a bad HOME color-scheme:
+    //   Original  → None (CliTheme::load never called)  → execute() Ok(0)
+    //   Mutant    → else branch → CliTheme::load(None, !no_color)
+    //             → reads bad HOME config → invalid scheme → Err
+    //             → execute() returns Err → test fails
+    // -------------------------------------------------------------------------
+
+    /// json=true must skip theme loading entirely.  A bad user config must not
+    /// cause a failure when json=true.
+    ///
+    /// Kills mut-000409.
+    #[test]
+    #[serial]
+    fn test_json_true_skips_theme_load_even_with_bad_home_scheme() {
+        let temp = TempDir::new().unwrap();
+        let bad_home = make_bad_scheme_home();
+
+        let old_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", bad_home.path());
+
+        let args = InitArgs {
+            path: Some(temp.path().to_path_buf()),
+            no_index: true,
+            force: false,
+            json: true,      // Original: theme=None (no scheme lookup)
+            no_color: false, // Would trigger scheme lookup if theme were loaded
+            errors_streaming: false,
+            verbosity: Verbosity::Quiet,
+        };
+        let result = execute(args);
+
+        match old_home {
+            Some(h) => std::env::set_var("HOME", h),
+            None => std::env::remove_var("HOME"),
+        }
+
+        // Original: json=true → theme=None → Ok(0)
+        // Mutant:   !(args.json) with json=true → else branch → bad scheme → Err
+        assert_eq!(result.unwrap(), 0, "execute() must succeed when json=true");
+    }
+
+    // -------------------------------------------------------------------------
+    // mut-000410 (L49): `!args.no_color` → `args.no_color` in CliTheme::load
+    //
+    // Original:  CliTheme::load(None, !args.no_color)
+    // Mutation:  CliTheme::load(None,  args.no_color)
+    //
+    // With json=false, no_color=true, and a bad HOME color-scheme:
+    //   Original  → load(None, !true = false) → Ok(None), no registry lookup
+    //   Mutant    → load(None,  true)         → reads bad HOME config
+    //             → invalid scheme → Err → execute() returns Err → test fails
+    // -------------------------------------------------------------------------
+
+    /// When no_color=true, CliTheme::load must receive `false` as the
+    /// `colors_enabled` argument and return Ok(None) without touching the
+    /// color-scheme registry.
+    ///
+    /// Kills mut-000410.
+    #[test]
+    #[serial]
+    fn test_no_color_true_disables_theme_lookup_in_init() {
+        let temp = TempDir::new().unwrap();
+        let bad_home = make_bad_scheme_home();
+
+        let old_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", bad_home.path());
+
+        let args = InitArgs {
+            path: Some(temp.path().to_path_buf()),
+            no_index: true,
+            force: false,
+            json: false,
+            no_color: true, // !true=false → load(None,false) → Ok(None), no bad-scheme lookup
+            errors_streaming: false,
+            verbosity: Verbosity::Quiet,
+        };
+        let result = execute(args);
+
+        match old_home {
+            Some(h) => std::env::set_var("HOME", h),
+            None => std::env::remove_var("HOME"),
+        }
+
+        // Original: !no_color=false → Ok(None), no bad-scheme lookup → Ok(0)
+        // Mutant:   no_color=true   → load(None,true) → bad-scheme → Err
+        assert_eq!(
+            result.unwrap(),
+            0,
+            "execute() must succeed when no_color=true"
         );
     }
 }

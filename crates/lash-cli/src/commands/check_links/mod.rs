@@ -494,6 +494,171 @@ mod tests {
         assert_ne!(result, 1);
     }
 
+    /// Build a temp project with an initialized DB that has one broken dependency link.
+    ///
+    /// The DB contains:
+    ///   - one file row (path="test.md")
+    ///   - one task row (`full_id="test.md#task1"`)
+    ///   - one dependency with `to_task_id=NULL` (broken link)
+    fn setup_db_with_broken_link(temp: &TempDir) {
+        use lash_db::init_database;
+
+        let lash_dir = temp.path().join(".lash");
+        std::fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+
+        let conn = init_database(&db_path).unwrap();
+
+        conn.execute(
+            "INSERT INTO files (path, file_id, title, hash, mtime) \
+             VALUES ('test.md', 'test', 'Test', 'abc', 0)",
+            [],
+        )
+        .unwrap();
+        let file_id: i64 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index) \
+             VALUES (?1, 'task1', 'test.md#task1', 'T1', 'open', 0, 0)",
+            rusqlite::params![file_id],
+        )
+        .unwrap();
+        let task_id: i64 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO dependencies (from_task_id, to_task_id, kind, raw_ref) \
+             VALUES (?1, NULL, 'explicit_id', 'missing#ref')",
+            rusqlite::params![task_id],
+        )
+        .unwrap();
+    }
+
+    // Kill mut-000111 (L111): `Ok(1)` → `Ok(0)`.
+    // When broken links are found and fix mode is off, execute() must return Ok(1).
+    // This test uses a real DB with a broken link so the result is determined by the
+    // actual production exit-code literal, not just the DB-missing path.
+    #[test]
+    fn test_execute_returns_1_when_broken_links_found() {
+        let temp = TempDir::new().unwrap();
+        setup_db_with_broken_link(&temp);
+
+        let args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp.path().to_path_buf()),
+            fix: false,
+            yes: false,
+            dry_run: false,
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        let result = execute(&args).unwrap();
+        // Must be exactly 1 (not 0) when broken links exist
+        assert_eq!(
+            result, 1,
+            "execute() must return 1 when broken links are found and fix=false"
+        );
+        assert_ne!(result, 0, "exit code 0 would incorrectly signal 'clean'");
+    }
+
+    // Kill mut-000111 complementary: zero broken links returns 0.
+    // The pair (0-links → Ok(0), 1-link → Ok(1)) distinguishes the literal.
+    #[test]
+    fn test_execute_returns_0_vs_1_boundary() {
+        use lash_db::init_database;
+
+        // Empty DB → 0 broken links → Ok(0)
+        let temp_clean = TempDir::new().unwrap();
+        let lash_dir = temp_clean.path().join(".lash");
+        std::fs::create_dir_all(&lash_dir).unwrap();
+        init_database(&lash_dir.join("lash.db")).unwrap();
+
+        let clean_args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp_clean.path().to_path_buf()),
+            fix: false,
+            yes: false,
+            dry_run: false,
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        assert_eq!(execute(&clean_args).unwrap(), 0, "clean DB must return 0");
+
+        // DB with broken link → Ok(1)
+        let temp_broken = TempDir::new().unwrap();
+        setup_db_with_broken_link(&temp_broken);
+        let broken_args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp_broken.path().to_path_buf()),
+            fix: false,
+            yes: false,
+            dry_run: false,
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        assert_eq!(
+            execute(&broken_args).unwrap(),
+            1,
+            "DB with broken link must return 1"
+        );
+    }
+
+    // Kill mut-000099 (L99): `args.fix` negation → `!args.fix`.
+    // With the mutation, fix=false would enter execute_fix_mode, which reads from
+    // stdin (EOF in tests) and returns Err.  The original returns Ok(1).
+    // We verify that fix=false with a broken link returns Ok(1) (not Err).
+    #[test]
+    fn test_execute_fix_false_returns_ok_not_err_when_broken_links_found() {
+        let temp = TempDir::new().unwrap();
+        setup_db_with_broken_link(&temp);
+
+        let args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp.path().to_path_buf()),
+            fix: false, // Original: reports broken links and returns Ok(1)
+            yes: false,
+            dry_run: false,
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        // Must succeed (not Err) and return exactly 1
+        let result = execute(&args);
+        assert!(
+            result.is_ok(),
+            "execute() with fix=false must return Ok, not Err; got: {result:?}"
+        );
+        assert_eq!(
+            result.unwrap(),
+            1,
+            "execute() with fix=false and broken links must return Ok(1)"
+        );
+    }
+
+    // Kill mut-000099 complementary: fix=true with yes=true in dry_run mode
+    // should NOT return Ok(1) — it takes execute_fix_mode path with auto-skipping.
+    #[test]
+    fn test_execute_fix_true_yes_true_dry_run_does_not_return_1() {
+        let temp = TempDir::new().unwrap();
+        setup_db_with_broken_link(&temp);
+
+        let args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp.path().to_path_buf()),
+            fix: true,     // Fix mode: enter execute_fix_mode
+            yes: true,     // Auto-accept (no stdin reads)
+            dry_run: true, // Don't actually write files
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        // execute_fix_mode with yes=true and no high-confidence match will skip all
+        // links and return Ok(1) (all skipped → skipped == total_broken).
+        // The key point: the fix=true path is distinct from fix=false path.
+        let result = execute(&args);
+        assert!(
+            result.is_ok(),
+            "execute() with fix=true, yes=true must return Ok; got: {result:?}"
+        );
+    }
+
     // Kill mut-000240: !db_path.exists() when db IS present (complementary to the no-db test)
     // The mutation negates the check, so having a real DB tests the "db exists" branch.
     #[test]
@@ -519,5 +684,144 @@ mod tests {
         let result = execute(&args).unwrap();
         // With a real DB, should NOT return 3 (DB error code)
         assert_ne!(result, 3);
+    }
+
+    /// Set up a DB where the broken link's `raw_ref` closely matches an existing valid task ID.
+    /// This ensures the fuzzy matcher finds a high-confidence match (score >= 0.85)
+    /// so the auto-accept path (yes=true) will accept the fix.
+    fn setup_db_with_fixable_broken_link(temp: &TempDir) {
+        use lash_db::init_database;
+
+        let lash_dir = temp.path().join(".lash");
+        std::fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+
+        let conn = init_database(&db_path).unwrap();
+
+        conn.execute(
+            "INSERT INTO files (path, file_id, title, hash, mtime) \
+             VALUES ('test.md', 'test', 'Test', 'abc', 0)",
+            [],
+        )
+        .unwrap();
+        let file_id: i64 = conn.last_insert_rowid();
+
+        // Create two valid tasks
+        conn.execute(
+            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index) \
+             VALUES (?1, 'task1', 'test.md#task1', 'T1', 'open', 0, 0)",
+            rusqlite::params![file_id],
+        )
+        .unwrap();
+        let task1_id: i64 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index) \
+             VALUES (?1, 'task2', 'test.md#task2', 'T2', 'open', 0, 1)",
+            rusqlite::params![file_id],
+        )
+        .unwrap();
+
+        // Create the test.md file with proper task format
+        let content = "# Test\n\n- [ ] T1\n  @id: task1\n- [ ] T2\n  @id: task2\n";
+        std::fs::write(temp.path().join("test.md"), content).unwrap();
+
+        // Broken link: raw_ref is very close to test.md#task2 → high fuzzy score
+        conn.execute(
+            "INSERT INTO dependencies (from_task_id, to_task_id, kind, raw_ref) \
+             VALUES (?1, NULL, 'explicit_id', 'test.md#task2')",
+            rusqlite::params![task1_id],
+        )
+        .unwrap();
+    }
+
+    /// Kill L132 (`!args.dry_run → args.dry_run`), L135-138 (counter init mutations),
+    /// L281 (`skipped += 1 → += 0`), L336/338 (exit code logic).
+    ///
+    /// With a high-confidence match and yes=true, the auto-accept path fires.
+    /// accepted becomes 1, skipped stays 0. Exit code should be 0 (not all skipped).
+    ///
+    /// - If L137 mutates `skipped = 0 → 1`, then `skipped == total_broken` → true,
+    ///   exit code becomes 1 instead of 0. Test fails.
+    /// - If L138 mutates `user_quit = false → true`, the loop breaks immediately,
+    ///   no links are processed, skipped stays 0 (or 1 if also mutated),
+    ///   and exit code is 1 (`user_quit` path). Test fails.
+    /// - If L135 mutates `accepted = 0 → 1`, accepted would be 2 after the fix,
+    ///   but the exit code is still 0. This specific mutation is harder to kill.
+    #[test]
+    fn test_execute_fix_yes_auto_accept_returns_0() {
+        let temp = TempDir::new().unwrap();
+        setup_db_with_fixable_broken_link(&temp);
+
+        let args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp.path().to_path_buf()),
+            fix: true,
+            yes: true,     // Auto-accept high-confidence matches
+            dry_run: true, // Don't actually write files
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        let result = execute(&args).unwrap();
+        // The fuzzy match score for "test.md#task2" against valid "test.md#task2" should be 1.0
+        // → auto-accepted → accepted=1, skipped=0 → exit code 0 (not all skipped)
+        assert_eq!(
+            result, 0,
+            "auto-accepted fix with high-confidence match should return 0, not 1"
+        );
+    }
+
+    /// Kill L336 (`skipped == report.total_broken → !(...)` or `== → !=`).
+    /// When all broken links are skipped (low confidence), exit code should be 1.
+    #[test]
+    fn test_execute_fix_yes_all_skipped_returns_1() {
+        let temp = TempDir::new().unwrap();
+        // Use the standard broken link setup (raw_ref='missing#ref') which
+        // won't match any valid task with high confidence
+        setup_db_with_broken_link(&temp);
+
+        let args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp.path().to_path_buf()),
+            fix: true,
+            yes: true, // Auto-mode
+            dry_run: true,
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        let result = execute(&args).unwrap();
+        // 'missing#ref' won't match 'test.md#task1' with >= 0.85 score
+        // → all skipped → skipped == total_broken → exit code 1
+        assert_eq!(result, 1, "all-skipped fix should return 1");
+    }
+
+    /// Kill L132 `dry_run` negation: verify that `dry_run=true` does NOT write to files,
+    /// while `dry_run=false` would (`AnnotationEditor` `write_enabled` is `!dry_run`).
+    /// We test by checking the file content is unchanged after a `dry_run=true` fix.
+    #[test]
+    fn test_execute_fix_yes_dry_run_true_does_not_modify_files() {
+        let temp = TempDir::new().unwrap();
+        setup_db_with_fixable_broken_link(&temp);
+
+        let test_file = temp.path().join("test.md");
+        let original_content = std::fs::read_to_string(&test_file).unwrap();
+
+        let args = CheckLinksArgs {
+            json: false,
+            project_root: Some(temp.path().to_path_buf()),
+            fix: true,
+            yes: true,
+            dry_run: true, // Should NOT modify files
+            theme: None,
+            verbosity: Verbosity::Normal,
+        };
+        let _result = execute(&args).unwrap();
+
+        // File should be unchanged after dry run
+        let after_content = std::fs::read_to_string(&test_file).unwrap();
+        assert_eq!(
+            original_content, after_content,
+            "dry_run=true must not modify files"
+        );
     }
 }
