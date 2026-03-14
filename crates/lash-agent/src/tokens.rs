@@ -338,6 +338,21 @@ mod tests {
     }
 
     #[test]
+    fn test_summarize_task_file_zero_total_nonzero_completed_gives_zero_percent() {
+        // Kills mut-000103 (> replaced with >=): the condition `total_tasks > 0` guards
+        // against division by zero. When total_tasks=0 but completed_tasks=5 (degenerate
+        // input), the ORIGINAL takes the else branch and returns 0%.
+        // The MUTANT (`>= 0`, always true for usize) takes the division branch and
+        // computes (5.0 / 0.0 * 100.0) as usize = f64::INFINITY as usize = usize::MAX.
+        // Asserting "0% complete" fails for the mutant, killing it.
+        let summary = summarize_task_file("broken.md", 0, 5, 0, 0);
+        assert!(
+            summary.contains("0% complete"),
+            "percent must be 0 when total_tasks is 0 even if completed is non-zero, got: {summary}"
+        );
+    }
+
+    #[test]
     fn test_summarize_task_file_one_total_complete_gives_100_percent() {
         // Kills mut-000105 (0→1 literal in total_tasks > 0 condition, making it total_tasks > 1):
         // With total=1 and completed=1, percent must be 100%, not 0%.
