@@ -460,3 +460,100 @@ fn test_config_list_no_color_flag_accepted_and_text_output() {
         "--no-color output must still show section headers; got: {stdout}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// mut-000259 (revised): FORCE_COLOR-based test
+//
+// When args.json=false and the execute() theme branch is correct, CliTheme::load
+// is called with colors_enabled=true, producing a Some(theme). With FORCE_COLOR=1
+// the theme emits ANSI escape sequences (\x1b[) in the text output.
+//
+// With the mutation (args.json → !(args.json)), when json=false the condition
+// !(false)=true takes the None path, so theme=None and no ANSI codes appear even
+// with FORCE_COLOR=1.
+//
+// We verify this with the --no-color variant too: --no-color must suppress ANSI
+// codes even when FORCE_COLOR=1 (because !no_color = false → theme=None). This
+// confirms the polarity of both mut-000259 and mut-000260.
+// ---------------------------------------------------------------------------
+
+/// `config list` (no --json, no --no-color) with FORCE_COLOR=1 must produce
+/// ANSI escape sequences because execute() loads the theme (json=false path).
+///
+/// Kills mut-000259: with the negation (if !json → None), json=false would give
+/// theme=None and no ANSI codes would appear, failing this assertion.
+#[test]
+fn test_config_list_text_mode_has_ansi_codes_when_force_color() {
+    let td = temp_project();
+
+    let output = lash()
+        .arg("--root")
+        .arg(td.path())
+        .arg("config")
+        .arg("list")
+        .env("FORCE_COLOR", "1")
+        .env_remove("NO_COLOR") // ensure NO_COLOR is not inherited from parent environment
+        .output()
+        .expect("lash must run");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        output.status.success(),
+        "config list must succeed; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // With FORCE_COLOR=1 and theme loaded (json=false), output must contain ANSI escape
+    // sequences. The theme styles section headers, key labels, and separators.
+    assert!(
+        stdout.contains('\x1b'),
+        "config list in text mode with FORCE_COLOR=1 must contain ANSI escape sequences \
+         (theme is loaded when json=false); got: {stdout:?}"
+    );
+}
+
+/// `config list` with --no-color and FORCE_COLOR=1 must NOT produce ANSI codes.
+///
+/// Kills mut-000260: the correct code passes !no_color=false to CliTheme::load,
+/// returning None. With the mutation (no_color instead of !no_color), it would
+/// pass true → load theme → emit ANSI codes, failing this assertion.
+///
+/// Also acts as a baseline confirming that ANSI codes in the previous test
+/// originate from the theme, not from some other source.
+#[test]
+fn test_config_list_no_color_suppresses_ansi_codes_even_with_force_color() {
+    let td = temp_project();
+
+    let output = lash()
+        .arg("--root")
+        .arg(td.path())
+        .arg("--no-color")
+        .arg("config")
+        .arg("list")
+        .env("FORCE_COLOR", "1")
+        .output()
+        .expect("lash must run");
+
+    assert!(
+        output.status.success(),
+        "--no-color config list must succeed; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // With --no-color, execute() calls CliTheme::load(None, !true=false) → None.
+    // theme=None means print_section/print_setting use the unstyled path: no ANSI codes.
+    assert!(
+        !stdout.contains('\x1b'),
+        "--no-color must suppress all ANSI escape sequences even with FORCE_COLOR=1; \
+         got: {stdout:?}"
+    );
+
+    // The content must still be present (sanity check)
+    assert!(
+        stdout.contains("Configuration Settings"),
+        "--no-color output must still show section headers; got: {stdout}"
+    );
+}
