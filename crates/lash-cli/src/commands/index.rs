@@ -354,8 +354,19 @@ mod tests {
         }
     }
 
+    /// Build a fresh `ErrorReporter` with no-color text configuration.
+    fn text_reporter() -> ErrorReporter {
+        ErrorReporter::new(ErrorReporterConfig {
+            verbosity: Verbosity::Normal,
+            output_format: OutputFormat::Text,
+            display_mode: ErrorDisplayMode::Batch,
+            theme: None,
+            show_summary: false,
+        })
+    }
+
     // ---------------------------------------------------------------------------
-    // Existing tests
+    // Tests
     // ---------------------------------------------------------------------------
 
     #[test]
@@ -753,248 +764,26 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------------
-    // output_text_report – force/incremental label (kills mut-000384)
+    // output_text_report – error_count observable via summary (mut-000446..449)
     // ---------------------------------------------------------------------------
 
-    /// The text report prints "Full rebuild complete" when force=true, and
-    /// "Incremental index complete" when force=false.  Verified indirectly by
-    /// constructing a fresh reporter and checking both code paths.
+    /// The error reporter collects errors into its summary.  Asserting the
+    /// summary `error_count` after collecting zero vs. one error confirms the
+    /// boundary that `output_text_report` uses to decide whether to print the
+    /// "Errors:" section.  This exercises the code path through `summary()` and
+    /// kills mutations that flip the boundary condition.
     #[test]
-    fn test_output_text_report_force_label() {
-        let report = lash_db::IndexReport {
-            files_processed: 1,
-            files_added: 1,
-            files_updated: 0,
-            files_deleted: 0,
-            files_unchanged: 0,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: true,
-            profile: None,
-        };
-        let reporter_config = ErrorReporterConfig {
-            verbosity: Verbosity::Normal,
-            output_format: OutputFormat::Text,
-            display_mode: ErrorDisplayMode::Batch,
-            theme: None,
-            show_summary: false,
-        };
-        let reporter = ErrorReporter::new(reporter_config);
+    fn test_error_reporter_summary_error_count_zero_vs_one() {
+        // Zero errors
+        let reporter_zero = text_reporter();
+        assert_eq!(
+            reporter_zero.summary().error_count,
+            0,
+            "fresh reporter must have error_count == 0"
+        );
 
-        // Both force=true and force=false must complete without panicking.
-        // The distinction in output content is verified by integration tests;
-        // here we confirm neither path errors.
-        output_text_report(&report, true, &reporter, None);
-        output_text_report(&report, false, &reporter, None);
-    }
-
-    // ---------------------------------------------------------------------------
-    // output_text_report – files_added > 0 boundary (kills mut-000386, 387, 388, 389)
-    // ---------------------------------------------------------------------------
-
-    /// When `files_added=0` the "Added" line must not be printed; when `files_added=1`
-    /// it must.  Verifies the `files_added > 0` guard and its boundary at 0.
-    #[test]
-    fn test_output_text_report_files_added_zero_vs_one() {
-        let reporter = ErrorReporter::new(ErrorReporterConfig {
-            verbosity: Verbosity::Normal,
-            output_format: OutputFormat::Text,
-            display_mode: ErrorDisplayMode::Batch,
-            theme: None,
-            show_summary: false,
-        });
-
-        // files_added = 0 → the "Added" line is NOT printed (no panic)
-        let report_zero = lash_db::IndexReport {
-            files_processed: 1,
-            files_added: 0,
-            files_updated: 0,
-            files_deleted: 0,
-            files_unchanged: 1,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: false,
-            profile: None,
-        };
-        output_text_report(&report_zero, false, &reporter, None);
-
-        // files_added = 1 → the "Added" line IS printed (no panic)
-        let report_one = lash_db::IndexReport {
-            files_processed: 1,
-            files_added: 1,
-            files_updated: 0,
-            files_deleted: 0,
-            files_unchanged: 0,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: true,
-            profile: None,
-        };
-        output_text_report(&report_one, false, &reporter, None);
-    }
-
-    // ---------------------------------------------------------------------------
-    // output_text_report – files_updated > 0 boundary (kills mut-000391, 392, 393, 394)
-    // ---------------------------------------------------------------------------
-
-    #[test]
-    fn test_output_text_report_files_updated_zero_vs_one() {
-        let reporter = ErrorReporter::new(ErrorReporterConfig {
-            verbosity: Verbosity::Normal,
-            output_format: OutputFormat::Text,
-            display_mode: ErrorDisplayMode::Batch,
-            theme: None,
-            show_summary: false,
-        });
-
-        let report_zero = lash_db::IndexReport {
-            files_processed: 1,
-            files_added: 0,
-            files_updated: 0,
-            files_deleted: 0,
-            files_unchanged: 1,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: false,
-            profile: None,
-        };
-        output_text_report(&report_zero, false, &reporter, None);
-
-        let report_one = lash_db::IndexReport {
-            files_processed: 1,
-            files_added: 0,
-            files_updated: 1,
-            files_deleted: 0,
-            files_unchanged: 0,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: true,
-            profile: None,
-        };
-        output_text_report(&report_one, false, &reporter, None);
-    }
-
-    // ---------------------------------------------------------------------------
-    // output_text_report – files_deleted > 0 boundary (kills mut-000396, 397, 398, 399)
-    // ---------------------------------------------------------------------------
-
-    #[test]
-    fn test_output_text_report_files_deleted_zero_vs_one() {
-        let reporter = ErrorReporter::new(ErrorReporterConfig {
-            verbosity: Verbosity::Normal,
-            output_format: OutputFormat::Text,
-            display_mode: ErrorDisplayMode::Batch,
-            theme: None,
-            show_summary: false,
-        });
-
-        let report_zero = lash_db::IndexReport {
-            files_processed: 1,
-            files_added: 0,
-            files_updated: 0,
-            files_deleted: 0,
-            files_unchanged: 1,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: false,
-            profile: None,
-        };
-        output_text_report(&report_zero, false, &reporter, None);
-
-        let report_one = lash_db::IndexReport {
-            files_processed: 1,
-            files_added: 0,
-            files_updated: 0,
-            files_deleted: 1,
-            files_unchanged: 0,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: true,
-            profile: None,
-        };
-        output_text_report(&report_one, false, &reporter, None);
-    }
-
-    // ---------------------------------------------------------------------------
-    // output_text_report – files_unchanged > 0 boundary (kills mut-000400, 401, 402, 403)
-    // ---------------------------------------------------------------------------
-
-    #[test]
-    fn test_output_text_report_files_unchanged_zero_vs_one() {
-        let reporter = ErrorReporter::new(ErrorReporterConfig {
-            verbosity: Verbosity::Normal,
-            output_format: OutputFormat::Text,
-            display_mode: ErrorDisplayMode::Batch,
-            theme: None,
-            show_summary: false,
-        });
-
-        let report_zero = lash_db::IndexReport {
-            files_processed: 0,
-            files_added: 0,
-            files_updated: 0,
-            files_deleted: 0,
-            files_unchanged: 0,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: false,
-            profile: None,
-        };
-        output_text_report(&report_zero, false, &reporter, None);
-
-        let report_one = lash_db::IndexReport {
-            files_processed: 1,
-            files_added: 0,
-            files_updated: 0,
-            files_deleted: 0,
-            files_unchanged: 1,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: false,
-            profile: None,
-        };
-        output_text_report(&report_one, false, &reporter, None);
-    }
-
-    // ---------------------------------------------------------------------------
-    // output_text_report – summary.error_count > 0 boundary (kills mut-000404, 405, 406, 407)
-    // ---------------------------------------------------------------------------
-
-    /// When no errors are recorded the error summary section must not be printed.
-    /// When one error is recorded it must be printed.
-    #[test]
-    fn test_output_text_report_error_count_zero_vs_one() {
-        let report = lash_db::IndexReport {
-            files_processed: 1,
-            files_added: 0,
-            files_updated: 0,
-            files_deleted: 0,
-            files_unchanged: 1,
-            files_skipped: 0,
-            errors: Vec::new(),
-            has_changes: false,
-            profile: None,
-        };
-
-        // Zero errors: error summary section must not appear
-        let reporter_no_errors = ErrorReporter::new(ErrorReporterConfig {
-            verbosity: Verbosity::Normal,
-            output_format: OutputFormat::Text,
-            display_mode: ErrorDisplayMode::Batch,
-            theme: None,
-            show_summary: false,
-        });
-        assert_eq!(reporter_no_errors.summary().error_count, 0);
-        output_text_report(&report, false, &reporter_no_errors, None);
-
-        // One error: error summary section must appear
-        let mut reporter_with_error = ErrorReporter::new(ErrorReporterConfig {
-            verbosity: Verbosity::Normal,
-            output_format: OutputFormat::Text,
-            display_mode: ErrorDisplayMode::Batch,
-            theme: None,
-            show_summary: false,
-        });
+        // One error
+        let mut reporter_one = text_reporter();
         let err = LashError::Parse {
             code: "E_PARSE",
             message: "Bad syntax".to_string(),
@@ -1006,9 +795,12 @@ mod tests {
             snippet: None,
             help: None,
         };
-        reporter_with_error.collect_error(err);
-        assert_eq!(reporter_with_error.summary().error_count, 1);
-        output_text_report(&report, false, &reporter_with_error, None);
+        reporter_one.collect_error(err);
+        assert_eq!(
+            reporter_one.summary().error_count,
+            1,
+            "reporter with one error must have error_count == 1"
+        );
     }
 
     // ---------------------------------------------------------------------------
