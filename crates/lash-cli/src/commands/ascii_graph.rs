@@ -2213,4 +2213,408 @@ mod tests {
             "truncation from second child must propagate; output = {output:?}"
         );
     }
+
+    // =========================================================================
+    // Tests targeting the 7 surviving mutants (mut-000164, mut-000170,
+    // mut-000196, mut-000200, mut-000201, mut-000203, mut-000209)
+    // =========================================================================
+
+    /// mut-000164: `truncated = truncated || tree_truncated` → `&&` (line 125)
+    ///
+    /// Scenario: two independent root trees in the same file.
+    /// - Root "`aaa_leaf`" is a leaf → its `render_tree` returns `tree_truncated=false`.
+    /// - Root "`zzz_deep`" has a child that itself has a grandchild exceeding `max_depth=1` →
+    ///   its `render_tree` returns `tree_truncated=true`.
+    ///
+    /// Loop iteration 1: `truncated = false || false = false` (correct)
+    ///                                   `false && false = false` (mutant, same)
+    /// Loop iteration 2: `truncated = false || true  = true`  (correct → notice)
+    ///                                   `false && true  = false` (mutant → no notice)
+    ///
+    /// All nodes have depth=0, `terminal_width=27` → `max_depth=min(1,1)=1` → `total_depth=1`.
+    /// So `max_depth < total_depth` is always false; the notice can ONLY come from `truncated`.
+    #[test]
+    fn test_mut164_truncated_or_tree_truncated() {
+        let mut graph = DependencyGraph::new();
+
+        // First root tree: a single leaf node (render_tree returns tree_truncated=false)
+        graph.add_node(
+            "test#aaa_leaf".to_string(),
+            create_test_node("Leaf", TaskStatus::Open, "test"),
+        );
+
+        // Second root tree: zzz_deep → zchild → zgrand (all depth=0)
+        // At max_depth=1, zgrand (current_depth=2) exceeds limit → tree_truncated=true
+        graph.add_node(
+            "test#zzz_deep".to_string(),
+            create_test_node("Deep", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#zzz_zchild".to_string(),
+            create_test_node("ZChild", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#zzz_zgrand".to_string(),
+            create_test_node("ZGrand", TaskStatus::Open, "test"),
+        );
+        graph.add_edge(
+            "test#zzz_deep".to_string(),
+            "test#zzz_zchild".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#zzz_zchild".to_string(),
+            "test#zzz_zgrand".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // terminal_width=27: available=3, max_depth_avail=1, total_depth=1, max_depth=1
+        // max_depth < total_depth is false → notice only via truncated flag
+        let config = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "truncated flag from second root must propagate via ||; output = {output:?}"
+        );
+    }
+
+    /// mut-000170: `let mut max_depth = 0` → `1` in `calculate_total_depth` (line 166)
+    ///
+    /// A graph whose only node has `depth=0`.
+    /// - Correct:  `max_depth` initialises to 0, loop keeps it 0, returns `0+1 = 1`.
+    /// - Mutant:   `max_depth` initialises to 1, loop: max(1,0)=1, returns `1+1 = 2`.
+    ///
+    /// At `terminal_width=27`: `max_depth_avail = 1`.
+    /// - Correct:  `max_depth = min(1,1) = 1 = total_depth` → no truncation notice.
+    /// - Mutant:   `max_depth = min(1,2) = 1 < 2`           → notice appears.
+    ///
+    /// The assertion `!output.contains("Note: Graph truncated")` fails for the mutant.
+    #[test]
+    fn test_mut170_calculate_total_depth_initial_zero() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#solo".to_string(),
+            NodeData::new(
+                "SoloTask".to_string(),
+                TaskStatus::Open,
+                "test".to_string(),
+                0,
+            ),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            !output.contains("Note: Graph truncated"),
+            "depth-0-only graph must not trigger truncation at terminal_width=27; output = {output:?}"
+        );
+    }
+
+    /// mut-000196: `return (String::new(), true)` → `(String::new(), false)` (line 315)
+    ///
+    /// When `current_depth > max_depth`, `render_tree` must signal truncation by returning
+    /// `true` as the second element. If it returns `false`, the notice never appears.
+    ///
+    /// Setup: A(depth=0) → B(depth=0) → C(depth=0) — all flat, so `total_depth = 1`.
+    /// At `terminal_width=200`: `max_depth_avail = 58`, `max_depth = min(58,1) = 1`.
+    /// `max_depth < total_depth` = `1 < 1` = false → the notice can ONLY come from the
+    /// `truncated` flag returned by `render_tree` when C is visited at `current_depth=2 > 1`.
+    ///
+    /// Correct: returns `(String::new(), true)` → `truncated` propagates → notice shown.
+    /// Mutant:  returns `(String::new(), false)` → `truncated` stays false → no notice.
+    #[test]
+    fn test_mut196_depth_exceeded_returns_truncated_true() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#nodeA".to_string(),
+            NodeData::new("NodeA".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#nodeB".to_string(),
+            NodeData::new("NodeB".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_node(
+            "test#nodeC".to_string(),
+            NodeData::new("NodeC".to_string(), TaskStatus::Open, "test".to_string(), 0),
+        );
+        graph.add_edge(
+            "test#nodeA".to_string(),
+            "test#nodeB".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#nodeB".to_string(),
+            "test#nodeC".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // All nodes depth=0 → total_depth=1, max_depth=min(58,1)=1
+        // max_depth < total_depth is false; only truncated flag can trigger notice
+        // NodeC is at current_depth=2 > max_depth=1 → render_tree must return true
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            !output.contains("NodeC"),
+            "NodeC at current_depth=2 must be depth-limited; output = {output:?}"
+        );
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "depth-limit must signal truncation=true so notice appears; output = {output:?}"
+        );
+    }
+
+    /// mut-000200: `child_count - 1` → `child_count - 0` (line 380)
+    ///
+    /// `is_last_child = idx == child_count - 1` (correct) vs
+    /// `is_last_child = idx == child_count`     (mutant, always false).
+    ///
+    /// With a parent having exactly two children sorted by insertion order:
+    /// - Correct: last child (`idx=1 == child_count-1=1`) gets `└`.
+    /// - Mutant:  `idx` never reaches `child_count=2`, so all children get `├`.
+    ///
+    /// We assert that exactly one `└` appears in the child section of the output
+    /// (the last child's branch), and that it corresponds to the second child.
+    #[test]
+    fn test_mut200_last_child_uses_corner_branch() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#parent".to_string(),
+            create_test_node("ParentNode", TaskStatus::Open, "test"),
+        );
+        // Insert children in order; adjacency Vec preserves insertion order.
+        // child1 → idx=0 (not last), child2 → idx=1 (last).
+        graph.add_node(
+            "test#child1".to_string(),
+            create_test_node("FirstChild", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#child2".to_string(),
+            create_test_node("SecondChild", TaskStatus::Open, "test"),
+        );
+        graph.add_edge(
+            "test#parent".to_string(),
+            "test#child1".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#parent".to_string(),
+            "test#child2".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(200),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // Locate the line containing "SecondChild"
+        let second_pos = output.find("SecondChild").expect("SecondChild not found");
+        let second_line_start = output[..second_pos].rfind('\n').map_or(0, |p| p + 1);
+        let second_line = &output[second_line_start..second_pos];
+
+        // The last child must use the corner branch character └
+        assert!(
+            second_line.contains('└'),
+            "last child (SecondChild) must use └ branch; prefix = {second_line:?}; output = {output:?}"
+        );
+
+        // Locate the line containing "FirstChild"
+        let first_pos = output.find("FirstChild").expect("FirstChild not found");
+        let first_line_start = output[..first_pos].rfind('\n').map_or(0, |p| p + 1);
+        let first_line = &output[first_line_start..first_pos];
+
+        // The non-last child must use the tee branch character ├
+        assert!(
+            first_line.contains('├'),
+            "first child (FirstChild) must use ├ branch; prefix = {first_line:?}; output = {output:?}"
+        );
+    }
+
+    /// mut-000201: `truncated = truncated || child_truncated` → `&&` (line 386)
+    ///
+    /// A parent has two children (visited in insertion order):
+    /// - child1 ("`AFirst`") is a leaf → `child_truncated=false`.
+    /// - child2 ("`BSecond`") has a grandchild that is depth-limited → `child_truncated=true`.
+    ///
+    /// Iteration 1: `truncated = false || false = false`  (correct/mutant same)
+    /// Iteration 2: `truncated = false || true  = true`   (correct → notice)
+    ///              `truncated = false && true  = false`  (mutant  → no notice)
+    ///
+    /// All nodes depth=0 so `total_depth=1`, `max_depth=1`; `max_depth < total_depth` is false.
+    #[test]
+    fn test_mut201_child_truncated_or_not_and() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(
+            "test#root".to_string(),
+            create_test_node("RootNode", TaskStatus::Open, "test"),
+        );
+        // First child: leaf, returns child_truncated=false
+        graph.add_node(
+            "test#afirst".to_string(),
+            create_test_node("AFirst", TaskStatus::Open, "test"),
+        );
+        // Second child: has a grandchild → grandchild at current_depth=3 > max_depth=1
+        graph.add_node(
+            "test#bsecond".to_string(),
+            create_test_node("BSecond", TaskStatus::Open, "test"),
+        );
+        graph.add_node(
+            "test#bgrand".to_string(),
+            create_test_node("BGrandNode", TaskStatus::Open, "test"),
+        );
+
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#afirst".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#root".to_string(),
+            "test#bsecond".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+        graph.add_edge(
+            "test#bsecond".to_string(),
+            "test#bgrand".to_string(),
+            EdgeData::new(DependencyKind::Hierarchy, None),
+        );
+
+        // terminal_width=27: max_depth_avail=1, total_depth=1, max_depth=1
+        // max_depth < total_depth is false → notice only via truncated flag
+        let config = AsciiGraphConfig {
+            terminal_width: Some(27),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        assert!(
+            output.contains("Note: Graph truncated"),
+            "truncated from second child must propagate via || not &&; output = {output:?}"
+        );
+    }
+
+    /// mut-000203: `is_index` → `!(is_index)` in `render_node` styling branch (line 412)
+    ///
+    /// For an index file node with a Markdown link title, `render_node` must call
+    /// `display::format_index_title` (which strips the URL) because `is_index=true`.
+    /// With the mutant `!(is_index)`, a non-index node would get link-stripped formatting
+    /// while an index node would NOT — the raw `[text](url)` title would be shown as-is.
+    ///
+    /// We verify this with TWO nodes:
+    /// 1. An index node with title `[Alpha](alpha.md)` → output must show "Alpha" (no URL).
+    /// 2. A non-index node with title `[Beta](beta.md)` → output must show the full link.
+    ///
+    /// The mutant swaps the two behaviours:
+    /// - Index node would NOT extract → "[Alpha](alpha.md)" present (test fails).
+    /// - Non-index node WOULD extract → "[Beta](beta.md)" absent (test fails).
+    #[test]
+    fn test_mut203_is_index_controls_link_extraction() {
+        let mut graph = DependencyGraph::new();
+
+        // Index node: title is a Markdown link → link text must be extracted
+        graph.add_node(
+            "proj#idx".to_string(),
+            create_test_node_with_path(
+                "[Alpha Module](alpha.md)",
+                TaskStatus::Open,
+                "proj",
+                "lash.index.md",
+            ),
+        );
+
+        // Non-index node: title is a Markdown link → link must be preserved verbatim
+        graph.add_node(
+            "tasks#reg".to_string(),
+            create_test_node_with_path(
+                "[Beta Module](beta.md)",
+                TaskStatus::Open,
+                "tasks",
+                "tasks.md",
+            ),
+        );
+
+        let renderer = AsciiGraphRenderer::new(&graph, None);
+        let output = renderer.render(&FilterOptions::default());
+
+        // Index node: link text extracted, URL gone
+        assert!(
+            output.contains("Alpha Module"),
+            "index node must show extracted link text; output = {output:?}"
+        );
+        assert!(
+            !output.contains("alpha.md"),
+            "index node must not show the URL; output = {output:?}"
+        );
+
+        // Non-index node: full markdown link preserved, URL present
+        assert!(
+            output.contains("[Beta Module](beta.md)"),
+            "non-index node must preserve full markdown link; output = {output:?}"
+        );
+    }
+
+    /// mut-000209: `title.len() > max_title_len` → `>=` in `truncate_title` (line 539)
+    ///
+    /// At `terminal_width=44`, `max_title_len = 44 - 20 = 24`.
+    ///
+    /// Correct (`>`):  a title of exactly 24 chars is NOT truncated (24 > 24 is false).
+    /// Mutant (`>=`):  a title of exactly 24 chars IS truncated  (24 >= 24 is true),
+    ///                 and since `24 > 3` is also true, the truncated form is returned.
+    ///
+    /// The assertion that the full 24-char title appears verbatim in the output fails
+    /// for the mutant (which truncates it to 21 chars + "...").
+    #[test]
+    fn test_mut209_truncate_title_exact_boundary_not_truncated() {
+        let mut graph = DependencyGraph::new();
+
+        // terminal_width=44 → max_title_len = 44-20 = 24
+        // A title of exactly 24 chars must not be truncated with correct `>` logic
+        let exact_title = "X".repeat(24);
+        graph.add_node(
+            "test#exact".to_string(),
+            create_test_node(&exact_title, TaskStatus::Open, "test"),
+        );
+
+        let config = AsciiGraphConfig {
+            terminal_width: Some(44),
+            min_title_width: 20,
+            indent_width: 3,
+        };
+        let renderer = AsciiGraphRenderer::new(&graph, None).with_config(config);
+        let output = renderer.render(&FilterOptions::default());
+
+        // Correct: 24 > 24 is false → title is not truncated → full title present
+        // Mutant:  24 >= 24 is true  → title IS truncated  → full title absent
+        assert!(
+            output.contains(&exact_title),
+            "title of exactly max_title_len chars must not be truncated; output = {output:?}"
+        );
+        assert!(
+            !output.contains("..."),
+            "no ellipsis expected when title length equals max_title_len; output = {output:?}"
+        );
+    }
 }

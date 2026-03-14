@@ -142,3 +142,48 @@ fn test_graph_no_db_emits_index_out_of_sync_error() {
         "error message must reference the index; output: {all_output}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// mut-000392: 0 → 1  in LashError::index_out_of_sync(0)
+//
+// The graph command calls `LashError::index_out_of_sync(0)` when the database
+// does not exist. The `files_changed` parameter is embedded directly in the
+// error message: "index is out of sync (0 files changed)".
+//
+// If the mutant changes the argument to 1, the message would instead say
+// "index is out of sync (1 files changed)".
+//
+// We kill this by asserting the stderr contains the exact string
+// "0 files changed".
+// ---------------------------------------------------------------------------
+
+/// `graph` without a database must report exactly 0 files changed in the
+/// index-out-of-sync error message.
+/// Kills mut-000392: changing 0→1 would produce "(1 files changed)" instead.
+#[test]
+fn test_graph_no_db_error_message_reports_zero_files_changed() {
+    let td = temp_project_no_db();
+
+    let output = lash()
+        .arg("--root")
+        .arg(td.path())
+        .arg("--no-color")
+        .arg("graph")
+        .output()
+        .expect("lash must run");
+
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        3,
+        "graph without a database must exit with code 3"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // index_out_of_sync(0) produces: "index is out of sync (0 files changed)"
+    // With the mutation 0→1, the message would say "(1 files changed)" instead.
+    assert!(
+        stderr.contains("0 files changed"),
+        "error message must contain '0 files changed'; stderr: {stderr}"
+    );
+}

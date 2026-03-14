@@ -22,11 +22,10 @@ Ran a comprehensive mutation testing campaign against the full lash codebase usi
 - `lash-cli/src/commands/init.rs` (12 mutants: args.json, no_color, index_file.exists, lash_dir.exists, no_index, exit_code!=0)
 - `lash-cli/src/commands/lint.rs` (11 mutants: no_color, recursive literal, interactive&&!fix compound, fix, json, rule counts)
 
-**Remaining equivalent mutants (2):**
-- `prompt.rs:268` mut-000047: `total > 0` → `total >= 0` (usize — always ≥ 0, equivalent)
-- `tokens.rs:57` mut-000103: `total_tasks > 0` → `total_tasks >= 0` (usize — always ≥ 0, equivalent)
+**Remaining equivalent mutants (1) after follow-up pass:**
+- `tokens.rs:142` mut-000131: `< 10` → `<= 10` in `truncate_to_budget` — equivalent because `char_budget = token_budget * 4`, so `char_budget` is always a multiple of 4; the boundary value 10 is unreachable (4×2=8, 4×3=12), making `< 10` and `<= 10` identical for all valid inputs.
 
-**Commits:** 059cc04, 317ee05, 0b66207, 2af6f7e, a131034, e903eaf
+**Commits:** 059cc04, 317ee05, 0b66207, 2af6f7e, a131034, e903eaf, 7b1b56a, e903eaf
 
 ### Key Findings
 
@@ -35,7 +34,8 @@ Ran a comprehensive mutation testing campaign against the full lash codebase usi
 - Some mutations (stdout-only effects) required e2e process tests since unit tests cannot capture stdout
 - Mutation score improved from ~58.5% baseline to ~97-98% on focused targeted files
 - Full project score ~60.5% on random 400-sample budget — lower due to flawd import graph limitation (e2e test files not linked to source via static import analysis, so per-mutant test selection misses e2e tests). Coverage-based targeting would yield higher scores.
-- Two confirmed equivalent mutants remain: `usize > 0` → `usize >= 0` (always true for unsigned types)
+- Previously identified equivalent mutants (mut-000047, mut-000103) for `usize > 0` → `usize >= 0` were killed in a follow-up pass using degenerate inputs where `total=0` but `completed>0`: the original returns 0% (else branch), while the mutant computes `f64::INFINITY as usize = usize::MAX`, which tests reject.
+- One confirmed equivalent mutant remains: `tokens.rs:142` where `char_budget < 10` vs `char_budget <= 10` is indistinguishable because `char_budget` is always a multiple of 4.
 
 ---
 
