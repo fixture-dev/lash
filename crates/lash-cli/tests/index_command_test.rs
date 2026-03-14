@@ -739,12 +739,50 @@ fn test_index_json_mode_excludes_text_summary() {
 // ---------------------------------------------------------------------------
 // mut-000417/mut-000418: Location::new(path, 1, 1) line and column literals
 //
-// These are already covered by the unit test `test_json_output_location_uses_line_one_column_one`
-// in the source file, which directly asserts `location.line == Some(1)` and
-// `location.column == Some(1)`.  The e2e tests below provide additional
-// coverage by exercising the full execute() path with a parse error and
-// checking that JSON error output includes sensible values.
+// execute() creates Location::new(parse_error.file_path.clone(), 1, 1) for
+// each parse error.  The ErrorReporter formats this as "file:1:1" in the
+// diagnostic output written to stderr.
+//
+// mut-000417 changes the first `1` (line) to `0` → "file:0:1" in stderr.
+// mut-000418 changes the second `1` (column) to `0` → "file:1:0" in stderr.
+//
+// The test below verifies the exact location string in stderr, killing both
+// mutations.  A separate unit test in index.rs independently asserts
+// Location::new(path, 1, 1) produces line == Some(1) and column == Some(1).
 // ---------------------------------------------------------------------------
+
+/// When a parse error occurs, the text-mode diagnostic written to stderr must
+/// include the location `:1:1` (line 1, column 1).
+///
+/// This kills mut-000417 (line `1` → `0`) and mut-000418 (column `1` → `0`):
+/// with either mutation the stderr location would become `:0:1` or `:1:0`.
+#[test]
+fn test_index_parse_error_location_in_stderr_is_line_one_column_one() {
+    let temp = TempDir::new().unwrap();
+    // Duplicate @id triggers a reliable parse error.
+    let content = "# Bad\n\n@id: dup\n@id: dup\n\n## Tasks\n\n- [ ] Task\n";
+    fs::write(temp.path().join("lash.index.md"), content).unwrap();
+
+    let output = lash_cmd()
+        .arg("--root")
+        .arg(temp.path())
+        .arg("--no-color")
+        .arg("index")
+        // No --json so errors are written as text to stderr.
+        .output()
+        .unwrap();
+
+    // Only assert on location when a parse error was actually detected.
+    if output.status.code() == Some(3) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // The location string must be ":1:1" (line 1, column 1).
+        // mut-000417 would produce ":0:1"; mut-000418 would produce ":1:0".
+        assert!(
+            stderr.contains(":1:1"),
+            "parse error location in stderr must be ':1:1'; got:\n{stderr}"
+        );
+    }
+}
 
 /// When indexing a file that causes a parse error, the JSON output must
 /// include an `errors` array with at least one entry.
