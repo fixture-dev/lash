@@ -263,12 +263,32 @@ fn get_database_path(project_root: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
     use tempfile::TempDir;
 
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
+
+    /// Create a temp HOME directory whose `~/.lash/config.toml` specifies an
+    /// invalid color-scheme name.
+    ///
+    /// When `CliTheme::load(None, true)` is called it reads this config, looks
+    /// up the bad scheme in the registry, and returns `Err`.
+    /// When `CliTheme::load(None, false)` is called it returns `Ok(None)`
+    /// immediately without consulting the registry.
+    fn make_bad_scheme_home() -> TempDir {
+        let home = TempDir::new().unwrap();
+        let lash_dir = home.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        fs::write(
+            lash_dir.join("config.toml"),
+            "color_scheme = \"NonExistentSchemeForMutationKillTest\"\n",
+        )
+        .unwrap();
+        home
+    }
 
     /// Build minimal `AgentPromptArgs` for the given temp project root with
     /// sensible defaults (json=false, `no_color=true`, plain format).
@@ -532,6 +552,98 @@ mod tests {
         };
         let result = execute(&args).unwrap();
         assert_eq!(result, 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // mut-000147: `args.json` → `!(args.json)` at line 61
+    //
+    // Original:  if args.json { None } else { CliTheme::load(...) }
+    // Mutation:  if !(args.json) { None } else { CliTheme::load(...) }
+    //
+    // With json=true and a bad HOME color-scheme:
+    //   Original  → None (CliTheme::load never called)  → execute() Ok(0)
+    //   Mutant    → else branch → CliTheme::load(None, !no_color)
+    //             → reads bad HOME config → invalid scheme → Err
+    //             → execute() returns Err → unwrap() panics → test FAILS
+    // -------------------------------------------------------------------------
+
+    /// Passing json=true must short-circuit theme loading.  A user config with
+    /// an invalid color-scheme must not cause a failure when json=true.
+    ///
+    /// Kills mut-000147.
+    #[test]
+    #[serial]
+    fn test_json_true_skips_theme_load_even_with_bad_home_scheme() {
+        let temp = TempDir::new().unwrap();
+        let bad_home = make_bad_scheme_home();
+
+        let old_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", bad_home.path());
+
+        let args = AgentPromptArgs {
+            json: true,
+            no_color: false, // Would trigger scheme lookup if theme were loaded
+            ..base_args(&temp)
+        };
+        let result = execute(&args);
+
+        // Restore HOME before asserting to avoid polluting other tests
+        match old_home {
+            Some(h) => std::env::set_var("HOME", h),
+            None => std::env::remove_var("HOME"),
+        }
+
+        // Original: json=true → theme=None, no scheme lookup → Ok(0)
+        // Mutant:   !(args.json) with json=true → enters else branch
+        //           → CliTheme::load(bad scheme) → Err → unwrap panics
+        assert_eq!(result.unwrap(), 0, "execute() must succeed when json=true");
+    }
+
+    // -------------------------------------------------------------------------
+    // mut-000148: `!args.no_color` → `args.no_color` at line 64
+    //
+    // Original:  CliTheme::load(None, !args.no_color)
+    // Mutation:  CliTheme::load(None,  args.no_color)
+    //
+    // With json=false, no_color=true, and a bad HOME color-scheme:
+    //   Original  → load(None, !true = false) → Ok(None), no registry lookup
+    //   Mutant    → load(None,  true)         → reads bad HOME config
+    //             → invalid scheme → Err → execute() returns Err → test FAILS
+    // -------------------------------------------------------------------------
+
+    /// When no_color=true, CliTheme::load must receive `false` as the
+    /// `colors_enabled` argument and return Ok(None) without touching the
+    /// color-scheme registry.
+    ///
+    /// Kills mut-000148.
+    #[test]
+    #[serial]
+    fn test_no_color_true_disables_theme_lookup() {
+        let temp = TempDir::new().unwrap();
+        let bad_home = make_bad_scheme_home();
+
+        let old_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", bad_home.path());
+
+        let args = AgentPromptArgs {
+            json: false,
+            no_color: true, // !true=false → load(None,false) → Ok(None)
+            ..base_args(&temp)
+        };
+        let result = execute(&args);
+
+        match old_home {
+            Some(h) => std::env::set_var("HOME", h),
+            None => std::env::remove_var("HOME"),
+        }
+
+        // Original: !no_color=false → Ok(None), no bad-scheme lookup → Ok(0)
+        // Mutant:   no_color=true   → load(None,true) → bad-scheme → Err
+        assert_eq!(
+            result.unwrap(),
+            0,
+            "execute() must succeed when no_color=true (colors disabled)"
+        );
     }
 
     // -------------------------------------------------------------------------
