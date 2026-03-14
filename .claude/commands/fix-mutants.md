@@ -1,15 +1,23 @@
 ---
 description: Fix surviving mutants from a Flawd mutation testing report
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash(cargo:*), Bash(npm:*), Bash(pytest:*), Bash(go:*), Bash(python:*)
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash(flawd:*), Bash(cargo:*), Bash(npm:*), Bash(pytest:*), Bash(go:*), Bash(python:*)
 ---
 
 # Fix Surviving Mutants
 
-Read the Flawd handoff index at $ARGUMENTS (default: `flawd-report/handoff/index.json`).
+## Argument parsing
+
+The argument provided is: `$ARGUMENTS`
+
+Parse the argument as follows:
+- If the argument is a **number between 1 and 100** (e.g., `70`), treat it as a **target mutation score percentage**. Use the default handoff index path `flawd-report/handoff/index.json`.
+- If the argument is a **file path**, use it as the handoff index path. No target score — fix all surviving mutants once.
+- If no argument is provided, use the default handoff index path `flawd-report/handoff/index.json`. No target score — fix all surviving mutants once.
+- If the argument is a number **outside the range 1–100**, stop and report the error: "Target mutation score must be between 1 and 100 (got: <value>)".
 
 ## Process
 
-1. **Read the index** to get the list of files with surviving mutants
+1. **Read the handoff index** to get the list of files with surviving mutants
 2. **Process one file at a time**, starting with the file that has the most survivors
 3. For each file, read the corresponding handoff bundle from `by-file/`
 
@@ -36,3 +44,15 @@ After fixing mutants in each file:
 - If a test fails, review the fix and adjust
 
 Work through all files in the index until all surviving mutants have been addressed.
+
+## Iterative mode (target score)
+
+If a **target mutation score** was provided (e.g., `/fix-mutants 70`), follow this loop after completing the initial pass above:
+
+1. **Run `flawd run`** to regenerate the mutation testing report with fresh results
+2. **Check the mutation score** in the console output (look for "Mutation score: XX.X%")
+3. **If the score meets or exceeds the target** — stop and report success: "Mutation score <actual>% meets target <target>%"
+4. **If the score is below the target** — read the new handoff index at `flawd-report/handoff/index.json` and fix the remaining surviving mutants, then return to step 1
+5. **If the score does not improve between iterations** — stop and report: "Mutation score plateaued at <score>% (target: <target>%). The remaining mutants may require source code changes or may be equivalent mutants."
+
+Repeat this loop until the target is met or progress stalls. Each iteration should show progress toward the goal.
