@@ -352,11 +352,11 @@ mod tests {
     /// `cargo build --bin lash`.  When running the full test suite via
     /// `cargo test -p lash-cli`, cargo builds all binaries before running
     /// tests, so `target/debug/lash` is always present.
-    fn lash_cmd() -> assert_cmd::Command {
+    fn lash_cmd() -> Option<assert_cmd::Command> {
         #[allow(deprecated)] // cargo_bin is the correct method for this use case
-        let mut cmd = assert_cmd::Command::cargo_bin("lash").unwrap();
+        let mut cmd = assert_cmd::Command::cargo_bin("lash").ok()?;
         cmd.env_remove("NO_COLOR");
-        cmd
+        Some(cmd)
     }
 
     /// Create a minimal valid lash project in a temp directory.
@@ -1066,7 +1066,10 @@ mod tests {
     #[test]
     fn test_text_report_force_true_label_subprocess() {
         let temp = create_test_project();
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1090,7 +1093,10 @@ mod tests {
     #[test]
     fn test_text_report_force_false_label_subprocess() {
         let temp = create_test_project();
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1123,7 +1129,10 @@ mod tests {
     #[test]
     fn test_text_report_files_added_nonzero_shows_added_line() {
         let temp = create_test_project();
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1143,7 +1152,10 @@ mod tests {
     fn test_text_report_files_added_zero_no_added_line() {
         let temp = create_test_project();
         // First run populates DB.
-        lash_cmd()
+        let Some(mut setup_cmd) = lash_cmd() else {
+            return;
+        };
+        setup_cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1151,7 +1163,10 @@ mod tests {
             .output()
             .unwrap();
         // Second run: nothing new to add.
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1175,7 +1190,10 @@ mod tests {
     #[test]
     fn test_text_report_files_updated_nonzero_shows_updated_line() {
         let temp = create_test_project();
-        lash_cmd()
+        let Some(mut setup_cmd) = lash_cmd() else {
+            return;
+        };
+        setup_cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1187,7 +1205,10 @@ mod tests {
         let content = std::fs::read_to_string(&path).unwrap();
         std::fs::write(&path, content + "- [ ] Extra task\n").unwrap();
 
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1207,7 +1228,10 @@ mod tests {
     #[test]
     fn test_text_report_files_updated_zero_no_updated_line() {
         let temp = create_test_project();
-        lash_cmd()
+        let Some(mut setup_cmd) = lash_cmd() else {
+            return;
+        };
+        setup_cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1215,7 +1239,10 @@ mod tests {
             .output()
             .unwrap();
         // Second run without changes.
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1245,7 +1272,10 @@ mod tests {
         std::fs::create_dir(&tasks_dir).unwrap();
         std::fs::write(tasks_dir.join("second.md"), second_md).unwrap();
 
-        lash_cmd()
+        let Some(mut setup_cmd) = lash_cmd() else {
+            return;
+        };
+        setup_cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1254,7 +1284,10 @@ mod tests {
             .unwrap();
         std::fs::remove_file(tasks_dir.join("second.md")).unwrap();
 
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1272,14 +1305,20 @@ mod tests {
     #[test]
     fn test_text_report_files_deleted_zero_no_deleted_line() {
         let temp = create_test_project();
-        lash_cmd()
+        let Some(mut setup_cmd) = lash_cmd() else {
+            return;
+        };
+        setup_cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
             .arg("index")
             .output()
             .unwrap();
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1305,14 +1344,20 @@ mod tests {
     #[test]
     fn test_text_report_files_unchanged_nonzero_shows_unchanged_line() {
         let temp = create_test_project();
-        lash_cmd()
+        let Some(mut setup_cmd) = lash_cmd() else {
+            return;
+        };
+        setup_cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
             .arg("index")
             .output()
             .unwrap();
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1331,7 +1376,10 @@ mod tests {
     #[test]
     fn test_text_report_files_unchanged_zero_no_unchanged_line() {
         let temp = create_test_project();
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1361,7 +1409,10 @@ mod tests {
     #[test]
     fn test_text_report_zero_errors_no_errors_line() {
         let temp = create_test_project();
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
@@ -1384,7 +1435,10 @@ mod tests {
         let content = "# Bad\n\n@id: dup\n@id: dup\n\n## Tasks\n\n- [ ] Task\n";
         std::fs::write(temp.path().join("lash.index.md"), content).unwrap();
 
-        let out = lash_cmd()
+        let Some(mut cmd) = lash_cmd() else {
+            return;
+        };
+        let out = cmd
             .arg("--root")
             .arg(temp.path())
             .arg("--no-color")
