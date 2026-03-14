@@ -447,15 +447,19 @@ mod tests {
     }
 
     #[test]
-    fn test_truncate_to_budget_char_budget_exactly_10_not_ellipsis() {
-        // Kills mut-000128 (< vs <=) for the char_budget < 10 boundary.
-        // token_budget=3 → char_budget=12, which is >= 10, so should NOT return "...".
-        // But we need enough tokens to trigger truncation: need tokens > 3.
-        // "alpha beta gamma delta epsilon" = 5 words → 7 tokens.
+    fn test_truncate_to_budget_char_budget_above_10_produces_truncated_content() {
+        // Verifies that when char_budget >= 12 (token_budget=3), truncation produces
+        // content with "..." rather than just "...".
+        //
+        // Note on mut-000131 (< vs <= at line 142): this is a confirmed equivalent
+        // mutant. Since char_budget = token_budget * 4 and token_budget is usize,
+        // char_budget is always a multiple of 4. The boundary value 10 is therefore
+        // unreachable (4*2=8, 4*3=12), so `< 10` and `<= 10` are indistinguishable
+        // for any valid input. No test can kill this mutant.
         let text = "alpha beta gamma delta epsilon";
         assert!(estimate_tokens(text) > 3);
         let result = truncate_to_budget(text, 3);
-        // Should not be just "..." since char_budget=12 >= 10
+        // char_budget=12 >= 10, so truncation proceeds normally (not just "...")
         assert_ne!(result, "...");
         assert!(result.ends_with("..."));
     }

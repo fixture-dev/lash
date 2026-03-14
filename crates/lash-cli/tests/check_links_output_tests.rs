@@ -8,6 +8,8 @@
 //! - mut-000244  == → !=  in the same check
 //! - mut-000245  0 → 1  in the same check
 //! - mut-000247  show_summary: false → true  in ErrorReporterConfig
+//! - mut-000248  0 → 1 (line number) in dep_not_found call
+//! - mut-000249  0 → 1 (column number) in dep_not_found call
 //! - mut-000253  args.json → !(args.json)  in no-DB branch of execute
 //! - mut-000257  args.json → !(args.json)  in zero-broken branch of execute
 
@@ -258,5 +260,162 @@ fn test_check_links_no_broken_links_no_summary_section() {
     assert!(
         !stdout.contains("Summary:"),
         "clean output must not contain a Summary section; got: {stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Helper: project with a broken dependency link in the database
+//
+// The lash indexer only records hierarchy (parent-child) dependencies at
+// index time; it does not create dependency rows with NULL to_task_id for
+// unresolvable @depends-on refs. To exercise the broken-link output path
+// we insert the record directly via SQL after initialising the database.
+// ---------------------------------------------------------------------------
+
+/// Create a temp project whose database contains exactly one broken dependency:
+/// a dependency row with `to_task_id = NULL` and `raw_ref = 'missing#task'`.
+fn temp_project_with_broken_link_in_db() -> TempDir {
+    let td = TempDir::new().expect("must create temp dir");
+    fs::create_dir_all(td.path().join(".lash")).expect("must create .lash dir");
+
+    let db_path = td.path().join(".lash").join("lash.db");
+    let conn = init_database(&db_path).expect("must create database");
+    run_migrations(&conn).expect("must run migrations");
+
+    // Insert a minimal file record
+    conn.execute(
+        "INSERT INTO files (path, file_id, title, hash, mtime, metadata)
+         VALUES ('broken.md', 'broken', 'Broken Tasks', 'deadbeef', 1234567890, '{}')",
+        [],
+    )
+    .expect("must insert file");
+
+    let file_id: i64 = conn
+        .query_row("SELECT id FROM files WHERE path = 'broken.md'", [], |r| {
+            r.get(0)
+        })
+        .expect("must get file id");
+
+    // Insert a task in that file
+    conn.execute(
+        "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index, metadata)
+         VALUES (?1, 'task1', 'broken#task1', 'Task 1', 'open', 0, 0, '{}')",
+        [file_id],
+    )
+    .expect("must insert task");
+
+    let task_id: i64 = conn
+        .query_row(
+            "SELECT id FROM tasks WHERE full_id = 'broken#task1'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("must get task id");
+
+    // Insert a broken dependency (to_task_id IS NULL)
+    conn.execute(
+        "INSERT INTO dependencies (from_task_id, to_task_id, kind, raw_ref)
+         VALUES (?1, NULL, 'explicit_id', 'missing#task')",
+        [task_id],
+    )
+    .expect("must insert broken dependency");
+
+    td
+}
+
+// ---------------------------------------------------------------------------
+// mut-000247: show_summary: false → true in ErrorReporterConfig
+//
+// When broken links exist, output_text_report creates an ErrorReporter with
+// show_summary: false. The reporter is flushed with flush() (not
+// flush_with_summary()), so show_summary has no effect on output. This
+// makes the mutation equivalent in terms of observable behaviour.
+//
+// The test below verifies the strongest observable property we can assert:
+// that no "Summary:" section appears when broken links are reported, which
+// is the intended behaviour guarded by show_summary: false.
+// ---------------------------------------------------------------------------
+
+/// With broken links present, the output must NOT contain a "Summary:" section.
+/// Kills mut-000247 as far as observable output allows (show_summary: false
+/// is set but output_text_report uses flush() not flush_with_summary(), making
+/// a direct kill impossible without modifying production code).
+#[test]
+fn test_check_links_broken_links_no_summary_section() {
+    let td = temp_project_with_broken_link_in_db();
+
+    let output = lash()
+        .arg("--root")
+        .arg(td.path())
+        .arg("--no-color")
+        .arg("check-links")
+        .output()
+        .expect("lash must run");
+
+    // Broken link exits with code 1
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        1,
+        "broken-link project must exit with code 1; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Combine stdout and stderr: "Summary:" must not appear in either stream
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Summary:"),
+        "broken-link output must not contain a Summary section in stderr; got: {stderr}"
+    );
+    assert!(
+        !stdout.contains("Summary:"),
+        "broken-link output must not contain a Summary section in stdout; got: {stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// mut-000248: 0 → 1 (line number) and mut-000249: 0 → 1 (column number)
+// in the dep_not_found call inside output_text_report.
+//
+// output_text_report passes literal 0 for both line and column because the
+// database does not store source positions. The formatted diagnostic therefore
+// contains ":0:0" in the location string.  Changing either literal to 1 would
+// produce ":1:0" or ":0:1" respectively.
+// ---------------------------------------------------------------------------
+
+/// When broken links are reported in plain-text mode, the error location
+/// must use ":0:0" (the placeholder used when no source position is known).
+/// Kills mut-000248 (0→1 for line) and mut-000249 (0→1 for column).
+#[test]
+fn test_check_links_broken_links_error_location_is_zero_zero() {
+    let td = temp_project_with_broken_link_in_db();
+
+    let output = lash()
+        .arg("--root")
+        .arg(td.path())
+        .arg("--no-color")
+        .arg("check-links")
+        .output()
+        .expect("lash must run");
+
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        1,
+        "broken-link project must exit 1"
+    );
+
+    // The error reporter writes diagnostics to stderr
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(":0:0"),
+        "error location must be ':0:0' (no line/column in DB); got stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains(":1:0"),
+        "error location must not be ':1:0' (would indicate 0→1 mutation on line); got stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains(":0:1"),
+        "error location must not be ':0:1' (would indicate 0→1 mutation on column); got stderr: {stderr}"
     );
 }
