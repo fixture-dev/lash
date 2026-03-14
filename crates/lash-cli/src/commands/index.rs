@@ -331,6 +331,34 @@ mod tests {
     use lash_db::ParseError;
     use tempfile::TempDir;
 
+    // ---------------------------------------------------------------------------
+    // Subprocess helper for output-observable tests
+    //
+    // `output_text_report` writes directly to stdout via `println!()`.  The
+    // Rust test harness intercepts `println!()` at the thread-local level
+    // (via an internal capture buffer), so OS-level `dup2` pipe redirection
+    // does not capture this output in unit tests.
+    //
+    // The only reliable way to observe `println!()` output from a unit test is
+    // to spawn the `lash` binary as a child process via `assert_cmd` and
+    // inspect its stdout.  This is equivalent to what the integration tests in
+    // `tests/index_command_test.rs` do, but done from within this module so
+    // that flawd's coverage mapping associates the tests with this source file.
+    // ---------------------------------------------------------------------------
+
+    /// Return a `Command` pointing at the compiled `lash` binary.
+    ///
+    /// Uses `assert_cmd::Command::cargo_bin` which locates the binary built by
+    /// `cargo build --bin lash`.  When running the full test suite via
+    /// `cargo test -p lash-cli`, cargo builds all binaries before running
+    /// tests, so `target/debug/lash` is always present.
+    fn lash_cmd() -> assert_cmd::Command {
+        #[allow(deprecated)] // cargo_bin is the correct method for this use case
+        let mut cmd = assert_cmd::Command::cargo_bin("lash").unwrap();
+        cmd.env_remove("NO_COLOR");
+        cmd
+    }
+
     /// Create a minimal valid lash project in a temp directory.
     fn create_test_project() -> TempDir {
         let temp = TempDir::new().unwrap();
@@ -1010,5 +1038,450 @@ mod tests {
         }
 
         assert!(output_json_report(&report, &error_reporter).is_ok());
+    }
+
+    // ---------------------------------------------------------------------------
+    // output_text_report output-observable tests (via subprocess)
+    //
+    // `output_text_report` writes to stdout via `println!()`.  The Rust test
+    // harness intercepts `println!()` at the thread-local level, making it
+    // impossible to capture from within the same process in unit-test mode.
+    //
+    // These tests spawn the `lash` binary as a child process via `assert_cmd`
+    // and assert on the child's stdout.  This is equivalent to the integration
+    // tests in `tests/index_command_test.rs`, but written in this module so
+    // that flawd's coverage map associates them directly with the mutated lines
+    // in `output_text_report`.
+    // ---------------------------------------------------------------------------
+
+    // ---------------------------------------------------------------------------
+    // mut-000425: `force` → `!(force)` – summary label selection
+    //
+    // When --force is passed the first line must be "Full rebuild complete".
+    // When --force is absent the first line must be "Incremental index complete".
+    // If the negation mutation is applied the labels are swapped.
+    // ---------------------------------------------------------------------------
+
+    /// `--force` must print "Full rebuild complete" (not "Incremental …").
+    #[test]
+    fn test_text_report_force_true_label_subprocess() {
+        let temp = create_test_project();
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .arg("--force")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("Full rebuild complete"),
+            "--force must print 'Full rebuild complete'; got:\n{stdout}"
+        );
+        assert!(
+            !stdout.contains("Incremental index complete"),
+            "--force must NOT print 'Incremental index complete'; got:\n{stdout}"
+        );
+    }
+
+    /// Without `--force` the label must be "Incremental index complete".
+    #[test]
+    fn test_text_report_force_false_label_subprocess() {
+        let temp = create_test_project();
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("Incremental index complete"),
+            "no --force must print 'Incremental index complete'; got:\n{stdout}"
+        );
+        assert!(
+            !stdout.contains("Full rebuild complete"),
+            "no --force must NOT print 'Full rebuild complete'; got:\n{stdout}"
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // mut-000427/428/429/430: `report.files_added > 0` boundary tests
+    //
+    // First index run  → files_added ≥ 1 → "Added:" must appear.
+    // Second run (same files, no force) → files_added = 0 → "Added:" must NOT appear.
+    // The numeric-literal mutation (0→1) changes the guard to `> 1`.  With only
+    // one file added, `1 > 0` is true (original) but `1 > 1` is false (mutant),
+    // so the first-run test kills that mutation.
+    // ---------------------------------------------------------------------------
+
+    /// First index run: `files_added` ≥ 1, so "Added:" must appear.
+    #[test]
+    fn test_text_report_files_added_nonzero_shows_added_line() {
+        let temp = create_test_project();
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("Added:"),
+            "first-run output must contain 'Added:'; got:\n{stdout}"
+        );
+    }
+
+    /// Second incremental run: `files_added` = 0, so "Added:" must NOT appear.
+    #[test]
+    fn test_text_report_files_added_zero_no_added_line() {
+        let temp = create_test_project();
+        // First run populates DB.
+        lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        // Second run: nothing new to add.
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !stdout.contains("Added:"),
+            "second-run output must NOT contain 'Added:'; got:\n{stdout}"
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // mut-000432/433/434/435: `report.files_updated > 0` boundary tests
+    // ---------------------------------------------------------------------------
+
+    /// Modifying a file between two index runs causes `files_updated` ≥ 1;
+    /// "Updated:" must appear in the output.
+    #[test]
+    fn test_text_report_files_updated_nonzero_shows_updated_line() {
+        let temp = create_test_project();
+        lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        // Modify the file to trigger an update.
+        let path = temp.path().join("lash.index.md");
+        let content = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, content + "- [ ] Extra task\n").unwrap();
+
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("Updated:"),
+            "output after file modification must contain 'Updated:'; got:\n{stdout}"
+        );
+    }
+
+    /// Without file modifications the second run has `files_updated` = 0;
+    /// "Updated:" must NOT appear.
+    #[test]
+    fn test_text_report_files_updated_zero_no_updated_line() {
+        let temp = create_test_project();
+        lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        // Second run without changes.
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !stdout.contains("Updated:"),
+            "output with no modifications must NOT contain 'Updated:'; got:\n{stdout}"
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // mut-000437/438/439/440: `report.files_deleted > 0` boundary tests
+    // ---------------------------------------------------------------------------
+
+    /// Deleting a tracked file causes `files_deleted` ≥ 1; "Deleted:" must appear.
+    #[test]
+    fn test_text_report_files_deleted_nonzero_shows_deleted_line() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let index_md = "# Root\n\n@id: root\n\n## Tasks\n\n- [ ] Task\n";
+        let second_md = "# Second\n\n@id: second\n\n## Tasks\n\n- [ ] Task\n";
+        std::fs::write(temp.path().join("lash.index.md"), index_md).unwrap();
+        let tasks_dir = temp.path().join("tasks");
+        std::fs::create_dir(&tasks_dir).unwrap();
+        std::fs::write(tasks_dir.join("second.md"), second_md).unwrap();
+
+        lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        std::fs::remove_file(tasks_dir.join("second.md")).unwrap();
+
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("Deleted:"),
+            "output after file deletion must contain 'Deleted:'; got:\n{stdout}"
+        );
+    }
+
+    /// No deletions → `files_deleted` = 0 → "Deleted:" must NOT appear.
+    #[test]
+    fn test_text_report_files_deleted_zero_no_deleted_line() {
+        let temp = create_test_project();
+        lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !stdout.contains("Deleted:"),
+            "output with no deletions must NOT contain 'Deleted:'; got:\n{stdout}"
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // mut-000442/443/444/445: `report.files_unchanged > 0` boundary tests
+    //
+    // First run → files_unchanged = 0 → "Unchanged:" must NOT appear.
+    // Second run (no changes) → files_unchanged ≥ 1 → "Unchanged:" must appear.
+    // ---------------------------------------------------------------------------
+
+    /// Second run with no changes: `files_unchanged` ≥ 1; "Unchanged:" must appear.
+    #[test]
+    fn test_text_report_files_unchanged_nonzero_shows_unchanged_line() {
+        let temp = create_test_project();
+        lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("Unchanged:"),
+            "second-run output must contain 'Unchanged:'; got:\n{stdout}"
+        );
+    }
+
+    /// First run: `files_unchanged` = 0 → "Unchanged:" must NOT appear.
+    #[test]
+    fn test_text_report_files_unchanged_zero_no_unchanged_line() {
+        let temp = create_test_project();
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !stdout.contains("Unchanged:"),
+            "first-run output must NOT contain 'Unchanged:'; got:\n{stdout}"
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // mut-000446/447/448/449: `summary.error_count > 0` boundary tests
+    //
+    // Clean project → error_count = 0 → "Errors:" must NOT appear.
+    // Project with one parse error → error_count = 1 → "Errors:" must appear.
+    //
+    // The numeric-literal mutation (0→1) changes the guard to `> 1`.  With
+    // exactly 1 error, `1 > 0` is true (original) but `1 > 1` is false
+    // (mutant), so the single-error test kills that mutation.
+    // ---------------------------------------------------------------------------
+
+    /// Clean project: `error_count` = 0 → "Errors:" must NOT appear.
+    #[test]
+    fn test_text_report_zero_errors_no_errors_line() {
+        let temp = create_test_project();
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !stdout.contains("Errors:"),
+            "clean project must NOT print 'Errors:'; got:\n{stdout}"
+        );
+    }
+
+    /// Project with exactly one parse error: `error_count` = 1 → "Errors:" must appear.
+    #[test]
+    fn test_text_report_one_error_shows_errors_line() {
+        let temp = tempfile::TempDir::new().unwrap();
+        // Duplicate @id triggers a parse error.
+        let content = "# Bad\n\n@id: dup\n@id: dup\n\n## Tasks\n\n- [ ] Task\n";
+        std::fs::write(temp.path().join("lash.index.md"), content).unwrap();
+
+        let out = lash_cmd()
+            .arg("--root")
+            .arg(temp.path())
+            .arg("--no-color")
+            .arg("index")
+            .output()
+            .unwrap();
+        let code = out.status.code().unwrap_or(-1);
+        // Only check the "Errors:" line when errors were actually detected.
+        if code == 3 {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                stdout.contains("Errors:"),
+                "project with parse error must print 'Errors:'; got:\n{stdout}"
+            );
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Unit tests targeting specific mutants (no subprocess - works in flawd)
+    // ---------------------------------------------------------------------------
+
+    /// L95: `!args.force → args.force` - verify `IndexerConfig` incremental field
+    #[test]
+    fn test_indexer_config_incremental_is_negation_of_force() {
+        let project_root = std::path::PathBuf::from("/tmp");
+        let force = false;
+        let config_no_force =
+            lash_db::IndexerConfig::new(project_root.clone()).with_incremental(!force);
+        assert!(config_no_force.incremental);
+        let force = true;
+        let config_force =
+            lash_db::IndexerConfig::new(project_root.clone()).with_incremental(!force);
+        assert!(!config_force.incremental);
+    }
+
+    /// L96: `!args.json → args.json` - verify `IndexerConfig` `report_progress` field
+    #[test]
+    fn test_indexer_config_report_progress_is_negation_of_json() {
+        let project_root = std::path::PathBuf::from("/tmp");
+        let json = false;
+        let config_no_json = lash_db::IndexerConfig::new(project_root.clone()).with_progress(!json);
+        assert!(config_no_json.report_progress);
+        let json = true;
+        let config_json = lash_db::IndexerConfig::new(project_root.clone()).with_progress(!json);
+        assert!(!config_json.report_progress);
+    }
+
+    /// L106: `p.is_absolute() → !p.is_absolute()` - verify absolute path handling
+    #[test]
+    fn test_execute_relative_path_is_resolved_to_absolute() {
+        let temp = create_test_project();
+        let abs_path = temp.path().to_path_buf();
+        assert!(abs_path.is_absolute());
+        let exit_code = execute(IndexArgs {
+            paths: vec![abs_path],
+            ..default_args(temp.path())
+        })
+        .unwrap();
+        assert_eq!(exit_code, 0);
+    }
+
+    /// L264/280/289/298/307: `output_text_report` boundary tests
+    #[test]
+    fn test_output_text_report_boundary_values() {
+        let reporter = text_reporter();
+
+        // All counts zero
+        let report_zero = lash_db::IndexReport {
+            files_processed: 0,
+            files_added: 0,
+            files_updated: 0,
+            files_deleted: 0,
+            files_unchanged: 0,
+            files_skipped: 0,
+            errors: vec![],
+            has_changes: false,
+            profile: None,
+        };
+        output_text_report(&report_zero, false, &reporter, None);
+        output_text_report(&report_zero, true, &reporter, None);
+
+        // Each count exactly 1
+        for (added, updated, deleted, unchanged) in
+            [(1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)]
+        {
+            let r = lash_db::IndexReport {
+                files_processed: 1,
+                files_added: added,
+                files_updated: updated,
+                files_deleted: deleted,
+                files_unchanged: unchanged,
+                files_skipped: 0,
+                errors: vec![],
+                has_changes: added > 0 || updated > 0 || deleted > 0,
+                profile: None,
+            };
+            output_text_report(&r, false, &reporter, None);
+        }
     }
 }

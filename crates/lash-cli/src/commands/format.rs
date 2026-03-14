@@ -480,7 +480,11 @@ fn output_text_results(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use libc;
     use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
 
     /// Creates a properly-formatted task file that should not be modified by the formatter.
@@ -1471,6 +1475,64 @@ mod tests {
         );
     }
 
+    // --- format_files: write error classification (mut-000394) ---
+    // Line 299: `e.to_string().contains("Failed to write")` is negated.
+    // The original code: when a write fails (e contains "Failed to write"),
+    // use LashError::io_write_error (code="E_IO_WRITE_ERROR").
+    // With the mutation: the write-error branch is skipped and
+    // LashError::internal (code="E_INTERNAL") is used instead.
+    //
+    // Observable difference: the diagnostic `message` field for io_write_error
+    // contains "failed to write file:" while internal contains "Failed to format".
+    //
+    // To trigger a write error, we format a file that needs changes but make it
+    // read-only on disk (unix only - root may bypass this).
+
+    #[test]
+    #[cfg(unix)]
+    fn test_write_error_diagnostic_uses_io_write_error_code() {
+        // Skip if running as root (root can write read-only files).
+        if unsafe { libc::geteuid() == 0 } {
+            return;
+        }
+
+        let temp = TempDir::new().unwrap();
+        // Write a file that needs formatting (formatter will change it).
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+        // Make the file read-only so std::fs::write fails with "Failed to write".
+        let mut perms = fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o444); // r--r--r--
+        fs::set_permissions(&path, perms).unwrap();
+
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![path.clone()]); // check=false, diff=false → will try to write
+        let files = vec![path.clone()];
+        let result = format_files(&files, &config, &options, &args, None).unwrap();
+
+        // Restore permissions so TempDir cleanup can remove the file.
+        let mut restore = fs::metadata(&path).unwrap().permissions();
+        restore.set_mode(0o644);
+        let _ = fs::set_permissions(&path, restore);
+
+        assert_eq!(result.failed, 1, "read-only file must count as failure");
+        assert_eq!(
+            result.error_diagnostics.len(),
+            1,
+            "one error diagnostic expected"
+        );
+
+        let diag = &result.error_diagnostics[0];
+        // io_write_error produces a message containing "failed to write file:"
+        // internal produces a message containing "Failed to format".
+        // Distinguishing them proves the write-error branch is taken.
+        assert!(
+            diag.message.contains("failed to write") || diag.message.contains("Failed to write"),
+            "write-error diagnostic message must mention 'failed to write'; got: {:?}",
+            diag.message
+        );
+    }
+
     // --- format_single_file: != vs == for changed (mut-000326) ---
     // When file content differs from formatted output, changed must be true.
     // When identical, changed must be false.  Already covered by existing tests,
@@ -1687,6 +1749,102 @@ mod tests {
         // failed==1 here means that branch was NOT taken.
     }
 
+    // --- execute() exit code 1 via failing file (mut-000365, mut-000366) ---
+    // mut-000365: the `0` in `result.failed > 0` is changed to `1`.
+    //   With failed=1: `1 > 1` = false → would return Ok(0) instead of Ok(1).
+    // mut-000366: `Ok(1)` → `Ok(0)` in the failed branch.
+    // Both require calling execute() directly with a file that fails to format,
+    // then asserting the exit code is exactly 1, not 0.
+
+    // On unix, making a file read-only and running normal format mode causes
+    // std::fs::write to fail → result.failed == 1 → execute() returns Ok(1).
+    // Root is skipped because it bypasses read-only restrictions.
+
+    #[test]
+    #[cfg(unix)]
+    fn test_execute_returns_exit_code_1_for_unwritable_file() {
+        if unsafe { libc::geteuid() == 0 } {
+            return; // root bypasses file permissions
+        }
+
+        let temp = TempDir::new().unwrap();
+        // File must need formatting so the formatter attempts to write it.
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+
+        let mut perms = fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o444); // read-only
+        fs::set_permissions(&path, perms.clone()).unwrap();
+
+        let result = execute(default_args(vec![path.clone()]));
+
+        perms.set_mode(0o644);
+        let _ = fs::set_permissions(&path, perms);
+
+        assert_eq!(
+            result.unwrap(),
+            1,
+            "execute() must return exit code 1 when a file cannot be written"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_execute_exit_code_1_is_not_0_for_unwritable_file() {
+        if unsafe { libc::geteuid() == 0 } {
+            return;
+        }
+
+        let temp = TempDir::new().unwrap();
+        let path = write_needs_formatting_file(&temp, "lash.index.md");
+
+        let mut perms = fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o444);
+        fs::set_permissions(&path, perms.clone()).unwrap();
+
+        let result = execute(default_args(vec![path.clone()]));
+
+        perms.set_mode(0o644);
+        let _ = fs::set_permissions(&path, perms);
+
+        let code = result.unwrap();
+        assert_ne!(code, 0, "write-failure must not produce exit code 0");
+        assert_ne!(
+            code, 2,
+            "write-failure (non-check mode) must not produce exit code 2"
+        );
+        assert_eq!(code, 1, "write-failure must produce exit code exactly 1");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_execute_exit_code_distinguishes_success_from_write_failure() {
+        if unsafe { libc::geteuid() == 0 } {
+            return;
+        }
+
+        let temp = TempDir::new().unwrap();
+        let good = write_already_formatted_file(&temp, "good.md");
+        let bad = write_needs_formatting_file(&temp, "bad.md");
+
+        let mut perms = fs::metadata(&bad).unwrap().permissions();
+        perms.set_mode(0o444);
+        fs::set_permissions(&bad, perms.clone()).unwrap();
+
+        let good_code = execute(default_args(vec![good])).unwrap();
+        let bad_result = execute(default_args(vec![bad.clone()]));
+
+        perms.set_mode(0o644);
+        let _ = fs::set_permissions(&bad, perms);
+
+        let bad_code = bad_result.unwrap();
+        assert_eq!(good_code, 0, "success must exit 0");
+        assert_eq!(bad_code, 1, "write failure must exit 1, not {bad_code}");
+        assert_ne!(
+            good_code, bad_code,
+            "success and write failure must produce distinct exit codes"
+        );
+    }
+
     // --- output_text_results: result.failed > 0 in final section (mut-000346,347,348,349) ---
     // The final "N file(s) failed to format" message appears only when failed>0.
     // failed==0 must not trigger it; failed==1 must.
@@ -1809,9 +1967,16 @@ mod tests {
         assert_eq!(result.failed, 0);
     }
 
-    // --- mut-000312: true -> false in discover_markdown_files recursive flag ---
-    // When recursive=true, files in subdirectories are discovered and formatted.
-    // When recursive=false, only files directly in the given paths are found.
+    // --- mut-000351: true -> false in discover_markdown_files respect_gitignore flag ---
+    // The second parameter to discover_markdown_files is `respect_gitignore`.
+    // When true (original), .gitignore patterns are respected and matching files
+    // are excluded from discovery.
+    // When false (mutation), .gitignore patterns are ignored and ALL files are found.
+    //
+    // To kill this mutant, we need a test that:
+    //   1. Creates a .gitignore file that excludes a markdown file
+    //   2. Verifies that the excluded file is NOT formatted (with respect_gitignore=true)
+    //   3. Would FAIL if respect_gitignore=false (excluded file would be found and formatted)
 
     #[test]
     fn test_format_discovers_files_in_subdirectories_recursively() {
@@ -1823,7 +1988,7 @@ mod tests {
         let unformatted = "# Task\n\n@id:   spacing\n\n## Tasks\n\n- [ ] item\n";
         fs::write(&sub_file, unformatted).unwrap();
 
-        // Pass the parent directory; with recursive=true the subdirectory file is found.
+        // Pass the parent directory; the subdirectory file is discovered recursively.
         let result = execute(default_args(vec![temp.path().to_path_buf()]));
         assert_eq!(result.unwrap(), 0, "recursive discovery must succeed");
 
@@ -2382,5 +2547,144 @@ mod tests {
             result.failed, 0,
             "success: failed must be 0 for final reporting branch"
         );
+    }
+
+    // --- L116: discover_markdown_files(&paths, true) → respect_gitignore=true ---
+    // The second argument controls whether .gitignore patterns are applied.
+    // When true (original), files matching .gitignore are excluded from discovery.
+    // When false (mutation), gitignored files ARE included and get formatted.
+    //
+    // To kill this mutant we need:
+    //   1. A real git repository so the ignore crate respects .gitignore
+    //   2. A .gitignore that excludes a markdown file with formatting issues
+    //   3. After running execute(), the excluded file must remain unformatted
+    //
+    // If respect_gitignore were false, the gitignored file would be found and
+    // formatted — changing its content — which causes the assertion to fail.
+    //
+    // This test skips gracefully when git is not available on the system.
+    #[test]
+    fn test_format_respects_gitignore_excludes_ignored_files() {
+        // Check git is available; skip silently if not.
+        let git_available = std::process::Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !git_available {
+            return;
+        }
+
+        let temp = TempDir::new().unwrap();
+
+        // Initialize a git repository so the ignore crate respects .gitignore.
+        let git_init = std::process::Command::new("git")
+            .args(["init", temp.path().to_str().unwrap()])
+            .output()
+            .expect("git init must run");
+        assert!(git_init.status.success(), "git init must succeed");
+
+        // Write a properly-formatted file at the root (will be discovered and checked).
+        let visible_content =
+            "# Task List\n\n@id: visible\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] Task\n";
+        let visible_path = temp.path().join("lash.index.md");
+        fs::write(&visible_path, visible_content).unwrap();
+
+        // Write a file with formatting issues inside a gitignored subdirectory.
+        let ignored_dir = temp.path().join("ignored_subdir");
+        fs::create_dir(&ignored_dir).unwrap();
+        let unformatted_content = "# Ignored\n\n@id:   bad-spacing\n\n## Tasks\n\n- [ ] item\n";
+        let ignored_path = ignored_dir.join("ignored.md");
+        fs::write(&ignored_path, unformatted_content).unwrap();
+
+        // .gitignore excludes the entire subdirectory.
+        fs::write(temp.path().join(".gitignore"), "ignored_subdir/\n").unwrap();
+
+        // Format the whole temp directory.  With respect_gitignore=true, the
+        // ignored_subdir is excluded and ignored.md is never touched.
+        let result = execute(default_args(vec![temp.path().to_path_buf()]));
+        assert_eq!(result.unwrap(), 0, "format with gitignore must succeed");
+
+        // The gitignored file must remain exactly as written (unformatted).
+        let after = fs::read_to_string(&ignored_path).unwrap();
+        assert_eq!(
+            after, unformatted_content,
+            "gitignored file must not be formatted; if this fails the \
+             respect_gitignore flag is likely false (mutation at L116)"
+        );
+    }
+
+    // --- L156: `result.failed > 0` → `result.failed > 1` ---
+    // --- L157: `Ok(1)` → `Ok(0)` in the failed branch ---
+    // These require calling execute() with exactly one failing file and asserting
+    // the exit code is exactly 1 (not 0 and not 2).
+    //
+    // The only cross-platform way to trigger result.failed through execute() is a
+    // parse failure on a path that exists (discover_markdown_files won't bail) but
+    // whose content is unparseable.  We use a file with content that fails parsing.
+    //
+    // Actually, if parse_file fails with context "Failed to parse ...", format_files
+    // increments result.failed.  We can create an invalid markdown file (binary
+    // content) that parse_file rejects.
+    //
+    // Note: parse_file is lenient about markdown content; a simpler approach is to
+    // force a write failure on unix (already tested).  On all platforms we verify
+    // the counter logic via format_files directly.
+    #[test]
+    fn test_execute_exit_code_1_when_failed_equals_exactly_one() {
+        // Build a FormatResult where failed == 1, then verify the exit code
+        // decision would produce 1.  We do this by constructing the conditions
+        // that lead to execute() returning Ok(1): non-check mode, exactly one
+        // file fails.
+        //
+        // On unix we can force a write error (file exists but is read-only).
+        // On all platforms: a binary file that parse_file rejects should work.
+        let temp = TempDir::new().unwrap();
+
+        // Write a file full of NUL bytes — not valid UTF-8, so read_to_string
+        // inside format_single_file will fail with an IO error, which format_files
+        // will catch and count as a failure.
+        let bad_path = temp.path().join("bad.md");
+        fs::write(&bad_path, b"\x00\x01\x02\x03 not utf8 \xff\xfe").unwrap();
+
+        // Also write a valid formatted file so we have a known-good file too.
+        let good_path = write_already_formatted_file(&temp, "good.md");
+
+        // format_files with just the bad file: expect failed == 1.
+        let config = LashConfig::default();
+        let options = FormatOptions::default();
+        let args = default_args(vec![bad_path.clone()]);
+        let result = format_files(&[bad_path.clone()], &config, &options, &args, None).unwrap();
+        assert_eq!(
+            result.failed, 1,
+            "bad file must count as exactly 1 failure (kills L156: 0→1)"
+        );
+        assert_eq!(result.formatted, 0, "bad file must not count as formatted");
+
+        // Verify the exit code arm: failed > 0 → Ok(1), not Ok(0).
+        // The exit code logic (abbreviated):
+        //   if check && needs > 0 { Ok(2) }
+        //   else if failed > 0    { Ok(1) }   ← L156 mutates `0` to `1`
+        //   else                  { Ok(0) }   ← L157 mutates `Ok(1)` to `Ok(0)`
+        //
+        // With result.failed == 1 and check == false:
+        //   mutation L156 (0→1): `1 > 1` = false → falls through to Ok(0) ✗
+        //   mutation L157 (1→0): returns Ok(0) ✗
+        //   original: `1 > 0` = true → Ok(1) ✓
+        //
+        // We can't call execute() directly with bad_path because discover_markdown_files
+        // accepts it (file exists), but parse_file will fail inside format_files.
+        // However, the bad_path IS a file that exists, so discover_markdown_files
+        // will not bail — execute() will proceed to format_files with it.
+        let _ = good_path; // suppress unused warning
+        let exit_result = execute(default_args(vec![bad_path]));
+        // execute() should return Ok(1) — one file failed, no check mode.
+        let code = exit_result.expect("execute must not return Err for a bad-content file");
+        assert_eq!(
+            code, 1,
+            "exit code must be exactly 1 when exactly one file fails \
+             (kills L156: 0→1 and L157: Ok(1)→Ok(0))"
+        );
+        assert_ne!(code, 0, "exit code must not be 0 when a file fails");
     }
 }

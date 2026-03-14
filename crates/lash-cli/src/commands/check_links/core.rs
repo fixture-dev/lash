@@ -291,6 +291,275 @@ pub fn output_text_report(report: &BrokenLinksReport, theme: Option<&CliTheme>) 
 mod tests {
     use super::*;
 
+    /// Create a test database with a single broken dependency link and return
+    /// the path to the db file.  The broken link has:
+    ///   - `raw_ref`  = "missing#ref" (column 0 in the SELECT)
+    ///   - kind     = "`explicit_id`" (column 1)
+    ///   - `full_id`  = "test.md#task1" (column 2)
+    ///   - file path = "test.md" (column 3)
+    fn create_db_with_broken_link(dir: &std::path::Path) -> PathBuf {
+        use lash_db::init_database;
+        use std::fs;
+
+        let lash_dir = dir.join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+
+        let conn = init_database(&db_path).unwrap();
+
+        // Insert a file row
+        conn.execute(
+            "INSERT INTO files (path, file_id, title, hash, mtime) \
+             VALUES ('test.md', 'test', 'Test File', 'abc123', 0)",
+            [],
+        )
+        .unwrap();
+        let file_id: i64 = conn.last_insert_rowid();
+
+        // Insert a task row whose full_id matches "test.md#task1"
+        conn.execute(
+            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index) \
+             VALUES (?1, 'task1', 'test.md#task1', 'Task One', 'open', 0, 0)",
+            rusqlite::params![file_id],
+        )
+        .unwrap();
+        let task_id: i64 = conn.last_insert_rowid();
+
+        // Insert a dependency with NULL to_task_id (broken link)
+        conn.execute(
+            "INSERT INTO dependencies (from_task_id, to_task_id, kind, raw_ref) \
+             VALUES (?1, NULL, 'explicit_id', 'missing#ref')",
+            rusqlite::params![task_id],
+        )
+        .unwrap();
+
+        db_path
+    }
+
+    /// Create a test database with two broken links in the same file.
+    fn create_db_with_two_broken_links(dir: &std::path::Path) -> PathBuf {
+        use lash_db::init_database;
+        use std::fs;
+
+        let lash_dir = dir.join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+
+        let conn = init_database(&db_path).unwrap();
+
+        // One file, two tasks, each with a broken link
+        conn.execute(
+            "INSERT INTO files (path, file_id, title, hash, mtime) \
+             VALUES ('multi.md', 'multi', 'Multi File', 'def456', 0)",
+            [],
+        )
+        .unwrap();
+        let file_id: i64 = conn.last_insert_rowid();
+
+        for i in 0..2_i64 {
+            conn.execute(
+                "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index) \
+                 VALUES (?1, ?2, ?3, 'Task', 'open', 0, ?4)",
+                rusqlite::params![
+                    file_id,
+                    format!("task{i}"),
+                    format!("multi.md#task{i}"),
+                    i,
+                ],
+            )
+            .unwrap();
+            let task_id: i64 = conn.last_insert_rowid();
+
+            conn.execute(
+                "INSERT INTO dependencies (from_task_id, to_task_id, kind, raw_ref) \
+                 VALUES (?1, NULL, 'explicit_id', ?2)",
+                rusqlite::params![task_id, format!("broken#ref{i}")],
+            )
+            .unwrap();
+        }
+
+        db_path
+    }
+
+    // ---------------------------------------------------------------------------
+    // Tests targeting surviving mutants in find_broken_links
+    // ---------------------------------------------------------------------------
+
+    // Kill L154 (0 → 1 in row.get::<_, Option<String>>(0)?):
+    // Column 0 is raw_ref.  With the mutation (get(1)), the "kind" value would be
+    // placed in raw_ref.  We assert that raw_ref is exactly "missing#ref".
+    //
+    // Kill L156 (1 → 0 in row.get(1)?):
+    // Column 1 is kind.  With the mutation (get(0)), raw_ref would be placed in
+    // kind.  We assert that kind is exactly "explicit_id".
+    #[test]
+    fn test_find_broken_links_columns_raw_ref_and_kind_are_correct() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let db_path = create_db_with_broken_link(temp.path());
+
+        let report = find_broken_links(&db_path).unwrap();
+
+        assert_eq!(
+            report.total_broken, 1,
+            "expected exactly 1 broken link, got {}",
+            report.total_broken
+        );
+
+        let link = &report.by_file[0].links[0];
+
+        // Column 0 must be raw_ref; if mutated to 1, this would contain "explicit_id"
+        assert_eq!(
+            link.raw_ref, "missing#ref",
+            "raw_ref must come from column 0 (raw_ref), not column 1 (kind)"
+        );
+
+        // Column 1 must be kind; if mutated to 0, this would contain "missing#ref"
+        assert_eq!(
+            link.kind, "explicit_id",
+            "kind must come from column 1 (kind), not column 0 (raw_ref)"
+        );
+    }
+
+    // Kill L166 (== replaced with != in the grouping condition):
+    // With `!=`, every link would be placed into a new FileLinks group rather than
+    // merging with the existing one.  Two broken links in the same file must produce
+    // exactly one FileLinks group with count == 2.
+    #[test]
+    fn test_find_broken_links_groups_links_by_file() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let db_path = create_db_with_two_broken_links(temp.path());
+
+        let report = find_broken_links(&db_path).unwrap();
+
+        // Total count must be 2 (one file, two broken links)
+        assert_eq!(
+            report.total_broken, 2,
+            "expected 2 total broken links, got {}",
+            report.total_broken
+        );
+
+        // All links are from the same file, so they must be grouped into exactly one
+        // FileLinks entry.  If the grouping condition uses != instead of ==, each link
+        // would land in its own group and we would get 2 FileLinks here.
+        assert_eq!(
+            report.by_file.len(),
+            1,
+            "two broken links in the same file must be grouped into 1 FileLinks, \
+             but got {}",
+            report.by_file.len()
+        );
+
+        // The single FileLinks group must have count == 2
+        assert_eq!(
+            report.by_file[0].count, 2,
+            "FileLinks count must be 2 for two broken links in the same file"
+        );
+
+        // And the links vec must also have 2 entries
+        assert_eq!(
+            report.by_file[0].links.len(),
+            2,
+            "FileLinks.links must contain 2 BrokenLink entries"
+        );
+    }
+
+    // Kill L173 (1 → 0 in `count: 1` for new FileLinks):
+    // When a new FileLinks group is created for a file that hasn't been seen yet,
+    // count must start at 1 (not 0).  We verify by checking a single broken link
+    // produces FileLinks with count == 1.
+    #[test]
+    fn test_find_broken_links_new_file_group_starts_with_count_one() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let db_path = create_db_with_broken_link(temp.path());
+
+        let report = find_broken_links(&db_path).unwrap();
+
+        assert_eq!(
+            report.by_file.len(),
+            1,
+            "expected exactly 1 FileLinks group"
+        );
+        assert_eq!(
+            report.by_file[0].count, 1,
+            "new FileLinks group must start with count=1, not count=0"
+        );
+    }
+
+    // Kill L173 and L166 together: verify that the link's from_file_path matches
+    // the FileLinks file_path (i.e., grouping was done correctly by equality).
+    #[test]
+    fn test_find_broken_links_file_path_in_group_matches_link() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let db_path = create_db_with_broken_link(temp.path());
+
+        let report = find_broken_links(&db_path).unwrap();
+
+        let file_links = &report.by_file[0];
+        let link = &file_links.links[0];
+
+        // The group's file_path and the link's from_file_path must match
+        assert_eq!(
+            file_links.file_path, "test.md",
+            "FileLinks.file_path must be 'test.md'"
+        );
+        assert_eq!(
+            link.from_file_path, "test.md",
+            "BrokenLink.from_file_path must be 'test.md'"
+        );
+        assert_eq!(
+            file_links.file_path, link.from_file_path,
+            "FileLinks.file_path must equal the link's from_file_path"
+        );
+    }
+
+    // Kill full_id column (column 2) and from_file_path column (column 3):
+    // Verify that from_task_full_id and from_file_path are populated correctly.
+    #[test]
+    fn test_find_broken_links_full_id_and_file_path_columns() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let db_path = create_db_with_broken_link(temp.path());
+
+        let report = find_broken_links(&db_path).unwrap();
+        let link = &report.by_file[0].links[0];
+
+        assert_eq!(
+            link.from_task_full_id, "test.md#task1",
+            "from_task_full_id must be the full_id from column 2"
+        );
+        assert_eq!(
+            link.from_file_path, "test.md",
+            "from_file_path must be the file path from column 3"
+        );
+    }
+
+    // Verify that total_broken is computed as the sum of per-file counts.
+    // With two links in one file, count=2 and total_broken must also be 2.
+    #[test]
+    fn test_find_broken_links_total_is_sum_of_file_counts() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let db_path = create_db_with_two_broken_links(temp.path());
+
+        let report = find_broken_links(&db_path).unwrap();
+
+        let sum_of_counts: usize = report.by_file.iter().map(|fl| fl.count).sum();
+        assert_eq!(
+            report.total_broken, sum_of_counts,
+            "total_broken must equal the sum of all FileLinks.count values"
+        );
+    }
+
     #[test]
     fn test_get_database_path() {
         use tempfile::TempDir;

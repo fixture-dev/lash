@@ -1062,6 +1062,7 @@ dependencies = [
  "ratatui",
  "regex",
  "rstest",
+ "rusqlite",
  "serde",
  "serde_json",
  "serial_test",
