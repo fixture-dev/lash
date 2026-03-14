@@ -23,5 +23,8 @@ RUN find crates -name "*.rs" -delete
 COPY . .
 RUN cargo test --no-run 2>/dev/null || true
 
+# Ensure the lash binary built by `cargo test` is on PATH for subprocess tests
+ENV PATH="/app/target/debug:${PATH}"
+
 # Keep container running for flawd to exec into
 CMD ["sleep", "infinity"]
