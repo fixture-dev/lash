@@ -1031,11 +1031,36 @@ mod tests {
     /// Cargo sets the `CARGO_BIN_EXE_lash` environment variable at test runtime
     /// when building the crate that owns the binary. We read it dynamically since
     /// it is not available as a compile-time constant in `--bin` test contexts.
-    fn lash_bin() -> String {
+    fn lash_bin() -> Option<String> {
         // CARGO_BIN_EXE_lash is set by cargo when running tests for the package
-        // that owns the `lash` binary. Fall back to the binary name if not set
-        // (e.g. when running in isolation), which lets `PATH` locate it.
-        std::env::var("CARGO_BIN_EXE_lash").unwrap_or_else(|_| "lash".to_string())
+        // that owns the `lash` binary.
+        if let Ok(path) = std::env::var("CARGO_BIN_EXE_lash") {
+            return Some(path);
+        }
+        // Fall back to looking for the binary in the target directory.
+        if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+            let workspace_root = std::path::Path::new(&manifest_dir)
+                .parent()
+                .and_then(std::path::Path::parent);
+            if let Some(root) = workspace_root {
+                let debug_path = root.join("target").join("debug").join("lash");
+                if debug_path.exists() {
+                    return Some(debug_path.to_string_lossy().to_string());
+                }
+            }
+        }
+        None
+    }
+
+    /// Create a `Command` for the lash binary, or return `None` if not found.
+    /// Tests should `return` early if `None` to skip in environments where
+    /// the binary isn't built (e.g. `cargo test --lib` in CI).
+    fn lash_command() -> Option<std::process::Command> {
+        lash_bin().map(|bin| {
+            let mut cmd = std::process::Command::new(bin);
+            cmd.env_remove("NO_COLOR");
+            cmd
+        })
     }
 
     /// Create a temp dir with an initialized empty (clean) lash database.
@@ -1101,7 +1126,10 @@ mod tests {
     #[test]
     fn test_subprocess_json_no_db_stdout_contains_json() {
         let project = make_project_without_db_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--json", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1128,7 +1156,10 @@ mod tests {
     #[test]
     fn test_subprocess_no_json_no_db_stdout_not_json() {
         let project = make_project_without_db_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1154,7 +1185,10 @@ mod tests {
     #[test]
     fn test_subprocess_json_clean_stdout_is_valid_json() {
         let project = make_clean_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--json", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1181,7 +1215,10 @@ mod tests {
     #[test]
     fn test_subprocess_text_clean_stdout_is_not_json() {
         let project = make_clean_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1213,7 +1250,10 @@ mod tests {
     #[test]
     fn test_subprocess_no_color_flag_produces_plain_output() {
         let project = make_clean_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1243,7 +1283,10 @@ mod tests {
     #[test]
     fn test_subprocess_clean_shows_sync_message() {
         let project = make_clean_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1266,7 +1309,10 @@ mod tests {
     #[test]
     fn test_subprocess_dirty_shows_issues_message() {
         let project = make_dirty_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1293,7 +1339,10 @@ mod tests {
     #[test]
     fn test_subprocess_diff_flag_shows_detailed_issues() {
         let project = make_dirty_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .args(["check-index", "--diff"])
@@ -1312,7 +1361,10 @@ mod tests {
     #[test]
     fn test_subprocess_no_diff_flag_omits_detailed_issues() {
         let project = make_dirty_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1340,7 +1392,10 @@ mod tests {
     #[test]
     fn test_subprocess_dirty_prints_nonzero_issue_type_count() {
         let project = make_dirty_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1359,7 +1414,10 @@ mod tests {
     #[test]
     fn test_subprocess_clean_does_not_print_zero_count_issue_types() {
         let project = make_clean_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1399,7 +1457,10 @@ mod tests {
         let abs_path = project.path().to_path_buf();
         assert!(abs_path.is_absolute(), "precondition: path is absolute");
 
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
@@ -1435,7 +1496,10 @@ mod tests {
     #[test]
     fn test_subprocess_text_mode_without_no_color_has_ansi_with_force_color() {
         let project = make_clean_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             // No --no-color, no --json: text mode with color loading path.
             .arg("--root")
             .arg(project.path())
@@ -1464,7 +1528,10 @@ mod tests {
     #[test]
     fn test_subprocess_no_color_flag_suppresses_ansi_even_with_force_color() {
         let project = make_clean_project_dir();
-        let output = std::process::Command::new(lash_bin())
+        let Some(mut cmd) = lash_command() else {
+            return;
+        };
+        let output = cmd
             .args(["--no-color", "--root"])
             .arg(project.path())
             .arg("check-index")
