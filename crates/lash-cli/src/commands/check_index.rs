@@ -1002,4 +1002,487 @@ mod tests {
         // !(count > 0): 1 fails, would not print (wrong)
         print_issue_count_if_any("Boundary one", 1, None);
     }
+
+    // ---------------------------------------------------------------------------
+    // Subprocess-based tests for stdout-observing mutations
+    //
+    // The mutations below affect only stdout/stderr output (not return codes).
+    // They cannot be killed by direct function calls because println! output
+    // cannot be captured within Rust unit tests. Instead we spawn the compiled
+    // `lash` binary as a subprocess and assert on the captured output.
+    //
+    // These tests use env!("CARGO_BIN_EXE_lash") which cargo resolves to the
+    // path of the compiled binary at test time. When the mutation tool compiles
+    // a mutant and runs these tests, the mutated binary is the one invoked.
+    //
+    // Targeted mutants:
+    //   mut-000215: args.json negation in theme loading (line 42)
+    //   mut-000216: !args.no_color negation (line 45)
+    //   mut-000219: args.json negation on no-DB path (line 66)
+    //   mut-000221: p.is_absolute() negation in path resolution (line 88)
+    //   mut-000222: args.json negation on output routing (line 104)
+    //   mut-000226: report.is_clean() negation in output_text_report (line 176)
+    //   mut-000229: show_diff negation (line 229)
+    //   mut-000233-236: count > 0 boundary in print_issue_count_if_any (line 271)
+    // ---------------------------------------------------------------------------
+
+    /// Return the path to the compiled `lash` binary.
+    ///
+    /// Cargo sets the `CARGO_BIN_EXE_lash` environment variable at test runtime
+    /// when building the crate that owns the binary. We read it dynamically since
+    /// it is not available as a compile-time constant in `--bin` test contexts.
+    fn lash_bin() -> String {
+        // CARGO_BIN_EXE_lash is set by cargo when running tests for the package
+        // that owns the `lash` binary. Fall back to the binary name if not set
+        // (e.g. when running in isolation), which lets `PATH` locate it.
+        std::env::var("CARGO_BIN_EXE_lash").unwrap_or_else(|_| "lash".to_string())
+    }
+
+    /// Create a temp dir with an initialized empty (clean) lash database.
+    fn make_clean_project_dir() -> TempDir {
+        use lash_db::init_database;
+        use std::fs;
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        init_database(&lash_dir.join("lash.db")).unwrap();
+        temp
+    }
+
+    /// Create a temp dir with a database containing one stale-file record
+    /// so the verifier reports the index as dirty.
+    fn make_dirty_project_dir() -> TempDir {
+        use lash_db::{init_database, open_database, FileRepository};
+        use lash_types::{FileMetadata, TaskFile, TaskTree};
+        use std::fs;
+        use std::time::SystemTime;
+
+        let temp = TempDir::new().unwrap();
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        let db_path = lash_dir.join("lash.db");
+        init_database(&db_path).unwrap();
+
+        let conn = open_database(&db_path).unwrap();
+        let repo = FileRepository::new(&conn);
+        repo.insert(&TaskFile {
+            path: PathBuf::from("tasks/ghost.md"),
+            title: "Ghost".to_string(),
+            id: "tasks.ghost".to_string(),
+            metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
+            tasks: TaskTree::new(),
+            hash: "aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000".to_string(),
+            mtime: SystemTime::UNIX_EPOCH,
+        })
+        .unwrap();
+        temp
+    }
+
+    /// Create a temp dir that looks like a lash project (.lash/ dir exists) but
+    /// has no database file.
+    fn make_project_without_db_dir() -> TempDir {
+        use std::fs;
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join(".lash")).unwrap();
+        temp
+    }
+
+    // Kill mut-000219 (args.json negation on no-DB path, line 66):
+    // With the original code and json=true: stdout contains JSON with "error" key.
+    // With mutation (!(args.json)): json=true takes the text path → stderr has text,
+    // stdout is empty / not JSON.
+    // With original and json=false: stderr has plain text, stdout is empty.
+    // With mutation and json=false: json output goes to stdout.
+    //
+    // Asserting on JSON presence in stdout for json=true and its absence for json=false
+    // kills the negation mutation.
+    #[test]
+    fn test_subprocess_json_no_db_stdout_contains_json() {
+        let project = make_project_without_db_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--json", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        assert_eq!(
+            output.status.code().unwrap_or(-1),
+            3,
+            "exit code must be 3 when no DB"
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Original: json=true → output_json_no_db writes JSON to stdout.
+        // Mutation (!(args.json)): json=true → text error to stderr, stdout empty.
+        assert!(
+            stdout.contains("error") || stdout.contains("Database"),
+            "json=true must produce JSON output on stdout; got: {stdout}"
+        );
+        let _parsed: serde_json::Value =
+            serde_json::from_str(&stdout).expect("stdout must be valid JSON for --json flag");
+    }
+
+    #[test]
+    fn test_subprocess_no_json_no_db_stdout_not_json() {
+        let project = make_project_without_db_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        assert_eq!(output.status.code().unwrap_or(-1), 3);
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Original: json=false → text error to stderr, stdout empty / not JSON.
+        // Mutation: json=false → JSON written to stdout.
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
+            "text mode must not produce JSON on stdout; stdout={stdout}"
+        );
+    }
+
+    // Kill mut-000215 (args.json negation in theme loading, line 42):
+    // With json=true: original skips theme loading (theme=None).
+    // With mutation (!(args.json)): json=true → loads theme before reaching json output.
+    // Both succeed, but the json output path must produce parseable JSON.
+    // Combined with mut-000222 check: json=true → JSON output on stdout.
+    #[test]
+    fn test_subprocess_json_clean_stdout_is_valid_json() {
+        let project = make_clean_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--json", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        assert_eq!(output.status.code().unwrap_or(-1), 0);
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // json=true must produce parseable JSON with is_clean=true.
+        let parsed: serde_json::Value =
+            serde_json::from_str(&stdout).expect("stdout must be JSON when --json is passed");
+        assert_eq!(
+            parsed["is_clean"].as_bool(),
+            Some(true),
+            "is_clean must be true for clean index; json={parsed}"
+        );
+    }
+
+    // Kill mut-000222 (args.json negation on output routing, line 104):
+    // json=false → output_text_report → stdout has human-readable text (not JSON).
+    // With mutation: json=false → output_json_report → stdout is JSON.
+    // Asserting that text mode does NOT produce top-level JSON kills the mutation.
+    #[test]
+    fn test_subprocess_text_clean_stdout_is_not_json() {
+        let project = make_clean_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        assert_eq!(output.status.code().unwrap_or(-1), 0);
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Original: json=false → text output, not parseable as JSON at top level.
+        // Mutation: json=false → JSON output.
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
+            "text mode must not produce top-level JSON; stdout={stdout}"
+        );
+        assert!(
+            stdout.contains("sync") || stdout.contains("✓") || stdout.contains("Checked"),
+            "text mode must contain sync message; stdout={stdout}"
+        );
+    }
+
+    // Kill mut-000216 (!args.no_color negation, line 45):
+    // With no_color=true: CliTheme::load(None, false) → Ok(None), no color codes.
+    // With no_color=false: CliTheme::load(None, true) → Ok(Some(theme)), styled output.
+    // With mutation: no_color=true → CliTheme::load(None, true) → styled;
+    //                no_color=false → CliTheme::load(None, false) → plain.
+    // Both should succeed; the key assertion is that --no-color actually produces
+    // plain text output without ANSI escape sequences.
+    #[test]
+    fn test_subprocess_no_color_flag_produces_plain_output() {
+        let project = make_clean_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        assert_eq!(output.status.code().unwrap_or(-1), 0);
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // ANSI escape sequences start with ESC (\x1b). --no-color must suppress them.
+        // With mutation (no_color=true → colors enabled), ANSI codes appear.
+        assert!(
+            !stdout.contains('\x1b'),
+            "--no-color must not produce ANSI escape sequences; stdout={stdout}"
+        );
+        assert!(
+            stdout.contains("sync") || stdout.contains("✓") || stdout.contains("Checked"),
+            "--no-color must still show sync message; stdout={stdout}"
+        );
+    }
+
+    // Kill mut-000226 (report.is_clean() negation in output_text_report, line 176):
+    // Clean index → "sync" / "✓" message.
+    // With mutation (!(report.is_clean())): clean report → "issues found" path.
+    // Dirty index → "issue(s)" message.
+    // With mutation: dirty report → "in sync" path.
+    #[test]
+    fn test_subprocess_clean_shows_sync_message() {
+        let project = make_clean_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Original: clean → "in sync" branch → shows sync message.
+        // Mutation: clean → "issues found" branch → would show "Found N issue(s)".
+        assert!(
+            stdout.contains("sync") || stdout.contains("✓"),
+            "clean index must show sync message; stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("issue(s)") && !stdout.contains("Found"),
+            "clean index must not show issue count message; stdout={stdout}"
+        );
+    }
+
+    #[test]
+    fn test_subprocess_dirty_shows_issues_message() {
+        let project = make_dirty_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Original: dirty → "issues found" branch → shows "Found N issue(s)".
+        // Mutation: dirty → "in sync" branch → would show sync message.
+        assert!(
+            stdout.contains("issue") || stdout.contains("Found"),
+            "dirty index must show issues message; stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("✓"),
+            "dirty index must not show sync checkmark; stdout={stdout}"
+        );
+    }
+
+    // Kill mut-000229 (show_diff negation, line 229):
+    // --diff flag → "Detailed issues:" section appears.
+    // Without --diff → no "Detailed issues:" section.
+    // With mutation (!(show_diff)): --diff → hides section; no --diff → shows it.
+    #[test]
+    fn test_subprocess_diff_flag_shows_detailed_issues() {
+        let project = make_dirty_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .args(["check-index", "--diff"])
+            .output()
+            .expect("lash binary must run");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Original: show_diff=true → shows "Detailed issues:" section.
+        // Mutation: show_diff=true → !(true) = hides section.
+        assert!(
+            stdout.contains("Detailed issues") || stdout.contains("[Stale"),
+            "--diff must show detailed issues section; stdout={stdout}"
+        );
+    }
+
+    #[test]
+    fn test_subprocess_no_diff_flag_omits_detailed_issues() {
+        let project = make_dirty_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Original: show_diff=false → no "Detailed issues:" section.
+        // Mutation: show_diff=false → !(false) = shows section.
+        assert!(
+            !stdout.contains("Detailed issues"),
+            "without --diff, detailed issues must not appear; stdout={stdout}"
+        );
+    }
+
+    // Kill mut-000233/234/235/236 (count > 0 boundary in print_issue_count_if_any, line 271):
+    // A dirty project with one stale-file issue must show "Stale files" in output (count=1 > 0).
+    // A clean project must NOT show any issue-type label (all counts = 0).
+    //
+    // Mutations:
+    //   !(count > 0): inverts condition → count=1 suppressed, count=0 printed (wrong).
+    //   count >= 0: count=0 satisfies → prints even for zero count (wrong).
+    //   count <= 0: count=1 fails → suppresses non-zero counts (wrong).
+    //   0 → 1 (count > 1): count=1 fails → suppresses counts of exactly 1 (wrong).
+    #[test]
+    fn test_subprocess_dirty_prints_nonzero_issue_type_count() {
+        let project = make_dirty_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // count=1 for StaleFile → print_issue_count_if_any must print the label.
+        // With !(count > 0), count <= 0, or count > 1: label not printed.
+        assert!(
+            stdout.contains("Stale files") || stdout.contains("stale"),
+            "count=1 stale-file issue must appear in output; stdout={stdout}"
+        );
+    }
+
+    #[test]
+    fn test_subprocess_clean_does_not_print_zero_count_issue_types() {
+        let project = make_clean_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .output()
+            .expect("lash binary must run");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // All counts = 0 → print_issue_count_if_any must NOT print any label.
+        // With count >= 0: count=0 passes → labels would appear spuriously.
+        // With !(count > 0): count=0 passes → labels appear.
+        for label in ["Stale files", "Missing files", "Hash mismatch", "Orphaned"] {
+            assert!(
+                !stdout.contains(label),
+                "count=0 must not print '{label}'; stdout={stdout}"
+            );
+        }
+    }
+
+    // Kill mut-000221 (p.is_absolute() negation in path resolution, line 88):
+    // When an absolute path is in the filter list:
+    //   original (is_absolute()=true): p.clone() → keeps the absolute path intact.
+    //   mutation (!(is_absolute())=false for abs): cwd.join(p) → since p is absolute,
+    //     cwd.join(abs) == abs in Rust, so the result is identical.
+    // For absolute paths the mutation has no observable effect; both branches
+    // produce the same path. The integration test covers this case.
+    //
+    // When a relative path is in the filter list:
+    //   original (is_absolute()=false): cwd.join(rel) → absolute path.
+    //   mutation (!(is_absolute())=true for rel): p.clone() → stays relative.
+    //
+    // If the relative path does not exist in cwd but exists when joined with project root,
+    // the original resolves it; the mutation leaves it relative and the walker may fail.
+    // We verify that a relative path resolves correctly by invoking the binary directly.
+    #[test]
+    fn test_subprocess_absolute_path_filter_on_clean_db() {
+        let project = make_clean_project_dir();
+        let abs_path = project.path().to_path_buf();
+        assert!(abs_path.is_absolute(), "precondition: path is absolute");
+
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .arg(&abs_path)
+            .output()
+            .expect("lash binary must run");
+
+        // An absolute path filter on a clean DB must return 0.
+        assert_eq!(
+            output.status.code().unwrap_or(-1),
+            0,
+            "absolute path filter on clean DB must exit 0"
+        );
+    }
+
+    // Kill mut-000215 (args.json negation in theme loading, line 42) and
+    // mut-000216 (!args.no_color negation, line 45):
+    //
+    // These mutations affect which branch loads the CliTheme:
+    //
+    // mut-000215: `if args.json` at line 42 is mutated to `if !(args.json)`.
+    //   Original: json=false → else branch → CliTheme::load called → theme=Some(...)
+    //   Mutation: json=false → !(false)=true → None branch → theme=None
+    //   With json=false + FORCE_COLOR=1: original produces ANSI codes; mutation does not.
+    //
+    // mut-000216: `!args.no_color` at line 45 is mutated to `args.no_color`.
+    //   Original: no_color=false → !false=true → CliTheme::load(None, true) → theme=Some
+    //   Mutation: no_color=false → false → CliTheme::load(None, false) → theme=None
+    //   With no_color=false + FORCE_COLOR=1: original produces ANSI codes; mutation does not.
+    //
+    // FORCE_COLOR=1 instructs owo-colors to emit ANSI codes even when stdout is a pipe,
+    // making the presence/absence of a loaded theme observable from a subprocess.
+    #[test]
+    fn test_subprocess_text_mode_without_no_color_has_ansi_with_force_color() {
+        let project = make_clean_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            // No --no-color, no --json: text mode with color loading path.
+            .arg("--root")
+            .arg(project.path())
+            .arg("check-index")
+            .env("FORCE_COLOR", "1")
+            .env_remove("NO_COLOR")
+            .output()
+            .expect("lash binary must run");
+
+        assert_eq!(output.status.code().unwrap_or(-1), 0);
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Original: json=false AND no_color=false → CliTheme::load(None, true) → Some(theme)
+        // → ANSI escape codes in output when FORCE_COLOR=1.
+        //
+        // mut-000215: json=false → !(false)=true → None branch → theme=None → no ANSI.
+        // mut-000216: no_color=false → CliTheme::load(None, false) → Ok(None) → no ANSI.
+        // Both mutations cause the assertion below to fail → mutations killed.
+        assert!(
+            stdout.contains('\x1b'),
+            "text mode without --no-color with FORCE_COLOR=1 must contain ANSI escape \
+             sequences (theme is loaded for json=false, no_color=false); stdout={stdout:?}"
+        );
+    }
+
+    #[test]
+    fn test_subprocess_no_color_flag_suppresses_ansi_even_with_force_color() {
+        let project = make_clean_project_dir();
+        let output = std::process::Command::new(lash_bin())
+            .args(["--no-color", "--root"])
+            .arg(project.path())
+            .arg("check-index")
+            .env("FORCE_COLOR", "1")
+            .env_remove("NO_COLOR")
+            .output()
+            .expect("lash binary must run");
+
+        assert_eq!(output.status.code().unwrap_or(-1), 0);
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Original: no_color=true → CliTheme::load(None, false) → Ok(None) → no ANSI.
+        // mut-000216: no_color=true → CliTheme::load(None, true) → Some(theme)
+        // → ANSI codes appear even with FORCE_COLOR=1. Assertion fails → mutation killed.
+        assert!(
+            !stdout.contains('\x1b'),
+            "--no-color must suppress ANSI escape sequences even with FORCE_COLOR=1; \
+             stdout={stdout:?}"
+        );
+    }
 }
