@@ -263,7 +263,28 @@ fn get_database_path(project_root: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use tempfile::TempDir;
+
+    // ---------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------
+
+    /// Build minimal `AgentPromptArgs` for the given temp project root with
+    /// sensible defaults (json=false, `no_color=true`, plain format).
+    fn base_args(temp: &TempDir) -> AgentPromptArgs {
+        AgentPromptArgs {
+            format: AgentFormat::Plain,
+            labels: vec![],
+            path: None,
+            max_tokens: None,
+            project_root: Some(temp.path().to_path_buf()),
+            json: false,
+            no_color: true,
+            include_descriptions: false,
+            include_notes: false,
+        }
+    }
 
     #[test]
     fn test_agent_prompt_args_structure() {
@@ -512,4 +533,59 @@ mod tests {
         let result = execute(&args).unwrap();
         assert_eq!(result, 0);
     }
+
+    // -------------------------------------------------------------------------
+    // mut-000150: `config.include_tasks` → `!(config.include_tasks)` at line 102
+    //
+    // Original:  if config.include_tasks  { load_task_file_summaries(...)? }
+    //            else                      { Vec::new()                    }
+    // Mutation:  if !(config.include_tasks) { load_task_file_summaries(...)? }
+    //            else                        { Vec::new()                    }
+    //
+    // config.include_tasks is hardcoded to `false` in execute().
+    //
+    // Original  → else branch → Vec::new()  (no DB access)  → Ok(0)
+    // Mutant    → if branch  → load_task_file_summaries()
+    //           → open_database(corrupt_file) → Err
+    //           → execute() returns Err → test fails
+    //
+    // The corrupt DB file is a non-SQLite byte sequence at the DB path.  SQLite
+    // rejects it on the first PRAGMA execution with SQLITE_NOTADB.
+    // -------------------------------------------------------------------------
+
+    /// When `include_tasks` is false (the production default), the DB must not be
+    /// opened.  A corrupt DB file at the expected path must not cause a failure.
+    ///
+    /// Kills mut-000150.
+    #[test]
+    fn test_include_tasks_false_never_opens_db() {
+        let temp = TempDir::new().unwrap();
+
+        // Create the DB directory and a corrupt "database" file
+        let lash_dir = temp.path().join(".lash");
+        fs::create_dir_all(&lash_dir).unwrap();
+        fs::write(
+            lash_dir.join("lash.db"),
+            b"this is not a sqlite database at all",
+        )
+        .unwrap();
+
+        let args = base_args(&temp);
+        let result = execute(&args);
+
+        // Original: include_tasks=false → Vec::new(), corrupt DB never touched → Ok(0)
+        // Mutant:   include_tasks=!false=true → open_database(corrupt) → Err
+        assert_eq!(
+            result.unwrap(),
+            0,
+            "execute() must succeed when include_tasks=false, even with a corrupt DB file"
+        );
+    }
+
+    // mut-000151, mut-000152, and mut-000153 affect `prompt.truncated && !args.json`
+    // (the truncation warning condition).  These are covered by the binary-invocation
+    // integration tests in `tests/agent_prompt_test.rs`, which can reliably capture
+    // stderr without process-wide fd manipulation:
+    //   - test_agent_prompt_truncation_warning_printed_when_truncated_and_not_json
+    //   - test_agent_prompt_no_truncation_warning_when_not_truncated
 }
