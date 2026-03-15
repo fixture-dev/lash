@@ -720,7 +720,7 @@ fn test_text_summary_shows_files_affected_count_for_located_diagnostic() {
 // ---------------------------------------------------------------------------
 
 /// With `--no-color`, the stdout summary must not contain ANSI escape codes.
-/// Kills mut-000427: !args.no_color → args.no_color.
+/// Kills mut-000427: `!args.no_color` → `args.no_color`.
 #[test]
 fn test_no_color_flag_produces_ansi_free_lint_output() {
     let td = TempDir::new().unwrap();
@@ -1315,7 +1315,7 @@ fn test_themed_summary_zero_warnings_for_clean_file() {
 // ---------------------------------------------------------------------------
 
 /// With `--no-color`, lint stdout must contain no ANSI escape codes.
-/// Kills mut-000475: !args.no_color → args.no_color.
+/// Kills mut-000475: `!args.no_color` → `args.no_color`.
 #[test]
 fn test_mut000475_no_color_suppresses_ansi_in_lint_stdout() {
     let td = TempDir::new().unwrap();
@@ -1341,7 +1341,7 @@ fn test_mut000475_no_color_suppresses_ansi_in_lint_stdout() {
 }
 
 /// Without `--no-color`, lint exits 2 on an error file (color-enabled path).
-/// Kills mut-000475: distinguishes !no_color=true from !no_color=false.
+/// Kills mut-000475: distinguishes `!no_color=true` from `!no_color=false`.
 #[test]
 fn test_mut000475_without_no_color_lint_exits_2() {
     let td = TempDir::new().unwrap();

@@ -54,7 +54,7 @@ fn lash_cmd() -> Command {
 
 /// With `--no-color` and FORCE_COLOR=1, `lash init` stdout must contain no
 /// ANSI escape codes.  Kills mut-000483: if `args.no_color` is used instead
-/// of `!args.no_color`, --no-color would pass `true` to CliTheme::load and
+/// of `!args.no_color`, --no-color would pass `true` to `CliTheme::load` and
 /// produce ANSI output even when the user requested no color.
 #[test]
 fn test_init_no_color_suppresses_ansi_with_force_color() {
@@ -89,7 +89,7 @@ fn test_init_no_color_suppresses_ansi_with_force_color() {
 /// Without `--no-color` and with FORCE_COLOR=1, `lash init` stdout must
 /// contain ANSI escape codes (the theme was loaded and applied).  Kills
 /// mut-000483: if `args.no_color` replaces `!args.no_color`, the theme would
-/// not be loaded when no_color=false, producing plain text instead.
+/// not be loaded when `no_color=false`, producing plain text instead.
 #[test]
 fn test_init_without_no_color_produces_ansi_with_force_color() {
     let td = TempDir::new().unwrap();

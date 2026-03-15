@@ -434,7 +434,7 @@ fn test_config_list_without_json_produces_text() {
 // ---------------------------------------------------------------------------
 
 /// `--no-color config list` succeeds and still contains section headers.
-/// Kills mut-000260 by exercising the no_color=true code path.
+/// Kills mut-000260 by exercising the `no_color=true` code path.
 #[test]
 fn test_config_list_no_color_flag_accepted_and_text_output() {
     let td = temp_project();
@@ -515,8 +515,8 @@ fn test_config_list_text_mode_has_ansi_codes_when_force_color() {
 
 /// `config list` with --no-color and FORCE_COLOR=1 must NOT produce ANSI codes.
 ///
-/// Kills mut-000260: the correct code passes !no_color=false to CliTheme::load,
-/// returning None. With the mutation (no_color instead of !no_color), it would
+/// Kills mut-000260: the correct code passes `!no_color=false` to `CliTheme::load`,
+/// returning None. With the mutation (`no_color` instead of `!no_color`), it would
 /// pass true → load theme → emit ANSI codes, failing this assertion.
 ///
 /// Also acts as a baseline confirming that ANSI codes in the previous test

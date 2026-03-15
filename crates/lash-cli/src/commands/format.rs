@@ -2654,7 +2654,14 @@ mod tests {
         let config = LashConfig::default();
         let options = FormatOptions::default();
         let args = default_args(vec![bad_path.clone()]);
-        let result = format_files(&[bad_path.clone()], &config, &options, &args, None).unwrap();
+        let result = format_files(
+            std::slice::from_ref(&bad_path),
+            &config,
+            &options,
+            &args,
+            None,
+        )
+        .unwrap();
         assert_eq!(
             result.failed, 1,
             "bad file must count as exactly 1 failure (kills L156: 0→1)"

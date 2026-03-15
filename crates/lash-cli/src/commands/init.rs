@@ -820,7 +820,7 @@ mod tests {
     //             → invalid scheme → Err → execute() returns Err → test fails
     // -------------------------------------------------------------------------
 
-    /// When no_color=true, CliTheme::load must receive `false` as the
+    /// When `no_color=true`, `CliTheme::load` must receive `false` as the
     /// `colors_enabled` argument and return Ok(None) without touching the
     /// color-scheme registry.
     ///

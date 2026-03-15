@@ -1075,7 +1075,7 @@ fn test_format_json_mode_produces_well_formed_json() {
 // reliable test is that the command succeeds in both cases.
 // ---------------------------------------------------------------------------
 
-/// Format with no_color=true must succeed and produce plain text output.
+/// Format with `no_color=true` must succeed and produce plain text output.
 #[test]
 fn test_format_no_color_true_succeeds() {
     let td = TempDir::new().unwrap();
