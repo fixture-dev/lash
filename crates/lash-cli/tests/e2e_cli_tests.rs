@@ -2312,9 +2312,9 @@ fn test_check_index_text_mode_no_db_outputs_plain_text_to_stderr() {
 
 /// `lash --no-color check-index` produces plain text (no ANSI escape codes).
 ///
-/// Kills mut-000215 (!args.no_color negation in CliTheme::load call):
-/// - no_color=true → CliTheme::load(None, false) → None → no ANSI codes.
-/// - Negation: no_color=true → CliTheme::load(None, true) → Some(theme) → ANSI codes possible.
+/// Kills mut-000215 (`!args.no_color` negation in `CliTheme::load` call):
+/// - `no_color=true` → `CliTheme::load(None, false)` → None → no ANSI codes.
+/// - Negation: `no_color=true` → `CliTheme::load(None, true)` → Some(theme) → ANSI codes possible.
 #[test]
 fn test_check_index_no_color_flag_produces_plain_text() {
     let temp = create_test_project();
@@ -2631,7 +2631,7 @@ fn test_init_text_mode_does_not_output_json() {
 }
 
 /// `lash init --no-color` produces plain text without ANSI escape codes.
-/// Kills mut-000452 (!args.no_color negated to args.no_color in CliTheme::load).
+/// Kills mut-000452 (`!args.no_color` negated to `args.no_color` in `CliTheme::load`).
 #[test]
 fn test_init_no_color_true_produces_plain_text_output() {
     let temp = tempfile::tempdir().expect("Failed to create temp dir");
@@ -3250,9 +3250,9 @@ fn test_explain_list_non_empty_categories_appear_and_empty_ones_do_not() {
 
 /// `lash --no-color explain --list` shows the total count line at the end.
 ///
-/// Kills mut-000279 (!args.no_color negation in execute):
-/// - no_color=true (--no-color flag) → CliTheme::load receives false → returns None.
-/// - Negation: no_color=true → CliTheme::load receives true → loads colored theme.
+/// Kills mut-000279 (`!args.no_color` negation in execute):
+/// - `no_color=true` (--no-color flag) → `CliTheme::load` receives false → returns None.
+/// - Negation: `no_color=true` → `CliTheme::load` receives true → loads colored theme.
 /// - With --no-color the output must be plain text (no ANSI codes).
 #[test]
 fn test_explain_no_color_flag_produces_plain_text_output() {
@@ -4301,9 +4301,9 @@ fn test_graph_no_db_error_contains_0_files_changed() {
 
 /// `lash --no-color format FILE` must not emit ANSI escape codes in stderr output.
 ///
-/// Kills mut-000309 (!args.no_color negated to args.no_color in CliTheme::load):
-/// - Original: no_color=true → CliTheme::load(None, false) → None → no ANSI codes in output.
-/// - Negation: no_color=true → CliTheme::load(None, true) → Some(theme) → ANSI codes appear.
+/// Kills mut-000309 (`!args.no_color` negated to `args.no_color` in `CliTheme::load`):
+/// - Original: `no_color=true` → `CliTheme::load(None, false)` → None → no ANSI codes in output.
+/// - Negation: `no_color=true` → `CliTheme::load(None, true)` → Some(theme) → ANSI codes appear.
 ///
 /// We run format in check mode (so the file is not modified) and verify stderr is plain text.
 #[test]

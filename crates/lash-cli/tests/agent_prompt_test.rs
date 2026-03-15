@@ -61,7 +61,7 @@ fn create_bad_scheme_home() -> TempDir {
 
 /// Passing `--json` must succeed even when the user config specifies a color
 /// scheme that does not exist.  The json branch must short-circuit to None
-/// without ever calling CliTheme::load.
+/// without ever calling `CliTheme::load`.
 ///
 /// Kills mut-000147.
 #[test]
