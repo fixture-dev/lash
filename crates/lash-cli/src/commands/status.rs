@@ -422,8 +422,8 @@ fn output_text(
         println!();
     }
 
-    // Summary section - use largest-remainder rounding so percentages sum to 100%
-    let [open_pct, done_pct, waived_pct, blocked_pct] = round_percentages(
+    // Summary section - format percentages with <1% / >99% for non-zero edge cases
+    let [open_pct, done_pct, waived_pct, blocked_pct] = format_percentages(
         counts.total,
         [counts.open, counts.done, counts.waived, counts.blocked],
     );
@@ -443,40 +443,38 @@ fn output_text(
     }
 }
 
-/// Round percentages using the largest-remainder method so they always sum to 100%.
+/// Format percentages for display, using `<1` when a count is non-zero but rounds
+/// to 0%, and `>99` when a count is less than total but rounds to 100%.
 ///
-/// Given a total and an array of counts, returns an array of integer percentages
-/// that sum to exactly 100 (or all zeros if total is 0).
+/// This prevents misleading output like "Open: 7 (0%) | Done: 2158 (100%)" which
+/// makes it look like everything is complete when it isn't.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
-fn round_percentages<const N: usize>(total: usize, counts: [usize; N]) -> [u32; N] {
+fn format_percentages<const N: usize>(total: usize, counts: [usize; N]) -> [String; N] {
     if total == 0 {
-        return [0; N];
+        return std::array::from_fn(|_| "0".to_string());
     }
 
     let total_f = total as f64;
     let exact: Vec<f64> = counts.iter().map(|&c| c as f64 / total_f * 100.0).collect();
-    let mut floored: Vec<u32> = exact.iter().map(|&v| v as u32).collect();
-    let remainder: u32 = 100 - floored.iter().sum::<u32>();
+    let rounded: Vec<u32> = exact.iter().map(|&v| v.round() as u32).collect();
 
-    // Distribute remaining points to entries with largest fractional parts
-    let mut indices: Vec<usize> = (0..N).collect();
-    indices.sort_by(|&a, &b| {
-        let frac_a = exact[a] - f64::from(floored[a]);
-        let frac_b = exact[b] - f64::from(floored[b]);
-        frac_b.partial_cmp(&frac_a).unwrap()
-    });
-
-    for &i in indices.iter().take(remainder as usize) {
-        floored[i] += 1;
-    }
-
-    let mut result = [0u32; N];
-    result.copy_from_slice(&floored);
-    result
+    std::array::from_fn(|i| {
+        if counts[i] == 0 {
+            "0".to_string()
+        } else if counts[i] == total {
+            "100".to_string()
+        } else if rounded[i] == 0 {
+            "<1".to_string()
+        } else if rounded[i] >= 100 {
+            ">99".to_string()
+        } else {
+            rounded[i].to_string()
+        }
+    })
 }
 
 /// Print a single task summary line
@@ -616,39 +614,55 @@ mod tests {
     }
 
     #[test]
-    fn test_round_percentages_exact() {
-        // 25+25+25+25 = 100, no rounding needed
-        let result = round_percentages(100, [25, 25, 25, 25]);
-        assert_eq!(result, [25, 25, 25, 25]);
-        assert_eq!(result.iter().sum::<u32>(), 100);
+    fn test_format_percentages_exact() {
+        let result = format_percentages(100, [25, 25, 25, 25]);
+        assert_eq!(result, ["25", "25", "25", "25"]);
     }
 
     #[test]
-    fn test_round_percentages_zero_total() {
-        let result = round_percentages(0, [0, 0, 0, 0]);
-        assert_eq!(result, [0, 0, 0, 0]);
+    fn test_format_percentages_zero_total() {
+        let result = format_percentages(0, [0, 0, 0, 0]);
+        assert_eq!(result, ["0", "0", "0", "0"]);
     }
 
     #[test]
-    fn test_round_percentages_172_of_173() {
-        // The reported bug: 172/173 = 99.42%, 1/173 = 0.58%
-        // Should round to 99% + 1% = 100%, not 99% + 0% = 99%
-        let result = round_percentages(173, [0, 172, 1, 0]);
-        assert_eq!(result, [0, 99, 1, 0]);
-        assert_eq!(result.iter().sum::<u32>(), 100);
+    fn test_format_percentages_172_of_173() {
+        // 172/173 = 99.42%, 1/173 = 0.58%
+        let result = format_percentages(173, [0, 172, 1, 0]);
+        assert_eq!(result, ["0", "99", "1", "0"]);
     }
 
     #[test]
-    fn test_round_percentages_thirds() {
-        // 1/3 each ≈ 33.33% — two get 33%, one gets 34%
-        let result = round_percentages(3, [1, 1, 1]);
-        assert_eq!(result.iter().sum::<u32>(), 100);
-        assert!(result.iter().all(|&v| v == 33 || v == 34));
+    fn test_format_percentages_thirds() {
+        let result = format_percentages(3, [1, 1, 1]);
+        assert!(result.iter().all(|v| v == "33" || v == "34"));
     }
 
     #[test]
-    fn test_round_percentages_all_in_one() {
-        let result = round_percentages(50, [50, 0, 0, 0]);
-        assert_eq!(result, [100, 0, 0, 0]);
+    fn test_format_percentages_all_in_one() {
+        let result = format_percentages(50, [50, 0, 0, 0]);
+        assert_eq!(result, ["100", "0", "0", "0"]);
+    }
+
+    #[test]
+    fn test_format_percentages_small_nonzero_shows_less_than_1() {
+        // 7/2165 = 0.32% — should show "<1", not "0"
+        // 2158/2165 = 99.68% — should show ">99", not "100"
+        let result = format_percentages(2165, [7, 2158, 0, 0]);
+        assert_eq!(result, ["<1", ">99", "0", "0"]);
+    }
+
+    #[test]
+    fn test_format_percentages_exactly_100_percent() {
+        // Only count == total should show "100"
+        let result = format_percentages(50, [0, 50, 0, 0]);
+        assert_eq!(result, ["0", "100", "0", "0"]);
+    }
+
+    #[test]
+    fn test_format_percentages_just_above_zero() {
+        // 1/100 = 1% — should show "1", not "<1"
+        let result = format_percentages(100, [1, 99, 0, 0]);
+        assert_eq!(result, ["1", "99", "0", "0"]);
     }
 }
