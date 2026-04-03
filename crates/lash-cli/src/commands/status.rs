@@ -71,6 +71,7 @@ pub struct TaskSummary {
 pub struct StatusSummary {
     pub total: usize,
     pub open: usize,
+    pub in_progress: usize,
     pub done: usize,
     pub waived: usize,
     pub blocked: usize,
@@ -93,6 +94,7 @@ impl From<StatusCounts> for StatusSummary {
         Self {
             total: counts.total,
             open: counts.open,
+            in_progress: counts.in_progress,
             done: counts.done,
             waived: counts.waived,
             blocked: counts.blocked,
@@ -326,8 +328,8 @@ fn output_compact(
     println!("recent_done: {}", recently_completed.len());
     println!("recent_created: {}", recently_created.len());
     println!(
-        "total: {} open: {} done: {} waived: {} blocked: {}",
-        counts.total, counts.open, counts.done, counts.waived, counts.blocked
+        "total: {} open: {} in_progress: {} done: {} waived: {} blocked: {}",
+        counts.total, counts.open, counts.in_progress, counts.done, counts.waived, counts.blocked
     );
 }
 
@@ -423,22 +425,28 @@ fn output_text(
     }
 
     // Summary section - format percentages with <1% / >99% for non-zero edge cases
-    let [open_pct, done_pct, waived_pct, blocked_pct] = format_percentages(
+    let [open_pct, in_progress_pct, done_pct, waived_pct, blocked_pct] = format_percentages(
         counts.total,
-        [counts.open, counts.done, counts.waived, counts.blocked],
+        [
+            counts.open,
+            counts.in_progress,
+            counts.done,
+            counts.waived,
+            counts.blocked,
+        ],
     );
 
     if let Some(t) = theme {
         println!("{}", t.style_label("Summary"));
         println!(
-            "  Total: {} | Open: {} ({open_pct}%) | Done: {} ({done_pct}%) | Waived: {} ({waived_pct}%) | Blocked: {} ({blocked_pct}%)",
-            counts.total, counts.open, counts.done, counts.waived, counts.blocked
+            "  Total: {} | Open: {} ({open_pct}%) | In Progress: {} ({in_progress_pct}%) | Done: {} ({done_pct}%) | Waived: {} ({waived_pct}%) | Blocked: {} ({blocked_pct}%)",
+            counts.total, counts.open, counts.in_progress, counts.done, counts.waived, counts.blocked
         );
     } else {
         println!("Summary");
         println!(
-            "  Total: {} | Open: {} ({open_pct}%) | Done: {} ({done_pct}%) | Waived: {} ({waived_pct}%) | Blocked: {} ({blocked_pct}%)",
-            counts.total, counts.open, counts.done, counts.waived, counts.blocked
+            "  Total: {} | Open: {} ({open_pct}%) | In Progress: {} ({in_progress_pct}%) | Done: {} ({done_pct}%) | Waived: {} ({waived_pct}%) | Blocked: {} ({blocked_pct}%)",
+            counts.total, counts.open, counts.in_progress, counts.done, counts.waived, counts.blocked
         );
     }
 }
@@ -600,14 +608,16 @@ mod tests {
     fn test_status_summary_from_counts() {
         let counts = StatusCounts {
             total: 100,
-            open: 50,
+            open: 45,
+            in_progress: 5,
             done: 30,
             waived: 15,
             blocked: 5,
         };
         let summary: StatusSummary = counts.into();
         assert_eq!(summary.total, 100);
-        assert_eq!(summary.open, 50);
+        assert_eq!(summary.open, 45);
+        assert_eq!(summary.in_progress, 5);
         assert_eq!(summary.done, 30);
         assert_eq!(summary.waived, 15);
         assert_eq!(summary.blocked, 5);

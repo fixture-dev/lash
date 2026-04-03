@@ -82,6 +82,8 @@ pub struct StatusCounts {
     pub total: usize,
     /// Number of open tasks
     pub open: usize,
+    /// Number of in-progress tasks
+    pub in_progress: usize,
     /// Number of done tasks
     pub done: usize,
     /// Number of waived tasks
@@ -634,30 +636,34 @@ impl<'conn> TaskRepository<'conn> {
     ///
     /// Returns error if query fails
     pub fn get_status_counts(&self) -> DbResult<StatusCounts> {
-        let (total, open, done, waived, blocked): (i64, i64, i64, i64, i64) = self.conn.query_row(
-            "SELECT
+        let (total, open, in_progress, done, waived, blocked): (i64, i64, i64, i64, i64, i64) =
+            self.conn.query_row(
+                "SELECT
                 COUNT(*) as total,
                 COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) as open,
+                COALESCE(SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END), 0) as in_progress,
                 COALESCE(SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END), 0) as done,
                 COALESCE(SUM(CASE WHEN status = 'waived' THEN 1 ELSE 0 END), 0) as waived,
                 COALESCE(SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END), 0) as blocked
              FROM tasks",
-            [],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                ))
-            },
-        )?;
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )?;
 
         #[allow(clippy::cast_sign_loss)]
         Ok(StatusCounts {
             total: total as usize,
             open: open as usize,
+            in_progress: in_progress as usize,
             done: done as usize,
             waived: waived as usize,
             blocked: blocked as usize,
