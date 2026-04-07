@@ -641,7 +641,7 @@ impl<'conn> TaskRepository<'conn> {
                 "SELECT
                 COUNT(*) as total,
                 COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) as open,
-                COALESCE(SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END), 0) as in_progress,
+                COALESCE(SUM(CASE WHEN status = 'in-progress' THEN 1 ELSE 0 END), 0) as in_progress,
                 COALESCE(SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END), 0) as done,
                 COALESCE(SUM(CASE WHEN status = 'waived' THEN 1 ELSE 0 END), 0) as waived,
                 COALESCE(SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END), 0) as blocked
@@ -1725,6 +1725,39 @@ mod tests {
         // Search for done tasks should return empty
         let done_tasks = task_repo.find_by_status(TaskStatus::Done).unwrap();
         assert!(done_tasks.is_empty());
+    }
+
+    #[test]
+    fn test_get_status_counts_includes_in_progress() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Insert tasks with various statuses
+        let mut open_task = create_test_task("t1", "Open task", 0, None, 0);
+        open_task.status = TaskStatus::Open;
+        task_repo.insert(&open_task, file_db_id, "test").unwrap();
+
+        let mut ip_task = create_test_task("t2", "In-progress task", 0, None, 1);
+        ip_task.status = TaskStatus::InProgress;
+        task_repo.insert(&ip_task, file_db_id, "test").unwrap();
+
+        let mut done_task = create_test_task("t3", "Done task", 0, None, 2);
+        done_task.status = TaskStatus::Done;
+        task_repo.insert(&done_task, file_db_id, "test").unwrap();
+
+        let counts = task_repo.get_status_counts().unwrap();
+        assert_eq!(counts.total, 3);
+        assert_eq!(counts.open, 1);
+        assert_eq!(counts.in_progress, 1);
+        assert_eq!(counts.done, 1);
+        assert_eq!(counts.waived, 0);
+        assert_eq!(counts.blocked, 0);
     }
 
     #[test]
