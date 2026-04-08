@@ -10,6 +10,7 @@ use lash_agent::{
 };
 use lash_cli::cli::AgentFormat;
 use lash_db::{open_database, DocRefRepository, FileRepository, TaskRepository};
+use lash_types::TaskStatus;
 use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
@@ -200,11 +201,17 @@ fn load_task_file_summaries(
 
         // Calculate statistics
         let total = tasks.len();
-        let completed = tasks.iter().filter(|t| t.status.as_str() == "done").count();
-        let open = tasks.iter().filter(|t| t.status.as_str() == "open").count();
+        let completed = tasks
+            .iter()
+            .filter(|t| t.status == TaskStatus::Done)
+            .count();
+        let open = tasks
+            .iter()
+            .filter(|t| t.status == TaskStatus::Open)
+            .count();
         let blocked = tasks
             .iter()
-            .filter(|t| t.status.as_str() == "blocked")
+            .filter(|t| t.status == TaskStatus::Blocked)
             .count();
 
         // Load doc refs for this file (both file-level and task-level)

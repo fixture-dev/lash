@@ -598,9 +598,9 @@ impl<'conn> TaskRepository<'conn> {
         let (total, completed): (i64, i64) = self.conn.query_row(
             "SELECT
                 COUNT(*) as total,
-                SUM(CASE WHEN status IN ('done', 'waived') THEN 1 ELSE 0 END) as completed
+                SUM(CASE WHEN status IN (?1, ?2) THEN 1 ELSE 0 END) as completed
              FROM tasks",
-            [],
+            rusqlite::params![TaskStatus::Done.as_str(), TaskStatus::Waived.as_str()],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
 
@@ -640,13 +640,19 @@ impl<'conn> TaskRepository<'conn> {
             self.conn.query_row(
                 "SELECT
                 COUNT(*) as total,
-                COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) as open,
-                COALESCE(SUM(CASE WHEN status = 'in-progress' THEN 1 ELSE 0 END), 0) as in_progress,
-                COALESCE(SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END), 0) as done,
-                COALESCE(SUM(CASE WHEN status = 'waived' THEN 1 ELSE 0 END), 0) as waived,
-                COALESCE(SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END), 0) as blocked
+                COALESCE(SUM(CASE WHEN status = ?1 THEN 1 ELSE 0 END), 0) as open,
+                COALESCE(SUM(CASE WHEN status = ?2 THEN 1 ELSE 0 END), 0) as in_progress,
+                COALESCE(SUM(CASE WHEN status = ?3 THEN 1 ELSE 0 END), 0) as done,
+                COALESCE(SUM(CASE WHEN status = ?4 THEN 1 ELSE 0 END), 0) as waived,
+                COALESCE(SUM(CASE WHEN status = ?5 THEN 1 ELSE 0 END), 0) as blocked
              FROM tasks",
-                [],
+                rusqlite::params![
+                    TaskStatus::Open.as_str(),
+                    TaskStatus::InProgress.as_str(),
+                    TaskStatus::Done.as_str(),
+                    TaskStatus::Waived.as_str(),
+                    TaskStatus::Blocked.as_str(),
+                ],
                 |row| {
                     Ok((
                         row.get(0)?,
@@ -695,14 +701,22 @@ impl<'conn> TaskRepository<'conn> {
             "SELECT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata, t.contextual_notes
              FROM tasks t
              JOIN files f ON t.file_id = f.id
-             WHERE t.status IN ('done', 'waived')
-               AND f.mtime >= ?1
+             WHERE t.status IN (?1, ?2)
+               AND f.mtime >= ?3
              ORDER BY f.mtime DESC
-             LIMIT ?2",
+             LIMIT ?4",
         )?;
 
         let tasks = stmt
-            .query_map([since_timestamp, limit_i64], Self::row_to_task_record)?
+            .query_map(
+                rusqlite::params![
+                    TaskStatus::Done.as_str(),
+                    TaskStatus::Waived.as_str(),
+                    since_timestamp,
+                    limit_i64,
+                ],
+                Self::row_to_task_record,
+            )?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(tasks)
@@ -735,14 +749,17 @@ impl<'conn> TaskRepository<'conn> {
             "SELECT t.id, t.file_id, t.local_id, t.full_id, t.title, t.status, t.depth, t.parent_id, t.order_index, t.owner, t.estimate, t.body, t.metadata, t.contextual_notes
              FROM tasks t
              JOIN files f ON t.file_id = f.id
-             WHERE t.status = 'open'
-               AND f.mtime >= ?1
+             WHERE t.status = ?1
+               AND f.mtime >= ?2
              ORDER BY f.mtime DESC
-             LIMIT ?2",
+             LIMIT ?3",
         )?;
 
         let tasks = stmt
-            .query_map([since_timestamp, limit_i64], Self::row_to_task_record)?
+            .query_map(
+                rusqlite::params![TaskStatus::Open.as_str(), since_timestamp, limit_i64],
+                Self::row_to_task_record,
+            )?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(tasks)
@@ -1728,7 +1745,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_status_counts_includes_in_progress() {
+    fn test_get_status_counts_all_statuses() {
         let temp_db = NamedTempFile::new().unwrap();
         let conn = init_database(temp_db.path()).unwrap();
 
@@ -1738,26 +1755,116 @@ mod tests {
 
         let task_repo = TaskRepository::new(&conn);
 
-        // Insert tasks with various statuses
-        let mut open_task = create_test_task("t1", "Open task", 0, None, 0);
-        open_task.status = TaskStatus::Open;
-        task_repo.insert(&open_task, file_db_id, "test").unwrap();
-
-        let mut ip_task = create_test_task("t2", "In-progress task", 0, None, 1);
-        ip_task.status = TaskStatus::InProgress;
-        task_repo.insert(&ip_task, file_db_id, "test").unwrap();
-
-        let mut done_task = create_test_task("t3", "Done task", 0, None, 2);
-        done_task.status = TaskStatus::Done;
-        task_repo.insert(&done_task, file_db_id, "test").unwrap();
+        // Insert one task per status
+        let statuses = [
+            ("t1", TaskStatus::Open),
+            ("t2", TaskStatus::InProgress),
+            ("t3", TaskStatus::Done),
+            ("t4", TaskStatus::Waived),
+            ("t5", TaskStatus::Blocked),
+        ];
+        for (idx, (id, status)) in statuses.iter().enumerate() {
+            let mut task = create_test_task(id, &format!("{status} task"), 0, None, idx);
+            task.status = *status;
+            task_repo.insert(&task, file_db_id, "test").unwrap();
+        }
 
         let counts = task_repo.get_status_counts().unwrap();
-        assert_eq!(counts.total, 3);
+        assert_eq!(counts.total, 5);
         assert_eq!(counts.open, 1);
         assert_eq!(counts.in_progress, 1);
         assert_eq!(counts.done, 1);
+        assert_eq!(counts.waived, 1);
+        assert_eq!(counts.blocked, 1);
+
+        // Verify counts sum to total — this would have caught the original
+        // in_progress vs in-progress bug where the sum was total - 1
+        assert_eq!(
+            counts.open + counts.in_progress + counts.done + counts.waived + counts.blocked,
+            counts.total,
+            "Per-status counts must sum to total"
+        );
+    }
+
+    #[test]
+    fn test_get_status_counts_empty_database() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+        let counts = task_repo.get_status_counts().unwrap();
+
+        assert_eq!(counts.total, 0);
+        assert_eq!(counts.open, 0);
+        assert_eq!(counts.in_progress, 0);
+        assert_eq!(counts.done, 0);
         assert_eq!(counts.waived, 0);
         assert_eq!(counts.blocked, 0);
+    }
+
+    #[test]
+    fn test_get_project_counts() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        // Insert tasks: 2 open, 1 in-progress, 2 done, 1 waived, 1 blocked
+        let tasks_data = [
+            ("t1", TaskStatus::Open),
+            ("t2", TaskStatus::Open),
+            ("t3", TaskStatus::InProgress),
+            ("t4", TaskStatus::Done),
+            ("t5", TaskStatus::Done),
+            ("t6", TaskStatus::Waived),
+            ("t7", TaskStatus::Blocked),
+        ];
+        for (idx, (id, status)) in tasks_data.iter().enumerate() {
+            let mut task = create_test_task(id, "Task", 0, None, idx);
+            task.status = *status;
+            task_repo.insert(&task, file_db_id, "test").unwrap();
+        }
+
+        let (total, completed) = task_repo.get_project_counts().unwrap();
+        assert_eq!(total, 7);
+        // completed = done (2) + waived (1)
+        assert_eq!(completed, 3);
+    }
+
+    #[test]
+    fn test_find_recently_completed() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("test.md", "test");
+        let file_repo = FileRepository::new(&conn);
+        let file_db_id = file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+
+        let tasks_data = [
+            ("t1", TaskStatus::Open),
+            ("t2", TaskStatus::InProgress),
+            ("t3", TaskStatus::Done),
+            ("t4", TaskStatus::Waived),
+            ("t5", TaskStatus::Blocked),
+        ];
+        for (idx, (id, status)) in tasks_data.iter().enumerate() {
+            let mut task = create_test_task(id, &format!("{status} task"), 0, None, idx);
+            task.status = *status;
+            task_repo.insert(&task, file_db_id, "test").unwrap();
+        }
+
+        // timestamp 0 captures all tasks
+        let completed = task_repo.find_recently_completed(0, 10).unwrap();
+        assert_eq!(completed.len(), 2);
+        assert!(completed
+            .iter()
+            .all(|t| t.status == TaskStatus::Done || t.status == TaskStatus::Waived));
     }
 
     #[test]
