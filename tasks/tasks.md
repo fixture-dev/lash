@@ -46,6 +46,7 @@ Tasks are organized by major module/component. Each task file contains:
 
 ### Advanced Features
 - [x] [tasks.agent-integration.md](tasks.agent-integration.md) - Agent prompts, token minimization (Tasks 1-6 complete) ✅
+- [x] [tasks.agent-skill-install.md](tasks.agent-skill-install.md) - `lash skill install` for Claude/Codex/Cursor/AGENTS.md targets ✅
 
 ### Content Features
 - [x] [tasks.description-section.md](tasks.description-section.md) - `## Description` section support (Tasks 1-8 complete) ✅

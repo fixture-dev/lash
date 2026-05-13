@@ -711,8 +711,6 @@ pub enum AgentFormat {
     Plain,
     /// Structured JSON prompt
     Json,
-    /// Claude Code skill specification format
-    ClaudeSkill,
     /// AGENTS.md format for agent documentation
     AgentsMd,
 }

@@ -1,5 +1,50 @@
 # Lash Development Log
 
+## 2026-05-13 - `lash skill install` for coding-agent skills
+
+### Summary
+
+Added a `lash skill <install|list|update|uninstall>` command that drops a
+Lash-aware skill into the conventional directory for Claude Code, Codex
+(also exposed as `agents-md`), and Cursor. Claude uses progressive
+disclosure (`SKILL.md` + `references/*.md`), the others use single files
+(`AGENTS.lash.md` at root, or `.cursor/rules/lash.mdc`).
+
+The static knowledge — overview, project layout, workflow, full CLI
+reference, safety rules, error recovery, dependencies guide, hot commands,
+and the "when to use" trigger — was extracted from `prompt.rs` into a new
+`lash-agent::content` module so `agent-prompt` (dynamic, project-specific)
+and `skill install` (static, project-agnostic) share one source of truth.
+The placeholder `agent-prompt --format claude-skill` (a stub JSON spec) was
+removed; use `lash skill install --target claude` instead.
+
+### Key Components
+
+- `lash-agent::content` — `&'static str` primitives for each doc section
+- `lash-agent::installer` — `Target`/`Scope`/`InstallOptions` with idempotent
+  install/plan/uninstall and per-file `FileAction` outcomes
+- `lash-cli::commands::skill` — CLI dispatch, JSON/text output, `--force`,
+  `--dry-run`, `--print`, `--scope project|user`
+- Idempotency marker (`lash-skill-version: <CARGO_PKG_VERSION>`) stamped in
+  every generated file; user-edited files preserved across re-installs
+- Drift-guard tests in `crates/lash-cli/tests/agent_content_drift_test.rs`
+  fail if a new clap subcommand is added without updating the agent docs
+
+### Tracking
+
+- New task file: `tasks/tasks.agent-skill-install.md`
+- Four sequential commits, one per planned PR
+
+### Test Results
+
+- 18 installer unit tests + 9 content unit tests + 2 drift-guard tests
+- Full workspace test suite continues to pass (no regressions)
+- Snapshot test for `agent-prompt` updated to reflect the broader CLI
+  reference (added Project Setup, Task Modification, Agent Integration
+  groups + a `lash skill install` line)
+
+---
+
 ## 2026-03-12 - Mutation Testing Campaign (166 → ~3 Survivors)
 
 ### Summary
