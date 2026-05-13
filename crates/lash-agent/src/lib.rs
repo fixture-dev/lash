@@ -14,6 +14,7 @@
 #![allow(clippy::must_use_candidate)] // Too many false positives for utility functions
 #![allow(clippy::format_push_string)] // More readable than write!() for simple cases
 
+pub mod content;
 pub mod context;
 pub mod prompt;
 pub mod schema;

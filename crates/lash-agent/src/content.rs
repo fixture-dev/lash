@@ -1,14 +1,26 @@
----
-source: crates/lash-cli/tests/regression_tests.rs
-assertion_line: 343
-expression: normalized
----
-┓    ┓
-┃ ┏┓┏┣┓
-┗┛┗┻┛┛┗
-# Lash Agent Usage Guide
+//! Static content primitives for Lash agent documentation.
+//!
+//! These functions return self-contained Markdown sections describing
+//! Lash's CLI surface, file format, workflows, and safety constraints.
+//! Both `lash agent-prompt` (dynamic stdout output) and `lash skill install`
+//! (filesystem installation, future) compose from these primitives so the
+//! authoritative source for "how to use Lash" lives in one place.
+//!
+//! # Examples
+//!
+//! ```
+//! use lash_agent::content;
+//!
+//! let cli_ref = content::cli_reference();
+//! assert!(cli_ref.contains("lash lint"));
+//! ```
 
-## Overview
+/// Brief overview of Lash for agents.
+///
+/// Suitable as the lead-in section of a prompt or skill file.
+#[must_use]
+pub fn overview() -> &'static str {
+    "## Overview
 
 Lash is a minimalist, Markdown-native task tracker where:
 - Markdown files are the single source of truth
@@ -17,7 +29,33 @@ Lash is a minimalist, Markdown-native task tracker where:
 - SQLite provides fast indexing and search (fully reconstructible from Markdown)
 - Format is strictly enforced by linting for predictability
 
-## Recommended Workflow
+"
+}
+
+/// Project layout conventions.
+#[must_use]
+pub fn project_structure() -> &'static str {
+    "## Project Structure
+
+Lash projects follow these conventions:
+
+- **Index file**: `tasks/tasks.md` or `lash.index.md` at project root
+- **Task files**: Usually under `tasks/` directory
+- **Database**: `.lash/lash.db` (auto-generated, gitignore this)
+- **Config**: `.lash/config.toml` or `~/.lash/config.toml`
+
+To find the project structure:
+```bash
+lash list --tree    # Shows all task files and hierarchy
+```
+
+"
+}
+
+/// Recommended discover → read → modify → validate → index workflow.
+#[must_use]
+pub fn workflow() -> &'static str {
+    r#"## Recommended Workflow
 
 When working with Lash task files, follow this workflow for consistent results:
 
@@ -48,205 +86,13 @@ When working with Lash task files, follow this workflow for consistent results:
    lash index                    # Rebuild index to reflect changes
    ```
 
-## Project Structure
+"#
+}
 
-Lash projects follow these conventions:
-
-- **Index file**: `tasks/tasks.md` or `lash.index.md` at project root
-- **Task files**: Usually under `tasks/` directory
-- **Database**: `.lash/lash.db` (auto-generated, gitignore this)
-- **Config**: `.lash/config.toml` or `~/.lash/config.toml`
-
-To find the project structure:
-```bash
-lash list --tree    # Shows all task files and hierarchy
-```
-
-## File Format
-
-# Lash Task File Format
-
-Lash task file format - hierarchical Markdown checkboxes with annotations
-
-**Version:** 1.0
-
-## Annotations
-
-Task files support the following metadata annotations:
-
-- `@id`: Unique identifier within the file
-  - Example: `@id: feature-auth`
-- `@labels`: Comma-separated tags for cross-cutting organization
-  - Example: `@labels: backend, security`
-- `@owner`: Person or agent responsible for this task
-  - Example: `@owner: alice`
-- `@created`: Creation date in YYYY-MM-DD format
-  - Example: `@created: 2025-01-15`
-- `@estimate`: Time estimate for completion
-  - Example: `@estimate: 2d`
-- `@depends-on`: Cross-file dependency reference
-  - Example: `@depends-on: path/to/file.md#task:id`
-- `@agent-note`: Hints or instructions for AI agents
-  - Example: `@agent-note: Use existing auth patterns`
-- `@doc`: Link to documentation resource (informational, non-blocking)
-  - Example: `@doc: ../docs/design.md#section-7`
-
-## Task Status Values
-
-- `[ ]` (open) - Task not yet started
-- `[>]` (in-progress) - Task actively being worked on
-- `[x]` (done) - Task completed successfully
-- `[-]` (waived) - Task marked as not applicable or cancelled
-- `[!]` (blocked) - Task blocked by dependencies or external factors
-
-## Constraints
-
-- **unique_ids**: Task IDs must be unique within each file (per-file uniqueness)
-- **max_depth**: Maximum nesting depth for task hierarchies (3-4 levels)
-- **status_consistency**: Parent tasks complete only when all children are done or waived (hierarchical consistency)
-- **valid_dependencies**: Dependency references must point to existing tasks (resolvable references)
-- **contextual_notes**: Plain bullets (without checkboxes) nested under tasks provide context, requirements, or acceptance criteria. Notes cannot have children. (informational only, not actionable)
-
-## Allowed Operations
-
-### add_task
-
-Add a new task to the hierarchy
-
-```markdown
-- [ ] New task description
-```
-
-### update_status
-
-Mark a task as done, waived, or blocked
-
-```markdown
-- [x] Completed task
-```
-
-### add_subtask
-
-Add a child task (indent with 2 spaces)
-
-```markdown
-  - [ ] Subtask description
-```
-
-### add_annotation
-
-Add metadata annotation to a task or file
-
-```markdown
-@labels: backend, api
-```
-
-### add_dependency
-
-Link to a task in another file
-
-```markdown
-@depends-on: core/auth.md#task:login
-```
-
-### waive_task
-
-Mark a task as not applicable
-
-```markdown
-- [-] Task no longer needed
-```
-
-### add_doc_reference
-
-Link to documentation resource for context
-
-```markdown
-@doc: docs/design.md#section-name
-```
-
-### add_contextual_note
-
-Add inline context or requirements under a task using plain bullets (no checkbox). Notes are informational and not tracked for completion.
-
-```markdown
-- [ ] Implement payment gateway
-  - Use Stripe API v3
-  - Support credit card and ACH payments
-```
-
-
-## Examples
-
-### Minimal Valid File
-
-```markdown
-# Feature: User Authentication
-
-@id: feature-auth
-@labels: backend, security
-@owner: alice
-
-## Description
-
-Implement secure user authentication using industry-standard practices.
-This includes password hashing with bcrypt and JWT tokens for session management.
-
-## Tasks
-
-- [ ] Implement login endpoint
-  - Use bcrypt with cost factor 12 for password hashing
-  - JWT tokens should expire after 24 hours
-  - [ ] Add password hashing
-  - [ ] Add JWT token generation
-- [ ] Add user registration
-  - Validate email format before storing
-  - Send confirmation email on registration
-- [x] Set up database schema
-```
-
-### File with Dependencies
-
-```markdown
-# Feature: User Profile Page
-
-@id: feature-profile
-@labels: frontend
-@depends-on: backend/auth.md#task:feature-auth
-
-## Tasks
-
-- [ ] Design profile UI
-  - [ ] Create mockups
-  - [ ] Get design approval
-- [ ] Implement profile component
-  - [ ] Fetch user data from API
-  - [ ] Display user information
-- [ ] Add edit functionality
-```
-
-### File with Documentation References
-
-```markdown
-# Feature: Payment Processing
-
-@id: feature-payments
-@labels: backend, billing
-@doc: ../docs/design-doc.md#payment-flow
-@doc: ../docs/pci-compliance.md
-
-## Tasks
-
-- [ ] Implement payment gateway integration
-  @doc: ../docs/stripe-api.md#webhooks
-  - [ ] Set up webhook handlers
-  - [ ] Implement payment intent creation
-- [ ] Add invoice generation
-  @doc: ../docs/invoice-template.md
-- [x] Set up billing database schema
-```
-
-## CLI Quick Reference
+/// Full CLI command reference, grouped by category.
+#[must_use]
+pub fn cli_reference() -> &'static str {
+    "## CLI Quick Reference
 
 ```bash
 # Project Setup
@@ -291,7 +137,13 @@ lash explain <CODE>             # Explain error code (e.g., E001)
 lash explain --list             # List all error codes
 ```
 
-## Safety Guidelines
+"
+}
+
+/// Safety rules: always lint, respect depth limits, keep IDs unique, etc.
+#[must_use]
+pub fn safety_guidelines() -> &'static str {
+    "## Safety Guidelines
 
 When working with Lash files:
 
@@ -314,7 +166,13 @@ For example, the heading ``Pack manifest (`<pack>/SKILL.md`)`` matches the
 fragment `pack-manifest-packskillmd`. Run
 `lash explain W_SEM_DOC_FRAGMENT` for full details.
 
-## Common Issues & Recovery
+"
+}
+
+/// Common error codes with recovery instructions.
+#[must_use]
+pub fn error_recovery() -> &'static str {
+    "## Common Issues & Recovery
 
 ### Lint Errors
 
@@ -342,3 +200,105 @@ If `@depends-on` or `@doc` references are broken:
 lash check-links              # Find broken references
 lash check-links --fix        # Attempt auto-fix
 ```
+
+"
+}
+
+/// Canonical list of top-level Lash subcommands.
+///
+/// Drift-guard tests assert this matches the clap-defined CLI surface, so when
+/// a new subcommand is added the test fails until this list and the relevant
+/// content sections are updated.
+pub const TOP_LEVEL_SUBCOMMANDS: &[&str] = &[
+    "add",
+    "agent-prompt",
+    "check-index",
+    "check-links",
+    "complete",
+    "completion",
+    "config",
+    "explain",
+    "format",
+    "graph",
+    "index",
+    "init",
+    "lint",
+    "list",
+    "playground",
+    "search",
+    "show",
+    "start",
+    "status",
+    "tui",
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overview_mentions_markdown_source_of_truth() {
+        assert!(overview().contains("Markdown"));
+        assert!(overview().contains("SQLite"));
+    }
+
+    #[test]
+    fn project_structure_lists_canonical_paths() {
+        let text = project_structure();
+        assert!(text.contains("tasks/tasks.md"));
+        assert!(text.contains(".lash/lash.db"));
+    }
+
+    #[test]
+    fn workflow_covers_five_phases() {
+        let text = workflow();
+        assert!(text.contains("Discover"));
+        assert!(text.contains("Read"));
+        assert!(text.contains("Modify"));
+        assert!(text.contains("Validate"));
+        assert!(text.contains("Index"));
+    }
+
+    #[test]
+    fn cli_reference_lists_core_commands() {
+        let text = cli_reference();
+        for cmd in &[
+            "lash status",
+            "lash list",
+            "lash lint",
+            "lash index",
+            "lash search",
+            "lash show",
+        ] {
+            assert!(text.contains(cmd), "cli_reference missing: {cmd}");
+        }
+    }
+
+    #[test]
+    fn safety_guidelines_cover_lint_and_depth() {
+        let text = safety_guidelines();
+        assert!(text.contains("lash lint"));
+        assert!(text.contains("depth"));
+        assert!(text.contains("unique IDs"));
+    }
+
+    #[test]
+    fn error_recovery_lists_lint_codes() {
+        let text = error_recovery();
+        for code in &["E001", "E002", "E003", "E004"] {
+            assert!(text.contains(code), "error_recovery missing: {code}");
+        }
+    }
+
+    #[test]
+    fn subcommand_list_is_sorted_and_unique() {
+        let mut sorted = TOP_LEVEL_SUBCOMMANDS.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(
+            sorted.as_slice(),
+            TOP_LEVEL_SUBCOMMANDS,
+            "TOP_LEVEL_SUBCOMMANDS must be sorted and unique"
+        );
+    }
+}
