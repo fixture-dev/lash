@@ -16,8 +16,31 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// identifier (e.g., `design.md#section-7`), the target document contains
 /// a heading that matches the fragment.
 ///
-/// Fragment matching converts hyphens to spaces and performs case-insensitive
-/// comparison against all headings in the target document.
+/// # Heading-Slug Matching Algorithm
+///
+/// Matching is **case-insensitive and punctuation-insensitive**. The fragment
+/// and each heading are reduced to the same canonical form before being
+/// compared:
+///
+/// 1. Lowercase the text.
+/// 2. Replace `-` with a space.
+/// 3. Drop every character that is not alphanumeric or whitespace
+///    (so `<`, `>`, `/`, `.`, `(`, `)`, backticks, underscores, etc.
+///    are stripped — **no word boundary is inserted in their place**).
+/// 4. Collapse runs of whitespace into single spaces.
+///
+/// Examples (heading → an accepted fragment):
+///
+/// - `Section One` → `section-one`
+/// - `1. Three-Runtime Separation` → `1-three-runtime-separation`
+/// - `Validation rules (must pass at index time)` →
+///   `validation-rules-must-pass-at-index-time`
+/// - `` Pack manifest (`<pack>/SKILL.md`) `` → `pack-manifest-packskillmd`
+///   (slashes, dots, and angle brackets collapse to nothing — they do
+///   *not* create a hyphen boundary).
+/// - `` `allowed_tools` vocabulary (launch) `` →
+///   `allowed_tools-vocabulary-launch` (underscores are stripped on both
+///   sides, so writing them or omitting them both work).
 ///
 /// **Code:** `W_SEM_DOC_FRAGMENT`
 /// **Severity:** Warning
@@ -52,6 +75,10 @@ impl BrokenDocFragmentRule {
         // Only validate if there's a fragment
         let fragment = doc.fragment.as_ref()?;
 
+        // Look up where the @doc: line lives in the source file (best-effort).
+        // Falls back to (0, 0) if the source can't be read.
+        let (src_line, src_col) = Self::locate_doc_annotation(ctx, doc);
+
         // Empty fragments are invalid
         if fragment.is_empty() {
             return Some(
@@ -59,8 +86,8 @@ impl BrokenDocFragmentRule {
                     self.code(),
                     format!("Empty fragment identifier in doc reference: '{}'", doc.path),
                     ctx.file_path.clone(),
-                    0,
-                    0,
+                    src_line,
+                    src_col,
                 )
                 .with_help("Remove the '#' or specify a valid heading fragment"),
             );
@@ -87,8 +114,8 @@ impl BrokenDocFragmentRule {
                         doc.path
                     ),
                     ctx.file_path.clone(),
-                    0,
-                    0,
+                    src_line,
+                    src_col,
                 )
                 .with_help("Check file permissions or encoding"),
             );
@@ -106,31 +133,128 @@ impl BrokenDocFragmentRule {
         if found {
             None
         } else {
-            let available_headings = if headings.is_empty() {
-                "No headings found in the document".to_string()
-            } else {
-                format!(
-                    "Available headings: {}",
-                    headings
-                        .iter()
-                        .take(5)
-                        .map(|h| format!("'{h}'"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            };
+            let help = Self::build_help_text(fragment, &headings);
 
             Some(
                 LintDiagnostic::warning(
                     self.code(),
                     format!("Fragment '{}' not found in '{}'", fragment, doc.path),
                     ctx.file_path.clone(),
-                    0,
-                    0,
+                    src_line,
+                    src_col,
                 )
-                .with_help(available_headings),
+                .with_help(help),
             )
         }
+    }
+
+    /// Best-effort lookup of the source line that authored a `@doc:` reference.
+    ///
+    /// The `DocRef` struct doesn't carry its origin line, so we reopen the
+    /// source markdown and scan for an `@doc:` annotation whose value matches
+    /// the reference we're validating. Returns `(line, col)` (1-indexed) when
+    /// the source file is readable; falls back to `(0, 0)` otherwise so the
+    /// caller can still construct a diagnostic.
+    fn locate_doc_annotation(ctx: &LintContext, doc: &DocRef) -> (usize, usize) {
+        let absolute_source = ctx.config.root_path.join(&ctx.file_path);
+        let Ok(content) = fs::read_to_string(&absolute_source) else {
+            return (0, 0);
+        };
+
+        let target = doc
+            .fragment
+            .as_ref()
+            .map_or_else(|| doc.path.clone(), |frag| format!("{}#{frag}", doc.path));
+
+        for (idx, line) in content.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if !trimmed.starts_with("@doc:") {
+                continue;
+            }
+            let value = trimmed.trim_start_matches("@doc:").trim();
+            if value == target {
+                let col = line.find('@').unwrap_or(0).saturating_add(1);
+                return (idx.saturating_add(1), col);
+            }
+        }
+
+        (0, 0)
+    }
+
+    /// Build the `help:` text shown alongside a `W_SEM_DOC_FRAGMENT` warning.
+    ///
+    /// Always lists available headings so the author can pick the right slug.
+    /// When a close match is found by normalized-form comparison, it is
+    /// surfaced first as a `did you mean:` suggestion.
+    fn build_help_text(fragment: &str, headings: &[String]) -> String {
+        if headings.is_empty() {
+            return "No headings found in the document".to_string();
+        }
+
+        let suggestion = Self::closest_heading_slug(fragment, headings);
+
+        let listed: String = headings
+            .iter()
+            .take(8)
+            .map(|h| format!("'{}' (#{})", h, Self::canonical_slug(h)))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        match suggestion {
+            Some(slug) => format!("did you mean: '{slug}'? Available headings: {listed}"),
+            None => format!("Available headings: {listed}"),
+        }
+    }
+
+    /// Suggest the slug of the heading whose normalized form is closest to
+    /// the supplied (mis-typed) fragment.
+    ///
+    /// We score each heading two ways and take the lowest:
+    /// - **Substring score:** 0 if the normalized fragment is a substring of
+    ///   the normalized heading (or vice versa). Catches "user typed a prefix
+    ///   of the real slug" — by far the most common authoring mistake.
+    /// - **Edit-distance score:** Levenshtein distance otherwise.
+    ///
+    /// We then only suggest if the score is below a loose threshold (half the
+    /// shorter string's length, minimum 3) so we stay silent when the user is
+    /// just lost instead of mistyping.
+    fn closest_heading_slug(fragment: &str, headings: &[String]) -> Option<String> {
+        let normalized_fragment = Self::normalize_fragment(fragment);
+        if normalized_fragment.is_empty() {
+            return None;
+        }
+
+        let scored: Vec<(&String, usize)> = headings
+            .iter()
+            .map(|h| {
+                let normalized = Self::normalize_heading(h);
+                let score = if normalized.contains(&normalized_fragment)
+                    || normalized_fragment.contains(&normalized)
+                {
+                    0
+                } else {
+                    levenshtein(&normalized_fragment, &normalized)
+                };
+                (h, score)
+            })
+            .collect();
+
+        let (best_heading, best_score) = scored.into_iter().min_by_key(|(_, s)| *s)?;
+
+        let threshold = normalized_fragment.len().clamp(3, 8);
+        if best_score <= threshold {
+            Some(Self::canonical_slug(best_heading))
+        } else {
+            None
+        }
+    }
+
+    /// Produce the canonical (dash-separated) slug recommendation for a
+    /// heading. This is the form most users expect to write as a fragment
+    /// (lowercase, hyphenated, punctuation stripped without word
+    /// boundaries — exactly matching the normalize-and-compare algorithm).
+    fn canonical_slug(heading: &str) -> String {
+        Self::normalize_for_matching(heading).replace(' ', "-")
     }
 
     /// Extract all headings from markdown content
@@ -215,6 +339,36 @@ impl Default for BrokenDocFragmentRule {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Standard Levenshtein edit distance between two strings.
+///
+/// Used to score "did you mean?" suggestions against the misspelled fragment.
+/// Kept private to this rule because no other rule currently needs it.
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+
+    if a.is_empty() {
+        return b.len();
+    }
+    if b.is_empty() {
+        return a.len();
+    }
+
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut curr = vec![0usize; b.len() + 1];
+
+    for (i, &ac) in a.iter().enumerate() {
+        curr[0] = i + 1;
+        for (j, &bc) in b.iter().enumerate() {
+            let cost = usize::from(ac != bc);
+            curr[j + 1] = (curr[j] + 1).min(prev[j + 1] + 1).min(prev[j] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[b.len()]
 }
 
 impl LintRule for BrokenDocFragmentRule {
@@ -740,6 +894,127 @@ Regular paragraph.
             ),
             "core components rust cratesmodules inside one workspace"
         );
+    }
+
+    #[test]
+    fn test_locate_doc_annotation_reports_line() {
+        // The diagnostic should point at the actual @doc: line, not :0:0.
+        let temp_dir = TempDir::new().unwrap();
+        let config = make_config_with_root(temp_dir.path().to_path_buf());
+
+        // Create a target doc with a known heading.
+        fs::write(temp_dir.path().join("guide.md"), "# Guide\n\n## Setup\n").unwrap();
+
+        // Create a source task file whose @doc: annotation is on a specific line.
+        let source_rel = PathBuf::from("tasks.md");
+        let source_abs = temp_dir.path().join(&source_rel);
+        let source_content = "# Tasks\n\
+                              \n\
+                              ## Tasks\n\
+                              \n\
+                              - [ ] Do the thing\n  \
+                              @id: thing\n  \
+                              @doc: guide.md#nonexistent\n\
+                              ";
+        fs::write(&source_abs, source_content).unwrap();
+
+        let files = HashMap::new();
+        let ctx = make_context_with_config(&config, source_rel, &files);
+
+        let rule = BrokenDocFragmentRule::new();
+        let doc = DocRef::new("guide.md", Some("nonexistent".to_string()));
+
+        let diag = rule.validate_fragment(&doc, &ctx).expect("expected diag");
+        // Line 7 in the source file contains the `@doc:` annotation.
+        assert_eq!(
+            diag.location.line,
+            Some(7),
+            "should report the @doc: line, got {:?}",
+            diag.location.line
+        );
+        assert!(
+            diag.location.column.unwrap_or(0) > 0,
+            "should report a non-zero column for the @ sign"
+        );
+    }
+
+    #[test]
+    fn test_locate_doc_annotation_falls_back_when_unreadable() {
+        // If the source file isn't readable (e.g., it doesn't exist on disk
+        // because we're only working with in-memory test data), the warning
+        // still fires with line/col of 0 — never a panic.
+        let temp_dir = TempDir::new().unwrap();
+        let config = make_config_with_root(temp_dir.path().to_path_buf());
+
+        fs::write(temp_dir.path().join("guide.md"), "# Guide\n\n## Setup\n").unwrap();
+
+        let files = HashMap::new();
+        // Note: tasks.md is *not* created on disk.
+        let ctx = make_context_with_config(&config, PathBuf::from("tasks.md"), &files);
+
+        let rule = BrokenDocFragmentRule::new();
+        let doc = DocRef::new("guide.md", Some("nonexistent".to_string()));
+
+        let diag = rule.validate_fragment(&doc, &ctx).expect("expected diag");
+        assert_eq!(diag.location.line, Some(0));
+        assert_eq!(diag.location.column, Some(0));
+    }
+
+    #[test]
+    fn test_help_suggests_close_match() {
+        // For a near-miss slug, the help should propose a concrete "did you
+        // mean?" alternative.
+        let temp_dir = TempDir::new().unwrap();
+        let config = make_config_with_root(temp_dir.path().to_path_buf());
+
+        fs::write(
+            temp_dir.path().join("design.md"),
+            "# Design\n\n## Validation rules (must pass at index time)\n",
+        )
+        .unwrap();
+
+        let files = HashMap::new();
+        let ctx = make_context_with_config(&config, PathBuf::from("test.md"), &files);
+
+        let rule = BrokenDocFragmentRule::new();
+        // A typo close to the real slug: missing "-must-pass-..."
+        let doc = DocRef::new("design.md", Some("validation-rules".to_string()));
+
+        let diag = rule.validate_fragment(&doc, &ctx).expect("expected diag");
+        let help = diag.help.as_deref().unwrap_or_default();
+        assert!(
+            help.contains("did you mean"),
+            "help should suggest a close match, got: {help}"
+        );
+        assert!(
+            help.contains("validation-rules-must-pass-at-index-time"),
+            "help should suggest the canonical slug, got: {help}"
+        );
+    }
+
+    #[test]
+    fn test_canonical_slug_format() {
+        assert_eq!(
+            BrokenDocFragmentRule::canonical_slug("Pack manifest (`<pack>/SKILL.md`)"),
+            "pack-manifest-packskillmd"
+        );
+        assert_eq!(
+            BrokenDocFragmentRule::canonical_slug("Validation rules (must pass at index time)"),
+            "validation-rules-must-pass-at-index-time"
+        );
+        assert_eq!(
+            BrokenDocFragmentRule::canonical_slug("`allowed_tools` vocabulary (launch)"),
+            "allowedtools-vocabulary-launch"
+        );
+    }
+
+    #[test]
+    fn test_levenshtein_basic() {
+        assert_eq!(levenshtein("", ""), 0);
+        assert_eq!(levenshtein("kitten", "sitting"), 3);
+        assert_eq!(levenshtein("abc", "abc"), 0);
+        assert_eq!(levenshtein("abc", ""), 3);
+        assert_eq!(levenshtein("", "abc"), 3);
     }
 
     #[test]

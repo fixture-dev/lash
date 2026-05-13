@@ -142,7 +142,7 @@ impl<'a> AsciiGraphRenderer<'a> {
     fn get_terminal_width(&self) -> u16 {
         self.config
             .terminal_width
-            .unwrap_or_else(|| terminal::size().map(|(w, _)| w).unwrap_or(80))
+            .unwrap_or_else(|| terminal::size().map_or(80, |(w, _)| w))
     }
 
     /// Calculate maximum displayable depth based on terminal width

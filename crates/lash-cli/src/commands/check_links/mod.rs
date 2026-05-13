@@ -82,7 +82,15 @@ pub fn execute(args: &CheckLinksArgs) -> Result<i32> {
     }
 
     // Find all broken links
-    let report = core::find_broken_links(&db_path).context("Failed to find broken links")?;
+    let mut report = core::find_broken_links(&db_path).context("Failed to find broken links")?;
+
+    // Additionally scan for broken @doc: fragment references. These are
+    // semantic warnings raised by `lash lint`, but `check-links` is the
+    // natural canonical "are my references intact?" command, so it would be
+    // misleading to pass while @doc: fragments are unresolved.
+    let broken_doc_fragments = core::find_broken_doc_fragments(&project_root);
+    report.total_broken += broken_doc_fragments.len();
+    report.broken_doc_fragments = broken_doc_fragments;
 
     // If no broken links, report success and exit
     if report.total_broken == 0 {
@@ -448,6 +456,7 @@ mod tests {
         let report = core::BrokenLinksReport {
             total_broken: 0,
             by_file: vec![],
+            broken_doc_fragments: vec![],
         };
         // The condition `report.total_broken == 0` determines the early success return
         assert_eq!(report.total_broken, 0);
@@ -458,6 +467,7 @@ mod tests {
         let report = core::BrokenLinksReport {
             total_broken: 1,
             by_file: vec![],
+            broken_doc_fragments: vec![],
         };
         // total_broken != 0, so execute would continue past the early return
         assert_ne!(report.total_broken, 0);

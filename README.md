@@ -284,6 +284,37 @@ lash graph [--scope file.md] [--hide-completed]
 lash check-links [--fix] [--dry-run]
 ```
 
+### Heading-Slug Matching for `@doc:` Fragments
+
+When a task references a documentation fragment with
+`@doc: path/to/file.md#fragment`, Lash matches `fragment` against the headings
+of the target document using **case-insensitive, punctuation-insensitive**
+normalization. The fragment and each heading are both reduced to a canonical
+form before comparison:
+
+1. Lowercase the text.
+2. Replace `-` with a space.
+3. Drop every character that is not alphanumeric or whitespace
+   (so `<`, `>`, `/`, `.`, `(`, `)`, backticks, and `_` are all stripped —
+    **no word boundary is inserted**).
+4. Collapse runs of whitespace into single spaces.
+
+Examples:
+
+| Heading                                                     | Matching fragment                                              |
+|-------------------------------------------------------------|----------------------------------------------------------------|
+| `## Section One`                                            | `section-one`                                                  |
+| `## 1. Three-Runtime Separation`                            | `1-three-runtime-separation`                                   |
+| `## Validation rules (must pass at index time)`             | `validation-rules-must-pass-at-index-time`                     |
+| `` ### Pack manifest (`<pack>/SKILL.md`) ``                 | `pack-manifest-packskillmd` *(slashes/dots/angle brackets collapse to nothing)* |
+| `` ### `allowed_tools` vocabulary (launch) ``               | `allowed_tools-vocabulary-launch` *(underscores match anything or nothing)* |
+
+The matcher is symmetric: any fragment that normalizes to the same canonical
+form as the heading will match. `lash lint` raises `W_SEM_DOC_FRAGMENT` when no
+heading in the target file matches the fragment, and the warning message lists
+the headings that do exist so you can pick the right one. Run
+`lash explain W_SEM_DOC_FRAGMENT` for the long-form explanation.
+
 ### Agent Integration
 
 ```bash

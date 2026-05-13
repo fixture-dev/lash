@@ -502,8 +502,7 @@ impl<'conn> IndexVerifier<'conn> {
                 // Only report as missing if it's a valid task file (has ## Tasks section or is index file)
                 // Non-task markdown files (like README.md) are intentionally not indexed
                 let is_valid = std::fs::read_to_string(&fs_file.absolute_path)
-                    .map(|content| is_valid_task_file(&fs_file.relative_path, &content))
-                    .unwrap_or(false);
+                    .is_ok_and(|content| is_valid_task_file(&fs_file.relative_path, &content));
 
                 if is_valid {
                     report

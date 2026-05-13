@@ -299,6 +299,7 @@ fn run(cli: LashCli) -> Result<()> {
             docs,
             show_descriptions,
             show_notes,
+            limit,
             format,
         } => {
             // Convert status to lash_types::TaskStatus
@@ -342,6 +343,7 @@ fn run(cli: LashCli) -> Result<()> {
                 docs,
                 show_descriptions,
                 show_notes,
+                limit,
                 format: output_format,
                 project_root,
                 theme: theme.clone(),
@@ -588,10 +590,15 @@ fn run(cli: LashCli) -> Result<()> {
             process::exit(exit_code);
         }
 
-        Commands::Complete { task_ids, dry_run } => {
+        Commands::Complete {
+            task_ids,
+            dry_run,
+            cascade,
+        } => {
             let args = commands::complete::CompleteArgs {
                 task_ids,
                 dry_run,
+                cascade,
                 json: cli.json,
                 no_color: cli.no_color,
                 project_root,

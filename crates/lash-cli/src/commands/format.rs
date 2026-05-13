@@ -2569,8 +2569,7 @@ mod tests {
         let git_available = std::process::Command::new("git")
             .arg("--version")
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+            .is_ok_and(|o| o.status.success());
         if !git_available {
             return;
         }

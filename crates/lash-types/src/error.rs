@@ -1158,6 +1158,8 @@ pub mod codes {
     pub const E_LINT_BAD_INDENTATION: &str = "E_LINT_BAD_INDENTATION";
     /// Invalid label format
     pub const E_LINT_INVALID_LABEL: &str = "E_LINT_INVALID_LABEL";
+    /// `@doc:` fragment does not match any heading in the target document
+    pub const W_SEM_DOC_FRAGMENT: &str = "W_SEM_DOC_FRAGMENT";
 
     // Dependency errors (E_DEP_*)
     /// Dependency target not found

@@ -127,7 +127,7 @@ impl FixApplicator {
 
         // Sort by position in reverse order (end to start)
         // This way, applying a fix doesn't affect positions of earlier fixes
-        positioned_fixes.sort_by(|a, b| b.0.cmp(&a.0));
+        positioned_fixes.sort_by_key(|entry| std::cmp::Reverse(entry.0));
 
         // Track regions we've modified to detect overlaps
         let mut modified_regions: Vec<(usize, usize)> = Vec::new();
