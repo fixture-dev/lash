@@ -280,6 +280,11 @@ fn run_list(ctx: &RunCtx) -> i32 {
         }
     }
 
+    // Codex and AgentsMd share a generator and produce the same file; dedupe so
+    // a single install only surfaces once. The first-encountered target wins.
+    let mut seen = std::collections::HashSet::new();
+    entries.retain(|(_, _, _, marker)| seen.insert(marker.clone()));
+
     if ctx.json {
         let payload: Vec<_> = entries
             .iter()
