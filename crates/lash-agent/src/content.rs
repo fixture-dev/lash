@@ -130,6 +130,7 @@ lash check-links --fix          # Auto-fix broken references
 
 # Agent Integration & Config
 lash agent-prompt               # Generate context-minimized prompt for current project
+lash skill install --target T   # Install Lash skill into a coding agent (claude/codex/cursor/agents-md)
 lash config <SUBCOMMAND>        # Manage configuration (get, set, list, path)
 
 # Error Help
@@ -204,6 +205,102 @@ lash check-links --fix        # Attempt auto-fix
 "
 }
 
+/// One-line description for use in skill frontmatter or trigger phrases.
+///
+/// Phrased so an agent reading it can decide whether Lash is relevant to the
+/// current task. Kept short (under ~280 characters) so it survives any
+/// truncation the host imposes on skill index summaries.
+#[must_use]
+pub fn when_to_use() -> &'static str {
+    "Use Lash for task management — a fast Markdown-native task tracker with hierarchical checkboxes, labels, and dependencies. Trigger when the project has tasks/ or .lash/ directories, or when the user asks to create, list, find, complete, or update tasks."
+}
+
+/// Top hot commands for inclusion in SKILL.md / one-page references.
+///
+/// These cover roughly the 90% case: discovery, search, modification, and
+/// validation. Less common commands live in [`cli_reference`].
+#[must_use]
+pub fn hot_commands() -> &'static str {
+    "```bash
+lash status                  # quick overview of in-progress/blocked
+lash list --status open      # list open tasks (--label, --tree, --path)
+lash search <query>          # full-text search across tasks
+lash show <id>               # task details + dependencies
+lash add <description>       # create a new task
+lash complete <id>           # mark task done (--cascade for children)
+lash lint <path>             # validate after every edit
+lash agent-prompt            # get project-specific live context
+```
+"
+}
+
+/// Reference content for cross-file dependencies, `@doc` links, and slugs.
+///
+/// Used as a standalone reference file in progressive-disclosure skill layouts.
+#[must_use]
+pub fn dependencies_reference() -> &'static str {
+    "# Dependencies & Documentation References
+
+Lash supports two ways of linking tasks and files together: explicit
+dependencies that block completion, and documentation references that
+provide context without affecting status.
+
+## `@depends-on` — Hard Dependencies
+
+A task or file cannot be considered complete until every task it depends on
+is `done` or `waived`.
+
+```markdown
+- [ ] Build payment processor
+  @id: payment.processor
+  @depends-on: features/auth.md#task:auth.session
+```
+
+Forms:
+- `path/to/file.md` — depend on the entire file
+- `path/to/file.md#task:<id>` — depend on a specific task
+- `#task:<id>` — depend on a task in the same file
+
+Validate references with `lash check-links`. Auto-fix typos in references
+with `lash check-links --fix`.
+
+## `@doc:` — Documentation References
+
+Soft, informational links to documentation. They never affect task status,
+but the linter validates the target exists and the optional fragment
+matches a heading.
+
+```markdown
+- [ ] Implement OAuth flow
+  @id: auth.oauth
+  @doc: ../docs/auth-spec.md#oauth-flow
+```
+
+### Fragment Slug Matching
+
+Fragment slugs are matched against headings with case- and
+punctuation-insensitive normalization: lowercase, treat `-` as a word
+separator, drop everything that isn't alphanumeric or whitespace (without
+introducing a hyphen for the dropped chars).
+
+Example: the heading ``Pack manifest (`<pack>/SKILL.md`)`` matches the
+fragment `pack-manifest-packskillmd`. Run `lash explain
+W_SEM_DOC_FRAGMENT` for the canonical algorithm.
+
+## Implicit Hierarchy
+
+Parent directories implicitly depend on the task files inside them. A
+folder of features is not complete until every file in the folder is
+done — no annotation needed.
+
+## Cycle Detection
+
+`lash index` and `lash graph` will reject circular dependencies with a
+clear error (`E_DEP_CYCLE`). If you hit a cycle, restructure the
+dependency direction or split a task.
+"
+}
+
 /// Canonical list of top-level Lash subcommands.
 ///
 /// Drift-guard tests assert this matches the clap-defined CLI surface, so when
@@ -227,6 +324,7 @@ pub const TOP_LEVEL_SUBCOMMANDS: &[&str] = &[
     "playground",
     "search",
     "show",
+    "skill",
     "start",
     "status",
     "tui",
@@ -288,6 +386,42 @@ mod tests {
         for code in &["E001", "E002", "E003", "E004"] {
             assert!(text.contains(code), "error_recovery missing: {code}");
         }
+    }
+
+    #[test]
+    fn when_to_use_is_short_enough_for_skill_frontmatter() {
+        let text = when_to_use();
+        assert!(
+            text.len() <= 280,
+            "when_to_use() too long for safe skill frontmatter use: {} chars",
+            text.len()
+        );
+        assert!(text.contains("Lash"));
+    }
+
+    #[test]
+    fn hot_commands_lists_top_workflow_commands() {
+        let text = hot_commands();
+        for cmd in &[
+            "lash status",
+            "lash list",
+            "lash search",
+            "lash show",
+            "lash add",
+            "lash complete",
+            "lash lint",
+            "lash agent-prompt",
+        ] {
+            assert!(text.contains(cmd), "hot_commands missing: {cmd}");
+        }
+    }
+
+    #[test]
+    fn dependencies_reference_covers_depends_on_and_doc() {
+        let text = dependencies_reference();
+        assert!(text.contains("@depends-on"));
+        assert!(text.contains("@doc"));
+        assert!(text.contains("Fragment Slug"));
     }
 
     #[test]
