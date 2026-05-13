@@ -899,14 +899,11 @@ lash check-links --fix --dry-run
 Generate context-minimized prompts for AI agents.
 
 ```bash
-# Plain text format
+# Plain text format (dynamic, project-specific)
 lash agent-prompt
 
 # JSON format
 lash agent-prompt --format json
-
-# Claude Code skill format
-lash agent-prompt --format claude-skill
 
 # Agents.md format
 lash agent-prompt --format agents-md
@@ -922,10 +919,16 @@ lash agent-prompt --include-descriptions
 
 # Include contextual notes
 lash agent-prompt --include-notes
+
+# Install a static skill into a coding agent's conventional directory
+lash skill install --target claude          # Claude Code (SKILL.md + references/)
+lash skill install --target codex           # Codex / AGENTS.md hosts
+lash skill install --target cursor          # Cursor IDE rules
+lash skill install --target agents-md       # generic AGENTS.lash.md sibling
 ```
 
 **Options:**
-- `--format FORMAT` - Output format: plain, json, claude-skill, agents-md (default: plain)
+- `--format FORMAT` - Output format: plain, json, agents-md (default: plain)
 - `--label TAG` - Filter by label (repeatable)
 - `--max-tokens N` - Token budget limit
 - `--include-descriptions` - Include file descriptions
@@ -937,6 +940,8 @@ lash agent-prompt --include-notes
 - Generate instructions for Claude Code or other AI coding assistants
 - Create context for LLM-based automation
 - Export task subset for agent workflows
+- Use `lash skill install` for one-time setup; use `lash agent-prompt` for
+  live, per-request context
 
 ### Configuration
 

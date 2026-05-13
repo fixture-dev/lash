@@ -83,7 +83,6 @@ pub fn execute(args: &AgentPromptArgs) -> Result<i32> {
     let prompt_format = match args.format {
         AgentFormat::Plain => AgentPromptFormat::Plain,
         AgentFormat::Json => AgentPromptFormat::Json,
-        AgentFormat::ClaudeSkill => AgentPromptFormat::ClaudeSkill,
         AgentFormat::AgentsMd => AgentPromptFormat::AgentsMd,
     };
 
@@ -336,18 +335,12 @@ mod tests {
     #[test]
     fn test_format_conversion() {
         // Test that we can convert CLI formats to agent library formats
-        let cli_formats = vec![
-            AgentFormat::Plain,
-            AgentFormat::Json,
-            AgentFormat::ClaudeSkill,
-            AgentFormat::AgentsMd,
-        ];
+        let cli_formats = vec![AgentFormat::Plain, AgentFormat::Json, AgentFormat::AgentsMd];
 
         for format in cli_formats {
             let _agent_format = match format {
                 AgentFormat::Plain => AgentPromptFormat::Plain,
                 AgentFormat::Json => AgentPromptFormat::Json,
-                AgentFormat::ClaudeSkill => AgentPromptFormat::ClaudeSkill,
                 AgentFormat::AgentsMd => AgentPromptFormat::AgentsMd,
             };
             // No panic means conversion works

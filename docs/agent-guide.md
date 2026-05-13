@@ -56,8 +56,13 @@ This generates:
 **Output formats:**
 - `--format plain`: Human-readable Markdown (default)
 - `--format json`: Structured JSON with schema and tasks
-- `--format claude-skill`: Claude Code skill specification
 - `--format agents-md`: Ready-to-paste fragment for AGENTS.md
+
+> To install a static Lash skill into a coding-agent's skills directory
+> (Claude Code's `.claude/skills/`, Cursor's `.cursor/rules/`, or an
+> `AGENTS.lash.md` sibling for Codex / generic AGENTS.md hosts), use
+> `lash skill install --target <claude|codex|cursor|agents-md>` instead —
+> see the user guide for details.
 
 ### Understanding the File Format
 

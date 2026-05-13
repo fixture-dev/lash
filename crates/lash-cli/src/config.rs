@@ -418,9 +418,10 @@ impl Config {
 
         // Validate agent format
         match self.agent.default_format.as_str() {
-            "plain" | "json" | "claude-skill" | "agents-md" => {}
+            "plain" | "json" | "agents-md" => {}
             _ => anyhow::bail!(
-                "Invalid agent format: '{}'. Must be one of: plain, json, claude-skill, agents-md",
+                "Invalid agent format: '{}'. Must be one of: plain, json, agents-md. \
+                 (The 'claude-skill' format was removed; use `lash skill install --target claude` instead.)",
                 self.agent.default_format
             ),
         }

@@ -495,7 +495,8 @@ The linter enforces:
 
 **5. Agent Prompt Generation**
 
-* `lash agent-prompt --format=plain|json|claude-skill|agents-md [OPTIONS]`
+* `lash agent-prompt --format=plain|json|agents-md [OPTIONS]`
+* `lash skill install --target=claude|codex|cursor|agents-md [--scope=project|user]`
 
   * Generate text that explains:
 

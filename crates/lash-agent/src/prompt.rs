@@ -203,8 +203,6 @@ pub enum PromptFormat {
     Plain,
     /// JSON structured format
     Json,
-    /// Claude Code skill specification
-    ClaudeSkill,
     /// Ready-to-paste Markdown fragment for agents.md files
     AgentsMd,
 }
@@ -379,7 +377,6 @@ impl PromptBuilder {
         match self.config.format {
             PromptFormat::Plain => self.build_plain(),
             PromptFormat::Json => self.build_json(),
-            PromptFormat::ClaudeSkill => self.build_claude_skill(),
             PromptFormat::AgentsMd => self.build_agents_md(),
         }
     }
@@ -583,54 +580,6 @@ impl PromptBuilder {
         }
     }
 
-    fn build_claude_skill(mut self) -> AgentPrompt {
-        // Suppress clippy warning - we consume self for consistency with other methods
-        self.task_summaries.clear();
-        // Placeholder for Claude Code skill format
-        // This would be a JSON/YAML spec defining skill commands
-        let skill_spec = serde_json::json!({
-            "name": "lash",
-            "version": "1.0",
-            "description": "Lash task tracker integration",
-            "commands": [
-                {
-                    "name": "lint",
-                    "description": "Validate task files",
-                    "usage": "lash lint [paths...]"
-                },
-                {
-                    "name": "index",
-                    "description": "Update search index",
-                    "usage": "lash index"
-                },
-                {
-                    "name": "list",
-                    "description": "List tasks with filters",
-                    "usage": "lash list [--label <label>] [--status <status>]"
-                },
-                {
-                    "name": "search",
-                    "description": "Search tasks and files",
-                    "usage": "lash search <query>"
-                }
-            ],
-            "file_format": {
-                "description": "Markdown with hierarchical checkboxes and annotations",
-                "example": generate_minimal_example(),
-            }
-        });
-
-        let content =
-            serde_json::to_string_pretty(&skill_spec).unwrap_or_else(|_| "{}".to_string());
-        let token_count = estimate_tokens(&content);
-
-        AgentPrompt {
-            content,
-            token_count,
-            truncated: false,
-        }
-    }
-
     fn build_agents_md(mut self) -> AgentPrompt {
         // Suppress clippy warning - we consume self for consistency with other methods
         self.task_summaries.clear();
@@ -759,22 +708,6 @@ mod tests {
         assert!(prompt.token_count > 0);
         assert!(prompt.content.contains("\"format\": \"lash-agent-prompt\""));
         assert!(prompt.content.contains("\"schema\""));
-
-        // Verify it's valid JSON
-        let _parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
-    }
-
-    #[test]
-    fn test_prompt_builder_claude_skill() {
-        let config = PromptConfig {
-            format: PromptFormat::ClaudeSkill,
-            ..Default::default()
-        };
-        let builder = PromptBuilder::new(config);
-        let prompt = builder.build();
-
-        assert!(prompt.content.contains("\"name\": \"lash\""));
-        assert!(prompt.content.contains("\"commands\""));
 
         // Verify it's valid JSON
         let _parsed: serde_json::Value = serde_json::from_str(&prompt.content).unwrap();
@@ -1335,21 +1268,6 @@ mod tests {
         assert!(
             !prompt.truncated,
             "build_json must always produce truncated=false"
-        );
-    }
-
-    #[test]
-    fn test_build_claude_skill_truncated_is_false() {
-        // Kills mut-000084 (false→true for truncated in build_claude_skill):
-        let config = PromptConfig {
-            format: PromptFormat::ClaudeSkill,
-            ..Default::default()
-        };
-        let builder = PromptBuilder::new(config);
-        let prompt = builder.build();
-        assert!(
-            !prompt.truncated,
-            "build_claude_skill must always produce truncated=false"
         );
     }
 

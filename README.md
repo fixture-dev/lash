@@ -318,10 +318,16 @@ the headings that do exist so you can pick the right one. Run
 ### Agent Integration
 
 ```bash
-# Generate agent prompt for LLMs
-lash agent-prompt [--format plain|json|claude-skill|agents-md]
+# Generate live, project-specific prompt for LLMs (dynamic context on demand)
+lash agent-prompt [--format plain|json|agents-md]
 lash agent-prompt [--label backend] [--max-tokens 4000]
 lash agent-prompt [--include-descriptions] [--include-notes]
+
+# Install a static Lash skill into a coding agent's conventional directory
+lash skill install --target claude|codex|cursor|agents-md [--scope project|user]
+lash skill list                        # show installed skills
+lash skill update --target claude      # refresh after upgrading lash
+lash skill uninstall --target claude
 ```
 
 ### User Interface

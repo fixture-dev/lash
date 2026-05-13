@@ -428,9 +428,9 @@ Task already complete:
    lash agent-prompt --format json > context.json
    ```
 
-5. **Generate Claude Code skill spec**:
+5. **Install Claude Code skill** (progressive-disclosure SKILL.md + references):
    ```bash
-   lash agent-prompt --format claude-skill
+   lash skill install --target claude
    ```
 
 ## Safety Guidelines
@@ -732,16 +732,18 @@ Use for:
 
 ### Claude Code Skill
 
-Skill specification format:
+Install a progressive-disclosure skill (SKILL.md + on-demand `references/`)
+into the project's `.claude/skills/lash/` directory:
 
 ```bash
-lash agent-prompt --format claude-skill
+lash skill install --target claude
 ```
 
 Use for:
-- Claude Code skill definitions
-- Tool configuration
-- Command reference
+- Wiring Lash into a Claude Code project once, vs. piping `agent-prompt`
+  output every invocation
+- Letting Claude load only the sub-document relevant to the current task
+- Other targets: `--target codex`, `--target cursor`, `--target agents-md`
 
 ### Agents.md Fragment
 
