@@ -3,142 +3,12 @@
 //! This module provides the core prompt building functionality that combines
 //! schema, examples, and task context into agent-friendly prompts.
 
+use crate::content;
 use crate::schema::{
     generate_dependency_example, generate_doc_reference_example, generate_minimal_example,
     generate_schema_text,
 };
 use crate::tokens::{distribute_budget, estimate_tokens, truncate_to_budget};
-
-/// Generate CLI commands reference text
-fn generate_cli_commands_text() -> String {
-    r"## CLI Quick Reference
-
-```bash
-# Discovery & Navigation
-lash status                    # Show project status summary (in-progress, blocked, recent)
-lash status --compact          # Minimal output for agents
-lash list                      # List all tasks
-lash list --tree               # Show task hierarchy
-lash list --label backend      # Filter by label
-lash list --status open        # Filter by status (open, done, blocked, waived)
-lash search <QUERY>            # Full-text search tasks and descriptions
-lash show <ID>                 # Show task/file details with dependencies
-
-# Validation & Formatting
-lash lint [PATH...]            # Validate task files (run after every edit!)
-lash lint --fix                # Auto-fix some lint errors
-lash format [PATH...]          # Normalize formatting
-
-# Indexing
-lash index                     # Update SQLite index after changes
-lash check-index               # Verify database consistency
-
-# Dependencies & Links
-lash graph                     # Show dependency graph (ascii)
-lash graph --format dot        # Export as DOT/Graphviz
-lash check-links               # Find broken references
-lash check-links --fix         # Auto-fix broken references
-
-# Error Help
-lash explain <CODE>            # Explain error code (e.g., E001)
-lash explain --list            # List all error codes
-```
-
-"
-    .to_string()
-}
-
-/// Generate workflow guidance text
-fn generate_workflow_text() -> String {
-    r#"## Recommended Workflow
-
-When working with Lash task files, follow this workflow for consistent results:
-
-1. **Discover** - Understand the project structure first
-   ```bash
-   lash status                   # Get quick overview of current work
-   lash list --tree              # See task hierarchy
-   lash search "relevant term"   # Find related tasks
-   ```
-
-2. **Read** - Open and understand the file before editing
-   - Check existing task structure and annotations
-   - Note the file's `@id`, `@labels`, and dependencies
-   - Review contextual notes for requirements
-
-3. **Modify** - Make your changes following the format specification
-   - Add tasks with proper checkbox syntax: `- [ ] Task description`
-   - Use 2-space indentation for subtasks
-   - Add contextual notes (plain bullets) for requirements
-
-4. **Validate** - Always lint after editing
-   ```bash
-   lash lint path/to/file.md    # Validate immediately after changes
-   ```
-
-5. **Index** - Update the database
-   ```bash
-   lash index                    # Rebuild index to reflect changes
-   ```
-
-"#
-    .to_string()
-}
-
-/// Generate error recovery guidance text
-fn generate_error_recovery_text() -> String {
-    r"## Common Issues & Recovery
-
-### Lint Errors
-
-| Code | Issue | Fix |
-|------|-------|-----|
-| E001 | Duplicate task ID | Ensure `@id` values are unique within each file |
-| E002 | Invalid dependency | Verify `@depends-on` target file and task exist |
-| E003 | Max depth exceeded | Flatten hierarchy (max 3-4 levels) |
-| E004 | Invalid status | Use valid checkbox: `[ ]`, `[x]`, `[-]`, `[!]` |
-
-Run `lash explain <CODE>` for detailed explanations.
-
-### Index Out of Sync
-
-If search results seem stale or incorrect:
-```bash
-lash index --force    # Force full reindex
-lash check-index      # Verify consistency
-```
-
-### Broken References
-
-If `@depends-on` or `@doc` references are broken:
-```bash
-lash check-links              # Find broken references
-lash check-links --fix        # Attempt auto-fix
-```
-
-"
-    .to_string()
-}
-
-/// Generate project structure guidance text
-fn generate_project_structure_text() -> String {
-    r"## Project Structure
-
-Lash projects follow these conventions:
-
-- **Index file**: `tasks/tasks.md` or `lash.index.md` at project root
-- **Task files**: Usually under `tasks/` directory
-- **Database**: `.lash/lash.db` (auto-generated, gitignore this)
-- **Config**: `.lash/config.toml` or `~/.lash/config.toml`
-
-To find the project structure:
-```bash
-lash list --tree    # Shows all task files and hierarchy
-```
-
-"
-    .to_string()
-}
 
 /// A documentation reference for inclusion in agent prompts
 ///
@@ -516,38 +386,21 @@ impl PromptBuilder {
 
     #[allow(clippy::too_many_lines)]
     fn build_plain(self) -> AgentPrompt {
-        let mut sections = Vec::new();
-
-        // Header
-        sections.push((
-            "header",
-            "# Lash Agent Usage Guide\n\n".to_string(),
-            10, // priority
-        ));
-
-        // Overview
-        let overview = r"## Overview
-
-Lash is a minimalist, Markdown-native task tracker where:
-- Markdown files are the single source of truth
-- Tasks are hierarchical checkbox lists with annotations
-- Directory structure provides implicit hierarchy (parent directories depend on children)
-- SQLite provides fast indexing and search (fully reconstructible from Markdown)
-- Format is strictly enforced by linting for predictability
-
-"
-        .to_string();
-        sections.push(("overview", overview, 10));
-
-        // Workflow guidance (high priority - agents need this)
-        sections.push(("workflow", generate_workflow_text(), 10));
-
-        // Project structure guidance
-        sections.push(("project_structure", generate_project_structure_text(), 9));
-
-        // Schema
+        // Fixed sections in render order, paired with priority for budget allocation.
+        // Conditional sections (examples, sparse context, task summaries) are appended
+        // below.
         let schema_text = generate_schema_text();
-        sections.push(("schema", format!("## File Format\n\n{schema_text}\n"), 10));
+        let mut sections: Vec<(&str, String, u8)> = vec![
+            ("header", "# Lash Agent Usage Guide\n\n".to_string(), 10),
+            ("overview", content::overview().to_string(), 10),
+            ("workflow", content::workflow().to_string(), 10),
+            (
+                "project_structure",
+                content::project_structure().to_string(),
+                9,
+            ),
+            ("schema", format!("## File Format\n\n{schema_text}\n"), 10),
+        ];
 
         // Examples
         if self.config.include_examples {
@@ -605,38 +458,13 @@ Lash is a minimalist, Markdown-native task tracker where:
         }
 
         // CLI commands
-        sections.push(("cli_commands", generate_cli_commands_text(), 9));
+        sections.push(("cli_commands", content::cli_reference().to_string(), 9));
 
         // Safety guidelines
-        let safety = r"## Safety Guidelines
-
-When working with Lash files:
-
-1. **Always run `lash lint` after modifications** to validate your changes
-2. **Respect depth limits** (3-4 levels maximum for task hierarchies)
-3. **Don't break dependency references** - ensure `@depends-on` targets exist
-4. **Maintain status consistency** - parent tasks complete only when children are done/waived
-5. **Use unique IDs** within each file
-6. **Run `lash index`** after making changes to update the search index
-7. **Keep `@doc` references valid** - ensure referenced documentation files exist
-
-### `@doc:` Fragment Slugs
-
-When a `@doc:` annotation includes a `#fragment`, Lash matches it against the
-target document's headings using case- and punctuation-insensitive
-normalization: lowercase the text, treat `-` as a word separator, then drop
-every character that is not alphanumeric or whitespace (`<`, `>`, `/`, `.`,
-`_`, `(`, `)`, backticks, etc. are stripped *without* introducing a hyphen).
-For example, the heading ``Pack manifest (`<pack>/SKILL.md`)`` matches the
-fragment `pack-manifest-packskillmd`. Run
-`lash explain W_SEM_DOC_FRAGMENT` for full details.
-
-"
-        .to_string();
-        sections.push(("safety", safety, 9));
+        sections.push(("safety", content::safety_guidelines().to_string(), 9));
 
         // Error recovery guidance
-        sections.push(("error_recovery", generate_error_recovery_text(), 8));
+        sections.push(("error_recovery", content::error_recovery().to_string(), 8));
 
         // Apply token budget if specified
         let (final_content, truncated) = if let Some(budget) = self.config.token_budget {
