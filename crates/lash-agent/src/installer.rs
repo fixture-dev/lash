@@ -7,10 +7,10 @@
 //! embedded in every generated file) let [`install`] tell user-edited files
 //! from generated ones and refuse to overwrite without `--force`.
 //!
-//! Currently only [`Target::Claude`] is implemented. Other targets are listed
-//! on the enum so the CLI surface is stable, but their `generate_files` arm
-//! returns [`InstallerError::TargetNotImplemented`] until the next PR adds
-//! them.
+//! All four targets ([`Target::Claude`], [`Target::Codex`], [`Target::Cursor`],
+//! [`Target::AgentsMd`]) are implemented. Claude uses a progressive-disclosure
+//! layout (`SKILL.md` plus `references/*.md`). The other three are single-file
+//! formats sitting at conventional locations under the install root.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -205,14 +205,14 @@ pub fn install_root(
 ///
 /// # Errors
 ///
-/// Returns [`InstallerError::TargetNotImplemented`] for targets not yet
-/// implemented in this version.
+/// Returns [`InstallerError::TargetNotImplemented`] only when a target is
+/// added to the enum without a corresponding generator. All current targets
+/// produce files.
 pub fn generate_files(target: Target) -> Result<Vec<(PathBuf, String)>, InstallerError> {
     match target {
         Target::Claude => Ok(claude::generate()),
-        Target::Codex => Err(InstallerError::TargetNotImplemented("codex")),
-        Target::Cursor => Err(InstallerError::TargetNotImplemented("cursor")),
-        Target::AgentsMd => Err(InstallerError::TargetNotImplemented("agents-md")),
+        Target::Codex | Target::AgentsMd => Ok(single_file_agents_md::generate()),
+        Target::Cursor => Ok(cursor::generate()),
     }
 }
 
@@ -455,6 +455,110 @@ mod claude {
     }
 }
 
+/// Codex / generic AGENTS.md target: single self-contained Markdown file at
+/// the project root, written as `AGENTS.lash.md` to avoid clobbering a
+/// user-authored `AGENTS.md`.
+mod single_file_agents_md {
+    use crate::content;
+    use std::path::PathBuf;
+
+    pub fn generate() -> Vec<(PathBuf, String)> {
+        vec![(PathBuf::from("AGENTS.lash.md"), body())]
+    }
+
+    fn body() -> String {
+        format!(
+            "{marker}\n\
+             \n\
+             # Lash — Markdown-Native Task Tracker (for agents)\n\
+             \n\
+             {when_to_use}\n\
+             \n\
+             To wire this into your agent setup, reference `AGENTS.lash.md` from\n\
+             your project's `AGENTS.md` (e.g. add `See @AGENTS.lash.md.` or copy\n\
+             a link to it) so the agent loads this guide.\n\
+             \n\
+             {overview}\
+             {project_structure}\
+             ## Hot Commands\n\
+             \n\
+             {hot}\n\
+             {cli_ref}\
+             {workflow}\
+             {safety}\
+             {errors}\
+             {deps}",
+            marker = super::marker_comment(),
+            when_to_use = content::when_to_use(),
+            overview = content::overview(),
+            project_structure = content::project_structure(),
+            hot = content::hot_commands(),
+            cli_ref = content::cli_reference(),
+            workflow = content::workflow(),
+            safety = content::safety_guidelines(),
+            errors = content::error_recovery(),
+            deps = strip_leading_h1(content::dependencies_reference()),
+        )
+    }
+
+    /// `content::dependencies_reference()` starts with `# Dependencies...`.
+    /// When inlining it under an existing `# Lash` document we want a `##`
+    /// heading instead, so promote-by-demote here.
+    fn strip_leading_h1(body: &str) -> String {
+        if let Some(rest) = body.strip_prefix("# ") {
+            format!("## {rest}")
+        } else {
+            body.to_string()
+        }
+    }
+}
+
+/// Cursor IDE target: `.cursor/rules/lash.mdc` — a single MDC file with
+/// Cursor-specific frontmatter declaring when the rule applies.
+mod cursor {
+    use super::{IDEMPOTENCY_MARKER_KEY, SKILL_FORMAT_VERSION};
+    use crate::content;
+    use std::path::PathBuf;
+
+    pub fn generate() -> Vec<(PathBuf, String)> {
+        let mut path = PathBuf::from(".cursor");
+        path.push("rules");
+        path.push("lash.mdc");
+        vec![(path, body())]
+    }
+
+    fn body() -> String {
+        let description = content::when_to_use();
+        format!(
+            "---\n\
+             description: {description}\n\
+             globs:\n\
+             \x20\x20- \"**/*.md\"\n\
+             \x20\x20- \"tasks/**\"\n\
+             \x20\x20- \"lash.index.md\"\n\
+             alwaysApply: false\n\
+             {IDEMPOTENCY_MARKER_KEY}: {SKILL_FORMAT_VERSION}\n\
+             ---\n\
+             \n\
+             # Lash Task Tracker\n\
+             \n\
+             {when_to_use}\n\
+             \n\
+             ## Hot Commands\n\
+             \n\
+             {hot}\n\
+             {cli_ref}\
+             {safety}\
+             {errors}",
+            when_to_use = content::when_to_use(),
+            hot = content::hot_commands(),
+            cli_ref = content::cli_reference(),
+            safety = content::safety_guidelines(),
+            errors = content::error_recovery(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -538,11 +642,64 @@ mod tests {
     }
 
     #[test]
-    fn generate_files_other_targets_not_implemented() {
-        for t in [Target::Codex, Target::Cursor, Target::AgentsMd] {
-            let err = generate_files(t).unwrap_err();
-            assert!(matches!(err, InstallerError::TargetNotImplemented(_)));
+    fn generate_files_codex_writes_single_agents_lash_md() {
+        let files = generate_files(Target::Codex).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0, Path::new("AGENTS.lash.md"));
+        assert!(is_lash_generated(&files[0].1));
+        assert!(files[0].1.contains("Lash"));
+        assert!(files[0].1.contains("lash status"));
+        assert!(files[0].1.contains("AGENTS.lash.md"));
+    }
+
+    #[test]
+    fn generate_files_agents_md_matches_codex() {
+        let codex = generate_files(Target::Codex).unwrap();
+        let agents_md = generate_files(Target::AgentsMd).unwrap();
+        assert_eq!(codex, agents_md, "Codex and AgentsMd share a generator");
+    }
+
+    #[test]
+    fn generate_files_cursor_writes_mdc_with_frontmatter() {
+        let files = generate_files(Target::Cursor).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0, Path::new(".cursor/rules/lash.mdc"));
+        let content = &files[0].1;
+        assert!(content.starts_with("---\n"));
+        assert!(content.contains("description: "));
+        assert!(content.contains("globs:"));
+        assert!(content.contains("alwaysApply:"));
+        assert!(is_lash_generated(content));
+    }
+
+    #[test]
+    fn install_root_for_single_file_targets_is_project_base() {
+        for t in [Target::Codex, Target::AgentsMd, Target::Cursor] {
+            let root = install_root(t, Scope::Project, Path::new("/tmp/proj"), None).unwrap();
+            assert_eq!(root, PathBuf::from("/tmp/proj"));
         }
+    }
+
+    #[test]
+    fn install_codex_round_trip_creates_and_uninstalls_file() {
+        let temp = TempDir::new().unwrap();
+        let report = install(&opts(Target::Codex, temp.path())).unwrap();
+        assert_eq!(report.files.len(), 1);
+        assert_eq!(report.files[0].action, FileAction::Created);
+        let path = report.files[0].file.path.clone();
+        assert!(path.exists());
+        // Second run is a no-op.
+        let again = install(&opts(Target::Codex, temp.path())).unwrap();
+        assert_eq!(again.files[0].action, FileAction::Unchanged);
+    }
+
+    #[test]
+    fn install_cursor_creates_nested_directories() {
+        let temp = TempDir::new().unwrap();
+        let report = install(&opts(Target::Cursor, temp.path())).unwrap();
+        let mdc = temp.path().join(".cursor/rules/lash.mdc");
+        assert!(mdc.exists());
+        assert_eq!(report.files[0].file.path, mdc);
     }
 
     #[test]
