@@ -537,7 +537,7 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         } else {
             // Normal event handling
             // Calculate description visible height for scrolling
-            let screen_height = self.terminal.size().map(|s| s.height).unwrap_or(24) as usize;
+            let screen_height = self.terminal.size().map_or(24, |s| s.height) as usize;
             // Description pane is roughly 30% of screen height minus borders
             let description_visible_height = (screen_height * 30 / 100).saturating_sub(2);
 

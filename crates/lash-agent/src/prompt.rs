@@ -514,6 +514,7 @@ impl PromptBuilder {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn build_plain(self) -> AgentPrompt {
         let mut sections = Vec::new();
 
@@ -618,6 +619,17 @@ When working with Lash files:
 5. **Use unique IDs** within each file
 6. **Run `lash index`** after making changes to update the search index
 7. **Keep `@doc` references valid** - ensure referenced documentation files exist
+
+### `@doc:` Fragment Slugs
+
+When a `@doc:` annotation includes a `#fragment`, Lash matches it against the
+target document's headings using case- and punctuation-insensitive
+normalization: lowercase the text, treat `-` as a word separator, then drop
+every character that is not alphanumeric or whitespace (`<`, `>`, `/`, `.`,
+`_`, `(`, `)`, backticks, etc. are stripped *without* introducing a hyphen).
+For example, the heading ``Pack manifest (`<pack>/SKILL.md`)`` matches the
+fragment `pack-manifest-packskillmd`. Run
+`lash explain W_SEM_DOC_FRAGMENT` for full details.
 
 "
         .to_string();

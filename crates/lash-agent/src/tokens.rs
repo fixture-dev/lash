@@ -186,7 +186,7 @@ pub fn distribute_budget<'a>(
 
     // Sort by priority (descending)
     let mut sorted_sections: Vec<_> = sections.iter().collect();
-    sorted_sections.sort_by(|a, b| b.2.cmp(&a.2));
+    sorted_sections.sort_by_key(|entry| std::cmp::Reverse(entry.2));
 
     let mut allocations = Vec::new();
     let mut remaining_budget = total_budget;

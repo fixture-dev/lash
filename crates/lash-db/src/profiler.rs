@@ -530,6 +530,7 @@ impl ProfileReport {
 }
 
 #[cfg(test)]
+#[allow(clippy::duration_suboptimal_units)]
 mod tests {
     use super::*;
     use std::thread;

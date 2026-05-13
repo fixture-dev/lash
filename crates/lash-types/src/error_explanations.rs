@@ -192,6 +192,16 @@ pub fn explain_error(code: &str) -> Option<ErrorExplanation> {
             example_good: Some("- [ ] Parent\n  - [ ] Child (2 spaces)\n  - [ ] Another (2 spaces)"),
         }),
 
+        codes::W_SEM_DOC_FRAGMENT => Some(ErrorExplanation {
+            code: codes::W_SEM_DOC_FRAGMENT,
+            summary: "@doc: fragment does not match any heading",
+            description: "An @doc annotation references a #fragment that does not exist in the target document. Lash matches fragments against headings using case- and punctuation-insensitive normalization: both the fragment and each heading are lowercased, '-' is treated as whitespace, every non-alphanumeric/non-whitespace character (including '<', '>', '/', '.', '_', '(', ')', and backticks) is stripped *without* introducing a hyphen boundary, and runs of whitespace are collapsed. Two strings match when they reduce to the same canonical form.",
+            why_it_matters: "Broken @doc: fragments mean readers (humans and agents) following the link cannot land on the intended section. The lint catches them so they fail loudly instead of silently 404-ing in a renderer that ignores anchors.",
+            how_to_fix: "Open the target document, find the heading you want, and write the fragment so it normalizes to the same canonical form. The warning's help text lists existing headings in the target — pick one. Convention: lowercase the heading, replace spaces with '-', and drop punctuation entirely (do not turn '/' or '.' into a hyphen).",
+            example_bad: Some("# Heading: Pack manifest (`<pack>/SKILL.md`)\n@doc: ../docs/skills.md#pack-manifest-pack-skill-md\n# (`<` `>` `/` are stripped without producing a boundary, so this slug is wrong)"),
+            example_good: Some("# Heading: Pack manifest (`<pack>/SKILL.md`)\n@doc: ../docs/skills.md#pack-manifest-packskillmd\n\n# Heading: Validation rules (must pass at index time)\n@doc: ../docs/skills.md#validation-rules-must-pass-at-index-time"),
+        }),
+
         // ===== Dependency Errors =====
         codes::E_DEP_NOT_FOUND => Some(ErrorExplanation {
             code: codes::E_DEP_NOT_FOUND,
@@ -551,6 +561,7 @@ pub fn all_error_codes() -> Vec<&'static str> {
         codes::E_LINT_INVALID_LABEL,
         codes::E_LINT_MISSING_ANNOTATION,
         codes::E_LINT_BAD_INDENTATION,
+        codes::W_SEM_DOC_FRAGMENT,
         // Dependency errors
         codes::E_DEP_NOT_FOUND,
         codes::E_DEP_CYCLE,

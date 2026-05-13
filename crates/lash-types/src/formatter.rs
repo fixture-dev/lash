@@ -143,7 +143,7 @@ impl ErrorFormatter {
 
                         // Caret pointing to error column
                         let caret_padding = " ".repeat(line_num_width);
-                        let col_padding = " ".repeat((col - 1).max(0));
+                        let col_padding = " ".repeat(col.saturating_sub(1));
                         let caret = if use_color {
                             "^".red().bold().to_string()
                         } else {

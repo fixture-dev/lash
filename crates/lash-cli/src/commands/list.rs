@@ -49,6 +49,8 @@ pub struct ListArgs {
     pub show_descriptions: bool,
     /// Show contextual notes for tasks
     pub show_notes: bool,
+    /// Maximum number of files/tasks to show (None = unlimited)
+    pub limit: Option<usize>,
     /// Output format
     pub format: OutputFormat,
     /// Project root (detected automatically if None)
@@ -229,6 +231,11 @@ pub fn execute(args: ListArgs) -> Result<i32> {
 
     tracing::debug!(file_count = files.len(), "Retrieved files");
 
+    // Apply limit if specified
+    if let Some(max) = args.limit {
+        files.truncate(max);
+    }
+
     // Fetch tasks if tree view or show_notes is enabled
     let file_tasks: HashMap<i64, Vec<TaskRecord>> = if use_tree_view || args.show_notes {
         let task_repo = TaskRepository::new(&conn);
@@ -336,6 +343,11 @@ fn execute_filtered_list(
             file_ids.insert(task.file_id);
             tasks.push(task);
         }
+    }
+
+    // Apply limit if specified
+    if let Some(max) = args.limit {
+        tasks.truncate(max);
     }
 
     // Get the files for matching tasks
@@ -1193,6 +1205,7 @@ mod tests {
             docs: None,
             show_descriptions: false,
             show_notes: false,
+            limit: None,
             format: OutputFormat::Text,
             project_root: None,
             theme: None,
@@ -1219,6 +1232,7 @@ mod tests {
             docs: None,
             show_descriptions: false,
             show_notes: false,
+            limit: None,
             format: OutputFormat::Text,
             project_root: None,
             theme: None,

@@ -6,12 +6,17 @@ use anyhow::{Context, Result};
 use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
 use lash_cli::formatter::{OutputFormat, Verbosity};
 use lash_cli::theme::CliTheme;
+use lash_core::linter::rules::semantic::BrokenDocFragmentRule;
+use lash_core::linter::{LintContext, LintDiagnostic, LintRule};
+use lash_core::parser::parse_file;
 use lash_db::open_database;
 use lash_types::error::LashError;
+use lash_types::{LashConfig, TaskFile};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::utils::file_discovery::find_project_root;
+use crate::utils::file_discovery::{discover_markdown_files, find_project_root};
 
 /// Arguments for the check-links command (legacy, kept for potential future use)
 #[allow(dead_code)]
@@ -40,13 +45,31 @@ pub struct BrokenLink {
     pub kind: String,
 }
 
+/// A broken `@doc:` fragment reference
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrokenDocFragment {
+    /// File containing the bad annotation
+    pub from_file_path: String,
+    /// The full reference (path#fragment) as written in the source
+    pub raw_ref: String,
+    /// Line number of the `@doc:` annotation (0 if location couldn't be determined)
+    pub line: usize,
+    /// Column number of the `@doc:` annotation (0 if location couldn't be determined)
+    pub column: usize,
+    /// Help/suggestion text from the lint rule
+    pub help: Option<String>,
+}
+
 /// Report of all broken links found
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrokenLinksReport {
-    /// Total number of broken links found
+    /// Total number of broken links found (dependency refs + doc fragments)
     pub total_broken: usize,
     /// Broken links grouped by file
     pub by_file: Vec<FileLinks>,
+    /// Broken `@doc:` fragment references, grouped by file
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub broken_doc_fragments: Vec<BrokenDocFragment>,
 }
 
 /// Broken links for a single file
@@ -181,7 +204,100 @@ pub fn find_broken_links(conn: impl AsRef<std::path::Path>) -> Result<BrokenLink
     Ok(BrokenLinksReport {
         total_broken,
         by_file,
+        broken_doc_fragments: Vec::new(),
     })
+}
+
+/// Walk every task file under `project_root` and report `@doc:` annotations
+/// whose `#fragment` does not resolve to a heading in the target document.
+///
+/// This is the canonical place to scan for broken `@doc:` references — `lash
+/// lint` raises the same warnings under `W_SEM_DOC_FRAGMENT`, but
+/// `check-links` is the user-facing "are my cross-file references intact?"
+/// command, so it should not silently pass while `lint` is failing.
+///
+/// Files that fail to parse are silently skipped: parse errors are surfaced
+/// by `lash lint`, and this command should not duplicate that signal.
+#[must_use]
+pub fn find_broken_doc_fragments(project_root: &Path) -> Vec<BrokenDocFragment> {
+    let Ok(markdown_files) = discover_markdown_files(&[project_root.to_path_buf()], true) else {
+        return Vec::new();
+    };
+
+    let config = LashConfig::from_root(project_root).unwrap_or_default();
+
+    // Parse files into the LintContext-shaped map. Skip unparseable files
+    // (lash lint will surface those errors separately).
+    let mut files: HashMap<PathBuf, TaskFile> = HashMap::new();
+    for path in &markdown_files {
+        let Ok(file) = parse_file(path, &config) else {
+            continue;
+        };
+        let relative = path
+            .strip_prefix(project_root)
+            .unwrap_or(path)
+            .to_path_buf();
+        files.insert(relative, file);
+    }
+
+    let rule = BrokenDocFragmentRule::new();
+    let mut findings: Vec<BrokenDocFragment> = Vec::new();
+
+    for (rel_path, file) in &files {
+        let ctx = LintContext::new(&config, rel_path.clone(), &files);
+        let diagnostics: Vec<LintDiagnostic> = rule
+            .check_file(file, &ctx)
+            .into_iter()
+            .chain(
+                file.tasks
+                    .tasks()
+                    .iter()
+                    .flat_map(|task| rule.check_task(task, &ctx)),
+            )
+            .collect();
+
+        for diag in diagnostics {
+            findings.push(BrokenDocFragment {
+                from_file_path: rel_path.display().to_string(),
+                raw_ref: extract_raw_ref_from_message(&diag.message),
+                line: diag.location.line.unwrap_or(0),
+                column: diag.location.column.unwrap_or(0),
+                help: diag.help.clone(),
+            });
+        }
+    }
+
+    findings.sort_by(|a, b| {
+        a.from_file_path
+            .cmp(&b.from_file_path)
+            .then(a.line.cmp(&b.line))
+            .then(a.raw_ref.cmp(&b.raw_ref))
+    });
+
+    findings
+}
+
+/// Pull the `path#fragment` substring out of a `W_SEM_DOC_FRAGMENT` message.
+/// The rule emits messages like:
+///   `Fragment 'foo' not found in 'docs/bar.md'`
+///   `Empty fragment identifier in doc reference: 'docs/bar.md'`
+/// We re-assemble a single `raw_ref` string for the report.
+fn extract_raw_ref_from_message(message: &str) -> String {
+    let in_split = message.split_once("' not found in '");
+    if let Some((before, after)) = in_split {
+        let frag = before.rsplit_once('\'').map_or(before, |(_, f)| f);
+        let path = after.trim_end_matches('\'');
+        return format!("{path}#{frag}");
+    }
+
+    if let Some(start) = message.find("doc reference: '") {
+        let rest = &message[start + "doc reference: '".len()..];
+        if let Some(end) = rest.find('\'') {
+            return format!("{}#", &rest[..end]);
+        }
+    }
+
+    message.to_string()
 }
 
 /// Output JSON when database doesn't exist
@@ -204,6 +320,7 @@ pub fn output_json_report(report: &BrokenLinksReport) -> Result<()> {
 }
 
 /// Output broken links report as human-readable text using `ErrorReporter`
+#[allow(clippy::too_many_lines)]
 pub fn output_text_report(report: &BrokenLinksReport, theme: Option<&CliTheme>) {
     // Header
     if report.total_broken == 0 {
@@ -258,6 +375,45 @@ pub fn output_text_report(report: &BrokenLinksReport, theme: Option<&CliTheme>) 
     // Print all collected errors
     reporter.flush();
 
+    // Render broken @doc: fragments using the same human-readable style.
+    let dep_count = report.by_file.iter().map(|fl| fl.count).sum::<usize>();
+    let doc_count = report.broken_doc_fragments.len();
+    if doc_count > 0 {
+        println!();
+        if let Some(theme) = theme {
+            println!(
+                "{}",
+                theme.style_warning(&format!("Broken @doc: fragment(s) ({doc_count}):"))
+            );
+        } else {
+            println!("Broken @doc: fragment(s) ({doc_count}):");
+        }
+        for frag in &report.broken_doc_fragments {
+            let location = if frag.line > 0 {
+                format!("{}:{}:{}", frag.from_file_path, frag.line, frag.column)
+            } else {
+                frag.from_file_path.clone()
+            };
+            if let Some(theme) = theme {
+                println!(
+                    "  {} {}  {}",
+                    theme.style_error("✗"),
+                    theme.style_label(&location),
+                    theme.style_muted(&frag.raw_ref)
+                );
+            } else {
+                println!("  ✗ {location}  {}", frag.raw_ref);
+            }
+            if let Some(help) = &frag.help {
+                if let Some(theme) = theme {
+                    println!("    {}", theme.style_muted(help));
+                } else {
+                    println!("    {help}");
+                }
+            }
+        }
+    }
+
     // Print summary
     println!();
     if let Some(theme) = theme {
@@ -266,6 +422,9 @@ pub fn output_text_report(report: &BrokenLinksReport, theme: Option<&CliTheme>) 
             "{}",
             theme.style_error(&format!("Found {} broken link(s)", report.total_broken))
         );
+        if dep_count > 0 && doc_count > 0 {
+            println!("  ({dep_count} dependency reference(s), {doc_count} @doc: fragment(s))");
+        }
         println!();
         println!("{}", "What to do:".bold());
         println!("  1. Check that the referenced tasks exist in your Markdown files");
@@ -273,17 +432,36 @@ pub fn output_text_report(report: &BrokenLinksReport, theme: Option<&CliTheme>) 
             "  2. Fix the {} annotations in the files above",
             theme.style_info("@depends-on")
         );
-        println!(
-            "  3. Run {} to rebuild the index",
-            theme.style_info("lash index")
-        );
+        if doc_count > 0 {
+            println!(
+                "  3. Fix the {} fragments — run `lash explain W_SEM_DOC_FRAGMENT` for slug rules",
+                theme.style_info("@doc:")
+            );
+            println!(
+                "  4. Run {} to rebuild the index",
+                theme.style_info("lash index")
+            );
+        } else {
+            println!(
+                "  3. Run {} to rebuild the index",
+                theme.style_info("lash index")
+            );
+        }
     } else {
         println!("Found {} broken link(s)", report.total_broken);
+        if dep_count > 0 && doc_count > 0 {
+            println!("  ({dep_count} dependency reference(s), {doc_count} @doc: fragment(s))");
+        }
         println!();
         println!("What to do:");
         println!("  1. Check that the referenced tasks exist in your Markdown files");
         println!("  2. Fix the @depends-on annotations in the files above");
-        println!("  3. Run 'lash index' to rebuild the index");
+        if doc_count > 0 {
+            println!("  3. Fix the @doc: fragments — run `lash explain W_SEM_DOC_FRAGMENT` for slug rules");
+            println!("  4. Run 'lash index' to rebuild the index");
+        } else {
+            println!("  3. Run 'lash index' to rebuild the index");
+        }
     }
 }
 
@@ -608,6 +786,7 @@ mod tests {
                     },
                 ],
             }],
+            broken_doc_fragments: vec![],
         };
 
         let json = serde_json::to_string_pretty(&report).unwrap();
@@ -627,6 +806,7 @@ mod tests {
         let report = BrokenLinksReport {
             total_broken: 0,
             by_file: vec![],
+            broken_doc_fragments: vec![],
         };
         // Calling should not panic; the function prints "No broken links found!" and returns
         output_text_report(&report, None);
@@ -649,6 +829,7 @@ mod tests {
                     kind: "explicit_id".to_string(),
                 }],
             }],
+            broken_doc_fragments: vec![],
         };
         // With total_broken=1, the function should NOT take the early return path
         assert_eq!(report.total_broken, 1);
@@ -662,10 +843,12 @@ mod tests {
         let empty_report = BrokenLinksReport {
             total_broken: 0,
             by_file: vec![],
+            broken_doc_fragments: vec![],
         };
         let non_empty_report = BrokenLinksReport {
             total_broken: 1,
             by_file: vec![],
+            broken_doc_fragments: vec![],
         };
         // These two must produce different behavior in output_text_report
         assert_eq!(empty_report.total_broken, 0);
@@ -681,6 +864,7 @@ mod tests {
         let zero_report = BrokenLinksReport {
             total_broken: 0,
             by_file: vec![],
+            broken_doc_fragments: vec![],
         };
         let one_report = BrokenLinksReport {
             total_broken: 1,
@@ -694,6 +878,7 @@ mod tests {
                     kind: "explicit_id".to_string(),
                 }],
             }],
+            broken_doc_fragments: vec![],
         };
         assert_eq!(zero_report.total_broken, 0);
         assert_ne!(zero_report.total_broken, 1);
@@ -748,6 +933,68 @@ mod tests {
         assert!(
             !formatted.contains(":1:"),
             "dep_not_found with line=0 must not format as ':1:...' (0->1 mutation), got: {formatted}"
+        );
+    }
+
+    // Issue #11: find_broken_doc_fragments must surface @doc: fragment issues
+    // that `lash lint` would also flag — otherwise check-links silently passes
+    // while lint fails on the same tree.
+    #[test]
+    fn test_find_broken_doc_fragments_flags_unresolved_fragment() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        // Target doc has a heading "Overview", and a task references a
+        // fragment that does NOT exist there.
+        std::fs::write(root.join("design.md"), "# Design\n\n## Overview\n\nText.\n").unwrap();
+        std::fs::write(
+            root.join("tasks.md"),
+            "# Tasks\n\n@id: tasks-file\n\n## Tasks\n\n\
+             - [ ] Do the thing\n  \
+             @id: thing\n  \
+             @doc: design.md#does-not-exist\n",
+        )
+        .unwrap();
+
+        let findings = find_broken_doc_fragments(root);
+        assert_eq!(
+            findings.len(),
+            1,
+            "expected one broken @doc: fragment, got {findings:?}"
+        );
+        let frag = &findings[0];
+        assert_eq!(frag.from_file_path, "tasks.md");
+        assert_eq!(frag.raw_ref, "design.md#does-not-exist");
+        assert!(
+            frag.line > 0,
+            "should locate the @doc: line, got {}",
+            frag.line
+        );
+    }
+
+    #[test]
+    fn test_find_broken_doc_fragments_clean_project_returns_empty() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        std::fs::write(root.join("design.md"), "# Design\n\n## Overview\n").unwrap();
+        std::fs::write(
+            root.join("tasks.md"),
+            "# Tasks\n\n@id: tasks-file\n\n## Tasks\n\n\
+             - [ ] Do the thing\n  \
+             @id: thing\n  \
+             @doc: design.md#overview\n",
+        )
+        .unwrap();
+
+        let findings = find_broken_doc_fragments(root);
+        assert!(
+            findings.is_empty(),
+            "valid fragments must produce no findings, got {findings:?}"
         );
     }
 

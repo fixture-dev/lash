@@ -101,6 +101,7 @@ fn list_error_codes(args: &ExplainArgs, theme: Option<&CliTheme>) -> Result<i32>
         let mut io_errors = Vec::new();
         let mut create_errors = Vec::new();
         let mut internal_errors = Vec::new();
+        let mut semantic_warnings = Vec::new();
 
         for code in &codes {
             if code.starts_with("E_PARSE") {
@@ -121,11 +122,14 @@ fn list_error_codes(args: &ExplainArgs, theme: Option<&CliTheme>) -> Result<i32>
                 create_errors.push(*code);
             } else if code.starts_with("E_INTERNAL") {
                 internal_errors.push(*code);
+            } else if code.starts_with("W_SEM") {
+                semantic_warnings.push(*code);
             }
         }
 
         print_category("Parse Errors", &parse_errors, theme);
         print_category("Lint Errors", &lint_errors, theme);
+        print_category("Semantic Warnings", &semantic_warnings, theme);
         print_category("Dependency Errors", &dep_errors, theme);
         print_category("Index Errors", &index_errors, theme);
         print_category("Query Errors", &query_errors, theme);

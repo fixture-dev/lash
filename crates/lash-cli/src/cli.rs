@@ -241,6 +241,10 @@ pub enum Commands {
         #[arg(long)]
         show_notes: bool,
 
+        /// Maximum number of files/tasks to show (unlimited by default)
+        #[arg(long, short = 'n', value_name = "N")]
+        limit: Option<usize>,
+
         /// Output format
         #[arg(long, value_name = "FORMAT", value_enum, default_value = "text")]
         format: OutputFormat,
@@ -410,6 +414,12 @@ pub enum Commands {
         /// Preview what would be changed without modifying files
         #[arg(long)]
         dry_run: bool,
+
+        /// Also mark unchecked plain-bullet children (those without their
+        /// own @id) as complete. Children with @id are independent tasks
+        /// and are never auto-completed.
+        #[arg(long)]
+        cascade: bool,
     },
 
     /// Mark one or more tasks as in-progress
@@ -824,6 +834,37 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_parse_list_with_limit() {
+        let cli =
+            LashCli::try_parse_from(["lash", "list", "--status", "open", "--limit", "30"]).unwrap();
+        if let Commands::List { limit, .. } = cli.command {
+            assert_eq!(limit, Some(30));
+        } else {
+            panic!("Expected List command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_list_with_limit_short_flag() {
+        let cli = LashCli::try_parse_from(["lash", "list", "-n", "5"]).unwrap();
+        if let Commands::List { limit, .. } = cli.command {
+            assert_eq!(limit, Some(5));
+        } else {
+            panic!("Expected List command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_list_default_no_limit() {
+        let cli = LashCli::try_parse_from(["lash", "list"]).unwrap();
+        if let Commands::List { limit, .. } = cli.command {
+            assert_eq!(limit, None);
+        } else {
+            panic!("Expected List command");
+        }
+    }
+
+    #[test]
     fn test_cli_parse_search() {
         let cli = LashCli::try_parse_from(["lash", "search", "implement parser"]).unwrap();
         if let Commands::Search { query, .. } = cli.command {
@@ -989,9 +1030,15 @@ mod tests {
     #[test]
     fn test_cli_parse_complete_single() {
         let cli = LashCli::try_parse_from(["lash", "complete", "test#task-1"]).unwrap();
-        if let Commands::Complete { task_ids, dry_run } = cli.command {
+        if let Commands::Complete {
+            task_ids,
+            dry_run,
+            cascade,
+        } = cli.command
+        {
             assert_eq!(task_ids, vec!["test#task-1"]);
             assert!(!dry_run);
+            assert!(!cascade);
         } else {
             panic!("Expected Complete command");
         }
@@ -1012,9 +1059,23 @@ mod tests {
     fn test_cli_parse_complete_dry_run() {
         let cli =
             LashCli::try_parse_from(["lash", "complete", "--dry-run", "test#task-1"]).unwrap();
-        if let Commands::Complete { task_ids, dry_run } = cli.command {
+        if let Commands::Complete {
+            task_ids, dry_run, ..
+        } = cli.command
+        {
             assert_eq!(task_ids, vec!["test#task-1"]);
             assert!(dry_run);
+        } else {
+            panic!("Expected Complete command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_complete_cascade() {
+        let cli =
+            LashCli::try_parse_from(["lash", "complete", "--cascade", "test#task-1"]).unwrap();
+        if let Commands::Complete { cascade, .. } = cli.command {
+            assert!(cascade);
         } else {
             panic!("Expected Complete command");
         }

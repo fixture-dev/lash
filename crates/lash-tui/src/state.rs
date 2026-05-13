@@ -319,6 +319,7 @@ pub struct ProjectStats {
 impl ProjectStats {
     /// Calculate completion percentage (0-100)
     #[must_use]
+    #[allow(clippy::manual_checked_ops)]
     pub fn completion_percent(&self) -> u8 {
         if self.total_tasks == 0 {
             0
