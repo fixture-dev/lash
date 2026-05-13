@@ -530,6 +530,87 @@ pub enum Commands {
         #[arg(short, long)]
         interactive: bool,
     },
+
+    /// Manage Lash agent skills (install/list/update/uninstall)
+    Skill {
+        /// The skill subcommand to execute
+        #[command(subcommand)]
+        command: SkillCommand,
+    },
+}
+
+/// Skill management subcommands
+#[derive(Subcommand, Debug, Clone)]
+pub enum SkillCommand {
+    /// Install the Lash agent skill into the appropriate agent directory
+    Install {
+        /// Which coding agent to install the skill for
+        #[arg(long, value_enum)]
+        target: SkillTarget,
+
+        /// Install scope: project-local or user-global
+        #[arg(long, value_enum, default_value = "project")]
+        scope: SkillScope,
+
+        /// Overwrite user-edited files (files without the lash-skill marker)
+        #[arg(long)]
+        force: bool,
+
+        /// Show what would be written without modifying the filesystem
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Write generated files to stdout instead of disk
+        #[arg(long, conflicts_with = "dry_run")]
+        print: bool,
+    },
+
+    /// List which skill targets have been installed in this project / for this user
+    List,
+
+    /// Re-emit skill files for the given target (refresh after `lash` upgrade)
+    Update {
+        /// Which coding agent's skill to refresh
+        #[arg(long, value_enum)]
+        target: SkillTarget,
+
+        /// Scope to refresh
+        #[arg(long, value_enum, default_value = "project")]
+        scope: SkillScope,
+    },
+
+    /// Remove a previously installed skill
+    Uninstall {
+        /// Which coding agent's skill to remove
+        #[arg(long, value_enum)]
+        target: SkillTarget,
+
+        /// Scope to uninstall from
+        #[arg(long, value_enum, default_value = "project")]
+        scope: SkillScope,
+    },
+}
+
+/// Coding-agent skill targets.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SkillTarget {
+    /// Claude Code (progressive-disclosure SKILL.md + references/)
+    Claude,
+    /// Codex / `OpenAI` single-file format
+    Codex,
+    /// Cursor IDE .mdc rule
+    Cursor,
+    /// Generic AGENTS.md fragment
+    AgentsMd,
+}
+
+/// Where to install a skill.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SkillScope {
+    /// Inside the current project (default)
+    Project,
+    /// In the user's home directory
+    User,
 }
 
 /// Configuration subcommands

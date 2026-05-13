@@ -1034,6 +1034,8 @@ dependencies = [
  "lash-types",
  "serde",
  "serde_json",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

@@ -16,6 +16,7 @@
 
 pub mod content;
 pub mod context;
+pub mod installer;
 pub mod prompt;
 pub mod schema;
 pub mod tokens;

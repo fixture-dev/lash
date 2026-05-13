@@ -284,6 +284,7 @@ lash check-links --fix          # Auto-fix broken references
 
 # Agent Integration & Config
 lash agent-prompt               # Generate context-minimized prompt for current project
+lash skill install --target T   # Install Lash skill into a coding agent (claude/codex/cursor/agents-md)
 lash config <SUBCOMMAND>        # Manage configuration (get, set, list, path)
 
 # Error Help
