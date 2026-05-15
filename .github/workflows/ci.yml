@@ -35,6 +35,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ matrix.rust }}
+          # Don't cache ~/.cargo/bin. Caching cargo/rustup binaries can produce
+          # a corrupt restore on partial cache hits (observed on macOS runners
+          # as `cargo test` invoking rustup-init instead of cargo).
+          # dtolnay/rust-toolchain provides the binaries; no need to cache them.
+          cache-bin: "false"
 
       - name: Run tests
         run: cargo test --workspace --verbose
