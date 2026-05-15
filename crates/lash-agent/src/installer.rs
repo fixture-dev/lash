@@ -219,8 +219,9 @@ pub fn generate_files(target: Target) -> Result<Vec<(PathBuf, String)>, Installe
 /// Substring required to be present in any generated file for the installer to
 /// treat it as "lash-generated" and safe to overwrite without `--force`.
 ///
-/// Embedded by [`marker_frontmatter`] (for files that take YAML frontmatter)
-/// and [`marker_comment`] (for files where frontmatter isn't appropriate).
+/// Per-target generators embed this key either directly inside YAML
+/// frontmatter (for SKILL.md and Cursor `.mdc`) or via [`marker_comment`] for
+/// files that don't naturally take frontmatter.
 pub const IDEMPOTENCY_MARKER_KEY: &str = "lash-skill-version";
 
 /// HTML comment marker for files that don't naturally take YAML frontmatter.
