@@ -1,5 +1,48 @@
 # Lash Development Log
 
+## 2026-05-22 - Live TUI updates: Phase B (Store actor + atomic writes + hash dedupe)
+
+### Summary
+
+Added `lash_core::store::Store`: the single writer for Markdown task files.
+Every `Store::apply` reads the current file, rewrites it (using the same
+regex logic that used to live in `lash-tui::app::update_markdown_task_status`),
+records a blake3 hash of the bytes it's about to write, and writes via a
+sibling tmp file + atomic rename. When `handle_external_change(path)` is
+later called by the file watcher (Phase C), it re-reads the file and
+compares the on-disk hash to its recorded one — matches are dropped (our
+own write echoing back), differences (or unknown paths) emit a
+`FileReloaded` delta.
+
+The five status-change call sites in the TUI (`handle_toggle_status` plus
+three cascade handlers plus linked-file complete) all flow through the
+existing `update_markdown_task_status` helper, which now delegates to
+`Store::apply` rather than calling `fs::write` directly. Zero call-site
+changes were needed — the helper is the one routing point.
+
+This unblocks Phase C (file watcher) by giving the watcher a place to feed
+its events: `Store::handle_external_change`.
+
+### Key Components
+
+- `lash-core::store` — `Store`, `Mutation::SetTaskStatus`,
+  `StateDelta::{TaskStatusChanged, FileReloaded}`, `write_atomic`
+  (tmp+rename), per-path `last_written_hash: HashMap<PathBuf, [u8; 32]>`,
+  11 unit tests covering the matrix of self-write echo / external-edit /
+  no-prior-write / missing-file / second-match-after-clear
+- `lash-tui::app` — `store: Store` field on `TuiAppCore`,
+  `update_markdown_task_status` reduced to a one-line delegator,
+  `status_checkbox_char` helper deleted (moved into the Store)
+- Hash dedupe is single-use: a matched event clears the entry, so a
+  *second* identical event correctly falls through to `FileReloaded`
+- `lash-core::Cargo.toml` — picked up `blake3` from the workspace deps
+
+### What's deferred
+
+- `Mutation::CreateTask` (task creation still uses its own write path)
+- `lash_core::formatter::format_file_in_place` still calls `fs::write`
+  directly (no behavioral risk; `lash format` doesn't race the TUI)
+
 ## 2026-05-22 - Live TUI updates: design + Phase A activity status bar
 
 ### Summary
