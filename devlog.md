@@ -1,5 +1,45 @@
 # Lash Development Log
 
+## 2026-05-22 - Activity bar reacts to external edits too
+
+### Summary
+
+Closes the original promise of "live updates": before this change, an
+external process toggling a task's status would refresh the TUI's task
+tree (as of Phase C) but the activity status bar still only reflected
+TUI-initiated transitions. Now it reflects external ones too.
+
+The mechanism is intentionally cheap and uses data the indexer already
+produces. `handle_file_reloaded` now:
+
+1. Snapshots `(full_id → status)` for the changed file's tasks from the DB
+   *before* running the incremental reindex.
+2. Runs the reindex.
+3. Queries the file's tasks again and diffs against the snapshot. Any
+   `(old, new)` status change is fed straight into
+   `ActivityState::record_transition`, which is the same entry point the
+   five TUI status-toggle paths already use.
+
+So an `$EDITOR` save that flips `- [ ] Foo` to `- [>] Foo` now lights up
+the in-progress slot in the bar, and a flip to `- [x] Foo` pushes Foo
+into recently-completed — both within ~150ms of the watcher firing.
+
+### Test-infra fix that fell out
+
+The integration test for `InProgress → Done` was failing because
+`TestAppBuilder` didn't reproduce production's startup seeding of
+`activity.in_progress` from the DB. Aligned the test builder with
+`TuiApp::new_with_scheme` so tests model real startup faithfully.
+
+### Key Components
+
+- `lash-tui::app::handle_file_reloaded` — gained `snapshot_file_statuses`
+  + `apply_external_status_diff` helpers
+- `lash-tui::testing::TestAppBuilder` — seeds `activity.in_progress` at
+  build time, matching production startup
+- 3 new integration tests in `external_reload_tests.rs`:
+  external Open→InProgress, Open→Done, InProgress→Done
+
 ## 2026-05-22 - Live TUI updates: Phase C (watcher + external reload + cursor preservation)
 
 ### Summary

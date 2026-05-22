@@ -114,6 +114,118 @@ fn external_edit_inserting_above_cursor_keeps_selection_on_same_task() {
     );
 }
 
+const BODY_WITH_ALPHA_IN_PROGRESS: &str = r"# Sample Tasks
+
+@id: sample
+
+## Tasks
+
+- [>] Alpha task
+- [ ] Beta task
+- [ ] Gamma task
+";
+
+const BODY_WITH_ALPHA_DONE: &str = r"# Sample Tasks
+
+@id: sample
+
+## Tasks
+
+- [x] Alpha task
+- [ ] Beta task
+- [ ] Gamma task
+";
+
+#[test]
+fn external_open_to_in_progress_sets_activity_in_progress() {
+    let (_dir, db_path, tasks_md) = setup_project(INITIAL_BODY);
+
+    let mut app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+    app.tick().unwrap();
+
+    let alpha_full_id = app
+        .state()
+        .tasks
+        .iter()
+        .find(|t| t.title == "Alpha task")
+        .unwrap()
+        .full_id
+        .clone();
+
+    // External edit flips Alpha to in-progress.
+    write_tasks(&tasks_md, BODY_WITH_ALPHA_IN_PROGRESS);
+    app.process_external_change(&tasks_md).unwrap();
+
+    let in_progress = app
+        .state()
+        .activity
+        .in_progress
+        .as_ref()
+        .expect("activity.in_progress should be populated after external transition");
+    assert_eq!(in_progress.full_id, alpha_full_id);
+    assert_eq!(in_progress.title, "Alpha task");
+}
+
+#[test]
+fn external_open_to_done_pushes_to_recently_completed() {
+    let (_dir, db_path, tasks_md) = setup_project(INITIAL_BODY);
+
+    let mut app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+    app.tick().unwrap();
+
+    write_tasks(&tasks_md, BODY_WITH_ALPHA_DONE);
+    app.process_external_change(&tasks_md).unwrap();
+
+    let recent = &app.state().activity.recently_completed;
+    assert_eq!(
+        recent.len(),
+        1,
+        "expected exactly one recently-completed entry"
+    );
+    assert_eq!(recent[0].title, "Alpha task");
+}
+
+#[test]
+fn external_in_progress_to_done_clears_in_progress_and_pushes_to_recent() {
+    let (_dir, db_path, tasks_md) = setup_project(BODY_WITH_ALPHA_IN_PROGRESS);
+
+    let mut app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+    app.tick().unwrap();
+
+    // Precondition: startup seed should have picked Alpha as in_progress.
+    assert_eq!(
+        app.state()
+            .activity
+            .in_progress
+            .as_ref()
+            .map(|e| e.title.as_str()),
+        Some("Alpha task")
+    );
+
+    write_tasks(&tasks_md, BODY_WITH_ALPHA_DONE);
+    app.process_external_change(&tasks_md).unwrap();
+
+    assert!(
+        app.state().activity.in_progress.is_none(),
+        "in_progress slot should be cleared once Alpha moves to Done externally"
+    );
+    let recent = &app.state().activity.recently_completed;
+    assert_eq!(recent.len(), 1);
+    assert_eq!(recent[0].title, "Alpha task");
+}
+
 #[test]
 fn self_write_echo_is_dropped_without_reload() {
     let (_dir, db_path, tasks_md) = setup_project(INITIAL_BODY);

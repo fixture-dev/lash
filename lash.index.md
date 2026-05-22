@@ -32,9 +32,10 @@ For background docs, see:
 - [x] Store actor with atomic writes and hash dedupe #core
 - [x] File watcher with debounce and ignore rules #core
 - [x] External-edit reload with stable-id cursor preservation #tui
-- [ ] Parse-and-diff external changes into `TaskStatusChanged` deltas #core #tui
-  - Today the activity bar only reflects TUI-initiated transitions; external
-    toggles trigger a reload but don't update the bar
+- [x] Parse-and-diff external changes into `TaskStatusChanged` deltas #core #tui
+  - The activity bar now updates from external edits too: `handle_file_reloaded`
+    snapshots the file's task statuses before reindex and feeds every changed
+    status through `ActivityState::record_transition` afterwards
 - [ ] `Mutation::CreateTask` so task creation also flows through the Store #core
 - [ ] `formatter::format_file_in_place` uses `write_atomic` #core
 - [ ] Stale-modal banner for in-flight modals on external change #tui
