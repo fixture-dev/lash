@@ -9,18 +9,21 @@
 //! `crate::ui::status_bar`.
 
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use lash_types::TaskStatus;
 
 use lash_db::repository::tasks::TaskRepository;
 use rusqlite::Connection;
 
-/// Max entries kept in the recently-completed tail.
+/// Max entries kept in the recently-completed tail. The cap (not a TTL) is
+/// the only thing that bounds the buffer — new transitions push old entries
+/// out via `record_transition`, so the bar always reflects the most recent
+/// activity lash has knowledge of, regardless of when those completions
+/// actually happened. An earlier version used a 5-minute TTL on top of the
+/// cap, but that made the bar empty itself after 5 minutes of TUI uptime,
+/// which looked like the feature was broken on long-running sessions.
 pub const RECENT_COMPLETED_CAP: usize = 3;
-
-/// Entries older than this are pruned from the recently-completed tail.
-pub const RECENT_COMPLETED_TTL: Duration = Duration::from_secs(5 * 60);
 
 /// One entry in either activity section.
 #[derive(Debug, Clone)]
@@ -118,10 +121,10 @@ impl ActivityState {
     ///   `InProgress` status (matches the deterministic ordering of
     ///   `TaskRepository::find_by_status`).
     /// - `recently_completed`: takes up to `RECENT_COMPLETED_CAP` done/waived
-    ///   tasks from files modified within `RECENT_COMPLETED_TTL`. The DB
-    ///   tracks file mtime, not per-task completion time, so a file recently
-    ///   touched will surface its done tasks here — close enough for the
-    ///   "what changed recently?" framing of the activity bar.
+    ///   tasks ordered by file mtime DESC. The DB tracks file mtime, not
+    ///   per-task completion time, so this surfaces "tasks from the most
+    ///   recently touched files" — close enough for the "what's been done
+    ///   recently?" framing of the activity bar.
     ///
     /// Failures (DB errors, missing tasks) are swallowed silently: the
     /// activity bar is a UI nicety, not a correctness path.
@@ -139,19 +142,10 @@ impl ActivityState {
             }
         }
 
-        // Recently completed: query the N most-recently-completed done/waived
-        // tasks regardless of *how* recently. The DB only tracks file mtime,
-        // not per-task completion time — so requiring "within the last 5
-        // minutes" (matching the in-memory TTL) hides completions on any
-        // project whose files haven't been touched in the current session.
-        // That made the bar look broken on first launch in any quiescent
-        // project.
-        //
-        // Instead we pass `since = 0` (the Unix epoch) to get the top-N
-        // entries by file mtime, then let the in-memory TTL prune them
-        // organically: their `at` is set to `now`, so they age out after
-        // `RECENT_COMPLETED_TTL` like any other entry — by which point the
-        // user has hopefully made transitions of their own in the session.
+        // Pass `since = 0` (Unix epoch) so the query returns the top-N by
+        // file mtime regardless of absolute age. The cap (not a TTL) is the
+        // only thing bounding the buffer — new session transitions push old
+        // backfilled entries out as they arrive.
         if let Ok(recents) = task_repo.find_recently_completed(0, RECENT_COMPLETED_CAP) {
             for task in recents {
                 if self.recently_completed.len() >= RECENT_COMPLETED_CAP {
@@ -166,13 +160,10 @@ impl ActivityState {
         }
     }
 
-    /// Drop recently-completed entries older than the TTL and enforce the cap.
-    /// Called periodically from the TUI tick.
-    pub fn prune(&mut self, now: Instant) {
-        self.recently_completed.retain(|e| {
-            now.checked_duration_since(e.at)
-                .map_or(true, |d| d <= RECENT_COMPLETED_TTL)
-        });
+    /// Enforce the cap on the recently-completed tail. Called periodically
+    /// from the TUI tick. No time-based aging — see `RECENT_COMPLETED_CAP`'s
+    /// docs for the rationale.
+    pub fn prune(&mut self, _now: Instant) {
         while self.recently_completed.len() > RECENT_COMPLETED_CAP {
             self.recently_completed.pop_back();
         }
@@ -282,24 +273,27 @@ mod tests {
     }
 
     #[test]
-    fn prune_drops_entries_older_than_ttl() {
+    fn prune_does_not_age_out_old_entries() {
+        // Regression: an earlier version aged out entries after 5 minutes,
+        // which made the bar empty itself after 5 minutes of TUI uptime on
+        // a quiescent project. Now only the cap bounds the buffer; old
+        // entries stick around until newer ones push them out.
         let mut a = ActivityState::new();
         let long_ago = Instant::now()
-            .checked_sub(RECENT_COMPLETED_TTL + Duration::from_secs(1))
-            .expect("checked_sub of small duration should succeed");
+            .checked_sub(std::time::Duration::from_secs(24 * 3600))
+            .expect("checked_sub of 24h should succeed");
         a.recently_completed.push_back(ActivityEntry {
-            full_id: "f#old".into(),
-            title: "old".into(),
+            full_id: "f#stale".into(),
+            title: "stale".into(),
             at: long_ago,
         });
-        a.recently_completed.push_front(ActivityEntry {
-            full_id: "f#new".into(),
-            title: "new".into(),
-            at: Instant::now(),
-        });
         a.prune(Instant::now());
-        assert_eq!(a.recently_completed.len(), 1);
-        assert_eq!(a.recently_completed[0].full_id, "f#new");
+        assert_eq!(
+            a.recently_completed.len(),
+            1,
+            "old entries must NOT be aged out by prune"
+        );
+        assert_eq!(a.recently_completed[0].full_id, "f#stale");
     }
 
     #[test]
