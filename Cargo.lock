@@ -1190,6 +1190,7 @@ name = "lash-tui"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "filetime",
  "insta",
  "lash-core",
  "lash-db",
