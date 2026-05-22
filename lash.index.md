@@ -42,7 +42,12 @@ For background docs, see:
     file, and records its hash so the watcher's echo gets dedupe'd — no
     more redundant reindex on a TUI-initiated create
 - [ ] `formatter::format_file_in_place` uses `write_atomic` #core
-- [ ] Stale-modal banner for in-flight modals on external change #tui
+- [x] Stale-modal banner for in-flight modals on external change #tui
+  - Task-creation modal gets a `stale` flag; external edit to its
+    `target_file` flips it. Submit refuses, modal title and border turn
+    warning-colored. User Esc-discards and retries against fresh state.
+    The other (transient) confirm modals are not yet covered — typical
+    open-window is sub-second so the risk window is much smaller
 - [ ] Bounded watcher channel with `FullReload` overflow path #core
 
 ### CLI hygiene

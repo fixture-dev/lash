@@ -1,5 +1,48 @@
 # Lash Development Log
 
+## 2026-05-22 - Stale-modal protection for in-flight task creation
+
+### Summary
+
+Closes the last *correctness* gap in the live-updates feature. Before:
+if a user had the task-creation modal open and an external process
+rewrote the same file underneath (an agent, an `$EDITOR` save, a
+`git pull`), submitting the form would happily overwrite the external
+change. The reindex would catch up afterwards but the external edit's
+content was already lost.
+
+Now: `TaskCreationModalState` has a `stale` flag. Whenever
+`handle_file_reloaded` observes an external change to a file that an
+open modal is targeting, the modal is marked stale and a warning is
+surfaced. The modal's title and border switch to warning colors so the
+state is impossible to miss. The submit handler refuses stale submits
+outright — the user has to `Esc` to discard the form and retry against
+the fresh on-disk state.
+
+The other (transient) confirm modals — confirm-complete, confirm-
+incomplete, confirm-linked-file-complete — are not yet covered, since
+they typically only stay open for sub-second windows where the conflict
+risk is negligible.
+
+### Key Components
+
+- `TaskCreationModalState.stale: bool` (default false)
+- `lash-tui::app::mark_modal_stale_if_targets(relative)` — called from
+  `handle_file_reloaded` after the external diff is applied
+- Submit refusal: `handle_submit_task_creation` returns early with an
+  error message if `stale` is set
+- Modal renderer: title and border switch to `theme.warning_color()`
+  when stale
+- `handle_submit_task_creation` is now `pub` so integration tests can
+  drive it directly (mirrors the pattern already used for
+  `process_external_change`)
+- 3 new integration tests in `external_reload_tests.rs`:
+  - modal goes stale on external edit to its target file
+  - external edit to an *unrelated* file does *not* mark the modal stale
+  - stale submit is refused — the target file's bytes are unchanged
+    after the refused submit, modal stays open, and the warning message
+    is surfaced
+
 ## 2026-05-22 - Task creation flows through Store; watcher dedupe extends to creates
 
 ### Summary

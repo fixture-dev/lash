@@ -227,6 +227,142 @@ fn external_in_progress_to_done_clears_in_progress_and_pushes_to_recent() {
 }
 
 #[test]
+fn open_task_creation_modal_goes_stale_on_external_edit_to_target_file() {
+    let (_dir, db_path, tasks_md) = setup_project(INITIAL_BODY);
+    let project_root = tasks_md.parent().unwrap().to_path_buf();
+
+    let mut app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+    app.tick().unwrap();
+
+    // Open a creation modal targeting tasks.md (the project-relative path).
+    let relative_target = tasks_md.strip_prefix(&project_root).unwrap().to_path_buf();
+    app.state_mut()
+        .open_task_creation_modal(relative_target, Vec::new());
+
+    assert!(
+        !app.state()
+            .task_creation_modal_state
+            .as_ref()
+            .unwrap()
+            .stale,
+        "modal should start fresh"
+    );
+
+    // External rewrite of the same file the modal is targeting.
+    write_tasks(&tasks_md, BODY_WITH_INSERT_ABOVE);
+    app.process_external_change(&tasks_md).unwrap();
+
+    let modal = app
+        .state()
+        .task_creation_modal_state
+        .as_ref()
+        .expect("modal should remain open");
+    assert!(
+        modal.stale,
+        "modal should be marked stale after external edit to its target file"
+    );
+}
+
+#[test]
+fn stale_modal_refuses_submit_and_does_not_overwrite_external_change() {
+    let (_dir, db_path, tasks_md) = setup_project(INITIAL_BODY);
+    let project_root = tasks_md.parent().unwrap().to_path_buf();
+
+    let mut app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+    app.tick().unwrap();
+
+    let relative_target = tasks_md.strip_prefix(&project_root).unwrap().to_path_buf();
+    app.state_mut()
+        .open_task_creation_modal(relative_target, Vec::new());
+    // Give the form a title so can_submit() would have passed otherwise.
+    {
+        let modal = app.state_mut().task_creation_modal_state.as_mut().unwrap();
+        modal.title.set_value("Form contents");
+    }
+
+    // External edit lands while the modal is open.
+    write_tasks(&tasks_md, BODY_WITH_INSERT_ABOVE);
+    app.process_external_change(&tasks_md).unwrap();
+    assert!(
+        app.state()
+            .task_creation_modal_state
+            .as_ref()
+            .unwrap()
+            .stale
+    );
+
+    // Capture the on-disk bytes — submit must not overwrite these.
+    let bytes_before = std::fs::read_to_string(&tasks_md).unwrap();
+
+    // Try to submit anyway.
+    app.handle_submit_task_creation().unwrap();
+
+    let bytes_after = std::fs::read_to_string(&tasks_md).unwrap();
+    assert_eq!(
+        bytes_after, bytes_before,
+        "stale submit must not write to the target file"
+    );
+    assert!(
+        app.state().task_creation_modal_state.is_some(),
+        "modal should remain open after refused submit so user can Esc"
+    );
+    assert!(
+        app.state()
+            .status_message
+            .as_ref()
+            .is_some_and(|m| m.text.contains("changed on disk")),
+        "expected a 'changed on disk' warning, got {:?}",
+        app.state().status_message
+    );
+}
+
+#[test]
+fn external_edit_to_unrelated_file_does_not_mark_modal_stale() {
+    let (_dir, db_path, tasks_md) = setup_project(INITIAL_BODY);
+    let project_root = tasks_md.parent().unwrap().to_path_buf();
+    // Create a second, unrelated task file under the same project root so
+    // the watcher path sees a real file change but the modal targets a
+    // different one.
+    let other_md = project_root.join("other.md");
+    write_tasks(
+        &other_md,
+        "# Other\n\n@id: other\n\n## Tasks\n\n- [ ] something\n",
+    );
+
+    let mut app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+    app.tick().unwrap();
+
+    let relative_target = tasks_md.strip_prefix(&project_root).unwrap().to_path_buf();
+    app.state_mut()
+        .open_task_creation_modal(relative_target, Vec::new());
+
+    // Edit a *different* file.
+    write_tasks(
+        &other_md,
+        "# Other\n\n@id: other\n\n## Tasks\n\n- [x] something\n",
+    );
+    app.process_external_change(&other_md).unwrap();
+
+    let modal = app.state().task_creation_modal_state.as_ref().unwrap();
+    assert!(
+        !modal.stale,
+        "edits to unrelated files must not mark the modal stale"
+    );
+}
+
+#[test]
 fn task_creation_through_store_dedupes_watcher_echo() {
     use lash_types::creation::TaskCreationRequestBuilder;
     use lash_types::LashConfig;

@@ -491,6 +491,10 @@ pub struct TaskCreationModalState {
     pub cached_label_options: Vec<String>,
     /// Cached owner options (loaded once when modal opens)
     pub cached_owner_options: Vec<String>,
+    /// Set to true when an external edit has been observed on `target_file`
+    /// while this modal was open. Stale modals refuse to submit so the
+    /// in-memory form state can't silently overwrite the on-disk changes.
+    pub stale: bool,
 }
 
 impl TaskCreationModalState {
@@ -535,6 +539,7 @@ impl TaskCreationModalState {
             show_preview: false,
             cached_label_options: Vec::new(),
             cached_owner_options: Vec::new(),
+            stale: false,
         }
     }
 
