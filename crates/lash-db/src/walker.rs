@@ -395,7 +395,8 @@ impl FileWalker {
                 .follow_links(self.config.follow_symlinks)
                 .git_ignore(self.config.respect_gitignore)
                 .git_global(self.config.respect_gitignore)
-                .git_exclude(self.config.respect_gitignore);
+                .git_exclude(self.config.respect_gitignore)
+                .add_custom_ignore_filename(".lashignore");
 
             let walker = builder.build();
 
@@ -744,6 +745,44 @@ mod tests {
 
         // Should find all markdown files
         assert_eq!(files.len(), 4);
+    }
+
+    #[test]
+    fn test_lashignore_respect() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // .lashignore is honored independently of git, so no `git init` needed.
+        fs::write(
+            root.join(".lashignore"),
+            "skipped/\nnoindex.md\nnested/skipped-too/\n",
+        )
+        .unwrap();
+
+        fs::create_dir(root.join("skipped")).unwrap();
+        fs::create_dir_all(root.join("nested/skipped-too")).unwrap();
+        fs::create_dir(root.join("kept")).unwrap();
+
+        fs::write(root.join("skipped/a.md"), "x").unwrap();
+        fs::write(root.join("nested/skipped-too/b.md"), "x").unwrap();
+        fs::write(root.join("kept/c.md"), "x").unwrap();
+        fs::write(root.join("noindex.md"), "x").unwrap();
+        fs::write(root.join("indexed.md"), "x").unwrap();
+
+        let config = FileWalkerConfig::new(root.to_path_buf());
+        let walker = FileWalker::new(config);
+        let files = walker.discover_files().unwrap();
+
+        let paths: Vec<String> = files
+            .iter()
+            .map(|f| f.relative_path.to_string_lossy().replace('\\', "/"))
+            .collect();
+
+        assert!(paths.contains(&"indexed.md".to_string()));
+        assert!(paths.contains(&"kept/c.md".to_string()));
+        assert!(!paths.contains(&"noindex.md".to_string()));
+        assert!(!paths.contains(&"skipped/a.md".to_string()));
+        assert!(!paths.contains(&"nested/skipped-too/b.md".to_string()));
     }
 
     #[test]

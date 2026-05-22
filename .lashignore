@@ -1,0 +1,31 @@
+# Files Lash should ignore when indexing this repo.
+#
+# We dogfood Lash via `lash.index.md` at the repo root for current/near-term
+# work. Everything below either predates Lash's task-file format or is
+# documentation, fixtures, or output that has its own structure.
+
+# Documentation
+README.md
+CLAUDE.md
+CONTRIBUTING.md
+DEVELOPMENT_PLAN.md
+devlog.md
+test-coverage-analysis.md
+docs/
+demos/
+
+# Sample/fixture projects used by tests and walkthroughs — these *are* in
+# lash task-file format but they're examples, not real work.
+examples/
+
+# Historical task breakdown predating Lash's own linter; kept for archival
+# reference and PR descriptions, not indexed by Lash itself.
+tasks/
+
+# Rust source — any `.md` in here is test fixtures (incl. intentionally
+# broken ones), benchmarks, or doctest data, not real task tracking.
+crates/
+
+# Other build/asset directories.
+assets/
+
