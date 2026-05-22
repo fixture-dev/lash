@@ -136,6 +136,20 @@ impl TuiApp {
             completed_tasks,
         };
 
+        if let Ok(mut in_progress_tasks) =
+            task_repo.find_by_status(lash_types::TaskStatus::InProgress)
+        {
+            if let Some(first) = in_progress_tasks.drain(..).next() {
+                state
+                    .activity
+                    .set_in_progress(crate::activity::ActivityEntry {
+                        full_id: first.full_id,
+                        title: first.title,
+                        at: std::time::Instant::now(),
+                    });
+            }
+        }
+
         Ok(Self {
             terminal,
             event_source,
@@ -299,6 +313,7 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     pub fn tick(&mut self) -> TuiResult<bool> {
         // Check for expired status messages
         self.state.check_status_expiry();
+        self.state.activity.prune(std::time::Instant::now());
 
         // Render
         self.terminal
@@ -859,6 +874,7 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         // Capture task info before updating
         let task_id = task.id;
         let task_title = task.title.clone();
+        let task_full_id = task.full_id.clone();
         let old_status = task.status;
         let new_status = match task.status {
             lash_types::TaskStatus::Open => lash_types::TaskStatus::InProgress,
@@ -979,6 +995,14 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
             ));
         }
 
+        self.state.activity.record_transition(
+            &task_full_id,
+            &task_title,
+            old_status,
+            new_status,
+            std::time::Instant::now(),
+        );
+
         // Preserve expansion state before rebuilding tree
         let expanded_ids = self.state.collect_expansion_state();
 
@@ -1071,6 +1095,14 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
             subtask_count,
             if subtask_count == 1 { "" } else { "s" }
         ));
+
+        self.state.activity.record_transition(
+            &parent_task.full_id,
+            &parent_task.title,
+            parent_task.status,
+            lash_types::TaskStatus::Done,
+            std::time::Instant::now(),
+        );
 
         // Preserve expansion state before rebuilding tree
         let expanded_ids = self.state.collect_expansion_state();
@@ -1180,6 +1212,14 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
                 .unwrap_or("linked file")
         ));
 
+        self.state.activity.record_transition(
+            &link_task.full_id,
+            &link_task.title,
+            link_task.status,
+            lash_types::TaskStatus::Done,
+            std::time::Instant::now(),
+        );
+
         // Preserve expansion state before rebuilding tree
         let expanded_ids = self.state.collect_expansion_state();
 
@@ -1276,6 +1316,14 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
             ancestor_count,
             if ancestor_count == 1 { "" } else { "s" }
         ));
+
+        self.state.activity.record_transition(
+            &subtask.full_id,
+            &subtask.title,
+            old_status,
+            lash_types::TaskStatus::Open,
+            std::time::Instant::now(),
+        );
 
         // Preserve expansion state before rebuilding tree
         let expanded_ids = self.state.collect_expansion_state();
