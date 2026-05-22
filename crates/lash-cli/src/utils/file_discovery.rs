@@ -84,39 +84,42 @@ fn is_markdown_file(path: &Path) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
 }
 
-/// Find the project root by looking for lash.index.md or .lash/ directory
+/// Find the project root by looking for `lash.index.md`, `index.lash.md`,
+/// or a `.lash/` directory.
 ///
-/// Searches upward from the given directory until a project root marker is found.
-/// If no marker is found, returns the original directory.
+/// Searches upward from `start_dir`. When `start_dir` is inside a git
+/// repository, the search is capped at the git root: markers above the
+/// git root are *not* accepted. This stops leftover state in a user's
+/// home directory (e.g. a stray `~/.lash/`) from hijacking commands
+/// invoked inside an unrelated project.
 ///
-/// # Arguments
-///
-/// * `start_dir` - Directory to start searching from
-///
-/// # Returns
-///
-/// The project root directory
+/// If no marker is found within bounds, the original `start_dir` is
+/// returned unchanged — that's the historical contract callers rely on.
 pub fn find_project_root(start_dir: &Path) -> PathBuf {
+    let git_root = lash_types::path_utils::find_git_root(start_dir);
+    let canonical_git_root = git_root.as_deref();
     let mut current = start_dir;
 
     loop {
-        // Check for lash.index.md or index.lash.md
         if current.join("lash.index.md").exists() || current.join("index.lash.md").exists() {
             return current.to_path_buf();
         }
-
-        // Check for .lash/ directory
         if current.join(".lash").is_dir() {
             return current.to_path_buf();
         }
 
-        // Move up one directory
+        // If we've reached the git root, stop — don't accept markers above it.
+        if let Some(gr) = canonical_git_root {
+            if let Ok(current_canon) = current.canonicalize() {
+                if current_canon == *gr {
+                    return start_dir.to_path_buf();
+                }
+            }
+        }
+
         match current.parent() {
             Some(parent) => current = parent,
-            None => {
-                // Reached root without finding project marker, return original dir
-                return start_dir.to_path_buf();
-            }
+            None => return start_dir.to_path_buf(),
         }
     }
 }

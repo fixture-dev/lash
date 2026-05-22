@@ -63,21 +63,38 @@ impl LashConfig {
             io_error: Some(e.to_string()),
         })?;
 
-        // Search upward until we find a marker
+        // Cap the walk at the current git repo so ancestor markers (e.g. a
+        // stray `~/.lash/`) cannot hijack the lookup.
+        let git_root = crate::path_utils::find_git_root(&current);
+
         loop {
-            // Check for lash.index.md
             if current.join("lash.index.md").exists() {
                 return Ok(current);
             }
-
-            // Check for index.lash.md
             if current.join("index.lash.md").exists() {
                 return Ok(current);
             }
-
-            // Check for .lash directory
             if current.join(".lash").is_dir() {
                 return Ok(current);
+            }
+
+            if let Some(ref gr) = git_root {
+                if current == *gr {
+                    return Err(LashError::Config {
+                        code: codes::E_CONFIG_ROOT_NOT_FOUND,
+                        message: format!(
+                            "No Lash project root found within the current git repository \
+                             (searched from {} up to {})",
+                            start_dir.display(),
+                            gr.display()
+                        ),
+                        path: Some(start_dir.to_path_buf()),
+                        help: Some(
+                            "Initialize a Lash project here or run lash from inside one"
+                                .to_string(),
+                        ),
+                    });
+                }
             }
 
             // Move to parent directory
