@@ -1504,6 +1504,9 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         let relative = absolute_path
             .strip_prefix(&self.project_root)
             .unwrap_or(absolute_path);
+
+        self.mark_modal_stale_if_targets(relative);
+
         let changed_file_id = FileRepository::new(&self.conn)
             .get_by_path(relative)
             .ok()
@@ -1554,6 +1557,37 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
             out.insert(t.full_id, t.status);
         }
         out
+    }
+
+    /// If the task-creation modal is open and targets the file at `relative`
+    /// (the project-relative form of the path that just changed externally),
+    /// mark it stale and surface a warning. The submit handler will refuse a
+    /// stale submit so the user's in-memory form can't silently overwrite the
+    /// on-disk changes.
+    fn mark_modal_stale_if_targets(&mut self, relative: &Path) {
+        let already_stale = self
+            .state
+            .task_creation_modal_state
+            .as_ref()
+            .is_some_and(|m| m.stale);
+        if already_stale {
+            return;
+        }
+
+        let target_matches = self
+            .state
+            .task_creation_modal_state
+            .as_ref()
+            .is_some_and(|m| m.target_file == relative);
+
+        if target_matches {
+            if let Some(modal) = self.state.task_creation_modal_state.as_mut() {
+                modal.stale = true;
+            }
+            self.state.set_warning_message(
+                "Target file changed on disk — press Esc to discard and retry",
+            );
+        }
     }
 
     /// Compare the post-reindex tasks of `absolute_path` against `pre` and
@@ -2180,13 +2214,30 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     }
 
     /// Handle submitting task creation
-    fn handle_submit_task_creation(&mut self) -> TuiResult<()> {
+    /// Run the task-creation submit handler. Public so integration tests can
+    /// exercise it directly without driving the full event-loop key sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying create/reindex/reload path fails.
+    pub fn handle_submit_task_creation(&mut self) -> TuiResult<()> {
         use lash_db::{Indexer, IndexerConfig};
         use lash_types::LashConfig;
 
         let Some(modal_state) = &self.state.task_creation_modal_state else {
             return Ok(());
         };
+
+        // Refuse submission against a file that's been edited externally
+        // since the modal was opened. Submitting would overwrite the
+        // external work — the safer move is to discard the form and let
+        // the user retry against the fresh on-disk state.
+        if modal_state.stale {
+            self.state.set_error_message(
+                "File changed on disk — press Esc to discard this form and retry",
+            );
+            return Ok(());
+        }
 
         // Check if form can be submitted
         if !modal_state.can_submit() {

@@ -25,11 +25,21 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     // Clear background
     frame.render_widget(Clear, popup_area);
 
-    // Render modal border
+    // Render modal border. When the target file has been changed externally
+    // since the modal was opened, swap to a warning title + border so the
+    // user has an unmissable signal that submitting would clobber the change.
+    let (title, border_color) = if modal_state.stale {
+        (
+            " Create New Task — file changed on disk (Esc to discard) ",
+            state.theme.warning_color(),
+        )
+    } else {
+        (" Create New Task ", state.theme.border_focused())
+    };
     let block = Block::default()
-        .title(" Create New Task ")
+        .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(state.theme.border_focused()));
+        .border_style(Style::default().fg(border_color));
     frame.render_widget(block.clone(), popup_area);
 
     let inner = block.inner(popup_area);
