@@ -19,6 +19,7 @@ walkdir = { workspace = true }
 pulldown-cmark = "0.12"
 chrono = { workspace = true }
 strsim = { workspace = true }
+blake3 = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

@@ -1,0 +1,446 @@
+// LashError is intentionally rich with context; size-of-Err is not a concern here.
+#![allow(clippy::result_large_err)]
+
+//! Single-writer store coordinating Markdown task-file mutations.
+//!
+//! The `Store` is the only thing in the system that writes to task files on
+//! disk. It records a hash of every byte sequence it writes so that, when an
+//! external file watcher later reports a change to that file, the store can
+//! tell whether the change is its own write echoing back (drop silently) or a
+//! genuine external edit (treat as `FileReloaded`).
+//!
+//! See `docs/live-tui-updates.md` for the broader architecture.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use lash_types::error::codes;
+use lash_types::{LashError, Result, TaskStatus};
+
+/// A mutation request submitted to the store.
+#[derive(Debug, Clone)]
+pub enum Mutation {
+    /// Toggle one task's checkbox from `old_status` to `new_status` in
+    /// `absolute_path`. The task is identified by its title within the file.
+    SetTaskStatus {
+        /// Absolute path to the task file.
+        absolute_path: PathBuf,
+        /// Title text of the task, used to locate the matching checkbox line.
+        task_title: String,
+        /// Status the task is transitioning from.
+        old_status: TaskStatus,
+        /// Status the task is transitioning to.
+        new_status: TaskStatus,
+    },
+}
+
+/// Effects emitted by the store as a result of either an `apply` call or an
+/// observed external change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StateDelta {
+    /// A task's status changed (either via `apply` or as a result of an
+    /// external reload that observed a status flip).
+    TaskStatusChanged {
+        /// Absolute path of the file whose task changed.
+        absolute_path: PathBuf,
+        /// Task title (used in lieu of a parsed AST for now).
+        task_title: String,
+        /// Previous status.
+        old: TaskStatus,
+        /// New status.
+        new: TaskStatus,
+    },
+    /// An external process rewrote a file; consumers should re-parse and
+    /// re-render. The source of truth here is the new on-disk content.
+    FileReloaded {
+        /// Absolute path of the file that changed externally.
+        absolute_path: PathBuf,
+    },
+}
+
+/// The store's single-writer surface.
+#[derive(Debug, Default)]
+pub struct Store {
+    last_written_hash: HashMap<PathBuf, [u8; 32]>,
+}
+
+impl Store {
+    /// Create an empty store.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Apply a mutation: rewrite the affected file atomically, record the hash
+    /// of what was written, and emit a delta describing the change.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the target file cannot be read, the expected task
+    /// title cannot be found in the file, or the atomic write fails.
+    pub fn apply(&mut self, mutation: Mutation) -> Result<Vec<StateDelta>> {
+        match mutation {
+            Mutation::SetTaskStatus {
+                absolute_path,
+                task_title,
+                old_status,
+                new_status,
+            } => {
+                let original =
+                    std::fs::read_to_string(&absolute_path).map_err(|e| LashError::IO {
+                        code: codes::E_IO_READ_ERROR,
+                        message: format!("failed to read {}", absolute_path.display()),
+                        path: Some(absolute_path.clone()),
+                        io_error: Some(e.to_string()),
+                    })?;
+
+                let updated = rewrite_checkbox(&original, &task_title, old_status, new_status)
+                    .ok_or_else(|| LashError::Internal {
+                        code: codes::E_INTERNAL,
+                        message: format!(
+                            "task '{task_title}' with status {old_status} not found in {}",
+                            absolute_path.display()
+                        ),
+                        context: None,
+                    })?;
+
+                let bytes = updated.as_bytes();
+                let hash = blake3::hash(bytes);
+                self.last_written_hash
+                    .insert(absolute_path.clone(), *hash.as_bytes());
+
+                write_atomic(&absolute_path, bytes)?;
+
+                Ok(vec![StateDelta::TaskStatusChanged {
+                    absolute_path,
+                    task_title,
+                    old: old_status,
+                    new: new_status,
+                }])
+            }
+        }
+    }
+
+    /// Process an external-change notification for `path`. Returns an empty
+    /// vec if the on-disk content matches our most recent write to this path
+    /// (i.e. the watcher is echoing our own write) — and otherwise returns a
+    /// `FileReloaded` delta.
+    ///
+    /// The cached hash is cleared on a match, so a second identical watcher
+    /// event would not be silently dropped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read.
+    pub fn handle_external_change(&mut self, absolute_path: &Path) -> Result<Vec<StateDelta>> {
+        let bytes = match std::fs::read(absolute_path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                self.last_written_hash.remove(absolute_path);
+                return Ok(Vec::new());
+            }
+            Err(e) => {
+                return Err(LashError::IO {
+                    code: codes::E_IO_READ_ERROR,
+                    message: format!("failed to read {}", absolute_path.display()),
+                    path: Some(absolute_path.to_path_buf()),
+                    io_error: Some(e.to_string()),
+                });
+            }
+        };
+
+        let hash = *blake3::hash(&bytes).as_bytes();
+        if self.last_written_hash.get(absolute_path) == Some(&hash) {
+            self.last_written_hash.remove(absolute_path);
+            return Ok(Vec::new());
+        }
+
+        // External change wins — clear any stale hash so we don't accidentally
+        // suppress a future event.
+        self.last_written_hash.remove(absolute_path);
+
+        Ok(vec![StateDelta::FileReloaded {
+            absolute_path: absolute_path.to_path_buf(),
+        }])
+    }
+
+    /// Test-only access to the hash table.
+    #[cfg(test)]
+    fn has_recorded_hash(&self, path: &Path) -> bool {
+        self.last_written_hash.contains_key(path)
+    }
+}
+
+/// Write `bytes` to `path` atomically: write to a sibling temp file and
+/// rename it into place. The rename is atomic on POSIX and on Windows
+/// (same-volume), which is always true for in-project task files.
+///
+/// On error after the temp file is created, the temp file is removed so it
+/// doesn't leak.
+///
+/// # Errors
+///
+/// Returns an `IO` error if the temp write or the rename fails.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let tmp = tmp_path_for(path);
+
+    std::fs::write(&tmp, bytes).map_err(|e| LashError::IO {
+        code: codes::E_IO_WRITE_ERROR,
+        message: format!("failed to write temp file {}", tmp.display()),
+        path: Some(tmp.clone()),
+        io_error: Some(e.to_string()),
+    })?;
+
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(LashError::IO {
+            code: codes::E_IO_WRITE_ERROR,
+            message: format!("failed to rename {} -> {}", tmp.display(), path.display()),
+            path: Some(path.to_path_buf()),
+            io_error: Some(e.to_string()),
+        });
+    }
+
+    Ok(())
+}
+
+fn tmp_path_for(path: &Path) -> PathBuf {
+    // Prefer "<name>.lash-tmp" rather than replacing the extension, so we
+    // don't collide if two writes happen against the same stem with different
+    // extensions.
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut name = path
+        .file_name()
+        .map(std::ffi::OsStr::to_os_string)
+        .unwrap_or_default();
+    name.push(".lash-tmp");
+    parent.join(name)
+}
+
+/// Rewrite the first checkbox line for `task_title` with status `old_status`
+/// to use `new_status`'s checkbox character.
+///
+/// Returns `None` if no matching line is found. Preserves trailing newline.
+fn rewrite_checkbox(
+    content: &str,
+    task_title: &str,
+    old_status: TaskStatus,
+    new_status: TaskStatus,
+) -> Option<String> {
+    let old_char = old_status.to_checkbox_char();
+    let new_char = new_status.to_checkbox_char();
+    let escaped_title = regex::escape(task_title);
+
+    let pattern = if matches!(old_status, TaskStatus::Done) {
+        format!(r"^(\s*- \[)[xX](\] {escaped_title})")
+    } else {
+        format!(r"^(\s*- \[){old_char}(\] {escaped_title})")
+    };
+
+    let re = regex::Regex::new(&pattern).ok()?;
+
+    let mut found = false;
+    let updated: String = content
+        .lines()
+        .map(|line| {
+            if !found && re.is_match(line) {
+                found = true;
+                re.replace(line, format!("${{1}}{new_char}${{2}}"))
+                    .to_string()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if !found {
+        return None;
+    }
+
+    let final_content = if content.ends_with('\n') && !updated.ends_with('\n') {
+        format!("{updated}\n")
+    } else {
+        updated
+    };
+    Some(final_content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn fixture() -> (TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tasks.md");
+        std::fs::write(
+            &path,
+            "# Test File\n\n@id: f\n\n## Tasks\n\n- [ ] First task\n- [ ] Second task\n",
+        )
+        .unwrap();
+        (dir, path)
+    }
+
+    #[test]
+    fn write_atomic_writes_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.md");
+        write_atomic(&path, b"hello").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
+    }
+
+    #[test]
+    fn write_atomic_leaves_no_temp_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.md");
+        write_atomic(&path, b"hello").unwrap();
+        let tmp_left = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .any(|e| e.file_name().to_string_lossy().ends_with(".lash-tmp"));
+        assert!(!tmp_left, "temp file leaked");
+    }
+
+    #[test]
+    fn rewrite_checkbox_finds_and_replaces() {
+        let content = "- [ ] First task\n- [ ] Second task\n";
+        let out = rewrite_checkbox(
+            content,
+            "First task",
+            TaskStatus::Open,
+            TaskStatus::InProgress,
+        )
+        .unwrap();
+        assert_eq!(out, "- [>] First task\n- [ ] Second task\n");
+    }
+
+    #[test]
+    fn rewrite_checkbox_returns_none_when_missing() {
+        assert!(rewrite_checkbox(
+            "- [ ] Other task\n",
+            "Missing",
+            TaskStatus::Open,
+            TaskStatus::Done
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn apply_records_hash_and_emits_delta() {
+        let (_dir, path) = fixture();
+        let mut store = Store::new();
+        let deltas = store
+            .apply(Mutation::SetTaskStatus {
+                absolute_path: path.clone(),
+                task_title: "First task".into(),
+                old_status: TaskStatus::Open,
+                new_status: TaskStatus::InProgress,
+            })
+            .unwrap();
+        assert_eq!(deltas.len(), 1);
+        assert!(matches!(
+            deltas[0],
+            StateDelta::TaskStatusChanged { ref task_title, .. } if task_title == "First task"
+        ));
+        assert!(store.has_recorded_hash(&path));
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(on_disk.contains("- [>] First task"));
+    }
+
+    #[test]
+    fn apply_missing_task_errors() {
+        let (_dir, path) = fixture();
+        let mut store = Store::new();
+        let err = store
+            .apply(Mutation::SetTaskStatus {
+                absolute_path: path,
+                task_title: "Nope".into(),
+                old_status: TaskStatus::Open,
+                new_status: TaskStatus::Done,
+            })
+            .unwrap_err();
+        assert_eq!(err.code(), codes::E_INTERNAL);
+    }
+
+    #[test]
+    fn handle_external_change_drops_self_write_echo() {
+        let (_dir, path) = fixture();
+        let mut store = Store::new();
+        store
+            .apply(Mutation::SetTaskStatus {
+                absolute_path: path.clone(),
+                task_title: "First task".into(),
+                old_status: TaskStatus::Open,
+                new_status: TaskStatus::Done,
+            })
+            .unwrap();
+        // Simulate the watcher firing for the file we just wrote.
+        let deltas = store.handle_external_change(&path).unwrap();
+        assert!(deltas.is_empty(), "self-write echo should be dropped");
+        assert!(
+            !store.has_recorded_hash(&path),
+            "matched hash should be cleared after first observation"
+        );
+    }
+
+    #[test]
+    fn handle_external_change_emits_reload_for_real_edit() {
+        let (_dir, path) = fixture();
+        let mut store = Store::new();
+        // Self-write, then someone else edits the file externally.
+        store
+            .apply(Mutation::SetTaskStatus {
+                absolute_path: path.clone(),
+                task_title: "First task".into(),
+                old_status: TaskStatus::Open,
+                new_status: TaskStatus::Done,
+            })
+            .unwrap();
+        std::fs::write(&path, "- [ ] Brand new external content\n").unwrap();
+        let deltas = store.handle_external_change(&path).unwrap();
+        assert_eq!(deltas.len(), 1);
+        assert!(matches!(
+            deltas[0],
+            StateDelta::FileReloaded { ref absolute_path } if absolute_path == &path
+        ));
+    }
+
+    #[test]
+    fn handle_external_change_emits_reload_when_no_prior_self_write() {
+        let (_dir, path) = fixture();
+        let mut store = Store::new();
+        let deltas = store.handle_external_change(&path).unwrap();
+        assert_eq!(deltas.len(), 1);
+    }
+
+    #[test]
+    fn second_identical_external_change_after_match_emits_reload() {
+        let (_dir, path) = fixture();
+        let mut store = Store::new();
+        store
+            .apply(Mutation::SetTaskStatus {
+                absolute_path: path.clone(),
+                task_title: "First task".into(),
+                old_status: TaskStatus::Open,
+                new_status: TaskStatus::Done,
+            })
+            .unwrap();
+        // First event: matches our write, dropped.
+        let first = store.handle_external_change(&path).unwrap();
+        assert!(first.is_empty());
+        // Second event with same bytes (no further edit): hash was cleared,
+        // so we treat this as a real external change.
+        let second = store.handle_external_change(&path).unwrap();
+        assert_eq!(second.len(), 1);
+    }
+
+    #[test]
+    fn handle_external_change_for_missing_file_is_quiet() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ghost.md");
+        let mut store = Store::new();
+        let deltas = store.handle_external_change(&path).unwrap();
+        assert!(deltas.is_empty());
+    }
+}

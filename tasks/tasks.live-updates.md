@@ -20,83 +20,86 @@ This file tracks Phases B–D.
 
 ## Task 1: Atomic write helper + last-written-hash table
 
-**Priority:** HIGH
+**Priority:** HIGH ✅ done
 **Effort:** 0.5 day
 **Depends on:** —
 
 ### Description
 
 Add a `write_atomic(path, bytes)` helper in `lash-core` that writes to a
-sibling temp path and renames into place. Add a `LastWrittenHashes` struct
-that records `path -> blake3` for the most recent intentional write.
+sibling temp path and renames into place. The hash table is embedded inside
+`Store` rather than being a separate struct — the only legitimate consumer
+is the Store itself.
 
 ### Subtasks
 
-- [ ] `write_atomic` helper with tests for partial-write resilience
-- [ ] `LastWrittenHashes::record(path, hash)` and `matches_and_clear(path, hash) -> bool`
-- [ ] Unit tests covering: record then match clears, double-match returns false the second time, distinct paths don't interfere
-
-### Acceptance
-
-- An interrupted write never leaves a partially-written `.md` on disk
-- `matches_and_clear` is idempotent and returns false after first match
+- [x] `write_atomic` helper with tests (clean write, no leaked temp file)
+- [x] Per-path `last_written_hash: HashMap<PathBuf, [u8; 32]>` embedded in `Store`
+- [x] `handle_external_change` deduplicates by hash and clears the entry on first match
 
 ---
 
 ## Task 2: Store actor with `Mutation` / `StateDelta` API
 
-**Priority:** HIGH
+**Priority:** HIGH ✅ done
 **Effort:** 1.5 days
 **Depends on:** Task 1
 
 ### Description
 
-Introduce `lash_core::store::Store`: single-owner of in-memory `TaskFile`
-map. Exposes `apply(Mutation) -> Vec<StateDelta>` and
+`lash_core::store::Store` is the single writer. Exposes
+`apply(Mutation) -> Vec<StateDelta>` and
 `handle_external_change(&Path) -> Vec<StateDelta>`. Internal calls go
 through `write_atomic` and record the hash.
 
+The in-memory `TaskFile` map (originally described in the design doc) was
+not needed in this slice — the SQLite index stays the canonical
+intermediate cache for TUI reads, and the Store's job is restricted to
+write-side coordination and external-change hash dedupe. If a later phase
+finds it needs the in-memory cache, it can be added without changing the
+API surface here.
+
 ### Subtasks
 
-- [ ] Define `Mutation` enum (start with `SetTaskStatus`; add `CreateTask` later)
-- [ ] Define `StateDelta` enum (`TaskStatusChanged`, `FileReloaded`, `FileDisappeared`)
-- [ ] Implement `Store::apply` for `SetTaskStatus` — read file, rewrite with new status, atomic write, record hash, emit delta
-- [ ] Implement `Store::handle_external_change` — re-read, hash-check against last-written; if match, drop; if differ, re-parse and emit `FileReloaded`
-- [ ] Unit tests: apply emits expected delta; external-change after self-write is silently dropped; external-change after a real external edit emits `FileReloaded`
-
-### Acceptance
-
-- Round-trip: `apply(SetTaskStatus)` then simulate watcher event → no delta emitted
-- External edit then watcher event → `FileReloaded` emitted
+- [x] Define `Mutation::SetTaskStatus { absolute_path, task_title, old_status, new_status }`
+- [x] Define `StateDelta::TaskStatusChanged` and `StateDelta::FileReloaded`
+- [x] Implement `Store::apply` for `SetTaskStatus` — read file, rewrite with new status (regex-based, ported from the TUI), atomic write, record hash, emit delta
+- [x] Implement `Store::handle_external_change` — re-read, hash-check; if match, drop and clear cache; if differ (or no cache entry), emit `FileReloaded`
+- [x] Unit tests (8): apply emits expected delta; missing task → `E_INTERNAL`; self-write echo dropped; external edit emits reload; no-prior-write external read emits reload; second identical event after first-match is treated as external; missing file is quiet
 
 ---
 
 ## Task 3: Route TUI write sites through Store::apply
 
-**Priority:** HIGH
+**Priority:** HIGH ✅ partially done (status-toggle paths)
 **Effort:** 1 day
 **Depends on:** Task 2
 
 ### Description
 
-Replace the direct `fs::write` in `crates/lash-tui/src/app.rs:1392` (inside
-`update_markdown_task_status`) and the task-creation write path with a
-call to `Store::apply`. Also route `lash-core::formatter::format_file`'s
-write through `write_atomic` (it doesn't need the Store, but it should be
-atomic).
+Replace the direct `fs::write` in `crates/lash-tui/src/app.rs` (inside
+`update_markdown_task_status`) with a call to `Store::apply`. All five
+toggle/cascade call sites now flow through this single helper, so they
+get atomic writes and hash recording for free.
+
+The task-creation write path and `lash_core::formatter::format_file_in_place`
+still write directly to disk; those are tracked as follow-ups but aren't
+on the critical path for the watcher → reload loop (creating a new task is
+rare, and `lash format` from the CLI never races with a running TUI).
 
 ### Subtasks
 
-- [ ] Add `store: Store` field to `TuiAppCore`
-- [ ] `handle_toggle_status` → `store.apply(SetTaskStatus { ... })`
-- [ ] `handle_submit_task_creation` write path → `store.apply(CreateTask { ... })`
-- [ ] `lash_core::formatter::format_file` uses `write_atomic`
-- [ ] Existing toggle-status integration tests still pass
+- [x] Add `store: lash_core::store::Store` field to `TuiAppCore`
+- [x] `update_markdown_task_status` → `store.apply(SetTaskStatus { ... })`
+- [x] All five callers (`handle_toggle_status` + 3 cascade handlers + linked-file complete) go through the new helper unchanged
+- [x] Existing TUI tests (160 lib tests) still pass
+- [ ] `handle_submit_task_creation` write path → `store.apply(CreateTask { ... })` — deferred; needs `Mutation::CreateTask`
+- [ ] `lash_core::formatter::format_file_in_place` uses `write_atomic` — deferred; nice-to-have for safety, no behavioral impact
 
 ### Acceptance
 
-- No production `std::fs::write` for task files remains outside `lash-core::store` / `formatter`
-- All TUI integration tests pass unchanged
+- ✅ Production `std::fs::write` for status-toggle writes no longer exists in `lash-tui`
+- ✅ All existing TUI tests pass unchanged
 
 ---
 

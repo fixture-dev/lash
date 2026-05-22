@@ -41,6 +41,9 @@ pub struct TuiAppCore<B: Backend, E: EventSource> {
 
     /// Project root directory (parent of .lash/)
     project_root: PathBuf,
+
+    /// Single-writer store for Markdown task-file mutations
+    store: lash_core::store::Store,
 }
 
 /// Concrete TUI application type for production use
@@ -156,6 +159,7 @@ impl TuiApp {
             conn,
             state,
             project_root,
+            store: lash_core::store::Store::new(),
         })
     }
 
@@ -300,6 +304,7 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
             conn,
             state,
             project_root,
+            store: lash_core::store::Store::new(),
         }
     }
 
@@ -1357,89 +1362,27 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         }
     }
 
-    /// Get checkbox character (just the char inside brackets) for a task status
-    fn status_checkbox_char(status: lash_types::TaskStatus) -> char {
-        match status {
-            lash_types::TaskStatus::Open => ' ',
-            lash_types::TaskStatus::InProgress => '>',
-            lash_types::TaskStatus::Done => 'x',
-            lash_types::TaskStatus::Waived => '-',
-            lash_types::TaskStatus::Blocked => '!',
-        }
-    }
-
-    /// Update task status in the markdown file
+    /// Update task status in the markdown file via the central store.
     ///
-    /// Finds the task line by matching the title and old status, then updates
-    /// the checkbox character to reflect the new status.
+    /// The store handles the read/rewrite/atomic-write/hash-record dance so
+    /// that, once the file watcher lands, the resulting event echoing back to
+    /// us can be silently dropped.
     fn update_markdown_task_status(
-        &self,
+        &mut self,
         file_path: &Path,
         task_title: &str,
         old_status: lash_types::TaskStatus,
         new_status: lash_types::TaskStatus,
     ) -> TuiResult<()> {
-        use std::fs;
-
-        // Construct full path
-        let full_path = self.project_root.join(file_path);
-
-        // Read file content
-        let content = fs::read_to_string(&full_path)
-            .map_err(|e| TuiError::App(format!("Failed to read file: {e}")))?;
-
-        // Build pattern to find the task line
-        // Task lines look like: "- [ ] Task title" with optional leading whitespace
-        let old_char = Self::status_checkbox_char(old_status);
-        let new_char = Self::status_checkbox_char(new_status);
-
-        // Escape special regex characters in the title
-        let escaped_title = regex::escape(task_title);
-
-        // Pattern: whitespace, dash, space, checkbox with old status, space, title
-        // Handle both uppercase and lowercase 'x' for Done status
-        let pattern = if old_status == lash_types::TaskStatus::Done {
-            format!(r"^(\s*- \[)[xX](\] {escaped_title})")
-        } else {
-            format!(r"^(\s*- \[){old_char}(\] {escaped_title})")
-        };
-
-        let re = regex::Regex::new(&pattern)
-            .map_err(|e| TuiError::App(format!("Failed to compile regex: {e}")))?;
-
-        // Find and replace the task line
-        let mut found = false;
-        let updated_content: String = content
-            .lines()
-            .map(|line| {
-                if !found && re.is_match(line) {
-                    found = true;
-                    re.replace(line, format!("${{1}}{new_char}${{2}}"))
-                        .to_string()
-                } else {
-                    line.to_string()
-                }
+        let absolute_path = self.project_root.join(file_path);
+        self.store
+            .apply(lash_core::store::Mutation::SetTaskStatus {
+                absolute_path,
+                task_title: task_title.to_string(),
+                old_status,
+                new_status,
             })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        // Preserve trailing newline if original had one
-        let final_content = if content.ends_with('\n') && !updated_content.ends_with('\n') {
-            format!("{updated_content}\n")
-        } else {
-            updated_content
-        };
-
-        if !found {
-            return Err(TuiError::App(format!(
-                "Could not find task '{task_title}' in file"
-            )));
-        }
-
-        // Write updated content back to file
-        fs::write(&full_path, final_content)
-            .map_err(|e| TuiError::App(format!("Failed to write file: {e}")))?;
-
+            .map_err(|e| TuiError::App(format!("{e}")))?;
         Ok(())
     }
 

@@ -33,3 +33,6 @@ pub mod creation;
 
 // Fuzzy matching utilities
 pub mod fuzzy;
+
+// Single-writer store coordinating Markdown task-file mutations
+pub mod store;
