@@ -149,6 +149,23 @@ impl TestAppBuilder {
             completed_tasks,
         };
 
+        // Seed activity.in_progress from the DB exactly as production startup
+        // does. Skipping this would mean tests see a stale empty slot when a
+        // task is already in-progress on disk at app start.
+        if let Ok(mut in_progress_tasks) =
+            task_repo.find_by_status(lash_types::TaskStatus::InProgress)
+        {
+            if let Some(first) = in_progress_tasks.drain(..).next() {
+                state
+                    .activity
+                    .set_in_progress(crate::activity::ActivityEntry {
+                        full_id: first.full_id,
+                        title: first.title,
+                        at: std::time::Instant::now(),
+                    });
+            }
+        }
+
         Ok(TestTuiApp::new_core(
             terminal,
             event_source,

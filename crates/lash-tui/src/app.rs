@@ -1480,12 +1480,24 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     /// Reindex the changed file, then — if it's the file currently in view —
     /// reload its tasks, rebuild the tree, restore the cursor by `full_id`,
     /// preserve expansion state, and refresh project stats.
+    ///
+    /// Before reindex we snapshot the file's pre-change task statuses from the
+    /// DB; after reindex we diff against the post state and feed each
+    /// `(old, new)` transition into the activity bar via
+    /// `ActivityState::record_transition`. This is what makes the activity
+    /// sections of the status bar reflect external edits (an agent flipping a
+    /// `[ ]` to `[>]` in `$EDITOR`, a `git pull`, etc.) — not just transitions
+    /// initiated inside the TUI.
     fn handle_file_reloaded(&mut self, absolute_path: &Path) -> TuiResult<()> {
+        let pre_statuses = self.snapshot_file_statuses(absolute_path);
+
         if let Err(e) = self.reindex_paths(&[absolute_path.to_path_buf()]) {
             self.state
                 .set_warning_message(format!("reindex failed for external change: {e}"));
             return Ok(());
         }
+
+        self.apply_external_status_diff(absolute_path, &pre_statuses);
 
         let viewing_id = self.currently_viewed_file_id();
         let relative = absolute_path
@@ -1516,6 +1528,67 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
 
         self.refresh_project_stats()?;
         Ok(())
+    }
+
+    /// Read the current (`full_id` → status) snapshot for the file at
+    /// `absolute_path`, or an empty map if the file isn't yet known to the
+    /// DB or any DB error occurs (we treat missing data as "no transitions
+    /// to attribute" — silent rather than noisy).
+    fn snapshot_file_statuses(
+        &self,
+        absolute_path: &Path,
+    ) -> std::collections::HashMap<String, lash_types::TaskStatus> {
+        let mut out = std::collections::HashMap::new();
+        let relative = absolute_path
+            .strip_prefix(&self.project_root)
+            .unwrap_or(absolute_path);
+        let file_repo = FileRepository::new(&self.conn);
+        let Some(file) = file_repo.get_by_path(relative).ok().flatten() else {
+            return out;
+        };
+        let Ok(tasks) = TaskRepository::new(&self.conn).get_by_file(file.id) else {
+            return out;
+        };
+        for t in tasks {
+            out.insert(t.full_id, t.status);
+        }
+        out
+    }
+
+    /// Compare the post-reindex tasks of `absolute_path` against `pre` and
+    /// route every status change through `ActivityState::record_transition`.
+    fn apply_external_status_diff(
+        &mut self,
+        absolute_path: &Path,
+        pre: &std::collections::HashMap<String, lash_types::TaskStatus>,
+    ) {
+        let relative = absolute_path
+            .strip_prefix(&self.project_root)
+            .unwrap_or(absolute_path);
+        let Some(file) = FileRepository::new(&self.conn)
+            .get_by_path(relative)
+            .ok()
+            .flatten()
+        else {
+            return;
+        };
+        let Ok(post_tasks) = TaskRepository::new(&self.conn).get_by_file(file.id) else {
+            return;
+        };
+        let now = std::time::Instant::now();
+        for task in post_tasks {
+            if let Some(old) = pre.get(&task.full_id).copied() {
+                if old != task.status {
+                    self.state.activity.record_transition(
+                        &task.full_id,
+                        &task.title,
+                        old,
+                        task.status,
+                        now,
+                    );
+                }
+            }
+        }
     }
 
     fn currently_viewed_file_id(&self) -> Option<i64> {
