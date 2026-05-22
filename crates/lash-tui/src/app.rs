@@ -4,8 +4,10 @@ use ratatui::{backend::Backend, backend::CrosstermBackend, Terminal};
 use rusqlite::Connection;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::Duration;
 
+use lash_core::store::StateDelta;
 use lash_db::repository::dependencies::DependencyRepository;
 use lash_db::repository::files::FileRepository;
 use lash_db::repository::labels::LabelRepository;
@@ -44,6 +46,14 @@ pub struct TuiAppCore<B: Backend, E: EventSource> {
 
     /// Single-writer store for Markdown task-file mutations
     store: lash_core::store::Store,
+
+    /// Receiver for paths reported by the file watcher (production only)
+    external_rx: Option<mpsc::Receiver<PathBuf>>,
+
+    /// Live file watcher handle; kept alive for the app's lifetime so the
+    /// watcher thread doesn't shut down. `None` in tests where no real fs
+    /// watching is set up.
+    _watcher: Option<lash_core::watcher::FileWatcherHandle>,
 }
 
 /// Concrete TUI application type for production use
@@ -153,6 +163,14 @@ impl TuiApp {
             }
         }
 
+        let (external_rx, watcher) = match start_watcher(&project_root) {
+            Ok((rx, handle)) => (Some(rx), Some(handle)),
+            Err(e) => {
+                tracing::warn!("file watcher failed to start: {e}; live external updates disabled");
+                (None, None)
+            }
+        };
+
         Ok(Self {
             terminal,
             event_source,
@@ -160,6 +178,8 @@ impl TuiApp {
             state,
             project_root,
             store: lash_core::store::Store::new(),
+            external_rx,
+            _watcher: watcher,
         })
     }
 
@@ -284,6 +304,23 @@ impl TuiApp {
     }
 }
 
+/// Start a file watcher rooted at `project_root` and return the receive end
+/// of the path channel alongside the live watcher handle.
+fn start_watcher(
+    project_root: &Path,
+) -> Result<
+    (
+        mpsc::Receiver<PathBuf>,
+        lash_core::watcher::FileWatcherHandle,
+    ),
+    String,
+> {
+    let (tx, rx) = mpsc::channel();
+    let handle =
+        lash_core::watcher::start(project_root.to_path_buf(), tx).map_err(|e| format!("{e}"))?;
+    Ok((rx, handle))
+}
+
 // Generic implementation for all backend and event source combinations
 impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     /// Create a new TUI app core with explicit components
@@ -305,6 +342,8 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
             state,
             project_root,
             store: lash_core::store::Store::new(),
+            external_rx: None,
+            _watcher: None,
         }
     }
 
@@ -319,6 +358,8 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         // Check for expired status messages
         self.state.check_status_expiry();
         self.state.activity.prune(std::time::Instant::now());
+
+        self.drain_external_changes()?;
 
         // Render
         self.terminal
@@ -646,6 +687,14 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     #[must_use]
     pub fn state_mut(&mut self) -> &mut AppState {
         &mut self.state
+    }
+
+    /// Access the underlying Store (mutable) — primarily for tests that
+    /// want to drive `Store::apply` directly without going through a
+    /// status-toggle event.
+    #[must_use]
+    pub fn store_mut(&mut self) -> &mut lash_core::store::Store {
+        &mut self.store
     }
 
     /// Access the terminal instance
@@ -1384,6 +1433,109 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
             })
             .map_err(|e| TuiError::App(format!("{e}")))?;
         Ok(())
+    }
+
+    /// Drain any pending file-watcher events, route them through the Store's
+    /// hash dedupe, and apply the resulting state deltas.
+    fn drain_external_changes(&mut self) -> TuiResult<()> {
+        let Some(rx) = self.external_rx.as_ref() else {
+            return Ok(());
+        };
+        let paths: Vec<PathBuf> = rx.try_iter().collect();
+        for path in paths {
+            self.process_external_change(&path)?;
+        }
+        Ok(())
+    }
+
+    /// Public entrypoint used both by the tick-time watcher drain and by
+    /// tests that want to simulate an external edit without setting up a
+    /// real watcher.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the watcher path cannot be read.
+    pub fn process_external_change(&mut self, absolute_path: &Path) -> TuiResult<()> {
+        let deltas = self
+            .store
+            .handle_external_change(absolute_path)
+            .map_err(|e| TuiError::App(format!("{e}")))?;
+        for delta in deltas {
+            self.apply_delta(delta)?;
+        }
+        Ok(())
+    }
+
+    fn apply_delta(&mut self, delta: StateDelta) -> TuiResult<()> {
+        match delta {
+            StateDelta::FileReloaded { absolute_path } => self.handle_file_reloaded(&absolute_path),
+            // External path doesn't currently produce TaskStatusChanged deltas;
+            // those originate from `apply` and are already handled at the call
+            // site. When parse-and-diff is added in a later phase, we'll route
+            // them into `state.activity.record_transition` here.
+            StateDelta::TaskStatusChanged { .. } => Ok(()),
+        }
+    }
+
+    /// Reindex the changed file, then — if it's the file currently in view —
+    /// reload its tasks, rebuild the tree, restore the cursor by `full_id`,
+    /// preserve expansion state, and refresh project stats.
+    fn handle_file_reloaded(&mut self, absolute_path: &Path) -> TuiResult<()> {
+        if let Err(e) = self.reindex_paths(&[absolute_path.to_path_buf()]) {
+            self.state
+                .set_warning_message(format!("reindex failed for external change: {e}"));
+            return Ok(());
+        }
+
+        let viewing_id = self.currently_viewed_file_id();
+        let relative = absolute_path
+            .strip_prefix(&self.project_root)
+            .unwrap_or(absolute_path);
+        let changed_file_id = FileRepository::new(&self.conn)
+            .get_by_path(relative)
+            .ok()
+            .flatten()
+            .map(|f| f.id);
+
+        if viewing_id.is_some() && viewing_id == changed_file_id {
+            let preserved_full_id = self.state.selected_task_full_id();
+            let expanded_ids = self.state.collect_expansion_state();
+
+            let task_repo = TaskRepository::new(&self.conn);
+            if let Some(file_id) = viewing_id {
+                self.state.tasks = task_repo
+                    .get_by_file(file_id)
+                    .map_err(|e| TuiError::App(format!("Failed to reload tasks: {e}")))?;
+            }
+            self.state.build_task_tree();
+            self.state.restore_expansion_state(&expanded_ids);
+            if let Some(full_id) = preserved_full_id {
+                self.state.restore_task_selection_by_full_id(&full_id);
+            }
+        }
+
+        self.refresh_project_stats()?;
+        Ok(())
+    }
+
+    fn currently_viewed_file_id(&self) -> Option<i64> {
+        if let Some(selected) = self.state.selected_tree_node() {
+            return selected.file_record.as_ref().map(|f| f.id);
+        }
+        self.state.selected_file().map(|f| f.id)
+    }
+
+    fn reindex_paths(&self, paths: &[PathBuf]) -> Result<(), String> {
+        let parser_config = lash_types::LashConfig::default();
+        let config = lash_db::indexer::IndexerConfig::new(self.project_root.clone())
+            .with_incremental(true)
+            .with_progress(false)
+            .with_paths(paths.to_vec());
+        let mut indexer = lash_db::indexer::Indexer::new(&self.conn, config, &parser_config);
+        indexer
+            .index_project()
+            .map(|_| ())
+            .map_err(|e| format!("{e}"))
     }
 
     /// Handle Left event (collapse node or go to parent in tree view)

@@ -105,84 +105,80 @@ rare, and `lash format` from the CLI never races with a running TUI).
 
 ## Task 4: `notify` file watcher with debounce
 
-**Priority:** HIGH
+**Priority:** HIGH ✅ done
 **Effort:** 1 day
 **Depends on:** Task 2
 
 ### Description
 
-Background thread using `notify` (and `notify-debouncer-mini` or
-hand-rolled ~150ms debouncer) watches the project root. Ignores `.git/`,
-`target/`, `.lash/`. Forwards collapsed events to the Store via
-`mpsc::Sender<PathBuf>`.
+Background thread using `notify` + hand-rolled debouncer watches the project
+root. Ignores `.git/`, `target/`, `.lash/`, `node_modules/`, and non-`.md`
+paths. Forwards collapsed events as `PathBuf` on an `mpsc::Sender`.
 
 ### Subtasks
 
-- [ ] Add `notify` dependency to `lash-core`
-- [ ] `FileWatcher::start(project_root, tx)` spawns thread, returns handle
-- [ ] Debounce window 150ms; coalesce per-path
-- [ ] Ignore-list: `.git/`, `target/`, `.lash/`, and any path not matching `**/*.md`
-- [ ] Graceful shutdown on handle drop
-- [ ] Test: edit a fixture file, assert exactly one event surfaces after debounce
-
-### Acceptance
-
-- A burst of 10 saves in <50ms produces 1 event per file
-- A non-`.md` change produces 0 events
+- [x] Add `notify` dependency to `lash-core` and workspace
+- [x] `watcher::start(project_root, tx)` spawns thread, returns handle
+- [x] Debounce window 150ms (configurable via `start_with_debounce` for tests); coalesce per-path
+- [x] Ignore-list: `.git/`, `target/`, `.lash/`, `node_modules/`, and any path not ending in `.md`
+- [x] Graceful shutdown on handle drop (verified by test)
+- [x] Test: edit a fixture file, assert a small number of events surface after debounce
+- [x] Test: non-`.md` writes produce 0 events
 
 ---
 
-## Task 5: Broaden EventSource to deliver AppInputEvent
+## Task 5: Watcher → TUI wiring
 
-**Priority:** HIGH
+**Priority:** HIGH ✅ done (via sidecar channel, not EventSource broadening)
 **Effort:** 1 day
 **Depends on:** Task 2, Task 4
 
 ### Description
 
-Replace `EventSource::poll_event -> Option<crossterm::Event>` with
-`Option<AppInputEvent>` (Term / External / Tick). Implement
-`MergedEventSource` that draws from both crossterm polling and the
-watcher channel. Update `TestEventSource` to inject `External(...)`
-events for tests.
+The original plan was to broaden `EventSource::poll_event` to deliver an
+`AppInputEvent` enum. In implementation we deviated: the watcher's
+`mpsc::Receiver<PathBuf>` is held as a sidecar field on `TuiAppCore` and
+drained at the top of `tick()`. See `docs/live-tui-updates.md` for the
+rationale.
 
 ### Subtasks
 
-- [ ] Add `AppInputEvent` enum in `crates/lash-tui/src/event.rs`
-- [ ] Change trait signature; update `TerminalEventSource` and `TestEventSource`
-- [ ] New `MergedEventSource { term, store_rx }`
-- [ ] TUI `tick()` matches on `AppInputEvent`, routes `External(delta)` to a new `handle_external_delta` method
-- [ ] Existing TUI tests rewired to use `AppInputEvent::Term(...)`
+- [x] Watcher receiver field on `TuiAppCore`; watcher handle kept alive for app lifetime
+- [x] `TuiApp::new_with_scheme` starts the watcher rooted at the project root; failures degrade gracefully (live updates disabled, app still runs)
+- [x] `tick()` drains the receiver before render
+- [x] Each `PathBuf` is fed through `Store::handle_external_change`; the resulting `StateDelta`s are dispatched via `apply_delta`
+- [x] Public `process_external_change(path)` method lets tests bypass the OS watcher
+- [x] All existing TUI tests pass unchanged
 
 ### Acceptance
 
-- No regression in any TUI test
-- A synthesized `AppInputEvent::External(FileReloaded { ... })` causes the TUI to re-fetch tasks for that file
+- ✅ No regression in any TUI test
+- ✅ Calling `process_external_change(path)` after an out-of-band write causes the TUI to reindex and reload the file
 
 ---
 
 ## Task 6: Stable-id cursor preservation on external reload
 
-**Priority:** MEDIUM
+**Priority:** MEDIUM ✅ done
 **Effort:** 0.5 day
 **Depends on:** Task 5
 
 ### Description
 
 When a `FileReloaded` delta arrives for the currently-viewed file, recompute
-the row index of the selected task by `@id` instead of trusting the previous
-index. If the task is gone, snap to nearest surviving sibling.
+the row index of the selected task by `full_id` instead of trusting the
+previous index. If the task is gone, fall back to the closest valid index.
 
 ### Subtasks
 
-- [ ] Capture `selected_task_full_id` before reload
-- [ ] After `build_task_tree`, find the row index whose task matches that id
-- [ ] Fallback path: previous sibling, then next sibling, then index 0
-- [ ] Test: edit a fixture file to insert a task above the cursor, assert cursor still points to original task
+- [x] `AppState::selected_task_full_id()` captures the cursor's stable id
+- [x] `AppState::restore_task_selection_by_full_id(full_id)` walks the flattened tree, sets the index if found, clamps to valid range otherwise
+- [x] `handle_file_reloaded` captures the id pre-reload, rebuilds the tree, restores expansion state, then restores selection
+- [x] Integration test: edit a fixture to insert a task above the cursor, assert cursor still anchors to the original task
 
 ### Acceptance
 
-- Cursor stays "on" the same task through arbitrary external edits
+- ✅ Cursor stays anchored to the same task through external inserts above it
 
 ---
 

@@ -1,5 +1,67 @@
 # Lash Development Log
 
+## 2026-05-22 - Live TUI updates: Phase C (watcher + external reload + cursor preservation)
+
+### Summary
+
+The TUI now reacts to external edits in real time. A `notify`-backed file
+watcher runs on a background thread, debounces and filters Markdown events
+(150ms window; ignores `.git/`, `target/`, `.lash/`, `node_modules/` and
+non-`.md` paths), and forwards them on an `mpsc::Sender<PathBuf>`.
+
+In `tick()`, the TUI drains the channel, routes each path through
+`Store::handle_external_change` (which dedupes self-write echoes via the
+hash recorded in Phase B), and on a `FileReloaded` delta:
+
+1. Runs an incremental reindex of the changed file via the existing `Indexer`
+2. If it's the file currently in view, captures the cursor's `full_id`
+3. Reloads tasks from DB, rebuilds the task tree, restores expansion state
+4. Restores selection to the task with the same `full_id` — even if its row
+   index has shifted
+
+So: another process editing a task file (`$EDITOR`, an agent calling
+`lash ...`, a `git pull` updating a file) is reflected in the TUI within
+~150ms with no manual refresh, and the user's cursor sticks to the task
+they were on.
+
+### Deviation from the design doc
+
+The design doc originally specified broadening `EventSource::poll_event` to
+deliver an `AppInputEvent { Term, External, Tick }` enum, with a
+`MergedEventSource` muxing crossterm and watcher channels. In implementation
+this was replaced with a simpler sidecar channel held as a field on
+`TuiAppCore` and drained at the top of `tick()` — see `docs/live-tui-updates.md`
+for the rationale. Net result: same behavior, no test-suite churn, and tests
+can synthesize external edits by calling `app.process_external_change(path)`
+directly with no fake watcher needed.
+
+### Key Components
+
+- `lash-core::watcher` — `FileWatcher` with `notify::RecommendedWatcher` +
+  hand-rolled debouncer thread, ignore rules, graceful shutdown on handle
+  drop, 6 unit tests including a real fs-burst → debounced-event
+  end-to-end check
+- `lash-tui::app` — `external_rx` + `_watcher` fields on `TuiAppCore`;
+  `drain_external_changes`, `process_external_change` (public),
+  `apply_delta`, `handle_file_reloaded`, `currently_viewed_file_id`,
+  `reindex_paths` helpers
+- `lash-tui::state` — `selected_task_full_id` and
+  `restore_task_selection_by_full_id` for stable-id cursor preservation
+- `lash-tui::tests::external_reload_tests` — integration test proving the
+  cursor stays anchored across an external insert-above edit, plus a
+  self-write-echo dedupe test that confirms our own writes don't trigger
+  reloads
+- Workspace gets a `notify = "6.1"` dependency
+
+### What's deferred
+
+- Parse-and-diff on external changes to extract `TaskStatusChanged` deltas
+  → feed into the activity status bar (Phase A). Today, external task
+  toggles update the tree but don't update the activity bar.
+- Stale-modal banner for in-flight task creation conflicting with an
+  external edit (Task 7 in `tasks/tasks.live-updates.md`)
+- Phase D polish: bounded watcher channel + `FullReload` overflow path
+
 ## 2026-05-22 - Live TUI updates: Phase B (Store actor + atomic writes + hash dedupe)
 
 ### Summary

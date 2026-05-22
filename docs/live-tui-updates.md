@@ -123,27 +123,44 @@ to the Store via an `mpsc::Sender`.
 Files outside the lash project (e.g. `.git/`, `target/`, `.lash/`) are
 ignored at the watcher layer.
 
-### Broadened EventSource
+### Watcher → Store → TUI plumbing
 
-Today `EventSource::poll_event` returns `Option<crossterm::Event>`. We
-broaden it:
+The original design had `EventSource::poll_event` broadened to deliver an
+`AppInputEvent { Term, External(StateDelta), Tick }` enum, with a
+`MergedEventSource` muxing crossterm and watcher channels. In Phase C
+implementation we deliberately deviated: the watcher's `mpsc::Receiver<PathBuf>`
+is held as a sidecar field on `TuiAppCore` and **drained at the top of
+`tick()`** before rendering. Each path is fed through
+`Store::handle_external_change`, which produces zero or more `StateDelta`s
+that the TUI dispatches via `apply_delta`.
 
-```rust
-pub enum AppInputEvent {
-    Term(crossterm::Event),
-    External(StateDelta),
-    Tick,                       // periodic, for expiring transient state
-}
+Why the change: keyboard/mouse events and filesystem events have very
+different ownership, threading, and test-injection stories. Muxing them in
+one EventSource forced either a cascade of test-suite rewrites or a
+`MergedEventSource` whose two halves still behaved very differently.
+The sidecar channel is simpler, keeps `EventSource` focused on input
+devices, and lets tests synthesize external edits by calling
+`app.process_external_change(path)` directly — no fake watcher required.
 
-pub trait EventSource {
-    fn poll_event(&mut self, timeout: Duration) -> TuiResult<Option<AppInputEvent>>;
-}
+```text
+notify watcher ──debounce──> mpsc::Sender<PathBuf>
+                                      │
+                            (held by TuiAppCore)
+                                      │
+                  tick(): drain_external_changes()
+                                      │
+                         Store::handle_external_change
+                                      │
+                              Vec<StateDelta>
+                                      │
+                                apply_delta
+                                      │
+                  reindex + refetch + cursor-preserve
 ```
 
-The real implementation `MergedEventSource` polls both the crossterm channel
-and an `mpsc::Receiver<StateDelta>` fed by the Store. `TestEventSource` gains
-the ability to inject `External(...)` deltas, which is what makes
-external-change tests possible at all.
+If a future need demands true muxing (e.g. RPC subagent events that should
+preempt watcher events), promoting back to the EventSource design is local
+to `tick()` and a single sidecar field — no API churn required.
 
 ### Cursor preservation by stable ID
 

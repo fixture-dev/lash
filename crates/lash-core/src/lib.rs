@@ -36,3 +36,6 @@ pub mod fuzzy;
 
 // Single-writer store coordinating Markdown task-file mutations
 pub mod store;
+
+// Filesystem watcher emitting debounced events for Markdown files
+pub mod watcher;
