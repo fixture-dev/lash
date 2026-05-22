@@ -14,8 +14,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use lash_types::creation::TaskCreationRequest;
 use lash_types::error::codes;
-use lash_types::{LashError, Result, TaskStatus};
+use lash_types::{LashConfig, LashError, Result, TaskStatus};
 
 /// A mutation request submitted to the store.
 #[derive(Debug, Clone)]
@@ -32,6 +33,23 @@ pub enum Mutation {
         /// Status the task is transitioning to.
         new_status: TaskStatus,
     },
+    /// Create a new task — either appended to an existing file or in a fresh
+    /// file. Delegates to `crate::creation::TaskCreationService` for the
+    /// actual emission and then records a hash of the resulting file so the
+    /// watcher's echo is dropped.
+    ///
+    /// Boxed because `TaskCreationRequest` + `LashConfig` is hundreds of bytes
+    /// — without the indirection this would bloat the enum.
+    CreateTask(Box<CreateTaskMutation>),
+}
+
+/// Payload for `Mutation::CreateTask`.
+#[derive(Debug, Clone)]
+pub struct CreateTaskMutation {
+    /// The validated creation request.
+    pub request: TaskCreationRequest,
+    /// Parser/format config to use for emission.
+    pub config: LashConfig,
 }
 
 /// Effects emitted by the store as a result of either an `apply` call or an
@@ -55,6 +73,17 @@ pub enum StateDelta {
     FileReloaded {
         /// Absolute path of the file that changed externally.
         absolute_path: PathBuf,
+    },
+    /// A new task was created (either in an existing file or by creating a
+    /// new file). Consumers should reindex and reload the affected file.
+    TaskCreated {
+        /// Absolute path of the file containing the new task.
+        absolute_path: PathBuf,
+        /// Local task id (the bit after `#` in a full id).
+        task_id: String,
+        /// True if `absolute_path` was created by this mutation; false if the
+        /// task was appended to an already-existing file.
+        is_new_file: bool,
     },
 }
 
@@ -116,6 +145,37 @@ impl Store {
                     task_title,
                     old: old_status,
                     new: new_status,
+                }])
+            }
+            Mutation::CreateTask(payload) => {
+                let CreateTaskMutation { request, config } = *payload;
+                let service = crate::creation::TaskCreationService::new(config);
+                let result = service.create_task(&request).map_err(|errors| {
+                    let summary = errors
+                        .iter()
+                        .map(lash_types::TaskCreationError::message)
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    LashError::Internal {
+                        code: codes::E_INTERNAL,
+                        message: format!("task creation failed: {summary}"),
+                        context: None,
+                    }
+                })?;
+
+                // The service writes atomically itself, but doesn't run through
+                // `write_atomic` here, so we re-read the resulting file and
+                // hash it. That hash is what `handle_external_change` will
+                // compare against when the watcher echoes our own write back.
+                if let Ok(bytes) = std::fs::read(&result.file_path) {
+                    self.last_written_hash
+                        .insert(result.file_path.clone(), *blake3::hash(&bytes).as_bytes());
+                }
+
+                Ok(vec![StateDelta::TaskCreated {
+                    absolute_path: result.file_path,
+                    task_id: result.task_id,
+                    is_new_file: result.is_new_file,
                 }])
             }
         }
@@ -442,5 +502,69 @@ mod tests {
         let mut store = Store::new();
         let deltas = store.handle_external_change(&path).unwrap();
         assert!(deltas.is_empty());
+    }
+
+    #[test]
+    fn create_task_emits_delta_and_records_hash_for_self_write_dedupe() {
+        use lash_types::creation::TaskCreationRequestBuilder;
+
+        let (_dir, path) = fixture();
+        let mut store = Store::new();
+
+        let request = TaskCreationRequestBuilder::new("Brand new task")
+            .file_path(path.clone())
+            .build();
+
+        let deltas = store
+            .apply(Mutation::CreateTask(Box::new(CreateTaskMutation {
+                request,
+                config: LashConfig::default(),
+            })))
+            .unwrap();
+
+        assert_eq!(deltas.len(), 1);
+        let StateDelta::TaskCreated {
+            ref absolute_path,
+            ref task_id,
+            is_new_file,
+        } = deltas[0]
+        else {
+            panic!("expected TaskCreated, got {:?}", deltas[0]);
+        };
+        assert_eq!(*absolute_path, path);
+        assert_eq!(task_id, "brand-new-task");
+        assert!(!is_new_file);
+
+        // The new task should be on disk.
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            on_disk.contains("Brand new task"),
+            "expected new task in file content: {on_disk}"
+        );
+
+        // And the watcher's echo of this write should be silently dropped.
+        let echo = store.handle_external_change(&path).unwrap();
+        assert!(echo.is_empty(), "self-write echo should be dropped");
+    }
+
+    #[test]
+    fn create_task_propagates_validation_errors_as_internal_error() {
+        use lash_types::creation::TaskCreationRequestBuilder;
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::new();
+
+        // Empty title — should fail validation.
+        let request = TaskCreationRequestBuilder::new("")
+            .file_path(dir.path().join("missing.md"))
+            .build();
+
+        let err = store
+            .apply(Mutation::CreateTask(Box::new(CreateTaskMutation {
+                request,
+                config: LashConfig::default(),
+            })))
+            .unwrap_err();
+        assert_eq!(err.code(), codes::E_INTERNAL);
     }
 }

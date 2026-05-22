@@ -1469,11 +1469,12 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     fn apply_delta(&mut self, delta: StateDelta) -> TuiResult<()> {
         match delta {
             StateDelta::FileReloaded { absolute_path } => self.handle_file_reloaded(&absolute_path),
-            // External path doesn't currently produce TaskStatusChanged deltas;
-            // those originate from `apply` and are already handled at the call
-            // site. When parse-and-diff is added in a later phase, we'll route
-            // them into `state.activity.record_transition` here.
-            StateDelta::TaskStatusChanged { .. } => Ok(()),
+            // TaskStatusChanged is only emitted by `Store::apply` (the call
+            // site already handles it directly) — external changes manifest
+            // as FileReloaded which routes through `apply_external_status_diff`.
+            // TaskCreated is also only emitted by `Store::apply`, where the
+            // caller handles indexing and reload directly.
+            StateDelta::TaskStatusChanged { .. } | StateDelta::TaskCreated { .. } => Ok(()),
         }
     }
 
@@ -2180,7 +2181,6 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
 
     /// Handle submitting task creation
     fn handle_submit_task_creation(&mut self) -> TuiResult<()> {
-        use lash_core::creation::TaskCreationService;
         use lash_db::{Indexer, IndexerConfig};
         use lash_types::LashConfig;
 
@@ -2197,11 +2197,33 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
 
         let request = modal_state.to_request();
         let config = LashConfig::default();
-        let service = TaskCreationService::new(config.clone());
 
-        match service.create_task(&request) {
-            Ok(result) => {
+        let deltas = self
+            .store
+            .apply(lash_core::store::Mutation::CreateTask(Box::new(
+                lash_core::store::CreateTaskMutation {
+                    request,
+                    config: config.clone(),
+                },
+            )));
+
+        match deltas {
+            Ok(deltas) => {
                 self.state.close_task_creation_modal();
+
+                let (created_path, task_id) = deltas
+                    .into_iter()
+                    .find_map(|d| match d {
+                        lash_core::store::StateDelta::TaskCreated {
+                            absolute_path,
+                            task_id,
+                            ..
+                        } => Some((absolute_path, task_id)),
+                        _ => None,
+                    })
+                    .ok_or_else(|| {
+                        TuiError::App("CreateTask produced no TaskCreated delta".into())
+                    })?;
 
                 // Re-index to update the database with the new task
                 // Use incremental indexing for efficiency
@@ -2214,12 +2236,12 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
                         .set_warning_message(format!("Task created but indexing failed: {e}"));
                 } else {
                     self.state
-                        .set_success_message(format!("Created task: {}", result.task_id));
+                        .set_success_message(format!("Created task: {task_id}"));
                 }
 
                 // Reload tasks for the file (now that it's indexed)
                 let file_repo = FileRepository::new(&self.conn);
-                if let Ok(Some(file_record)) = file_repo.get_by_path(&result.file_path) {
+                if let Ok(Some(file_record)) = file_repo.get_by_path(&created_path) {
                     let task_repo = TaskRepository::new(&self.conn);
                     if let Ok(tasks) = task_repo.get_by_file(file_record.id) {
                         self.state.tasks = tasks;
@@ -2259,12 +2281,8 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
                     }
                 }
             }
-            Err(errors) => {
-                // Display first error
-                let error_msg = errors.first().map_or_else(
-                    || "Unknown error".to_string(),
-                    lash_types::TaskCreationError::message,
-                );
+            Err(err) => {
+                let error_msg = format!("{err}");
                 self.state.set_error_message(error_msg);
             }
         }
