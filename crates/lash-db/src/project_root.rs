@@ -180,6 +180,11 @@ pub fn find_project_root_from(start_path: &Path, config: &ProjectRootConfig) -> 
         ))
     })?;
 
+    // Cap the upward walk at the enclosing git repo (if any) so leftover
+    // state in ancestor directories cannot hijack the lookup. See
+    // `lash_types::path_utils::find_git_root` for the rationale.
+    let git_root = lash_types::path_utils::find_git_root(&current);
+
     let mut depth = 0;
 
     loop {
@@ -204,6 +209,17 @@ pub fn find_project_root_from(start_path: &Path, config: &ProjectRootConfig) -> 
         let index_file = current.join("lash.index.md");
         if index_file.is_file() {
             return Ok(current);
+        }
+
+        // Stop at the git root — markers above it are not accepted.
+        if let Some(ref gr) = git_root {
+            if current == *gr {
+                return Err(DbError::ProjectRootNotFound(
+                    "No Lash project root found within the current git repository. \
+                     Looking for .lash/ directory or lash.index.md file."
+                        .to_string(),
+                ));
+            }
         }
 
         // Move up to parent directory

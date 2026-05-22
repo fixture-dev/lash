@@ -29,6 +29,7 @@ pub mod file;
 pub mod formatter;
 pub mod index;
 pub mod label;
+pub mod path_utils;
 pub mod report;
 pub mod status;
 pub mod task;

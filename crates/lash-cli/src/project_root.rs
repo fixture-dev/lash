@@ -109,7 +109,16 @@ impl ProjectRootFinder {
         self.search_upward(start_dir)
     }
 
-    /// Search upward from a directory to find project root markers
+    /// Search upward from a directory to find project root markers.
+    ///
+    /// When `start_dir` is inside a git repository, the search is capped at
+    /// the git root: markers above the git root are *not* accepted. This
+    /// prevents leftover state in a user's home directory (e.g. `~/.lash/`
+    /// from a past run) from hijacking commands invoked inside an unrelated
+    /// project.
+    ///
+    /// When `start_dir` is not in a git repository, the search keeps the
+    /// historical behaviour and stops at the home directory.
     #[allow(clippy::unused_self)] // self used for potential caching in future
     fn search_upward(&self, start_dir: &Path) -> Result<PathBuf> {
         let mut current = start_dir.canonicalize().context(format!(
@@ -117,6 +126,7 @@ impl ProjectRootFinder {
             start_dir.display()
         ))?;
 
+        let git_root = lash_types::path_utils::find_git_root(&current);
         let home_dir = dirs::home_dir();
         let mut search_path = Vec::new();
 
@@ -128,8 +138,13 @@ impl ProjectRootFinder {
                 return Ok(current);
             }
 
-            // Stop at home directory to avoid searching too far
-            if let Some(ref home) = home_dir {
+            // With a git context, never search above the git root.
+            if let Some(ref gr) = git_root {
+                if current == *gr {
+                    break;
+                }
+            } else if let Some(ref home) = home_dir {
+                // No git context — fall back to the historical home-dir cap.
                 if current == *home {
                     break;
                 }
@@ -143,8 +158,14 @@ impl ProjectRootFinder {
         }
 
         // No project root found
+        let ceiling_hint = if git_root.is_some() {
+            "Search was capped at the current git repository root."
+        } else {
+            "Search was capped at the home directory (no git repository detected)."
+        };
         anyhow::bail!(
             "No Lash project root found. Searched in:\n  {}\n\n\
+             {ceiling_hint}\n\n\
              A Lash project root should contain one of:\n\
              - lash.index.md\n\
              - index.lash.md\n\
@@ -344,5 +365,56 @@ mod tests {
     fn test_finder_default() {
         let _finder = ProjectRootFinder::default();
         // Just ensure it compiles and doesn't panic
+    }
+
+    #[test]
+    fn test_find_from_does_not_cross_git_root() {
+        // Layout:
+        //   <tmp>/
+        //     leftover/
+        //       lash.index.md         <-- a marker ABOVE the git root
+        //     repo/
+        //       .git/                 <-- the git root
+        //       inner/                <-- where we run lash from
+        //
+        // The finder must refuse to use leftover/ as the project root.
+        let temp = TempDir::new().unwrap();
+        let leftover = temp.path().join("leftover");
+        fs::create_dir(&leftover).unwrap();
+        fs::write(leftover.join("lash.index.md"), "# Stray index").unwrap();
+
+        let repo = leftover.join("repo");
+        fs::create_dir(&repo).unwrap();
+        fs::create_dir(repo.join(".git")).unwrap();
+        let inner = repo.join("inner");
+        fs::create_dir(&inner).unwrap();
+
+        let finder = ProjectRootFinder::new();
+        let err = finder
+            .find_from(&inner)
+            .expect_err("search must not cross above the git root");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("No Lash project root found"),
+            "expected 'no project root' error, got: {msg}"
+        );
+        assert!(
+            msg.contains("git repository root"),
+            "error should explain the git-ceiling, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_find_from_accepts_git_root_itself_when_it_has_markers() {
+        let temp = TempDir::new().unwrap();
+        let repo = temp.path();
+        fs::create_dir(repo.join(".git")).unwrap();
+        fs::write(repo.join("lash.index.md"), "# Index").unwrap();
+        let inner = repo.join("crates").join("foo");
+        fs::create_dir_all(&inner).unwrap();
+
+        let finder = ProjectRootFinder::new();
+        let found = finder.find_from(&inner).unwrap();
+        assert_eq!(found.canonicalize().unwrap(), repo.canonicalize().unwrap());
     }
 }
