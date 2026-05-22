@@ -595,10 +595,14 @@ impl<'conn> TaskRepository<'conn> {
     ///
     /// Returns error if query fails
     pub fn get_project_counts(&self) -> DbResult<(usize, usize)> {
+        // COALESCE around SUM is required: SQLite's SUM returns NULL when the
+        // tasks table is empty, which would fail row.get::<i64>() with
+        // "Invalid column type Null". Matches what get_status_counts below
+        // does for the same reason.
         let (total, completed): (i64, i64) = self.conn.query_row(
             "SELECT
                 COUNT(*) as total,
-                SUM(CASE WHEN status IN (?1, ?2) THEN 1 ELSE 0 END) as completed
+                COALESCE(SUM(CASE WHEN status IN (?1, ?2) THEN 1 ELSE 0 END), 0) as completed
              FROM tasks",
             rusqlite::params![TaskStatus::Done.as_str(), TaskStatus::Waived.as_str()],
             |row| Ok((row.get(0)?, row.get(1)?)),
@@ -1833,6 +1837,39 @@ mod tests {
         assert_eq!(total, 7);
         // completed = done (2) + waived (1)
         assert_eq!(completed, 3);
+    }
+
+    #[test]
+    fn test_get_project_counts_empty_database() {
+        // Regression: previously crashed with "Invalid column type Null"
+        // because SQLite's SUM returns NULL on an empty table and the row
+        // get tried to bind NULL into i64. The COALESCE in the query keeps
+        // an empty DB returning (0, 0).
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+        let (total, completed) = task_repo.get_project_counts().unwrap();
+
+        assert_eq!(total, 0);
+        assert_eq!(completed, 0);
+    }
+
+    #[test]
+    fn test_get_project_counts_with_files_but_no_tasks() {
+        // Files indexed but no tasks parsed yet — same NULL-from-SUM path
+        // as the empty-database case but via a slightly different ingest.
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        let file = create_test_file("empty.md", "empty");
+        let file_repo = FileRepository::new(&conn);
+        file_repo.insert(&file).unwrap();
+
+        let task_repo = TaskRepository::new(&conn);
+        let (total, completed) = task_repo.get_project_counts().unwrap();
+        assert_eq!(total, 0);
+        assert_eq!(completed, 0);
     }
 
     #[test]
