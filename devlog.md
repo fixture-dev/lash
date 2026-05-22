@@ -1,5 +1,32 @@
 # Lash Development Log
 
+## 2026-05-22 - `lash format` writes atomically
+
+### Summary
+
+Closes the last "writes go around `write_atomic`" gap in production
+code. Two paths were still using a plain `fs::write`:
+
+- `lash_core::formatter::format_file_in_place` (library API)
+- `lash-cli::commands::format` (the actual `lash format` command)
+
+Both now route through `lash_core::store::write_atomic` (tmp file +
+rename). A crash mid-write can no longer leave a partially-formatted
+Markdown file on disk.
+
+The CLI's `format` path doesn't go through the library helper because
+it does its own changed-detection / diff display before deciding
+whether to write; consolidating those is a follow-up not on the
+critical path. For now both call sites share the atomic helper, which
+is what matters for the on-disk safety guarantee.
+
+### Test added
+
+`format_file_in_place_writes_atomically_and_leaves_no_temp` in the
+formatter unit tests — formats a fixture file, verifies the result
+survives, then asserts no `.lash-tmp` sibling leaked into the
+directory.
+
 ## 2026-05-22 - Stale-modal protection for in-flight task creation
 
 ### Summary
