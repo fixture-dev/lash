@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 
 use lash_types::TaskStatus;
 
+use lash_db::repository::tasks::TaskRepository;
+use rusqlite::Connection;
+
 /// Max entries kept in the recently-completed tail.
 pub const RECENT_COMPLETED_CAP: usize = 3;
 
@@ -106,6 +109,60 @@ impl ActivityState {
             }
         } else if was_complete && !now_complete {
             self.recently_completed.retain(|e| e.full_id != full_id);
+        }
+    }
+
+    /// Seed both activity sections from the DB at startup.
+    ///
+    /// - `in_progress`: takes the lexicographically-first task currently in
+    ///   `InProgress` status (matches the deterministic ordering of
+    ///   `TaskRepository::find_by_status`).
+    /// - `recently_completed`: takes up to `RECENT_COMPLETED_CAP` done/waived
+    ///   tasks from files modified within `RECENT_COMPLETED_TTL`. The DB
+    ///   tracks file mtime, not per-task completion time, so a file recently
+    ///   touched will surface its done tasks here — close enough for the
+    ///   "what changed recently?" framing of the activity bar.
+    ///
+    /// Failures (DB errors, missing tasks) are swallowed silently: the
+    /// activity bar is a UI nicety, not a correctness path.
+    pub fn seed_from_db(&mut self, conn: &Connection, now: Instant) {
+        let task_repo = TaskRepository::new(conn);
+
+        // In-progress: first by deterministic ordering.
+        if let Ok(mut in_progress) = task_repo.find_by_status(TaskStatus::InProgress) {
+            if let Some(first) = in_progress.drain(..).next() {
+                self.in_progress = Some(ActivityEntry {
+                    full_id: first.full_id,
+                    title: first.title,
+                    at: now,
+                });
+            }
+        }
+
+        // Recently completed: query done/waived tasks from files modified
+        // within the TTL. The query returns newest-first by file mtime;
+        // push_front of each (in iteration order) would put oldest at the
+        // front, so we push_back to preserve the newest-first VecDeque
+        // contract used elsewhere.
+        let since_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map_or(0, |d| {
+                d.as_secs().saturating_sub(RECENT_COMPLETED_TTL.as_secs())
+            });
+        #[allow(clippy::cast_possible_wrap)]
+        let since_i64 = since_secs as i64;
+        if let Ok(recents) = task_repo.find_recently_completed(since_i64, RECENT_COMPLETED_CAP) {
+            for task in recents {
+                if self.recently_completed.len() >= RECENT_COMPLETED_CAP {
+                    break;
+                }
+                self.recently_completed.push_back(ActivityEntry {
+                    full_id: task.full_id,
+                    title: task.title,
+                    at: now,
+                });
+            }
         }
     }
 

@@ -56,6 +56,52 @@ const BODY_WITH_INSERT_ABOVE: &str = r"# Sample Tasks
 - [ ] Gamma task
 ";
 
+const BODY_WITH_TWO_DONE: &str = r"# Sample Tasks
+
+@id: sample
+
+## Tasks
+
+- [x] Already done task
+- [x] Another done task
+- [ ] Open task
+";
+
+#[test]
+fn startup_backfills_recently_completed_from_db() {
+    // Project has two Done tasks on disk before the TUI ever launches.
+    // The build step should populate activity.recently_completed from the
+    // DB so the bar isn't empty on first run.
+    let (_dir, db_path, _tasks_md) = setup_project(BODY_WITH_TWO_DONE);
+
+    let app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+
+    let titles: Vec<&str> = app
+        .state()
+        .activity
+        .recently_completed
+        .iter()
+        .map(|e| e.title.as_str())
+        .collect();
+    assert!(
+        titles.contains(&"Already done task"),
+        "expected 'Already done task' in backfilled recently_completed; got {titles:?}"
+    );
+    assert!(
+        titles.contains(&"Another done task"),
+        "expected 'Another done task' in backfilled recently_completed; got {titles:?}"
+    );
+    // Open tasks must not appear in recently_completed.
+    assert!(
+        !titles.contains(&"Open task"),
+        "open tasks must not be in recently_completed; got {titles:?}"
+    );
+}
+
 #[test]
 fn external_edit_inserting_above_cursor_keeps_selection_on_same_task() {
     let (_dir, db_path, tasks_md) = setup_project(INITIAL_BODY);

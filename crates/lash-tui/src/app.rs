@@ -149,19 +149,9 @@ impl TuiApp {
             completed_tasks,
         };
 
-        if let Ok(mut in_progress_tasks) =
-            task_repo.find_by_status(lash_types::TaskStatus::InProgress)
-        {
-            if let Some(first) = in_progress_tasks.drain(..).next() {
-                state
-                    .activity
-                    .set_in_progress(crate::activity::ActivityEntry {
-                        full_id: first.full_id,
-                        title: first.title,
-                        at: std::time::Instant::now(),
-                    });
-            }
-        }
+        state
+            .activity
+            .seed_from_db(&conn, std::time::Instant::now());
 
         let (external_rx, watcher) = match start_watcher(&project_root) {
             Ok((rx, handle)) => (Some(rx), Some(handle)),
