@@ -198,6 +198,9 @@ pub struct AppState {
 
     /// Task creation modal state (None = closed, Some = open)
     pub task_creation_modal_state: Option<TaskCreationModalState>,
+
+    /// Activity tracking for the status bar (in-progress + recently completed)
+    pub activity: crate::activity::ActivityState,
 }
 
 /// A transient status message displayed in the UI
@@ -847,6 +850,7 @@ impl AppState {
             project_stats: ProjectStats::default(),
             status_message: None,
             task_creation_modal_state: None,
+            activity: crate::activity::ActivityState::new(),
         }
     }
 

@@ -1,6 +1,56 @@
 # Lash Development Log
 
-## 2026-05-13 - `lash skill install` for coding-agent skills
+## 2026-05-22 - Live TUI updates: design + Phase A activity status bar
+
+### Summary
+
+Captured the live-TUI-updates design in `docs/live-tui-updates.md` (Store
+actor as the single writer, content-hash dedupe to drop self-write watcher
+echoes, broadened `EventSource`, stable-id cursor preservation, conflict
+policy for in-flight modals). Filed the work as
+`tasks/tasks.live-updates.md` (Phases B–D) and
+`tasks/tasks.status-bar-activity.md` (Phase A), and registered both in
+`tasks/tasks.md`.
+
+Implemented Phase A end-to-end: the bottom status bar now has two
+live-updated sections — currently in-progress task (`▶`) and up to three
+recently-completed task titles (`✓`) — driven by a new `ActivityState`
+fed from every status transition the TUI initiates (primary toggle plus
+the three cascading/linked-file/incomplete handlers). Width-aware
+truncation with an ellipsis. Status-message overlays still take over the
+whole bar. Recently-completed entries age out after 5 minutes via the
+existing tick loop, no extra timer.
+
+External-process changes are not reflected in the activity bar yet — that
+lights up when Phase C of the live-updates work lands (notify watcher +
+broadened `EventSource` route external `StateDelta`s into the same
+`ActivityState`).
+
+### Key Components
+
+- `lash-tui::activity` — `ActivityState` / `ActivityEntry` with
+  `record_transition` and `prune`, 13 unit tests covering each transition
+  edge and pruning semantics
+- `lash-tui::ui::status_bar` — width-aware allocator that gives the
+  in-progress section ~40% of the activity budget and splits the rest
+  among recent entries, dropping from the right when tight; 13 tests
+  including `TestBackend` buffer snapshots
+- `lash-tui::app` — primary toggle, cascading-complete,
+  linked-file-complete, and cascading-incomplete handlers all call
+  `state.activity.record_transition` on success
+- `lash-tui::app::tick` — calls `activity.prune` each ~100ms tick
+- Startup seed in `TuiApp::new_with_scheme` via the existing
+  `TaskRepository::find_by_status(InProgress)`
+
+### Phase plan (remainder)
+
+- Phase B (Task 4 in this session's todo): `Store` actor +
+  `write_atomic` + `last_written_hash`
+- Phase C (Tasks 5–8): `notify` watcher, broadened `EventSource`,
+  external reload, stable-id cursor preservation, stale-modal banner
+- Phase D: polish — bounded watcher channel, overflow→`FullReload`
+
+
 
 ### Summary
 
