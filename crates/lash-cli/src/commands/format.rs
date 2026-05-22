@@ -367,8 +367,10 @@ fn format_single_file(
         }
 
         if !args.check && !args.diff {
-            // Write formatted content back to file
-            std::fs::write(file_path, formatted)
+            // Write formatted content back to file atomically (tmp + rename),
+            // so a crash mid-write can't leave a half-formatted Markdown file
+            // on disk. Same helper Store uses for status-toggle writes.
+            lash_core::store::write_atomic(file_path, formatted.as_bytes())
                 .with_context(|| format!("Failed to write {}", file_path.display()))?;
         }
     }

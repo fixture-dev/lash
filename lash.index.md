@@ -41,7 +41,10 @@ For background docs, see:
     delegates emission to `TaskCreationService`, re-reads the resulting
     file, and records its hash so the watcher's echo gets dedupe'd — no
     more redundant reindex on a TUI-initiated create
-- [ ] `formatter::format_file_in_place` uses `write_atomic` #core
+- [x] `formatter::format_file_in_place` uses `write_atomic` #core
+  - `lash format` (both the library helper and the CLI's inline write
+    path) now go through `lash_core::store::write_atomic` so a crash
+    mid-write can't leave a half-formatted Markdown file on disk
 - [x] Stale-modal banner for in-flight modals on external change #tui
   - Task-creation modal gets a `stale` flag; external edit to its
     `target_file` flips it. Submit refuses, modal title and border turn

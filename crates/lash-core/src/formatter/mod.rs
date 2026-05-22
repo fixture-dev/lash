@@ -212,13 +212,12 @@ impl Formatter {
         // Format it
         let formatted = self.format_file(&file)?;
 
-        // Write back
-        std::fs::write(path, formatted).map_err(|e| lash_types::LashError::IO {
-            code: "E_IO_WRITE_FAILED",
-            message: format!("Failed to write formatted file: {}", path.display()),
-            path: Some(path.to_path_buf()),
-            io_error: Some(e.to_string()),
-        })?;
+        // Write back atomically (tmp file + rename) so a crash mid-write
+        // can't leave a partial Markdown file on disk. This shares the same
+        // helper that `lash_core::store::write_atomic` uses for status
+        // toggles, keeping all production write paths crash-safe in the
+        // same way.
+        crate::store::write_atomic(path, formatted.as_bytes())?;
 
         Ok(())
     }
@@ -686,6 +685,35 @@ mod tests {
     use lash_types::{FileMetadata, Task, TaskMetadata, TaskTree};
     use std::path::PathBuf;
     use std::time::SystemTime;
+
+    #[test]
+    fn format_file_in_place_writes_atomically_and_leaves_no_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tasks.md");
+        // Hand-written file with whitespace the formatter will normalize.
+        std::fs::write(
+            &path,
+            "# Demo\n\n@id: demo\n\n## Tasks\n\n- [ ] First task\n\n\n- [ ] Second task\n",
+        )
+        .unwrap();
+
+        let formatter = Formatter::new(LashConfig::default(), FormatOptions::default());
+        formatter.format_file_in_place(&path).unwrap();
+
+        // The file content survived and is still parseable.
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            after.contains("First task") && after.contains("Second task"),
+            "formatted output should still contain both tasks, got: {after}"
+        );
+
+        // No temp file leaked alongside it.
+        let leaked = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .any(|e| e.file_name().to_string_lossy().ends_with(".lash-tmp"));
+        assert!(!leaked, "atomic write should leave no .lash-tmp behind");
+    }
 
     fn make_config() -> LashConfig {
         LashConfig {
