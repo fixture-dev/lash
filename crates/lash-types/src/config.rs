@@ -56,62 +56,42 @@ impl LashConfig {
     ///
     /// Returns `E_CONFIG_ROOT_NOT_FOUND` if no project root is found
     pub fn find_project_root(start_dir: &Path) -> Result<PathBuf> {
-        let mut current = start_dir.canonicalize().map_err(|e| LashError::IO {
+        if let Some(root) = crate::path_utils::find_project_root_from(start_dir) {
+            return Ok(root);
+        }
+
+        // Not found. Distinguish "we were inside a git repo so the walk was
+        // capped" from "we ran out of filesystem" so the error is actionable.
+        let canon_start = start_dir.canonicalize().map_err(|e| LashError::IO {
             code: codes::E_IO_READ_ERROR,
             message: format!("Failed to canonicalize path: {e}"),
             path: Some(start_dir.to_path_buf()),
             io_error: Some(e.to_string()),
         })?;
-
-        // Cap the walk at the current git repo so ancestor markers (e.g. a
-        // stray `~/.lash/`) cannot hijack the lookup.
-        let git_root = crate::path_utils::find_git_root(&current);
-
-        loop {
-            if current.join("lash.index.md").exists() {
-                return Ok(current);
-            }
-            if current.join("index.lash.md").exists() {
-                return Ok(current);
-            }
-            if current.join(".lash").is_dir() {
-                return Ok(current);
-            }
-
-            if let Some(ref gr) = git_root {
-                if current == *gr {
-                    return Err(LashError::Config {
-                        code: codes::E_CONFIG_ROOT_NOT_FOUND,
-                        message: format!(
-                            "No Lash project root found within the current git repository \
-                             (searched from {} up to {})",
-                            start_dir.display(),
-                            gr.display()
-                        ),
-                        path: Some(start_dir.to_path_buf()),
-                        help: Some(
-                            "Initialize a Lash project here or run lash from inside one"
-                                .to_string(),
-                        ),
-                    });
-                }
-            }
-
-            // Move to parent directory
-            match current.parent() {
-                Some(parent) => current = parent.to_path_buf(),
-                None => {
-                    return Err(LashError::Config {
-                        code: codes::E_CONFIG_ROOT_NOT_FOUND,
-                        message: format!(
-                            "No Lash project found (searched from {})",
-                            start_dir.display()
-                        ),
-                        path: Some(start_dir.to_path_buf()),
-                        help: Some("run `lash init` to create a new lash project".to_string()),
-                    });
-                }
-            }
+        if let Some(gr) = crate::path_utils::find_git_root(&canon_start) {
+            Err(LashError::Config {
+                code: codes::E_CONFIG_ROOT_NOT_FOUND,
+                message: format!(
+                    "No Lash project root found within the current git repository \
+                     (searched from {} up to {})",
+                    start_dir.display(),
+                    gr.display()
+                ),
+                path: Some(start_dir.to_path_buf()),
+                help: Some(
+                    "Initialize a Lash project here or run lash from inside one".to_string(),
+                ),
+            })
+        } else {
+            Err(LashError::Config {
+                code: codes::E_CONFIG_ROOT_NOT_FOUND,
+                message: format!(
+                    "No Lash project found (searched from {})",
+                    start_dir.display()
+                ),
+                path: Some(start_dir.to_path_buf()),
+                help: Some("run `lash init` to create a new lash project".to_string()),
+            })
         }
     }
 

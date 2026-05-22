@@ -56,7 +56,9 @@ For background docs, see:
 ### CLI hygiene
 
 - [x] Cap project-root search at the enclosing git repository #cli
-- [ ] Consolidate the four `find_project_root` implementations into one #cli #refactor
-  - Today lash-cli (×2), lash-db, and lash-types each have their own; they
-    share a `find_git_root` helper now but the discovery loops are still
-    duplicated
+- [x] Consolidate the four `find_project_root` implementations into one #cli #refactor
+  - Single canonical walker now lives in `lash_types::path_utils::find_project_root_from`
+    plus a shared `is_project_root_marker` predicate. The four pre-existing
+    finders are thin wrappers handling their own error/fallback semantics
+    (anyhow vs LashError vs DbError vs return-self-on-miss). Side benefit:
+    lash-db's variant used to ignore `index.lash.md` — now it doesn't.

@@ -242,12 +242,30 @@ impl Store {
 ///
 /// Returns an `IO` error if the temp write or the rename fails.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    // If the target already exists, verify we can open it for writing
+    // before doing the tmp-write/rename dance. Without this check, atomic
+    // rename would silently overwrite a read-only file (rename only needs
+    // write permission on the *parent directory*, not on the destination
+    // file itself), which would be a surprising regression vs the older
+    // direct-`fs::write` semantics callers rely on.
+    if path.exists() {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .map_err(|e| LashError::IO {
+                code: codes::E_IO_WRITE_ERROR,
+                message: format!("failed to write file: {}", path.display()),
+                path: Some(path.to_path_buf()),
+                io_error: Some(e.to_string()),
+            })?;
+    }
+
     let tmp = tmp_path_for(path);
 
     std::fs::write(&tmp, bytes).map_err(|e| LashError::IO {
         code: codes::E_IO_WRITE_ERROR,
-        message: format!("failed to write temp file {}", tmp.display()),
-        path: Some(tmp.clone()),
+        message: format!("failed to write file: {}", path.display()),
+        path: Some(path.to_path_buf()),
         io_error: Some(e.to_string()),
     })?;
 
@@ -255,7 +273,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         let _ = std::fs::remove_file(&tmp);
         return Err(LashError::IO {
             code: codes::E_IO_WRITE_ERROR,
-            message: format!("failed to rename {} -> {}", tmp.display(), path.display()),
+            message: format!("failed to write file: {}", path.display()),
             path: Some(path.to_path_buf()),
             io_error: Some(e.to_string()),
         });

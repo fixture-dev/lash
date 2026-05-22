@@ -172,70 +172,55 @@ pub fn find_project_root_with_config(config: &ProjectRootConfig) -> DbResult<Pat
 ///
 /// Returns error if no project root is found or I/O errors occur.
 pub fn find_project_root_from(start_path: &Path, config: &ProjectRootConfig) -> DbResult<PathBuf> {
-    let mut current = start_path.canonicalize().map_err(|e| {
-        DbError::ProjectRootNotFound(format!(
-            "Failed to canonicalize start path {}: {}",
-            start_path.display(),
-            e
-        ))
-    })?;
-
-    // Cap the upward walk at the enclosing git repo (if any) so leftover
-    // state in ancestor directories cannot hijack the lookup. See
-    // `lash_types::path_utils::find_git_root` for the rationale.
-    let git_root = lash_types::path_utils::find_git_root(&current);
-
-    let mut depth = 0;
-
-    loop {
-        // Check max depth limit
+    // The shared walker (with git-root cap and full marker set) lives in
+    // lash_types::path_utils — see that module for the rationale. lash-db
+    // historically only checked `.lash/` and `lash.index.md`; consolidating
+    // means we now also recognise `index.lash.md`, which aligns with the
+    // design doc and the rest of the CLI.
+    if let Some(root) = lash_types::path_utils::find_project_root_from(start_path) {
         if let Some(max_depth) = config.max_depth {
+            // Approximate "depth from start_path" by ancestor steps. This
+            // preserves the historical `max_depth` knob without re-walking.
+            let canon_start = start_path.canonicalize().map_err(|e| {
+                DbError::ProjectRootNotFound(format!(
+                    "Failed to canonicalize start path {}: {}",
+                    start_path.display(),
+                    e
+                ))
+            })?;
+            let depth = canon_start
+                .ancestors()
+                .position(|a| a == root.as_path())
+                .unwrap_or(0);
             if depth >= max_depth {
                 return Err(DbError::ProjectRootNotFound(format!(
                     "Maximum search depth ({max_depth}) exceeded without finding project root"
                 )));
             }
         }
+        return Ok(root);
+    }
 
-        // Check for project markers (in order of precedence)
-
-        // 1. Check for .lash/ directory (highest precedence)
-        let lash_dir = current.join(".lash");
-        if lash_dir.is_dir() {
-            return Ok(current);
-        }
-
-        // 2. Check for lash.index.md file
-        let index_file = current.join("lash.index.md");
-        if index_file.is_file() {
-            return Ok(current);
-        }
-
-        // Stop at the git root — markers above it are not accepted.
-        if let Some(ref gr) = git_root {
-            if current == *gr {
-                return Err(DbError::ProjectRootNotFound(
-                    "No Lash project root found within the current git repository. \
-                     Looking for .lash/ directory or lash.index.md file."
-                        .to_string(),
-                ));
-            }
-        }
-
-        // Move up to parent directory
-        match current.parent() {
-            Some(parent) => {
-                current = parent.to_path_buf();
-                depth += 1;
-            }
-            None => {
-                // Reached filesystem root without finding project markers
-                return Err(DbError::ProjectRootNotFound(
-                    "No Lash project root found. Looking for .lash/ directory or lash.index.md file."
-                        .to_string(),
-                ));
-            }
-        }
+    // Not found — distinguish "we had a git context" so the error is clearer.
+    let canon_start = start_path.canonicalize().map_err(|e| {
+        DbError::ProjectRootNotFound(format!(
+            "Failed to canonicalize start path {}: {}",
+            start_path.display(),
+            e
+        ))
+    })?;
+    if lash_types::path_utils::find_git_root(&canon_start).is_some() {
+        Err(DbError::ProjectRootNotFound(
+            "No Lash project root found within the current git repository. \
+             Looking for .lash/ directory, lash.index.md, or index.lash.md."
+                .to_string(),
+        ))
+    } else {
+        Err(DbError::ProjectRootNotFound(
+            "No Lash project root found. \
+             Looking for .lash/ directory, lash.index.md, or index.lash.md."
+                .to_string(),
+        ))
     }
 }
 
@@ -255,13 +240,7 @@ pub fn find_project_root_from(start_path: &Path, config: &ProjectRootConfig) -> 
 /// ```
 #[must_use]
 pub fn is_project_root(path: &Path) -> bool {
-    let lash_dir = path.join(".lash");
-    if lash_dir.is_dir() {
-        return true;
-    }
-
-    let index_file = path.join("lash.index.md");
-    index_file.is_file()
+    lash_types::path_utils::is_project_root_marker(path)
 }
 
 #[cfg(test)]

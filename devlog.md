@@ -1,5 +1,59 @@
 # Lash Development Log
 
+## 2026-05-22 - One project-root walker, used by all four pre-existing finders
+
+### Summary
+
+Closes the tech-debt loop the `$HOME` hijacking bug uncovered earlier
+today. The four `find_project_root` implementations scattered across
+`lash-cli` (×2), `lash-db`, and `lash-types::config` — each with their
+own subtly different walks and their own copy of the git-ceiling logic
+— are now thin wrappers around a single canonical helper in
+`lash_types::path_utils`:
+
+- `is_project_root_marker(dir)` — checks `lash.index.md`,
+  `index.lash.md`, or `.lash/` (directory)
+- `find_project_root_from(start)` — canonicalizes, walks up with
+  git-root ceiling, returns `Option<PathBuf>`
+
+Each pre-existing entry point handles its own error/fallback semantics
+(anyhow vs `LashError::Config` vs `DbError` vs return-`start_dir`-on-miss)
+but the walk lives exactly once.
+
+### Bug fix that fell out
+
+`lash_db::project_root::is_project_root` (and the older find_from
+variant) used to only recognise `.lash/` and `lash.index.md` as
+markers, silently ignoring `index.lash.md` despite the design doc
+treating it as a first-class marker. The consolidation fixes that.
+
+### `write_atomic` adjustment uncovered by the test run
+
+The full-workspace test sweep turned up four format-command tests that
+my earlier "lash format writes atomically" change had broken. The
+issue was real: `fs::rename` only requires write permission on the
+*parent directory*, not on the target file, so atomic rename was
+silently overwriting files the user had chmod'd 0o444. Added a
+writability pre-check to `write_atomic` so it preserves the historical
+"refuse to write a read-only file" semantics. Test diagnostics also
+got their error messages normalised to consistently contain
+`"failed to write file: <path>"` regardless of which step inside
+`write_atomic` reports the problem.
+
+### Key Components
+
+- `lash_types::path_utils::is_project_root_marker(dir)` — the
+  single-marker predicate
+- `lash_types::path_utils::find_project_root_from(start)` — the
+  single canonical walker
+- `PROJECT_MARKER_NAMES` — public constant so tests and external tools
+  can introspect the marker list without parsing source
+- 10 new unit tests in `path_utils` covering: each marker, bare
+  directory, file-named-.lash, find-self, walk-up-to-ancestor,
+  refuse-to-cross-git-root, accept-marker-at-git-root, missing path
+- `write_atomic` pre-flight writability check (+ existing tests for
+  unwritable files now pass again)
+
 ## 2026-05-22 - `lash format` writes atomically
 
 ### Summary

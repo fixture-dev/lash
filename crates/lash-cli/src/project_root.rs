@@ -111,57 +111,40 @@ impl ProjectRootFinder {
 
     /// Search upward from a directory to find project root markers.
     ///
-    /// When `start_dir` is inside a git repository, the search is capped at
-    /// the git root: markers above the git root are *not* accepted. This
-    /// prevents leftover state in a user's home directory (e.g. `~/.lash/`
-    /// from a past run) from hijacking commands invoked inside an unrelated
-    /// project.
-    ///
-    /// When `start_dir` is not in a git repository, the search keeps the
-    /// historical behaviour and stops at the home directory.
+    /// Delegates the walk to `lash_types::path_utils::find_project_root_from`
+    /// and turns its `None` result into an `anyhow!` error with the
+    /// searched-path list — the rich diagnostic the CLI commands want to
+    /// surface.
     #[allow(clippy::unused_self)] // self used for potential caching in future
     fn search_upward(&self, start_dir: &Path) -> Result<PathBuf> {
+        if let Some(root) = lash_types::path_utils::find_project_root_from(start_dir) {
+            return Ok(root);
+        }
+
+        // Rebuild a friendly list of what we looked at by walking up
+        // ourselves — this is purely for the error message. The canonical
+        // helper above is what actually decides found/not-found.
+        let mut search_path = Vec::new();
         let mut current = start_dir.canonicalize().context(format!(
             "Failed to canonicalize starting directory: {}",
             start_dir.display()
         ))?;
-
         let git_root = lash_types::path_utils::find_git_root(&current);
-        let home_dir = dirs::home_dir();
-        let mut search_path = Vec::new();
-
         loop {
             search_path.push(current.clone());
-
-            // Check for project markers
-            if has_project_markers(&current) {
-                return Ok(current);
+            if git_root.as_ref().is_some_and(|gr| current == *gr) {
+                break;
             }
-
-            // With a git context, never search above the git root.
-            if let Some(ref gr) = git_root {
-                if current == *gr {
-                    break;
-                }
-            } else if let Some(ref home) = home_dir {
-                // No git context — fall back to the historical home-dir cap.
-                if current == *home {
-                    break;
-                }
-            }
-
-            // Move up one directory
             match current.parent() {
                 Some(parent) => current = parent.to_path_buf(),
-                None => break, // Reached filesystem root
+                None => break,
             }
         }
 
-        // No project root found
         let ceiling_hint = if git_root.is_some() {
             "Search was capped at the current git repository root."
         } else {
-            "Search was capped at the home directory (no git repository detected)."
+            "Search reached the filesystem root without finding a marker."
         };
         anyhow::bail!(
             "No Lash project root found. Searched in:\n  {}\n\n\
@@ -234,16 +217,11 @@ impl Default for ProjectRootFinder {
     }
 }
 
-/// Check if a directory contains Lash project markers
+/// Check if a directory contains Lash project markers.
 ///
-/// Returns true if the directory contains:
-/// - `lash.index.md` file
-/// - `index.lash.md` file
-/// - `.lash/` directory
+/// Delegates to the canonical helper in `lash_types::path_utils`.
 fn has_project_markers(dir: &Path) -> bool {
-    dir.join("lash.index.md").exists()
-        || dir.join("index.lash.md").exists()
-        || dir.join(".lash").is_dir()
+    lash_types::path_utils::is_project_root_marker(dir)
 }
 
 #[cfg(test)]
