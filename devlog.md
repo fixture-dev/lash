@@ -1,5 +1,59 @@
 # Lash Development Log
 
+## 2026-05-22 - Activity bar backfills from DB at TUI startup
+
+### Summary
+
+The activity bar was designed as a *session* memory buffer — it only
+populated when transitions happened during the running TUI. With the
+in-progress slot also being empty when no `[>]` tasks exist on disk,
+the bar was perpetually empty on first launch (you'd see "Files: 1
+Tasks: 12" and "Press ? for help" with empty space in between, like
+the bar was broken).
+
+The design doc had flagged "Activity persistence across TUI restarts"
+as v1-out-of-scope, but that left a real discoverability footgun:
+users who hadn't crossed an in-progress state recently saw a
+feature that looked broken.
+
+Now `ActivityState::seed_from_db` is called from both
+`TuiApp::new_with_scheme` and `TestAppBuilder::build` at startup. It
+seeds:
+
+- `in_progress` from `TaskRepository::find_by_status(InProgress)`
+  (same query as before, now centralised in the activity module)
+- `recently_completed` from
+  `TaskRepository::find_recently_completed(now - 5min, cap=3)` —
+  up to 3 done/waived tasks from files modified within the activity
+  TTL, ordered newest-first by file mtime
+
+The seed timestamp is `Instant::now()` for both — so backfilled
+entries get pruned by the same 5-min TTL as session-originated ones,
+keeping the rolling-buffer semantics consistent.
+
+### Caveat
+
+The DB tracks file mtime, not per-task completion time. So a file
+recently touched (for *any* reason) will surface its done tasks as
+"recently completed" — even if those particular completions happened
+weeks ago. For the "what changed recently?" framing of the activity
+bar this is close enough; tightening the heuristic would require
+tracking per-task transition times, which is a larger change.
+
+### Refactor that fell out
+
+Both `TuiApp::new_with_scheme` and `TestAppBuilder::build` had their
+own copy of the "query InProgress, set activity slot" block — slightly
+divergent. Both now call `seed_from_db` instead, ending that
+duplication.
+
+### Test added
+
+`startup_backfills_recently_completed_from_db` — builds a TestApp
+against a project with two `[x]` tasks and one `[ ]` task on disk,
+asserts both done tasks appear in `state.activity.recently_completed`
+and the open task does not.
+
 ## 2026-05-22 - One project-root walker, used by all four pre-existing finders
 
 ### Summary

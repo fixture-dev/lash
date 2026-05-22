@@ -29,6 +29,12 @@ For background docs, see:
 
 - [x] Design live-TUI-updates architecture #design
 - [x] Activity status bar (in-progress + recently completed) #tui
+- [x] Backfill activity bar from DB at startup so it's not empty on first launch #tui
+  - `ActivityState::seed_from_db` now seeds both the in-progress slot and
+    the recently-completed tail from `TaskRepository`. The TUI no longer
+    looks broken when the user has no live transitions yet — the bar
+    populates with up to 3 done/waived tasks from files modified in the
+    last 5 min, ordered by file mtime DESC
 - [x] Store actor with atomic writes and hash dedupe #core
 - [x] File watcher with debounce and ignore rules #core
 - [x] External-edit reload with stable-id cursor preservation #tui
