@@ -2386,6 +2386,45 @@ impl AppState {
         }
     }
 
+    /// Capture the full id of the currently selected task, if any.
+    ///
+    /// Pair with `restore_task_selection_by_full_id` across a tree rebuild
+    /// to keep the cursor anchored to the same logical task even when its
+    /// row index has shifted.
+    #[must_use]
+    pub fn selected_task_full_id(&self) -> Option<String> {
+        self.selected_task().map(|t| t.full_id.clone())
+    }
+
+    /// Move `selected_task_index` to the (visible) row whose task has
+    /// `full_id`. If no such row exists, the index is left unchanged unless
+    /// it is now out of bounds, in which case it is clamped to a valid value.
+    pub fn restore_task_selection_by_full_id(&mut self, full_id: &str) {
+        let visible: Vec<&TaskRecord> = self.flat_visible_tasks();
+        if let Some(idx) = visible.iter().position(|t| t.full_id == full_id) {
+            self.selected_task_index = idx;
+            return;
+        }
+        let max = visible.len();
+        if max == 0 {
+            self.selected_task_index = 0;
+        } else if self.selected_task_index >= max {
+            self.selected_task_index = max - 1;
+        }
+    }
+
+    fn flat_visible_tasks(&self) -> Vec<&TaskRecord> {
+        if let Some(task_trees) = &self.task_tree {
+            let mut flat: Vec<&TaskRecord> = Vec::new();
+            for tree in task_trees {
+                Self::flatten_task_tree(tree, &mut flat);
+            }
+            flat
+        } else {
+            self.tasks.iter().collect()
+        }
+    }
+
     /// Expand the file tree to reveal a specific file by its ID.
     ///
     /// This method expands all ancestor directories in the file tree to make
