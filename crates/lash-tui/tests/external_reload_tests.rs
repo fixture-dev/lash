@@ -68,6 +68,55 @@ const BODY_WITH_TWO_DONE: &str = r"# Sample Tasks
 ";
 
 #[test]
+fn startup_backfills_recently_completed_even_for_old_files() {
+    // Regression: an earlier version of the backfill required file mtime to
+    // be within the in-memory TTL (5 min). For any project whose task files
+    // hadn't been touched in 5 minutes — e.g. opening lash tui in a
+    // quiescent project — the bar showed as empty, looking like a bug.
+    // Backfill must use the most-recently-completed-by-file-mtime entries
+    // regardless of absolute age.
+    let (_dir, db_path, tasks_md) = setup_project(BODY_WITH_TWO_DONE);
+
+    // Backdate the file mtime to a week ago so the "since < 5 min" filter
+    // would have hidden it.
+    let week_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(7 * 24 * 3600);
+    filetime::set_file_mtime(&tasks_md, filetime::FileTime::from_system_time(week_ago)).unwrap();
+    // Re-index so the new mtime lands in the DB.
+    use lash_db::{Indexer, IndexerConfig};
+    use lash_types::LashConfig;
+    let conn = lash_db::open_database(&db_path).unwrap();
+    let parser_config = LashConfig::default();
+    let indexer_config = IndexerConfig::new(tasks_md.parent().unwrap().to_path_buf())
+        .with_incremental(false)
+        .with_progress(false);
+    let mut indexer = Indexer::new(&conn, indexer_config, &parser_config);
+    indexer.index_project().unwrap();
+    drop(conn);
+
+    let app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+
+    let titles: Vec<&str> = app
+        .state()
+        .activity
+        .recently_completed
+        .iter()
+        .map(|e| e.title.as_str())
+        .collect();
+    assert!(
+        titles.contains(&"Already done task"),
+        "backfill must include done tasks even from week-old files; got {titles:?}"
+    );
+    assert!(
+        titles.contains(&"Another done task"),
+        "backfill must include done tasks even from week-old files; got {titles:?}"
+    );
+}
+
+#[test]
 fn startup_backfills_recently_completed_from_db() {
     // Project has two Done tasks on disk before the TUI ever launches.
     // The build step should populate activity.recently_completed from the

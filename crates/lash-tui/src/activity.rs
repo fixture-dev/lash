@@ -139,20 +139,20 @@ impl ActivityState {
             }
         }
 
-        // Recently completed: query done/waived tasks from files modified
-        // within the TTL. The query returns newest-first by file mtime;
-        // push_front of each (in iteration order) would put oldest at the
-        // front, so we push_back to preserve the newest-first VecDeque
-        // contract used elsewhere.
-        let since_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .ok()
-            .map_or(0, |d| {
-                d.as_secs().saturating_sub(RECENT_COMPLETED_TTL.as_secs())
-            });
-        #[allow(clippy::cast_possible_wrap)]
-        let since_i64 = since_secs as i64;
-        if let Ok(recents) = task_repo.find_recently_completed(since_i64, RECENT_COMPLETED_CAP) {
+        // Recently completed: query the N most-recently-completed done/waived
+        // tasks regardless of *how* recently. The DB only tracks file mtime,
+        // not per-task completion time — so requiring "within the last 5
+        // minutes" (matching the in-memory TTL) hides completions on any
+        // project whose files haven't been touched in the current session.
+        // That made the bar look broken on first launch in any quiescent
+        // project.
+        //
+        // Instead we pass `since = 0` (the Unix epoch) to get the top-N
+        // entries by file mtime, then let the in-memory TTL prune them
+        // organically: their `at` is set to `now`, so they age out after
+        // `RECENT_COMPLETED_TTL` like any other entry — by which point the
+        // user has hopefully made transitions of their own in the session.
+        if let Ok(recents) = task_repo.find_recently_completed(0, RECENT_COMPLETED_CAP) {
             for task in recents {
                 if self.recently_completed.len() >= RECENT_COMPLETED_CAP {
                     break;

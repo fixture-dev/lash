@@ -25,3 +25,7 @@ tracing = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 insta = { workspace = true }
+# Backdating file mtimes in tests that need to prove "old file" behaviour
+# (the activity-bar backfill must not depend on file freshness). filetime
+# is already pulled in transitively by notify so no new transitive cost.
+filetime = "0.2"
