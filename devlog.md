@@ -1,5 +1,49 @@
 # Lash Development Log
 
+## 2026-05-22 - Task creation flows through Store; watcher dedupe extends to creates
+
+### Summary
+
+Closes the last "all writes through one funnel" gap. Before: status
+toggles went through `Store::apply(SetTaskStatus)` (which records a hash
+so the file watcher's echo gets dropped), but task creation called
+`TaskCreationService::create_task` directly. The resulting watcher event
+saw bytes the Store didn't recognize and fired a redundant external
+reload+reindex right after the TUI just did one.
+
+Now: `Mutation::CreateTask(Box<CreateTaskMutation>)` is the canonical
+entry point. The Store still delegates the actual file emission to
+`TaskCreationService` (validation, ID synthesis, placement, atomic
+write — all unchanged), then reads the resulting file back and records
+its hash. The next watcher echo for that path matches and is silently
+dropped, exactly like a status-toggle echo.
+
+The variant is boxed because `TaskCreationRequest + LashConfig` is
+hundreds of bytes — clippy flagged the variant-size mismatch and the
+Box is the standard fix. Errors from `TaskCreationService` (which
+return as `Vec<TaskCreationError>`) are flattened to a single
+`LashError::Internal` for the Store API; the TUI's submit handler
+displays the formatted summary just like it used to display the first
+structured error.
+
+### Key Components
+
+- `lash-core::store::Mutation::CreateTask(Box<CreateTaskMutation>)` —
+  new variant carrying `request + config`
+- `lash-core::store::StateDelta::TaskCreated { absolute_path, task_id,
+  is_new_file }` — emitted on success
+- `Store::apply` for `CreateTask` — runs the service, then re-reads and
+  hashes the resulting file
+- `lash-tui::app::handle_submit_task_creation` rewired through Store
+- 2 new store unit tests: success-path emits delta + records hash +
+  dedupes echo; validation failure surfaces as `E_INTERNAL`
+- 1 new TUI integration test: `task_creation_through_store_dedupes_watcher_echo`
+
+### What still flows around the Store
+
+- `lash_core::formatter::format_file_in_place` writes directly (next on
+  the queue — switching it to `write_atomic` is a tiny win)
+
 ## 2026-05-22 - Activity bar reacts to external edits too
 
 ### Summary

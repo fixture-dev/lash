@@ -36,7 +36,11 @@ For background docs, see:
   - The activity bar now updates from external edits too: `handle_file_reloaded`
     snapshots the file's task statuses before reindex and feeds every changed
     status through `ActivityState::record_transition` afterwards
-- [ ] `Mutation::CreateTask` so task creation also flows through the Store #core
+- [x] `Mutation::CreateTask` so task creation also flows through the Store #core
+  - TUI's submit handler now calls `Store::apply(CreateTask)`. The Store
+    delegates emission to `TaskCreationService`, re-reads the resulting
+    file, and records its hash so the watcher's echo gets dedupe'd — no
+    more redundant reindex on a TUI-initiated create
 - [ ] `formatter::format_file_in_place` uses `write_atomic` #core
 - [ ] Stale-modal banner for in-flight modals on external change #tui
 - [ ] Bounded watcher channel with `FullReload` overflow path #core

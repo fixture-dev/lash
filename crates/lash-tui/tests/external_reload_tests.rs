@@ -227,6 +227,59 @@ fn external_in_progress_to_done_clears_in_progress_and_pushes_to_recent() {
 }
 
 #[test]
+fn task_creation_through_store_dedupes_watcher_echo() {
+    use lash_types::creation::TaskCreationRequestBuilder;
+    use lash_types::LashConfig;
+
+    let (_dir, db_path, tasks_md) = setup_project(INITIAL_BODY);
+
+    let mut app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+    app.tick().unwrap();
+
+    let tasks_before = app.state().tasks.len();
+
+    // Drive the same code path the TUI's submit handler uses: Store::apply
+    // with a CreateTask mutation. The Store should both perform the write
+    // AND record its hash so the subsequent watcher echo is silently dropped.
+    let request = TaskCreationRequestBuilder::new("Created via store")
+        .file_path(tasks_md.clone())
+        .build();
+    let deltas = app
+        .store_mut()
+        .apply(lash_core::store::Mutation::CreateTask(Box::new(
+            lash_core::store::CreateTaskMutation {
+                request,
+                config: LashConfig::default(),
+            },
+        )))
+        .unwrap();
+    assert_eq!(deltas.len(), 1);
+    assert!(matches!(
+        deltas[0],
+        lash_core::store::StateDelta::TaskCreated { .. }
+    ));
+
+    // Watcher echo: file on disk equals what the Store just wrote.
+    // process_external_change must drop it (return no deltas) so the TUI
+    // doesn't redundantly reindex a file it just wrote itself.
+    app.process_external_change(&tasks_md).unwrap();
+
+    // No reload happened, so state.tasks reflects whatever was there before
+    // the creation — the test app doesn't run the submit handler's manual
+    // reindex path. (That path is what makes the new task visible in
+    // production; here we're isolating the dedupe behaviour.)
+    assert_eq!(
+        app.state().tasks.len(),
+        tasks_before,
+        "watcher echo of a Store-mediated create should not have caused a reload"
+    );
+}
+
+#[test]
 fn self_write_echo_is_dropped_without_reload() {
     let (_dir, db_path, tasks_md) = setup_project(INITIAL_BODY);
 
