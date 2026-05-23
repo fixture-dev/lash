@@ -687,6 +687,13 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         &mut self.store
     }
 
+    /// Access the underlying DB connection — for tests that want to assert
+    /// on the on-disk state directly after exercising a reload path.
+    #[must_use]
+    pub fn conn_for_tests(&self) -> &Connection {
+        &self.conn
+    }
+
     /// Access the terminal instance
     #[must_use]
     pub fn terminal(&self) -> &Terminal<B> {

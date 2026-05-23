@@ -68,6 +68,91 @@ const BODY_WITH_TWO_DONE: &str = r"# Sample Tasks
 ";
 
 #[test]
+fn external_edit_to_one_file_does_not_wipe_other_files_from_db() {
+    // Regression for the data-loss bug that crashed soak's progress bar
+    // from 76% to 0% on every external edit. The TUI's handle_file_reloaded
+    // ran an incremental reindex scoped to just the changed file; the
+    // diff layer (before the fix) interpreted "every other file in the DB
+    // wasn't observed this walk" as "every other file was deleted" and
+    // CASCADE-removed all their tasks.
+    //
+    // After the fix, sibling files survive an external edit to one.
+    let temp = TempDir::new().unwrap();
+    let project_root = temp.path().to_path_buf();
+    let lash_dir = project_root.join(".lash");
+    std::fs::create_dir(&lash_dir).unwrap();
+    let db_path = lash_dir.join("lash.db");
+    let conn = lash_db::init_database(&db_path).unwrap();
+
+    // Three real files, like a multi-phase project.
+    let phase0 = project_root.join("phase0.md");
+    let phase1 = project_root.join("phase1.md");
+    let phase2 = project_root.join("phase2.md");
+    std::fs::write(
+        &phase0,
+        "# Phase 0\n\n@id: phase0\n\n## Tasks\n\n- [x] p0-a\n- [x] p0-b\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &phase1,
+        "# Phase 1\n\n@id: phase1\n\n## Tasks\n\n- [ ] p1-a\n- [ ] p1-b\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &phase2,
+        "# Phase 2\n\n@id: phase2\n\n## Tasks\n\n- [ ] p2-a\n",
+    )
+    .unwrap();
+
+    use lash_db::{Indexer, IndexerConfig};
+    use lash_types::LashConfig;
+    let parser_config = LashConfig::default();
+    let indexer_config = IndexerConfig::new(project_root.clone()).with_progress(false);
+    let mut indexer = Indexer::new(&conn, indexer_config, &parser_config);
+    indexer.index_project().unwrap();
+    drop(conn);
+
+    // Baseline: 5 tasks across 3 files.
+    {
+        let conn = lash_db::open_database(&db_path).unwrap();
+        let task_repo = lash_db::TaskRepository::new(&conn);
+        let (total, _completed) = task_repo.get_project_counts().unwrap();
+        assert_eq!(total, 5, "baseline total tasks");
+    }
+
+    let mut app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+    app.tick().unwrap();
+
+    // External edit to phase1 only.
+    std::fs::write(
+        &phase1,
+        "# Phase 1\n\n@id: phase1\n\n## Tasks\n\n- [x] p1-a\n- [ ] p1-b\n",
+    )
+    .unwrap();
+    app.process_external_change(&phase1).unwrap();
+
+    // Phase0 and Phase2 must still be in the DB with their tasks intact.
+    // Pre-fix this would have dropped to ~2 tasks (just phase1's).
+    let task_repo = lash_db::TaskRepository::new(app.conn_for_tests());
+    let (total, _completed) = task_repo.get_project_counts().unwrap();
+    assert_eq!(
+        total, 5,
+        "external edit to phase1 must NOT wipe phase0/phase2 tasks; expected 5 total, got {total}"
+    );
+
+    // Spot-check by id: a known phase0 task still exists.
+    let p0_a = task_repo.get_by_full_id("phase0#p0-a").unwrap();
+    assert!(
+        p0_a.is_some(),
+        "phase0#p0-a must still be in DB after reload of phase1"
+    );
+}
+
+#[test]
 fn startup_backfills_recently_completed_even_for_old_files() {
     // Regression: an earlier version of the backfill required file mtime to
     // be within the in-memory TTL (5 min). For any project whose task files

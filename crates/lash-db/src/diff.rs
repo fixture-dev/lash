@@ -193,6 +193,36 @@ impl Default for IndexDiff {
 /// - **Manual DB edits**: Hash comparison ensures correctness even if DB is modified
 /// - **Concurrent modifications**: Uses filesystem as source of truth
 pub fn compute_index_diff(conn: &Connection, files: &[FileMetadata]) -> DbResult<IndexDiff> {
+    compute_index_diff_scoped(conn, files, None)
+}
+
+/// Scope-aware variant of [`compute_index_diff`].
+///
+/// `scope` controls how deletion detection runs:
+///
+/// - `None` (or `Some(&[])`): the walker is assumed to have observed every
+///   file the index could contain. Any DB file not in `files` is reported
+///   as deleted. This is the right behaviour for a project-wide reindex.
+/// - `Some(relative_scope_paths)`: the walker was scoped to those paths.
+///   Only DB files whose relative path falls under one of the scope paths
+///   are eligible for deletion detection — files outside the scope are
+///   simply not observed this run and must not be touched.
+///
+/// **Why this matters:** without scoping, a "reindex just this one file"
+/// call (the kind `handle_file_reloaded` issues in the live-update path)
+/// would walk discovers only that one file, the diff would see it as the
+/// sole "present" file, and *every other file in the DB* would be marked
+/// deleted and CASCADE-removed along with all their tasks. Multi-file
+/// projects would lose ~all task data on every external edit.
+///
+/// # Errors
+///
+/// Returns error if the database query fails.
+pub fn compute_index_diff_scoped(
+    conn: &Connection,
+    files: &[FileMetadata],
+    scope: Option<&[PathBuf]>,
+) -> DbResult<IndexDiff> {
     let repo = FileRepository::new(conn);
 
     // Query all files from database
@@ -232,11 +262,20 @@ pub fn compute_index_diff(conn: &Connection, files: &[FileMetadata]) -> DbResult
         }
     }
 
-    // Detect deleted files (in DB but not on filesystem)
+    // Detect deleted files (in DB but not on filesystem). Under a scoped
+    // walk, only consider DB files that fall within the scope — anything
+    // outside it wasn't observed this run and isn't ours to declare deleted.
     for db_file in &db_files {
-        if !seen_paths.contains(&db_file.path) {
-            diff.deleted_files.push(db_file.path.clone());
+        if seen_paths.contains(&db_file.path) {
+            continue;
         }
+        if let Some(scope_paths) = scope.filter(|s| !s.is_empty()) {
+            let under_scope = scope_paths.iter().any(|s| db_file.path.starts_with(s));
+            if !under_scope {
+                continue;
+            }
+        }
+        diff.deleted_files.push(db_file.path.clone());
     }
 
     Ok(diff)
@@ -441,6 +480,88 @@ mod tests {
         assert_eq!(diff.deleted_files.len(), 0);
         assert_eq!(diff.unchanged_files.len(), 0);
         assert!(diff.has_changes());
+    }
+
+    #[test]
+    fn test_scoped_diff_does_not_delete_files_outside_scope() {
+        // Regression: this is the bug that caused soak's progress bar to
+        // crash to 0% on every external file edit. The TUI's
+        // handle_file_reloaded called the indexer with a single-path scope
+        // (just the changed file), the diff saw only that file as "present",
+        // and every *other* file in the DB was marked deleted and
+        // CASCADE-removed.
+        //
+        // With scope-aware deletion, files outside the scope are simply
+        // not observed this run and must be left alone.
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        // Three files in the DB, representing a multi-file project.
+        repo.insert(&create_task_file("phase0.md", "h0", 1000))
+            .unwrap();
+        repo.insert(&create_task_file("phase1.md", "h1", 1000))
+            .unwrap();
+        repo.insert(&create_task_file("phase2.md", "h2", 1000))
+            .unwrap();
+
+        // Scoped walk: only phase1.md was discovered (e.g. it just changed).
+        let fs_files = vec![create_file_metadata("phase1.md", "h1-new", 1500, 100)];
+        let scope = vec![PathBuf::from("phase1.md")];
+
+        let diff = compute_index_diff_scoped(&conn, &fs_files, Some(&scope)).unwrap();
+
+        assert_eq!(diff.modified_files.len(), 1, "phase1.md should be modified");
+        assert_eq!(
+            diff.deleted_files.len(),
+            0,
+            "files outside the scope (phase0.md, phase2.md) must NOT be marked deleted; got {:?}",
+            diff.deleted_files
+        );
+    }
+
+    #[test]
+    fn test_scoped_diff_still_detects_deletions_within_scope() {
+        // Symmetric: if the scope covers a file that's no longer on disk,
+        // we *do* want it detected as deleted. The scope filter is about
+        // "what's our responsibility this run", not "never delete anything."
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        repo.insert(&create_task_file("a/inside.md", "h1", 1000))
+            .unwrap();
+        repo.insert(&create_task_file("b/outside.md", "h2", 1000))
+            .unwrap();
+
+        // Scope covers a/, walker sees nothing under a/ (file was deleted).
+        let fs_files: Vec<FileMetadata> = vec![];
+        let scope = vec![PathBuf::from("a")];
+
+        let diff = compute_index_diff_scoped(&conn, &fs_files, Some(&scope)).unwrap();
+
+        assert_eq!(diff.deleted_files.len(), 1);
+        assert_eq!(diff.deleted_files[0], PathBuf::from("a/inside.md"));
+    }
+
+    #[test]
+    fn test_unscoped_diff_preserves_historical_behavior() {
+        // No scope (None) means "full project walk": missing files are
+        // genuinely deleted. Confirms the back-compat path still works.
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let repo = FileRepository::new(&conn);
+
+        repo.insert(&create_task_file("file1.md", "h1", 1000))
+            .unwrap();
+        repo.insert(&create_task_file("file2.md", "h2", 1000))
+            .unwrap();
+
+        let fs_files = vec![create_file_metadata("file1.md", "h1", 1000, 100)];
+
+        let diff = compute_index_diff_scoped(&conn, &fs_files, None).unwrap();
+
+        assert_eq!(diff.deleted_files, vec![PathBuf::from("file2.md")]);
     }
 
     #[test]

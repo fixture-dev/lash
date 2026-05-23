@@ -34,7 +34,7 @@
 //! ```
 
 use crate::dependency_updater::DependencyUpdater;
-use crate::diff::{compute_index_diff, IndexDiff};
+use crate::diff::{compute_index_diff_scoped, IndexDiff};
 use crate::error::{DbError, DbResult};
 use crate::profiler::{IndexProfiler, ProfileReport};
 use crate::repository::{FileRepository, TaskRepository};
@@ -43,7 +43,7 @@ use lash_core::parser::{is_valid_task_file, parse_file};
 use lash_types::{LashConfig, TaskFile};
 use rayon::prelude::*;
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -530,11 +530,33 @@ impl<'conn> Indexer<'conn> {
             return Ok(report);
         }
 
-        // Phase 2: Compute diff (if incremental)
+        // Phase 2: Compute diff (if incremental). Pass walker scope so the
+        // diff knows not to mark files outside the scope as "deleted" — see
+        // compute_index_diff_scoped's docs for why scoped reindex would
+        // otherwise wipe out unrelated files.
+        //
+        // walker_config.paths are absolute paths; the DB stores relative
+        // paths. Strip project_root to convert.
+        let scope_paths: Vec<PathBuf> = self
+            .config
+            .walker_config
+            .paths
+            .iter()
+            .map(|abs| {
+                abs.strip_prefix(&self.config.walker_config.project_root)
+                    .map_or_else(|_| abs.clone(), Path::to_path_buf)
+            })
+            .collect();
+        let scope = if scope_paths.is_empty() {
+            None
+        } else {
+            Some(scope_paths.as_slice())
+        };
+
         let diff = {
             let _guard = profiler.start_phase("diff");
             if self.config.incremental {
-                compute_index_diff(self.conn, &files)?
+                compute_index_diff_scoped(self.conn, &files, scope)?
             } else {
                 // For full reindex, treat all files as new
                 IndexDiff {
