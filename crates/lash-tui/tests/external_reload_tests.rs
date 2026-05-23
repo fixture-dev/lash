@@ -68,6 +68,94 @@ const BODY_WITH_TWO_DONE: &str = r"# Sample Tasks
 ";
 
 #[test]
+fn external_edit_to_one_file_refreshes_sibling_file_status_in_left_tree() {
+    // When an agent completes the last open task in a sibling file (i.e.
+    // a file other than the one the user is currently viewing), the
+    // left-pane file tree should pick up that file's new "complete" status
+    // — not stay stuck on whatever the file's status was at TUI startup.
+    //
+    // Before this fix, handle_file_reloaded only refreshed the *viewed*
+    // file's task list, so state.files (and the file tree derived from
+    // it) went stale on sibling changes.
+    use lash_types::FileStatus;
+    let temp = TempDir::new().unwrap();
+    let project_root = temp.path().to_path_buf();
+    let lash_dir = project_root.join(".lash");
+    std::fs::create_dir(&lash_dir).unwrap();
+    let db_path = lash_dir.join("lash.db");
+    let conn = lash_db::init_database(&db_path).unwrap();
+
+    // Two files. `viewing.md` is what the user is looking at. `sibling.md`
+    // has one open task that an external process will complete shortly.
+    let viewing = project_root.join("viewing.md");
+    let sibling = project_root.join("sibling.md");
+    std::fs::write(
+        &viewing,
+        "# Viewing\n\n@id: viewing\n\n## Tasks\n\n- [ ] looking-at-this\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &sibling,
+        "# Sibling\n\n@id: sibling\n\n## Tasks\n\n- [ ] last-open-task\n",
+    )
+    .unwrap();
+
+    use lash_db::{Indexer, IndexerConfig};
+    use lash_types::LashConfig;
+    let parser_config = LashConfig::default();
+    let indexer_config = IndexerConfig::new(project_root.clone()).with_progress(false);
+    let mut indexer = Indexer::new(&conn, indexer_config, &parser_config);
+    indexer.index_project().unwrap();
+    drop(conn);
+
+    let mut app = TestAppBuilder::new()
+        .with_db(&db_path)
+        .with_size(80, 24)
+        .build()
+        .unwrap();
+    app.tick().unwrap();
+
+    // Baseline: sibling's status in state.files is NOT Complete (it has an
+    // open task).
+    let sibling_status_before = app
+        .state()
+        .files
+        .iter()
+        .find(|f| f.path.ends_with("sibling.md"))
+        .expect("sibling.md should be in state.files")
+        .status;
+    assert_ne!(
+        sibling_status_before,
+        FileStatus::Complete,
+        "precondition: sibling.md must start non-complete"
+    );
+
+    // External edit: an agent marks sibling.md's only open task as done.
+    std::fs::write(
+        &sibling,
+        "# Sibling\n\n@id: sibling\n\n## Tasks\n\n- [x] last-open-task\n",
+    )
+    .unwrap();
+    app.process_external_change(&sibling).unwrap();
+
+    // Sibling's status in state.files should now reflect that all its tasks
+    // are complete — even though it's not the file the user is viewing.
+    let sibling_status_after = app
+        .state()
+        .files
+        .iter()
+        .find(|f| f.path.ends_with("sibling.md"))
+        .expect("sibling.md should still be in state.files")
+        .status;
+    assert_eq!(
+        sibling_status_after,
+        FileStatus::Complete,
+        "sibling.md should be Complete after its last open task was externally closed; \
+         got {sibling_status_after:?}"
+    );
+}
+
+#[test]
 fn external_edit_to_one_file_does_not_wipe_other_files_from_db() {
     // Regression for the data-loss bug that crashed soak's progress bar
     // from 76% to 0% on every external edit. The TUI's handle_file_reloaded

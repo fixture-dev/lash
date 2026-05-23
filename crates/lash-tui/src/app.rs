@@ -1504,6 +1504,14 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
 
         self.mark_modal_stale_if_targets(relative);
 
+        // Refresh the file list + file tree from the DB. The reindex may
+        // have updated *any* file's status (a sibling completing all its
+        // tasks turns its file-tree marker ○ → ✓), or added/removed files
+        // entirely — none of which the viewed-file-only branch below would
+        // surface. We do this for every external change, not just for the
+        // viewed-file case, so the left pane stays in sync.
+        self.refresh_files_and_tree()?;
+
         let changed_file_id = FileRepository::new(&self.conn)
             .get_by_path(relative)
             .ok()
@@ -1528,6 +1536,33 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         }
 
         self.refresh_project_stats()?;
+        Ok(())
+    }
+
+    /// Reload `state.files` from the DB and rebuild the file tree, preserving
+    /// the user's current expansion state and file selection. Called after
+    /// every external change so the left-pane file tree reflects sibling
+    /// files' status (e.g. a phase becoming fully complete elsewhere flips
+    /// its marker ○ → ✓ even when the user isn't viewing it).
+    fn refresh_files_and_tree(&mut self) -> TuiResult<()> {
+        let selected_file_id = self.currently_viewed_file_id();
+        let expanded_paths = self.state.collect_file_tree_expansion_state();
+
+        let file_repo = FileRepository::new(&self.conn);
+        let files = file_repo
+            .list_all()
+            .map_err(|e| TuiError::App(format!("Failed to reload files: {e}")))?;
+        self.state.files = files;
+        self.state.build_file_tree();
+        self.state
+            .restore_file_tree_expansion_state(&expanded_paths);
+
+        if let Some(file_id) = selected_file_id {
+            let _ = self.state.expand_path_to_file(file_id);
+            if let Some(visual_idx) = self.state.visual_index_of_file(file_id) {
+                self.state.selected_file_index = visual_idx;
+            }
+        }
         Ok(())
     }
 
