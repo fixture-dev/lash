@@ -279,9 +279,12 @@ mod tests {
         // a quiescent project. Now only the cap bounds the buffer; old
         // entries stick around until newer ones push them out.
         let mut a = ActivityState::new();
+        // checked_sub can return None on Windows when the system was booted
+        // recently (Instant is anchored at boot). The test only needs *some*
+        // instant; prune ignores the timestamp.
         let long_ago = Instant::now()
             .checked_sub(std::time::Duration::from_secs(24 * 3600))
-            .expect("checked_sub of 24h should succeed");
+            .unwrap_or_else(Instant::now);
         a.recently_completed.push_back(ActivityEntry {
             full_id: "f#stale".into(),
             title: "stale".into(),
