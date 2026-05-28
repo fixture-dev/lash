@@ -163,7 +163,7 @@ mod tests {
 
         // Find from subdirectory should return root
         let found_root = find_project_root(&subdir);
-        assert_eq!(found_root, root);
+        assert_eq!(found_root, root.canonicalize()?);
 
         Ok(())
     }
@@ -180,7 +180,7 @@ mod tests {
 
         // Find from deep subdirectory should return root
         let found_root = find_project_root(&subdir);
-        assert_eq!(found_root, root);
+        assert_eq!(found_root, root.canonicalize()?);
 
         Ok(())
     }
