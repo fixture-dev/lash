@@ -166,7 +166,14 @@ impl AnnotationBlock {
     pub fn get_dependencies(&self) -> Result<Vec<DependencyRef>> {
         let mut deps = Vec::new();
         for value in self.get_list(known_keys::DEPENDS_ON) {
-            deps.push(parse_dependency_ref(value)?);
+            // A single `@depends-on` line may list several comma-separated
+            // references (e.g. `@depends-on: a, b`). Split them so each edge
+            // is resolved independently rather than as one bogus reference
+            // (GitHub issue #16). Directory references legitimately contain no
+            // commas, so this split never breaks a valid single reference.
+            for part in split_dependency_values(value) {
+                deps.push(parse_dependency_ref(&part)?);
+            }
         }
         Ok(deps)
     }
@@ -513,6 +520,20 @@ pub fn parse_annotation_block<'a>(
     Ok(block)
 }
 
+/// Split a `@depends-on` annotation value into individual references.
+///
+/// Values may be comma-separated (`a, b, c`). Each element is trimmed and
+/// empty elements are dropped, so trailing commas and extra whitespace are
+/// tolerated. A value with no comma yields a single element.
+fn split_dependency_values(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect()
+}
+
 /// Validate annotation key against known and custom keys
 ///
 /// # Arguments
@@ -788,6 +809,38 @@ mod tests {
 
         let deps = block.get_dependencies().unwrap();
         assert_eq!(deps.len(), 2);
+    }
+
+    #[test]
+    fn test_annotation_block_get_dependencies_comma_split() {
+        // Issue #16: a comma-separated list on a single @depends-on line must
+        // become multiple references, not one bogus "a, b" reference.
+        let mut block = AnnotationBlock::new();
+        block.add("depends-on", "base-task, other-task");
+
+        let deps = block.get_dependencies().unwrap();
+        assert_eq!(deps.len(), 2);
+        assert_eq!(deps[0].target, "base-task");
+        assert_eq!(deps[1].target, "other-task");
+    }
+
+    #[test]
+    fn test_annotation_block_get_dependencies_comma_and_repeated_mix() {
+        let mut block = AnnotationBlock::new();
+        block.add("depends-on", "a, b");
+        block.add("depends-on", "c");
+
+        let deps = block.get_dependencies().unwrap();
+        let targets: Vec<&str> = deps.iter().map(|d| d.target.as_str()).collect();
+        assert_eq!(targets, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_split_dependency_values_trims_and_drops_empty() {
+        assert_eq!(split_dependency_values("a, b"), vec!["a", "b"]);
+        assert_eq!(split_dependency_values("  solo  "), vec!["solo"]);
+        assert_eq!(split_dependency_values("a, ,b,"), vec!["a", "b"]);
+        assert!(split_dependency_values("").is_empty());
     }
 
     #[test]

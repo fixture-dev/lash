@@ -6,9 +6,10 @@
 //!
 //! Error code: `E_LINK_NOT_FOUND`
 
-use lash_types::{dependency::DependencyKind, Severity, Task, TaskFile};
+use lash_types::{dependency::DependencyKind, Severity, Task};
 use std::path::Path;
 
+use crate::dependency::reference::{resolve_reference, RefError};
 use crate::linter::{LintContext, LintDiagnostic, LintRule};
 
 /// Rule that checks dependency references exist
@@ -39,14 +40,34 @@ impl DependencyExistsRule {
         Self
     }
 
-    /// Check if a file exists in the context
-    fn file_exists(ctx: &LintContext, file_path: &Path) -> bool {
-        ctx.get_file(file_path).is_some()
-    }
+    /// Best-effort lookup of the source line that authored a `@depends-on`
+    /// reference. `DependencyRef` doesn't carry its origin line, so we reopen
+    /// the source markdown and scan for a `@depends-on:` annotation whose
+    /// (comma-split) values include `target`. Returns 1-indexed `(line, col)`
+    /// when the source is readable; falls back to `(0, 0)` otherwise.
+    ///
+    /// Mirrors `BrokenDocFragmentRule::locate_doc_annotation` so that
+    /// `E_LINK_NOT_FOUND` reports the offending line like `W_SEM_DOC_FRAGMENT`
+    /// does (GitHub issue #18).
+    fn locate_depends_on(ctx: &LintContext, target: &str) -> (usize, usize) {
+        let absolute_source = ctx.config.root_path.join(&ctx.file_path);
+        let Ok(content) = std::fs::read_to_string(&absolute_source) else {
+            return (0, 0);
+        };
 
-    /// Check if a task exists in a file
-    fn task_exists_in_file(file: &TaskFile, task_id: &str) -> bool {
-        file.tasks.tasks().iter().any(|t| t.id == task_id)
+        for (idx, line) in content.lines().enumerate() {
+            let trimmed = line.trim_start();
+            let Some(value) = trimmed.strip_prefix("@depends-on:") else {
+                continue;
+            };
+            let has_target = value.split(',').map(str::trim).any(|part| part == target);
+            if has_target {
+                let col = line.find('@').unwrap_or(0).saturating_add(1);
+                return (idx.saturating_add(1), col);
+            }
+        }
+
+        (0, 0)
     }
 }
 
@@ -73,192 +94,81 @@ impl LintRule for DependencyExistsRule {
     fn check_task(&self, task: &Task, ctx: &LintContext) -> Vec<LintDiagnostic> {
         let mut diagnostics = Vec::new();
 
-        // Check all dependencies in this task's metadata
+        // Check all dependencies in this task's metadata. All reference forms
+        // are resolved through the shared resolver so that `lint`,
+        // `check-links`, and the CLI agree (GitHub issues #15, #19).
         for dep_ref in &task.metadata.depends_on {
-            match dep_ref.kind {
-                DependencyKind::ExplicitPath => {
-                    // Check if this is a task reference with path format (file.md#task:id)
-                    if let Some((path_part, task_part)) = dep_ref.target.split_once("#task:") {
-                        // This is a task reference
-                        let target_path = ctx.resolve_path(Path::new(path_part));
+            // Hierarchy deps are implicit; directory deps aren't validated here.
+            if matches!(
+                dep_ref.kind,
+                DependencyKind::Hierarchy | DependencyKind::Directory
+            ) {
+                continue;
+            }
 
-                        if !Self::file_exists(ctx, &target_path) {
-                            diagnostics.push(
-                                LintDiagnostic::error(
-                                    self.code(),
-                                    format!(
-                                        "File '{path_part}' not found (resolved to: {})",
-                                        target_path.display()
-                                    ),
-                                    ctx.file_path.clone(),
-                                    0,
-                                    0,
-                                )
-                                .with_help(format!(
-                                    "Check that the file exists. Expected file at: {}",
-                                    target_path.display()
-                                )),
-                            );
-                        } else if let Some(target_file) = ctx.get_file(&target_path) {
-                            if !Self::task_exists_in_file(target_file, task_part) {
-                                diagnostics.push(
-                                    LintDiagnostic::error(
-                                        self.code(),
-                                        format!(
-                                            "Task '{task_part}' not found in file '{}'",
-                                            target_path.display()
-                                        ),
-                                        ctx.file_path.clone(),
-                                        0,
-                                        0,
-                                    )
-                                    .with_help(format!(
-                                        "Check that the task ID exists in {}. Available tasks: {}",
-                                        target_path.display(),
-                                        target_file
-                                            .tasks
-                                            .tasks()
-                                            .iter()
-                                            .map(|t| t.id.as_str())
-                                            .take(5)
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    )),
-                                );
-                            }
-                        }
-                    } else {
-                        // This is just a file reference
-                        let target_path = ctx.resolve_path(Path::new(&dep_ref.target));
+            let resolve_path = |rel: &str| ctx.resolve_path(Path::new(rel));
+            let result = resolve_reference(
+                &dep_ref.target,
+                &ctx.file_path,
+                "",
+                ctx.all_files,
+                resolve_path,
+            );
 
-                        if !Self::file_exists(ctx, &target_path) {
-                            diagnostics.push(LintDiagnostic::error(
-                                self.code(),
-                                format!(
-                                    "Dependency reference to file '{}' not found (resolved to: {})",
-                                    dep_ref.target,
-                                    target_path.display()
-                                ),
-                                ctx.file_path.clone(),
-                                0,
-                                0,
-                            ).with_help(
-                                format!(
-                                    "Check that the file exists, or fix the path. Expected file at: {}",
-                                    target_path.display()
-                                )
-                            ));
-                        }
-                    }
-                }
-                DependencyKind::ExplicitId => {
-                    // For ID references, check if it contains a task reference
-                    if let Some((file_id, task_id)) = dep_ref.target.split_once('#') {
-                        // Find file by ID or path
-                        // First try to find by file ID (match file's id field)
-                        let target_file = ctx.all_files.values().find(|f| f.id == file_id);
-
-                        if let Some(target_file) = target_file {
-                            // File found, check if task exists
-                            if !Self::task_exists_in_file(target_file, task_id) {
-                                diagnostics.push(LintDiagnostic::error(
-                                    self.code(),
-                                    format!(
-                                        "Task '{task_id}' not found in file with ID '{file_id}'"
-                                    ),
-                                    ctx.file_path.clone(),
-                                    0,
-                                    0,
-                                ).with_help(
-                                    format!(
-                                        "Check that the task ID exists in file '{}'. Available tasks: {}",
-                                        target_file.path.display(),
-                                        target_file.tasks.tasks().iter()
-                                            .map(|t| t.id.as_str())
-                                            .take(5)
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    )
-                                ));
-                            }
-                        } else {
-                            // Try as a path reference
-                            let as_path = Path::new(file_id);
-                            if let Some(target_file) = ctx.get_file(as_path) {
-                                if !Self::task_exists_in_file(target_file, task_id) {
-                                    diagnostics.push(LintDiagnostic::error(
-                                        self.code(),
-                                        format!(
-                                            "Task '{task_id}' not found in file '{}'",
-                                            as_path.display()
-                                        ),
-                                        ctx.file_path.clone(),
-                                        0,
-                                        0,
-                                    ).with_help(
-                                        format!(
-                                            "Check that the task ID exists in {}. Available tasks: {}",
-                                            as_path.display(),
-                                            target_file.tasks.tasks().iter()
-                                                .map(|t| t.id.as_str())
-                                                .take(5)
-                                                .collect::<Vec<_>>()
-                                                .join(", ")
-                                        )
-                                    ));
-                                }
-                            } else {
-                                // Neither file ID nor path found
-                                diagnostics.push(
-                                    LintDiagnostic::error(
-                                        self.code(),
-                                        format!("File with ID '{file_id}' not found in project"),
-                                        ctx.file_path.clone(),
-                                        0,
-                                        0,
-                                    )
-                                    .with_help(
-                                        "Check the file ID or path in the dependency reference",
-                                    ),
-                                );
-                            }
-                        }
-                    } else {
-                        // Bare file ID reference (no task specified)
-                        let target_file = ctx.all_files.values().find(|f| f.id == dep_ref.target);
-
-                        if target_file.is_none() {
-                            // Try as a path
-                            let as_path = Path::new(&dep_ref.target);
-                            if !Self::file_exists(ctx, as_path) {
-                                diagnostics.push(
-                                    LintDiagnostic::error(
-                                        self.code(),
-                                        format!(
-                                            "File with ID or path '{}' not found in project",
-                                            dep_ref.target
-                                        ),
-                                        ctx.file_path.clone(),
-                                        0,
-                                        0,
-                                    )
-                                    .with_help(
-                                        "Check the file ID or path in the dependency reference",
-                                    ),
-                                );
-                            }
-                        }
-                    }
-                }
-                DependencyKind::Hierarchy | DependencyKind::Directory => {
-                    // Hierarchy dependencies are implicit and always valid
-                    // Directory dependencies are not currently validated for existence
-                    // (validated during parsing / could be added in future if needed)
-                }
+            if let Err(err) = result {
+                let (line, column) = Self::locate_depends_on(ctx, &dep_ref.target);
+                diagnostics.push(Self::diagnostic_for_error(
+                    self.code(),
+                    ctx,
+                    &dep_ref.target,
+                    &err,
+                    line,
+                    column,
+                ));
             }
         }
 
         diagnostics
+    }
+}
+
+impl DependencyExistsRule {
+    /// Build an `E_LINK_NOT_FOUND` diagnostic from a resolution failure.
+    fn diagnostic_for_error(
+        code: &'static str,
+        ctx: &LintContext,
+        target: &str,
+        err: &RefError,
+        line: usize,
+        column: usize,
+    ) -> LintDiagnostic {
+        match err {
+            RefError::FileNotFound { reference } => LintDiagnostic::error(
+                code,
+                format!("Dependency reference '{reference}' not found in project"),
+                ctx.file_path.clone(),
+                line,
+                column,
+            )
+            .with_help(format!(
+                "'{target}' does not match any file id, file path, or task @id in the project"
+            )),
+            RefError::TaskNotFound {
+                file_label,
+                task,
+                available,
+            } => LintDiagnostic::error(
+                code,
+                format!("Task '{task}' not found in file '{file_label}'"),
+                ctx.file_path.clone(),
+                line,
+                column,
+            )
+            .with_help(format!(
+                "Available tasks in '{file_label}': {}",
+                available.join(", ")
+            )),
+        }
     }
 }
 
@@ -268,7 +178,7 @@ mod tests {
     use lash_types::{
         dependency::{parse_dependency_ref, DependencyKind},
         task::{Task, TaskMetadata, TaskTree},
-        FileMetadata, LashConfig, TaskStatus,
+        FileMetadata, LashConfig, TaskFile, TaskStatus,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -660,6 +570,119 @@ mod tests {
 
         let diagnostics = rule.check_task(&task, &ctx);
         assert_eq!(diagnostics.len(), 0);
+    }
+
+    /// Build a task carrying an arbitrary dependency kind + target.
+    fn task_with_dep(target: &str, kind: DependencyKind) -> Task {
+        let metadata = TaskMetadata {
+            depends_on: vec![lash_types::dependency::DependencyRef::new(
+                target.to_string(),
+                kind,
+            )],
+            ..Default::default()
+        };
+        Task {
+            id: "dependent".to_string(),
+            has_explicit_id: true,
+            title: "Dependent".to_string(),
+            status: TaskStatus::Open,
+            depth: 0,
+            parent_id: None,
+            order_index: 1,
+            line_number: 0,
+            metadata,
+            body: None,
+            contextual_notes: Vec::new(),
+        }
+    }
+
+    // Issue #15: the documented same-file form `#task:<id>` must resolve.
+    #[test]
+    fn test_samefile_task_form_resolves() {
+        let rule = DependencyExistsRule::new();
+        let config = LashConfig::default();
+
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("current.md"),
+            make_test_file("current.md", "repro", &["base-task"]),
+        );
+
+        let ctx = make_context(&config, PathBuf::from("current.md"), &files);
+        let task = task_with_dep("#task:base-task", DependencyKind::ExplicitId);
+        assert_eq!(rule.check_task(&task, &ctx).len(), 0);
+    }
+
+    // Issue #15: the documented cross-file form `file-id#task:<id>` must resolve.
+    #[test]
+    fn test_file_id_task_prefix_form_resolves() {
+        let rule = DependencyExistsRule::new();
+        let config = LashConfig::default();
+
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("other.md"),
+            make_test_file("other.md", "repro-file", &["base-task"]),
+        );
+
+        let ctx = make_context(&config, PathBuf::from("current.md"), &files);
+        let task = task_with_dep("repro-file#task:base-task", DependencyKind::ExplicitId);
+        assert_eq!(rule.check_task(&task, &ctx).len(), 0);
+    }
+
+    // Issue #15: a bare `@id` naming a task (not a file) must resolve.
+    #[test]
+    fn test_bare_task_id_resolves() {
+        let rule = DependencyExistsRule::new();
+        let config = LashConfig::default();
+
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("current.md"),
+            make_test_file("current.md", "repro", &["base-task"]),
+        );
+
+        let ctx = make_context(&config, PathBuf::from("current.md"), &files);
+        let task = task_with_dep("base-task", DependencyKind::ExplicitId);
+        assert_eq!(rule.check_task(&task, &ctx).len(), 0);
+    }
+
+    // Issue #18: a broken reference reports the @depends-on: line, not :0:0.
+    #[test]
+    fn test_broken_reference_reports_annotation_line() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let source = "# Repro\n\n@id: repro\n\n## Tasks\n\n\
+                      - [ ] Dependent\n  \
+                      @id: dep\n  \
+                      @depends-on: does-not-exist\n";
+        std::fs::write(root.join("tasks.md"), source).unwrap();
+
+        let config = LashConfig {
+            root_path: root.to_path_buf(),
+            index_file: "index.md".to_string(),
+            max_depth: 3,
+            indent_spaces: 2,
+            db_path: PathBuf::from(".lash/test.db"),
+            custom_annotation_keys: vec![],
+        };
+
+        let rule = DependencyExistsRule::new();
+        let files = HashMap::new();
+        let ctx = make_context(&config, PathBuf::from("tasks.md"), &files);
+        let task = task_with_dep("does-not-exist", DependencyKind::ExplicitId);
+
+        let diags = rule.check_task(&task, &ctx);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(
+            diags[0].location.line,
+            Some(9),
+            "should point at the @depends-on: line, got {:?}",
+            diags[0].location.line
+        );
+        assert!(diags[0].location.column.unwrap_or(0) > 0);
     }
 
     #[test]
