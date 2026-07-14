@@ -34,10 +34,7 @@ pub fn find_git_root(start_dir: &Path) -> Option<PathBuf> {
         if current.join(".git").exists() {
             return Some(current);
         }
-        match current.parent() {
-            Some(parent) => current = parent.to_path_buf(),
-            None => return None,
-        }
+        current = current.parent()?.to_path_buf();
     }
 }
 
@@ -98,10 +95,7 @@ pub fn find_project_root_from(start_dir: &Path) -> Option<PathBuf> {
                 return None;
             }
         }
-        match current.parent() {
-            Some(parent) => current = parent.to_path_buf(),
-            None => return None,
-        }
+        current = current.parent()?.to_path_buf();
     }
 }
 
