@@ -84,6 +84,24 @@ pub fn execute(args: &CheckLinksArgs) -> Result<i32> {
     // Find all broken links
     let mut report = core::find_broken_links(&db_path).context("Failed to find broken links")?;
 
+    // Explicit @depends-on edges aren't stored as NULL-target rows, so the DB
+    // query above never sees them. Reparse the tree and validate each
+    // reference with the same resolver `lash lint` uses, then merge the
+    // results in so the two commands agree (GitHub issue #19).
+    for file_links in core::find_broken_dependencies(&project_root) {
+        report.total_broken += file_links.count;
+        if let Some(existing) = report
+            .by_file
+            .iter_mut()
+            .find(|fl| fl.file_path == file_links.file_path)
+        {
+            existing.count += file_links.count;
+            existing.links.extend(file_links.links);
+        } else {
+            report.by_file.push(file_links);
+        }
+    }
+
     // Additionally scan for broken @doc: fragment references. These are
     // semantic warnings raised by `lash lint`, but `check-links` is the
     // natural canonical "are my references intact?" command, so it would be

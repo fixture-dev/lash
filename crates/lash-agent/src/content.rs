@@ -256,13 +256,21 @@ is `done` or `waived`.
   @depends-on: features/auth.md#task:auth.session
 ```
 
-Forms:
-- `path/to/file.md` — depend on the entire file
-- `path/to/file.md#task:<id>` — depend on a specific task
-- `#task:<id>` — depend on a task in the same file
+Forms (the `task:` prefix on a fragment is optional everywhere):
+- `<task-@id>` — a task by its `@id` (same file, or unique in the project)
+- `#task:<id>` / `#<id>` — a task in the same file
+- `<file-id>#task:<id>` / `<file-id>#<id>` — a task in another file, by file `@id`
+- `path/to/file.md#task:<id>` — a task in another file, by path
+- `path/to/file.md` — the entire file
+- `<file-id>` — the entire file, by file `@id`
 
-Validate references with `lash check-links`. Auto-fix typos in references
-with `lash check-links --fix`.
+List several dependencies with commas or repeated lines:
+`@depends-on: auth.session, payment.gateway`.
+
+`lash complete` refuses while any dependency is still open (pass `--force`
+to override). Validate references with `lash check-links` — it reports the
+same broken references as `lash lint`. Auto-fix typos with
+`lash check-links --fix`.
 
 ## `@doc:` — Documentation References
 
