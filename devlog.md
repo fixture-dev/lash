@@ -1885,3 +1885,29 @@ All workspace tests pass (691 total at time of implementation).
 All benchmarks complete successfully with performance exceeding targets.
 
 ---
+
+## Dependency & ID resolution fixes (GitHub issues #14–#19)
+
+Fixed a cluster of `@depends-on` / `@id` resolution bugs. Root cause: three
+divergent resolution paths (the linter rule, an unused graph resolver, and
+DB full-id lookup) plus a resolver that only understood the undocumented
+`file-id#fragment-slug` form. Explicit `@depends-on` edges were also never
+inserted into the index, so `check-links` (which queried the DB) never saw
+them.
+
+- New shared resolver `lash-core::dependency::reference::resolve_reference`
+  understands bare `@id`, `#task:id`/`#id`, `file-id#task:id`/`file-id#id`,
+  `file.md#task:id`, and file-level forms. The linter rule, check-links, and
+  the complete-gate all route through it, so the surfaces agree.
+- #16: `@depends-on: a, b` splits into two references at parse time.
+- #15: linter resolves all documented + natural forms (commit 68fe573).
+- #18: `E_LINK_NOT_FOUND` now points at the `@depends-on:` line, not `:0:0`.
+- #19: `check-links` reparses and validates `@depends-on` like `lint`
+  (commit b445d74).
+- #14: `show`/`start`/`complete` accept a task's bare `@id` (new
+  `TaskRepository::get_by_local_id`); `show` reports a missing task as a
+  not-found diagnostic (exit 5) instead of `E_INTERNAL` (commit f0f3e3d).
+- #17: `lash complete` refuses while a resolvable dependency is still open
+  (`E_DEP_UNMET`), with `--force` to override (commit 6d78042).
+- Skill docs (`references/dependencies.md`) updated to document the natural
+  forms and the completion gate.

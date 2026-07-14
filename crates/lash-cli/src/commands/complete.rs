@@ -7,18 +7,23 @@ use anyhow::{Context, Result};
 use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
 use lash_cli::formatter::{OutputFormat, Verbosity};
 use lash_cli::theme::CliTheme;
+use lash_core::dependency::reference::resolve_reference;
 use lash_core::fuzzy::FuzzyMatcher;
+use lash_core::linter::LintContext;
+use lash_core::parser::parse_file;
 use lash_db::{open_database, FileRepository, Indexer, IndexerConfig, TaskRepository};
 use lash_types::config::LashConfig;
+use lash_types::dependency::DependencyKind;
 use lash_types::error::LashError;
-use lash_types::TaskStatus;
+use lash_types::{make_full_id, Task, TaskFile, TaskStatus};
 use regex::Regex;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::utils::file_discovery::find_project_root;
+use crate::utils::file_discovery::{discover_markdown_files, find_project_root};
+use crate::utils::task_target::TargetError;
 
 /// Arguments for the complete command
 #[derive(Debug, Clone)]
@@ -34,6 +39,10 @@ pub struct CompleteArgs {
     /// the silent footgun where the parent flips to `[x]` while its visible
     /// sub-checkboxes stay `[ ]`.
     pub cascade: bool,
+    /// Complete even when a resolvable `@depends-on` target is still open.
+    /// When false (the default) completion is refused until every dependency
+    /// is done or waived.
+    pub force: bool,
     /// Output JSON diagnostics
     pub json: bool,
     /// Disable colored output
@@ -79,6 +88,99 @@ pub struct CompleteError {
     /// Fuzzy match suggestions (if task not found)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub suggestions: Vec<String>,
+}
+
+/// A dependency of the task being completed that is not yet done or waived.
+#[derive(Debug, Clone)]
+struct UnmetDep {
+    /// Target task full id (`file-id#task-id`).
+    full_id: String,
+    /// Target task title, for the refusal message.
+    title: String,
+    /// Target task status string (e.g. `open`, `in-progress`).
+    status: String,
+}
+
+/// Reparse every task file under `project_root` into a resolver-shaped map.
+///
+/// Explicit `@depends-on` edges aren't stored in the index, so enforcing them
+/// (GitHub issue #17) requires reading the current Markdown. Unparseable files
+/// are skipped — `lash lint` surfaces those separately.
+fn load_project(project_root: &Path) -> (LashConfig, HashMap<PathBuf, TaskFile>) {
+    let config = LashConfig::from_root(project_root).unwrap_or_default();
+    let mut files: HashMap<PathBuf, TaskFile> = HashMap::new();
+    if let Ok(markdown_files) = discover_markdown_files(&[project_root.to_path_buf()], true) {
+        for path in &markdown_files {
+            if let Ok(file) = parse_file(path, &config) {
+                let relative = path
+                    .strip_prefix(project_root)
+                    .unwrap_or(path)
+                    .to_path_buf();
+                files.insert(relative, file);
+            }
+        }
+    }
+    (config, files)
+}
+
+/// Find the parsed task (and its file path) whose full id equals `full_id`.
+fn find_task_by_full_id<'a>(
+    project: &'a HashMap<PathBuf, TaskFile>,
+    full_id: &str,
+) -> Option<(&'a PathBuf, &'a TaskFile, &'a Task)> {
+    for (path, file) in project {
+        for task in file.tasks.tasks() {
+            if make_full_id(&file.id, &task.id) == full_id {
+                return Some((path, file, task));
+            }
+        }
+    }
+    None
+}
+
+/// Compute the dependencies of `source_full_id` that are not yet done or
+/// waived, resolving each `@depends-on` reference with the shared resolver so
+/// the gate matches what `lash lint`/`check-links` report.
+fn find_unmet_dependencies(
+    config: &LashConfig,
+    project: &HashMap<PathBuf, TaskFile>,
+    source_full_id: &str,
+) -> Vec<UnmetDep> {
+    let Some((src_path, src_file, src_task)) = find_task_by_full_id(project, source_full_id) else {
+        return Vec::new();
+    };
+
+    let ctx = LintContext::new(config, src_path.clone(), project);
+    let mut unmet = Vec::new();
+
+    for dep in &src_task.metadata.depends_on {
+        if matches!(
+            dep.kind,
+            DependencyKind::Hierarchy | DependencyKind::Directory
+        ) {
+            continue;
+        }
+        let resolve_path = |rel: &str| ctx.resolve_path(Path::new(rel));
+        let Ok(resolution) =
+            resolve_reference(&dep.target, src_path, &src_file.id, project, resolve_path)
+        else {
+            // Broken references are reported by lint/check-links, not here.
+            continue;
+        };
+        for target_full_id in resolution.full_ids() {
+            if let Some((_, _, target)) = find_task_by_full_id(project, &target_full_id) {
+                if !matches!(target.status, TaskStatus::Done | TaskStatus::Waived) {
+                    unmet.push(UnmetDep {
+                        full_id: target_full_id,
+                        title: target.title.clone(),
+                        status: target.status.as_str().to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    unmet
 }
 
 /// Execute the complete command
@@ -174,6 +276,14 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
             .collect()
     };
 
+    // Unless --force, reparse the tree once so completion can be gated on
+    // unmet @depends-on targets (GitHub issue #17).
+    let project = if args.force {
+        None
+    } else {
+        Some(load_project(&project_root))
+    };
+
     // Process each task ID
     let mut results: Vec<CompleteResult> = Vec::new();
     let mut errors: Vec<CompleteError> = Vec::new();
@@ -186,6 +296,7 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
             &project_root,
             args.dry_run,
             args.cascade,
+            project.as_ref(),
         ) {
             Ok(result) => results.push(result),
             Err(error) => errors.push(error),
@@ -223,6 +334,7 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
 }
 
 /// Process a single task ID
+#[allow(clippy::too_many_lines)]
 fn process_task(
     task_id: &str,
     task_repo: &TaskRepository,
@@ -230,11 +342,12 @@ fn process_task(
     project_root: &Path,
     dry_run: bool,
     cascade: bool,
+    project: Option<&(LashConfig, HashMap<PathBuf, TaskFile>)>,
 ) -> std::result::Result<CompleteResult, CompleteError> {
-    // Try to find the task
-    let task = match task_repo.get_by_full_id(task_id) {
-        Ok(Some(task)) => task,
-        Ok(None) => {
+    // Try to find the task by full id or bare @id.
+    let task = match crate::utils::task_target::resolve_task_target(task_repo, task_id) {
+        Ok(task) => task,
+        Err(TargetError::NotFound) => {
             // Try fuzzy matching
             let all_task_ids = task_repo.get_all_full_ids().unwrap_or_default();
             let suggestions = find_similar_task_ids(task_id, &all_task_ids);
@@ -246,7 +359,18 @@ fn process_task(
                 suggestions: suggestions.into_iter().map(|(id, _)| id).collect(),
             });
         }
-        Err(e) => {
+        Err(TargetError::Ambiguous(candidates)) => {
+            return Err(CompleteError {
+                task_id: task_id.to_string(),
+                code: "E_AMBIGUOUS".to_string(),
+                message: format!(
+                    "Task @id '{task_id}' is ambiguous; matches {} tasks",
+                    candidates.len()
+                ),
+                suggestions: candidates,
+            });
+        }
+        Err(TargetError::Db(e)) => {
             return Err(CompleteError {
                 task_id: task_id.to_string(),
                 code: "E_DB_ERROR".to_string(),
@@ -276,6 +400,30 @@ fn process_task(
         }
         TaskStatus::Open | TaskStatus::InProgress | TaskStatus::Blocked => {
             // Can be completed
+        }
+    }
+
+    // Refuse completion while a resolvable @depends-on target is still open
+    // (GitHub issue #17). Skipped entirely when --force was passed (project
+    // is None in that case).
+    if let Some((config, proj)) = project {
+        let unmet = find_unmet_dependencies(config, proj, &task.full_id);
+        if !unmet.is_empty() {
+            let list = unmet
+                .iter()
+                .map(|d| format!("{} '{}' [{}]", d.full_id, d.title, d.status))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(CompleteError {
+                task_id: task_id.to_string(),
+                code: "E_DEP_UNMET".to_string(),
+                message: format!(
+                    "Task '{}' has {} unmet dependency(ies): {list}. Pass --force to override.",
+                    task.full_id,
+                    unmet.len()
+                ),
+                suggestions: vec![],
+            });
         }
     }
 
@@ -765,6 +913,85 @@ fn output_text_results(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn task(id: &str, status: TaskStatus, deps: &[&str]) -> Task {
+        use lash_types::dependency::{DependencyKind, DependencyRef};
+        use lash_types::TaskMetadata;
+        Task {
+            id: id.to_string(),
+            has_explicit_id: true,
+            title: id.to_string(),
+            status,
+            depth: 0,
+            parent_id: None,
+            order_index: 0,
+            line_number: 0,
+            metadata: TaskMetadata {
+                depends_on: deps
+                    .iter()
+                    .map(|d| DependencyRef::new((*d).to_string(), DependencyKind::ExplicitId))
+                    .collect(),
+                ..Default::default()
+            },
+            body: None,
+            contextual_notes: Vec::new(),
+        }
+    }
+
+    fn project_with(tasks: Vec<Task>) -> HashMap<PathBuf, TaskFile> {
+        use lash_types::{FileMetadata, TaskTree};
+        use std::time::SystemTime;
+        let mut tree = TaskTree::new();
+        for t in tasks {
+            tree.add_task(t).unwrap();
+        }
+        let file = TaskFile {
+            path: PathBuf::from("tasks.md"),
+            title: "T".to_string(),
+            id: "repro".to_string(),
+            metadata: FileMetadata::default(),
+            description: None,
+            description_agent_notes: Vec::new(),
+            tasks: tree,
+            hash: "h".to_string(),
+            mtime: SystemTime::now(),
+        };
+        let mut map = HashMap::new();
+        map.insert(PathBuf::from("tasks.md"), file);
+        map
+    }
+
+    // Issue #17: an open dependency must be reported as unmet.
+    #[test]
+    fn test_find_unmet_dependencies_flags_open_dependency() {
+        let config = LashConfig::default();
+        let project = project_with(vec![
+            task("base-task", TaskStatus::Open, &[]),
+            task("dep-task", TaskStatus::Open, &["base-task"]),
+        ]);
+
+        let unmet = find_unmet_dependencies(&config, &project, "repro#dep-task");
+        assert_eq!(unmet.len(), 1);
+        assert_eq!(unmet[0].full_id, "repro#base-task");
+    }
+
+    // Issue #17: a done (or waived) dependency is satisfied.
+    #[test]
+    fn test_find_unmet_dependencies_satisfied_when_done_or_waived() {
+        let config = LashConfig::default();
+
+        let done = project_with(vec![
+            task("base-task", TaskStatus::Done, &[]),
+            task("dep-task", TaskStatus::Open, &["base-task"]),
+        ]);
+        assert!(find_unmet_dependencies(&config, &done, "repro#dep-task").is_empty());
+
+        let waived = project_with(vec![
+            task("base-task", TaskStatus::Waived, &[]),
+            task("dep-task", TaskStatus::Open, &["base-task"]),
+        ]);
+        assert!(find_unmet_dependencies(&config, &waived, "repro#dep-task").is_empty());
+    }
 
     #[test]
     fn test_status_checkbox_char() {

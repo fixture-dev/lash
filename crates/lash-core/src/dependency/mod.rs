@@ -32,6 +32,7 @@ pub mod blocker_analyzer;
 pub mod cycle_detector;
 pub mod graph;
 pub mod graph_exporter;
+pub mod reference;
 pub mod resolver;
 pub mod status_computer;
 
@@ -43,6 +44,7 @@ pub use graph::{
     DependencyGraph, EdgeData, EdgeId, EdgeRef, GraphChanges, GraphError, GraphResult, NodeData,
 };
 pub use graph_exporter::{FilterOptions, GraphExporter};
+pub use reference::{resolve_reference, RefError, RefResolution};
 pub use resolver::{
     DependencyResolver, ResolutionError, ResolutionErrorKind, ResolvedDependency, ResolverResult,
 };

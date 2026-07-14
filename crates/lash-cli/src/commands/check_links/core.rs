@@ -6,10 +6,12 @@ use anyhow::{Context, Result};
 use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
 use lash_cli::formatter::{OutputFormat, Verbosity};
 use lash_cli::theme::CliTheme;
+use lash_core::dependency::reference::resolve_reference;
 use lash_core::linter::rules::semantic::BrokenDocFragmentRule;
 use lash_core::linter::{LintContext, LintDiagnostic, LintRule};
 use lash_core::parser::parse_file;
 use lash_db::open_database;
+use lash_types::dependency::DependencyKind;
 use lash_types::error::LashError;
 use lash_types::{LashConfig, TaskFile};
 use serde::{Deserialize, Serialize};
@@ -206,6 +208,77 @@ pub fn find_broken_links(conn: impl AsRef<std::path::Path>) -> Result<BrokenLink
         by_file,
         broken_doc_fragments: Vec::new(),
     })
+}
+
+/// Walk every task file under `project_root` and report `@depends-on`
+/// references that don't resolve.
+///
+/// `lash check-links` historically only reported dependencies the *indexer*
+/// had already marked broken (a `NULL` `to_task_id` row) — but explicit
+/// `@depends-on` edges aren't stored that way, so `check-links` silently
+/// passed while `lash lint` flagged the very same references (GitHub issue
+/// #19). This reparses the tree and resolves each reference with the **same**
+/// [`resolve_reference`] used by the linter, so the two surfaces always agree.
+///
+/// Files that fail to parse are skipped (surfaced by `lash lint` instead).
+#[must_use]
+pub fn find_broken_dependencies(project_root: &Path) -> Vec<FileLinks> {
+    let Ok(markdown_files) = discover_markdown_files(&[project_root.to_path_buf()], true) else {
+        return Vec::new();
+    };
+
+    let config = LashConfig::from_root(project_root).unwrap_or_default();
+
+    let mut files: HashMap<PathBuf, TaskFile> = HashMap::new();
+    for path in &markdown_files {
+        let Ok(file) = parse_file(path, &config) else {
+            continue;
+        };
+        let relative = path
+            .strip_prefix(project_root)
+            .unwrap_or(path)
+            .to_path_buf();
+        files.insert(relative, file);
+    }
+
+    let mut by_file: Vec<FileLinks> = Vec::new();
+
+    for (rel_path, file) in &files {
+        let ctx = LintContext::new(&config, rel_path.clone(), &files);
+        let mut links: Vec<BrokenLink> = Vec::new();
+
+        for task in file.tasks.tasks() {
+            for dep in &task.metadata.depends_on {
+                if matches!(
+                    dep.kind,
+                    DependencyKind::Hierarchy | DependencyKind::Directory
+                ) {
+                    continue;
+                }
+                let resolve_path = |rel: &str| ctx.resolve_path(Path::new(rel));
+                if resolve_reference(&dep.target, rel_path, &file.id, &files, resolve_path).is_err()
+                {
+                    links.push(BrokenLink {
+                        from_task_full_id: lash_types::make_full_id(&file.id, &task.id),
+                        from_file_path: rel_path.display().to_string(),
+                        raw_ref: dep.target.clone(),
+                        kind: dep.kind.as_str().to_string(),
+                    });
+                }
+            }
+        }
+
+        if !links.is_empty() {
+            by_file.push(FileLinks {
+                file_path: rel_path.display().to_string(),
+                count: links.len(),
+                links,
+            });
+        }
+    }
+
+    by_file.sort_by(|a, b| a.file_path.cmp(&b.file_path));
+    by_file
 }
 
 /// Walk every task file under `project_root` and report `@doc:` annotations
@@ -971,6 +1044,70 @@ mod tests {
             frag.line > 0,
             "should locate the @doc: line, got {}",
             frag.line
+        );
+    }
+
+    // Issue #19: check-links must flag @depends-on references that lint flags.
+    #[test]
+    fn test_find_broken_dependencies_flags_unresolvable_ref() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        std::fs::write(root.join("lash.index.md"), "# Index\n").unwrap();
+        std::fs::write(
+            root.join("tasks.md"),
+            "# Tasks\n\n@id: repro\n\n## Tasks\n\n\
+             - [ ] Base\n  \
+             @id: base-task\n\
+             - [ ] Dependent\n  \
+             @id: dep\n  \
+             @depends-on: does-not-exist\n",
+        )
+        .unwrap();
+
+        let by_file = find_broken_dependencies(root);
+        assert_eq!(by_file.len(), 1, "expected one file with a broken dep");
+        assert_eq!(by_file[0].count, 1);
+        assert_eq!(by_file[0].links[0].raw_ref, "does-not-exist");
+    }
+
+    // Issue #19: forms that lint accepts must NOT be reported by check-links.
+    #[test]
+    fn test_find_broken_dependencies_accepts_valid_forms() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        std::fs::write(root.join("lash.index.md"), "# Index\n").unwrap();
+        std::fs::write(
+            root.join("tasks.md"),
+            "# Tasks\n\n@id: repro\n\n## Tasks\n\n\
+             - [ ] Base\n  \
+             @id: base-task\n\
+             - [ ] Other\n  \
+             @id: other-task\n\
+             - [ ] Bare id\n  \
+             @id: d1\n  \
+             @depends-on: base-task\n\
+             - [ ] Samefile form\n  \
+             @id: d2\n  \
+             @depends-on: #task:base-task\n\
+             - [ ] File id form\n  \
+             @id: d3\n  \
+             @depends-on: repro#task:base-task\n\
+             - [ ] Comma list\n  \
+             @id: d4\n  \
+             @depends-on: base-task, other-task\n",
+        )
+        .unwrap();
+
+        let by_file = find_broken_dependencies(root);
+        assert!(
+            by_file.is_empty(),
+            "all references resolve, expected no broken deps, got {by_file:?}"
         );
     }
 

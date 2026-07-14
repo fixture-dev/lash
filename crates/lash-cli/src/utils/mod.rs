@@ -2,3 +2,4 @@
 
 pub mod file_discovery;
 pub mod output;
+pub mod task_target;
