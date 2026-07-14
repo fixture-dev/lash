@@ -179,7 +179,7 @@ fn render_label_list(
                 },
                 // Label name
                 Span::styled(
-                    format!("#{}", &label.name),
+                    format!("#{}", label.name),
                     Style::default().fg(theme.label_color()),
                 ),
                 // Spacing

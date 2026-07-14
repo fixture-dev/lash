@@ -926,8 +926,8 @@ mod tests {
         // These two must produce different behavior in output_text_report
         assert_eq!(empty_report.total_broken, 0);
         assert_ne!(non_empty_report.total_broken, 0);
-        assert!(empty_report.total_broken == 0);
-        assert!(non_empty_report.total_broken != 0);
+        assert_eq!(empty_report.total_broken, 0);
+        assert_ne!(non_empty_report.total_broken, 0);
     }
 
     // Kill mut-000243/244/245: total_broken == 0 is the exact early-return boundary.
