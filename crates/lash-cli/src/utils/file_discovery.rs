@@ -138,9 +138,9 @@ mod tests {
         assert_eq!(files.len(), 3);
 
         // Check that files are sorted
-        assert!(files[0].file_name().unwrap() == "one.md");
-        assert!(files[1].file_name().unwrap() == "three.md");
-        assert!(files[2].file_name().unwrap() == "two.md");
+        assert_eq!(files[0].file_name().unwrap(), "one.md");
+        assert_eq!(files[1].file_name().unwrap(), "three.md");
+        assert_eq!(files[2].file_name().unwrap(), "two.md");
 
         Ok(())
     }

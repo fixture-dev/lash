@@ -152,7 +152,7 @@ fn test_state_file_tree_contains_description() -> TuiResult<()> {
     eprintln!(
         "Direct file description len: {} content: '{}'",
         test_file_direct.description.len(),
-        &test_file_direct.description
+        test_file_direct.description
     );
     assert!(
         !test_file_direct.description.is_empty(),
