@@ -243,6 +243,30 @@ impl<'conn> TaskRepository<'conn> {
             .map_err(Into::into)
     }
 
+    /// Get all tasks whose `local_id` (the task's `@id`, or its synthesized
+    /// slug when no `@id` was given) matches `local_id`.
+    ///
+    /// A `local_id` is unique within a file but may repeat across files, so
+    /// this returns every match. Callers resolving a user-supplied handle use
+    /// this to accept the `@id` shown in `lash status`/`lash list` output as a
+    /// command target (GitHub issue #14).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails or metadata deserialization fails
+    pub fn get_by_local_id(&self, local_id: &str) -> DbResult<Vec<TaskRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, file_id, local_id, full_id, title, status, depth, parent_id, order_index, owner, estimate, body, metadata, contextual_notes
+             FROM tasks WHERE local_id = ?1 ORDER BY full_id",
+        )?;
+
+        let tasks = stmt
+            .query_map([local_id], Self::row_to_task_record)?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(tasks)
+    }
+
     /// Get a task by its database ID
     ///
     /// # Errors
@@ -877,6 +901,43 @@ mod tests {
         let task_id = task_repo.insert(&task, file_db_id, "test").unwrap();
 
         assert!(task_id > 0);
+    }
+
+    #[test]
+    fn test_get_by_local_id_unique_and_across_files() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let file_repo = FileRepository::new(&conn);
+        let task_repo = TaskRepository::new(&conn);
+
+        // Two files, each with a task whose local_id is "shared", plus a
+        // "unique" task only in file A.
+        let file_a = file_repo.insert(&create_test_file("a.md", "a")).unwrap();
+        let file_b = file_repo.insert(&create_test_file("b.md", "b")).unwrap();
+        task_repo
+            .insert(&create_test_task("unique", "U", 0, None, 0), file_a, "a")
+            .unwrap();
+        task_repo
+            .insert(&create_test_task("shared", "SA", 0, None, 1), file_a, "a")
+            .unwrap();
+        task_repo
+            .insert(&create_test_task("shared", "SB", 0, None, 0), file_b, "b")
+            .unwrap();
+
+        // Unique local_id → exactly one record with the expected full_id.
+        let unique = task_repo.get_by_local_id("unique").unwrap();
+        assert_eq!(unique.len(), 1);
+        assert_eq!(unique[0].full_id, "a#unique");
+
+        // Shared local_id → one record per file.
+        let shared = task_repo.get_by_local_id("shared").unwrap();
+        assert_eq!(shared.len(), 2);
+        let full_ids: Vec<&str> = shared.iter().map(|t| t.full_id.as_str()).collect();
+        assert!(full_ids.contains(&"a#shared"));
+        assert!(full_ids.contains(&"b#shared"));
+
+        // Missing local_id → empty.
+        assert!(task_repo.get_by_local_id("ghost").unwrap().is_empty());
     }
 
     #[test]

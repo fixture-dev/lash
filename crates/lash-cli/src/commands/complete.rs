@@ -19,6 +19,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
+use crate::utils::task_target::TargetError;
 
 /// Arguments for the complete command
 #[derive(Debug, Clone)]
@@ -223,6 +224,7 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
 }
 
 /// Process a single task ID
+#[allow(clippy::too_many_lines)]
 fn process_task(
     task_id: &str,
     task_repo: &TaskRepository,
@@ -231,10 +233,10 @@ fn process_task(
     dry_run: bool,
     cascade: bool,
 ) -> std::result::Result<CompleteResult, CompleteError> {
-    // Try to find the task
-    let task = match task_repo.get_by_full_id(task_id) {
-        Ok(Some(task)) => task,
-        Ok(None) => {
+    // Try to find the task by full id or bare @id.
+    let task = match crate::utils::task_target::resolve_task_target(task_repo, task_id) {
+        Ok(task) => task,
+        Err(TargetError::NotFound) => {
             // Try fuzzy matching
             let all_task_ids = task_repo.get_all_full_ids().unwrap_or_default();
             let suggestions = find_similar_task_ids(task_id, &all_task_ids);
@@ -246,7 +248,18 @@ fn process_task(
                 suggestions: suggestions.into_iter().map(|(id, _)| id).collect(),
             });
         }
-        Err(e) => {
+        Err(TargetError::Ambiguous(candidates)) => {
+            return Err(CompleteError {
+                task_id: task_id.to_string(),
+                code: "E_AMBIGUOUS".to_string(),
+                message: format!(
+                    "Task @id '{task_id}' is ambiguous; matches {} tasks",
+                    candidates.len()
+                ),
+                suggestions: candidates,
+            });
+        }
+        Err(TargetError::Db(e)) => {
             return Err(CompleteError {
                 task_id: task_id.to_string(),
                 code: "E_DB_ERROR".to_string(),

@@ -323,19 +323,53 @@ fn show_task(
     args: &ShowArgs,
     theme: Option<&CliTheme>,
 ) -> Result<i32> {
-    // Get task record
-    let task = match task_repo.get_by_full_id(&args.target) {
-        Ok(Some(task)) => task,
-        Ok(None) => {
+    // Get task record by full id or bare @id (GitHub issue #14).
+    let task = match crate::utils::task_target::resolve_task_target(task_repo, &args.target) {
+        Ok(task) => task,
+        Err(crate::utils::task_target::TargetError::Db(e)) => {
+            let error = LashError::internal(
+                format!("Database query failed: {e}"),
+                Some("get_by_full_id".to_string()),
+            );
+            if args.json {
+                output_json_error(&error)?;
+            } else {
+                let reporter_config = ErrorReporterConfig {
+                    verbosity: args.verbosity,
+                    output_format: OutputFormat::Text,
+                    display_mode: ErrorDisplayMode::Streaming,
+                    theme: theme.cloned(),
+                    show_summary: false,
+                };
+                let mut reporter = ErrorReporter::new(reporter_config);
+                reporter.report_error(&error);
+            }
+            return Ok(3); // Exit code 3 for DB error
+        }
+        Err(target_err) => {
+            // Not found or ambiguous @id. Report as a not-found diagnostic
+            // (exit 5) — never E_INTERNAL, which is miscategorized for a
+            // missing task and matters to scripts branching on error class.
+            let ambiguous = matches!(
+                target_err,
+                crate::utils::task_target::TargetError::Ambiguous(_)
+            );
             // Try fuzzy matching to suggest similar task IDs
             let all_task_ids = task_repo.get_all_full_ids().unwrap_or_default();
-            let suggestions = find_similar_task_ids(&args.target, &all_task_ids);
+            let suggestions =
+                if let crate::utils::task_target::TargetError::Ambiguous(cands) = &target_err {
+                    cands.iter().map(|c| (c.clone(), 1.0)).collect()
+                } else {
+                    find_similar_task_ids(&args.target, &all_task_ids)
+                };
 
-            let error = LashError::internal(
-                format!("Task not found: {}", args.target),
-                Some("Task may not exist or hasn't been indexed".to_string()),
-            );
+            let error = LashError::query_no_results(&args.target);
             let mut diag = error.to_diagnostic();
+            diag.message = if ambiguous {
+                format!("Task @id '{}' is ambiguous", args.target)
+            } else {
+                format!("Task not found: {}", args.target)
+            };
 
             // Build help message with suggestions if available
             let help_msg = if let Some((best_match, _score)) = suggestions.first() {
@@ -379,26 +413,6 @@ fn show_task(
                 }
             }
             return Ok(5); // Exit code 5 for not found
-        }
-        Err(e) => {
-            let error = LashError::internal(
-                format!("Database query failed: {e}"),
-                Some("get_by_full_id".to_string()),
-            );
-            if args.json {
-                output_json_error(&error)?;
-            } else {
-                let reporter_config = ErrorReporterConfig {
-                    verbosity: args.verbosity,
-                    output_format: OutputFormat::Text,
-                    display_mode: ErrorDisplayMode::Streaming,
-                    theme: theme.cloned(),
-                    show_summary: false,
-                };
-                let mut reporter = ErrorReporter::new(reporter_config);
-                reporter.report_error(&error);
-            }
-            return Ok(3); // Exit code 3 for DB error
         }
     };
 
