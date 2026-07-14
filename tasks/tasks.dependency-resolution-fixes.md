@@ -7,14 +7,14 @@ understood the undocumented `file-id#fragment-slug` form.
 
 ## Tasks
 
-- [ ] Shared reference resolver (`lash-core/src/dependency/reference.rs`)
-  - [ ] Canonical resolution: bare `@id`, `#task:id`, `#id`, `file-id#task:id`,
+- [x] Shared reference resolver (`lash-core/src/dependency/reference.rs`)
+  - [x] Canonical resolution: bare `@id`, `#task:id`, `#id`, `file-id#task:id`,
         `file-id#id`, `file.md`, `file.md#task:id`, bare file-id (file-level)
-  - [ ] Unit tests for every form
-- [ ] #16 Comma-separated `@depends-on` split into multiple refs
-- [ ] #15 Linter rule resolves all documented + natural forms via shared resolver
-- [ ] #18 `E_LINK_NOT_FOUND` reports the `@depends-on:` line, not `:0:0`
-- [ ] #19 `check-links` validates `@depends-on` via the same linter rule
-- [ ] #14 `show`/`start`/`complete` resolve bare `@id` targets; fix `show` E_INTERNAL→E_NOT_FOUND
-- [ ] #17 `complete` refuses when a resolvable dependency is unmet (with `--force`)
-- [ ] Verify all six issue repros; update devlog
+  - [x] Unit tests for every form
+- [x] #16 Comma-separated `@depends-on` split into multiple refs
+- [x] #15 Linter rule resolves all documented + natural forms via shared resolver
+- [x] #18 `E_LINK_NOT_FOUND` reports the `@depends-on:` line, not `:0:0`
+- [x] #19 `check-links` validates `@depends-on` via the same shared resolver
+- [x] #14 `show`/`start`/`complete` resolve bare `@id` targets; fix `show` E_INTERNAL→not-found
+- [x] #17 `complete` refuses when a resolvable dependency is unmet (with `--force`)
+- [x] Verify all six issue repros; skill docs (`dependencies.md`) updated
