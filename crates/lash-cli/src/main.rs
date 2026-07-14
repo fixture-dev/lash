@@ -594,11 +594,13 @@ fn run(cli: LashCli) -> Result<()> {
             task_ids,
             dry_run,
             cascade,
+            force,
         } => {
             let args = commands::complete::CompleteArgs {
                 task_ids,
                 dry_run,
                 cascade,
+                force,
                 json: cli.json,
                 no_color: cli.no_color,
                 project_root,

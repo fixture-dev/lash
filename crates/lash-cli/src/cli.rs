@@ -420,6 +420,12 @@ pub enum Commands {
         /// and are never auto-completed.
         #[arg(long)]
         cascade: bool,
+
+        /// Complete even when a resolvable @depends-on target is still open.
+        /// By default completion is refused until dependencies are done or
+        /// waived.
+        #[arg(long)]
+        force: bool,
     },
 
     /// Mark one or more tasks as in-progress
@@ -1113,11 +1119,13 @@ mod tests {
             task_ids,
             dry_run,
             cascade,
+            force,
         } = cli.command
         {
             assert_eq!(task_ids, vec!["test#task-1"]);
             assert!(!dry_run);
             assert!(!cascade);
+            assert!(!force);
         } else {
             panic!("Expected Complete command");
         }
@@ -1155,6 +1163,16 @@ mod tests {
             LashCli::try_parse_from(["lash", "complete", "--cascade", "test#task-1"]).unwrap();
         if let Commands::Complete { cascade, .. } = cli.command {
             assert!(cascade);
+        } else {
+            panic!("Expected Complete command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_complete_force() {
+        let cli = LashCli::try_parse_from(["lash", "complete", "--force", "test#task-1"]).unwrap();
+        if let Commands::Complete { force, .. } = cli.command {
+            assert!(force);
         } else {
             panic!("Expected Complete command");
         }
