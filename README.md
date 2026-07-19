@@ -5,13 +5,13 @@
 
   **Minimalist task tracker for devs and agents**
 
-  [![CI](https://github.com/fixture-dev/lash/workflows/CI/badge.svg)](https://github.com/fixture-dev/lash/actions)
+  [![CI](https://github.com/fixture-dev/lash/actions/workflows/ci.yml/badge.svg)](https://github.com/fixture-dev/lash/actions/workflows/ci.yml)
   [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
   [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
   [![Built with Markdown](https://img.shields.io/badge/built%20with-markdown-000000.svg?logo=markdown)](https://commonmark.org/)
   [![SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg?logo=sqlite)](https://www.sqlite.org/)
 
-  **Status:** Active Development (Phase 9 - Documentation Complete)
+  **Status:** Active development · v0.1.0
 </div>
 
 ## Overview
@@ -26,10 +26,10 @@ Lash is a terminal-first task management system that uses Markdown as the single
 
 ## What's Implemented
 
-All core functionality is production-ready with 1,600+ tests (>80% coverage):
+All core functionality is production-ready and backed by an extensive test suite (3,000+ tests):
 
-- **Markdown Parser** - Full task file parsing with contextual notes support (67.7µs benchmark)
-- **Linter & Formatter** - 20 validation rules with auto-formatting and interactive mode
+- **Markdown Parser** - Full task file parsing with contextual notes support
+- **Linter & Formatter** - 28 validation rules with auto-formatting and interactive mode
 - **SQLite Indexing** - Fast indexing engine exceeding performance targets by 8-12x
 - **Dependency Resolution** - Complete graph analysis with cycle detection
 - **Terminal UI (TUI)** - Interactive interface with 300+ Gogh color schemes and task creation
@@ -112,7 +112,7 @@ lash list --label gameplay
 ```
 
 The playground creates "PixelQuest" - a realistic game development demo project with:
-- 23 task files + index across features, systems, content, and milestones
+- 25+ task files + index across features, systems, content, and milestones
 - Hundreds of tasks showing realistic project complexity
 - Examples of dependencies, labels, statuses, and annotations
 - A comprehensive `PLAYGROUND_GUIDE.md` with usage examples
@@ -130,8 +130,8 @@ See `playground/PLAYGROUND_GUIDE.md` for detailed usage instructions.
 This project follows strict quality standards:
 - **Pre-commit hooks**: Auto-enforces formatting, linting, and tests
 - **Zero warnings**: All clippy lints must pass with `clippy::pedantic`
-- **Comprehensive tests**: 1,600+ tests across all crates (>80% coverage target)
-- **Error taxonomy**: 25+ documented error codes in `docs/error-codes.md`
+- **Comprehensive tests**: 3,000+ tests across all crates (>80% coverage target)
+- **Error taxonomy**: 50+ documented error codes in `docs/error-codes.md`
 - **Doctests**: All public APIs include executable examples
 - **CI/CD**: Automated testing on Linux, macOS, and Windows
 
