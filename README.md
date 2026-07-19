@@ -7,7 +7,7 @@
 
   [![CI](https://github.com/fixture-dev/lash/workflows/CI/badge.svg)](https://github.com/fixture-dev/lash/actions)
   [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
-  [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+  [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
   [![Built with Markdown](https://img.shields.io/badge/built%20with-markdown-000000.svg?logo=markdown)](https://commonmark.org/)
   [![SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg?logo=sqlite)](https://www.sqlite.org/)
 
@@ -442,4 +442,14 @@ For the current development roadmap, see [`tasks/tasks.md`](./tasks/tasks.md) an
 
 ## License
 
-MIT OR Apache-2.0 (dual-licensed)
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in this project by you shall be licensed as above, without any
+additional terms or conditions.
+
+### Third-party attributions
+
+Bundled terminal color schemes in `crates/lash-tui/data/themes.json` are derived
+from the [Gogh](https://github.com/Gogh-Co/Gogh) collection (MIT License). See
+[`NOTICE`](NOTICE) for details.

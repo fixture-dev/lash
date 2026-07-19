@@ -781,7 +781,7 @@ cargo bench --bench parser_bench -- --baseline before
 
 ### License
 
-By contributing, you agree that your contributions will be licensed under the same terms as the project (MIT OR Apache-2.0 dual license).
+By contributing, you agree that your contributions will be licensed under the same terms as the project (Apache License, Version 2.0).
 
 ---
 

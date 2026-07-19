@@ -1480,12 +1480,12 @@ Created a new `context.rs` module in the lash-agent crate with the following com
 ### Files Modified/Created
 
 **Created:**
-- `/Users/fohara/src/lash/crates/lash-agent/src/context.rs` (585 lines)
+- `crates/lash-agent/src/context.rs` (585 lines)
 
 **Modified:**
-- `/Users/fohara/src/lash/crates/lash-agent/src/lib.rs` - Added context module exports
-- `/Users/fohara/src/lash/crates/lash-agent/src/prompt.rs` - Integrated sparse context into PromptBuilder
-- `/Users/fohara/src/lash/tasks/tasks.agent-integration.md` - Marked Task 4 as complete
+- `crates/lash-agent/src/lib.rs` - Added context module exports
+- `crates/lash-agent/src/prompt.rs` - Integrated sparse context into PromptBuilder
+- `tasks/tasks.agent-integration.md` - Marked Task 4 as complete
 
 ### Test Results
 

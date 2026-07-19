@@ -154,7 +154,7 @@ CLI flag > User config > Default
 - Performance with large fixtures (1000+ files)
 
 ### Test Fixtures
-Create in `/Users/fohara/src/lash/fixtures/tree-view-tests/`:
+Create in `fixtures/tree-view-tests/`:
 - `deep-hierarchy/` (10+ levels)
 - `wide-hierarchy/` (many siblings)
 - `mixed-hierarchy/` (varied depths)
@@ -340,26 +340,26 @@ ascii_mode = false       # Use Unicode characters (auto-detect)
 ## Files to Create/Modify
 
 ### Create (5 files)
-1. `/Users/fohara/src/lash/crates/lash-types/src/tree.rs`
-2. `/Users/fohara/src/lash/crates/lash-cli/src/tree_formatter.rs`
-3. `/Users/fohara/src/lash/fixtures/tree-view-tests/` (directory structure)
-4. `/Users/fohara/src/lash/docs/task-10-implementation-plan.md`
-5. `/Users/fohara/src/lash/docs/task-10-summary.md`
+1. `crates/lash-types/src/tree.rs`
+2. `crates/lash-cli/src/tree_formatter.rs`
+3. `fixtures/tree-view-tests/` (directory structure)
+4. `docs/task-10-implementation-plan.md`
+5. `docs/task-10-summary.md`
 
 ### Modify (10+ files)
-1. `/Users/fohara/src/lash/crates/lash-types/src/config.rs`
-2. `/Users/fohara/src/lash/crates/lash-types/src/lib.rs`
-3. `/Users/fohara/src/lash/crates/lash-cli/src/main.rs`
-4. `/Users/fohara/src/lash/crates/lash-tui/src/state.rs`
-5. `/Users/fohara/src/lash/crates/lash-tui/src/event.rs`
-6. `/Users/fohara/src/lash/crates/lash-tui/src/app.rs`
-7. `/Users/fohara/src/lash/crates/lash-tui/src/ui/nav_pane.rs`
-8. `/Users/fohara/src/lash/crates/lash-tui/src/ui/detail_pane.rs`
-9. `/Users/fohara/src/lash/crates/lash-cli/src/commands/list.rs`
-10. `/Users/fohara/src/lash/crates/lash-cli/src/commands/search.rs`
-11. `/Users/fohara/src/lash/crates/lash-cli/src/commands/show.rs`
-12. `/Users/fohara/src/lash/crates/lash-tui/src/ui/help.rs`
-13. `/Users/fohara/src/lash/docs/user-guide.md`
+1. `crates/lash-types/src/config.rs`
+2. `crates/lash-types/src/lib.rs`
+3. `crates/lash-cli/src/main.rs`
+4. `crates/lash-tui/src/state.rs`
+5. `crates/lash-tui/src/event.rs`
+6. `crates/lash-tui/src/app.rs`
+7. `crates/lash-tui/src/ui/nav_pane.rs`
+8. `crates/lash-tui/src/ui/detail_pane.rs`
+9. `crates/lash-cli/src/commands/list.rs`
+10. `crates/lash-cli/src/commands/search.rs`
+11. `crates/lash-cli/src/commands/show.rs`
+12. `crates/lash-tui/src/ui/help.rs`
+13. `docs/user-guide.md`
 
 ---
 

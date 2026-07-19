@@ -328,7 +328,7 @@ pub fn install_panic_hook() {
         eprintln!("Message:  {message}");
         eprintln!();
         eprintln!("This is likely a bug in Lash. Please consider filing a bug report at:");
-        eprintln!("  https://github.com/yourusername/lash/issues");
+        eprintln!("  https://github.com/fixture-dev/lash/issues");
         eprintln!();
         eprintln!("Please include:");
         eprintln!("  - The command you ran");

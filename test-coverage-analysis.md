@@ -653,20 +653,20 @@ This is a special case. TUI testing is inherently difficult and has lower priori
 ## Files Requiring Immediate Attention
 
 ### Critical (Must address in Phase 1-2)
-1. `/Users/fohara/src/lash/crates/lash-db/src/search.rs` - 203 lines uncovered
-2. `/Users/fohara/src/lash/crates/lash-core/src/parser/mod.rs` - 65 lines uncovered
-3. `/Users/fohara/src/lash/crates/lash-types/src/error.rs` - 99 lines uncovered
-4. `/Users/fohara/src/lash/crates/lash-db/src/repository/tasks.rs` - 63 lines uncovered
-5. `/Users/fohara/src/lash/crates/lash-core/src/dependency/resolver.rs` - 76 lines uncovered
-6. `/Users/fohara/src/lash/crates/lash-cli/src/logging.rs` - 86 lines uncovered
-7. `/Users/fohara/src/lash/crates/lash-cli/src/progress.rs` - 73 lines uncovered
+1. `crates/lash-db/src/search.rs` - 203 lines uncovered
+2. `crates/lash-core/src/parser/mod.rs` - 65 lines uncovered
+3. `crates/lash-types/src/error.rs` - 99 lines uncovered
+4. `crates/lash-db/src/repository/tasks.rs` - 63 lines uncovered
+5. `crates/lash-core/src/dependency/resolver.rs` - 76 lines uncovered
+6. `crates/lash-cli/src/logging.rs` - 86 lines uncovered
+7. `crates/lash-cli/src/progress.rs` - 73 lines uncovered
 
 ### High Priority (Phase 2-3)
-8. `/Users/fohara/src/lash/crates/lash-db/src/repository/files.rs` - 39 lines uncovered
-9. `/Users/fohara/src/lash/crates/lash-core/src/linter/diagnostic.rs` - 26 lines uncovered
-10. `/Users/fohara/src/lash/crates/lash-core/src/dependency/status_computer.rs` - 22 lines uncovered
-11. `/Users/fohara/src/lash/crates/lash-db/src/profiler.rs` - 41 lines uncovered
-12. `/Users/fohara/src/lash/crates/lash-db/src/migrations.rs` - 22 lines uncovered
+8. `crates/lash-db/src/repository/files.rs` - 39 lines uncovered
+9. `crates/lash-core/src/linter/diagnostic.rs` - 26 lines uncovered
+10. `crates/lash-core/src/dependency/status_computer.rs` - 22 lines uncovered
+11. `crates/lash-db/src/profiler.rs` - 41 lines uncovered
+12. `crates/lash-db/src/migrations.rs` - 22 lines uncovered
 
 ---
 

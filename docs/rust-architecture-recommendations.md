@@ -1801,9 +1801,9 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourusername/lash"
-authors = ["Your Name <your.email@example.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/fixture-dev/lash"
+authors = ["Lash Contributors"]
 
 [workspace.dependencies]
 # Shared dependencies across all crates

@@ -418,8 +418,8 @@ search_pagination (500 files, 60% notes):
 
 **Report Generated**: 2025-12-13
 **Benchmarks Location**:
-- `/Users/fohara/src/lash/crates/lash-core/benches/notes_parser_bench.rs`
-- `/Users/fohara/src/lash/crates/lash-db/benches/notes_indexing_bench.rs`
-- `/Users/fohara/src/lash/crates/lash-db/benches/notes_search_bench.rs`
+- `crates/lash-core/benches/notes_parser_bench.rs`
+- `crates/lash-db/benches/notes_indexing_bench.rs`
+- `crates/lash-db/benches/notes_search_bench.rs`
 
 **Criterion HTML Reports**: `target/criterion/`

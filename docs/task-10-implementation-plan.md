@@ -29,8 +29,8 @@ This plan details the implementation of hierarchical tree view support across bo
 ### 1.1 Add Tree View Configuration
 
 **Files to Modify:**
-- `/Users/fohara/src/lash/crates/lash-types/src/config.rs`
-- `/Users/fohara/src/lash/crates/lash-types/src/lib.rs`
+- `crates/lash-types/src/config.rs`
+- `crates/lash-types/src/lib.rs`
 
 **Implementation Details:**
 
@@ -88,7 +88,7 @@ impl Default for TreeViewConfig {
 
 **CLI Arguments to Add:**
 
-Extend `LashCli` in `/Users/fohara/src/lash/crates/lash-cli/src/main.rs`:
+Extend `LashCli` in `crates/lash-cli/src/main.rs`:
 
 ```rust
 #[derive(Parser)]
@@ -132,7 +132,7 @@ pub struct LashCli {
 ### 1.2 Implement Generic Tree Data Structure
 
 **Files to Create:**
-- `/Users/fohara/src/lash/crates/lash-types/src/tree.rs`
+- `crates/lash-types/src/tree.rs`
 
 **Implementation Details:**
 
@@ -342,7 +342,7 @@ impl TreeChars {
 ### 2.1 Update TUI State for Tree Views
 
 **Files to Modify:**
-- `/Users/fohara/src/lash/crates/lash-tui/src/state.rs`
+- `crates/lash-tui/src/state.rs`
 
 **Implementation Details:**
 
@@ -425,8 +425,8 @@ For tasks (task hierarchy):
 ### 2.2 Add Tree Navigation Event Handlers
 
 **Files to Modify:**
-- `/Users/fohara/src/lash/crates/lash-tui/src/event.rs`
-- `/Users/fohara/src/lash/crates/lash-tui/src/app.rs`
+- `crates/lash-tui/src/event.rs`
+- `crates/lash-tui/src/app.rs`
 
 **Event Handling:**
 
@@ -583,8 +583,8 @@ fn expand_or_enter<T>(tree: &mut [TreeNode<T>], selected_index: usize) {
 ### 2.3 Update TUI Rendering for Tree Views
 
 **Files to Modify:**
-- `/Users/fohara/src/lash/crates/lash-tui/src/ui/nav_pane.rs`
-- `/Users/fohara/src/lash/crates/lash-tui/src/ui/detail_pane.rs`
+- `crates/lash-tui/src/ui/nav_pane.rs`
+- `crates/lash-tui/src/ui/detail_pane.rs`
 
 **Navigation Pane Rendering:**
 
@@ -699,7 +699,7 @@ fn render_task_tree(
 ### 3.1 CLI Tree Rendering Utilities
 
 **Files to Create:**
-- `/Users/fohara/src/lash/crates/lash-cli/src/tree_formatter.rs`
+- `crates/lash-cli/src/tree_formatter.rs`
 
 **Implementation Details:**
 
@@ -843,7 +843,7 @@ impl TreeFormatter {
 ### 3.2 Update `list` Command for Tree View
 
 **Files to Modify:**
-- `/Users/fohara/src/lash/crates/lash-cli/src/commands/list.rs`
+- `crates/lash-cli/src/commands/list.rs`
 
 **Implementation Details:**
 
@@ -929,7 +929,7 @@ tasks/
 ### 3.3 Update `search` Command for Tree View
 
 **Files to Modify:**
-- `/Users/fohara/src/lash/crates/lash-cli/src/commands/search.rs`
+- `crates/lash-cli/src/commands/search.rs`
 
 **Implementation Details:**
 
@@ -985,7 +985,7 @@ fn print_search_results_tree(results: &[SearchResult], theme: &CliTheme) {
 ### 3.4 Update `show` Command for Tree View
 
 **Files to Modify:**
-- `/Users/fohara/src/lash/crates/lash-cli/src/commands/show.rs`
+- `crates/lash-cli/src/commands/show.rs`
 
 **Implementation Details:**
 
@@ -1244,9 +1244,9 @@ pub fn build_task_tree(&mut self) {
 ### 4.2 Documentation & Help Text
 
 **Files to Modify:**
-- `/Users/fohara/src/lash/crates/lash-cli/src/main.rs` (help text)
-- `/Users/fohara/src/lash/crates/lash-tui/src/ui/help.rs` (TUI help overlay)
-- `/Users/fohara/src/lash/docs/user-guide.md` (user documentation)
+- `crates/lash-cli/src/main.rs` (help text)
+- `crates/lash-tui/src/ui/help.rs` (TUI help overlay)
+- `docs/user-guide.md` (user documentation)
 
 **Updates Needed:**
 
@@ -1316,7 +1316,7 @@ ascii_mode = false      # Use Unicode characters (auto-detect if false)
 ### Integration Tests
 
 **Test Fixtures:**
-Create test fixtures in `/Users/fohara/src/lash/fixtures/tree-view-tests/`:
+Create test fixtures in `fixtures/tree-view-tests/`:
 
 ```
 tree-view-tests/
@@ -1640,11 +1640,11 @@ tasks/
 ## References
 
 **Existing Code Patterns:**
-- Configuration: `/Users/fohara/src/lash/crates/lash-types/src/config.rs`
-- TUI State: `/Users/fohara/src/lash/crates/lash-tui/src/state.rs`
-- TUI Rendering: `/Users/fohara/src/lash/crates/lash-tui/src/ui/*.rs`
-- CLI Formatting: `/Users/fohara/src/lash/crates/lash-cli/src/formatter.rs`
-- Theme Integration: `/Users/fohara/src/lash/crates/lash-cli/src/theme.rs`
+- Configuration: `crates/lash-types/src/config.rs`
+- TUI State: `crates/lash-tui/src/state.rs`
+- TUI Rendering: `crates/lash-tui/src/ui/*.rs`
+- CLI Formatting: `crates/lash-cli/src/formatter.rs`
+- Theme Integration: `crates/lash-cli/src/theme.rs`
 
 **External References:**
 - ratatui tree examples: https://github.com/ratatui-org/ratatui/tree/main/examples
@@ -1653,7 +1653,7 @@ tasks/
 - Terminal capability detection: https://github.com/crossterm-rs/crossterm
 
 **Task File:**
-- `/Users/fohara/src/lash/tasks/tasks.tui.md` (Task 10)
+- `tasks/tasks.tui.md` (Task 10)
 
 ---
 

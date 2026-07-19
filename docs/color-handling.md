@@ -15,7 +15,7 @@ Lash determines whether to enable color output using the following priority:
 
 ### Core Functions
 
-#### `supports_color()` - `/Users/fohara/src/lash/crates/lash-cli/src/theme.rs:355-363`
+#### `supports_color()` - `crates/lash-cli/src/theme.rs:355-363`
 
 ```rust
 pub fn supports_color() -> bool {
@@ -34,7 +34,7 @@ This function checks:
 - If stdout is not a TTY (e.g., piped to file or another command), returns `false`
 - Otherwise returns `true`
 
-#### Color Decision in main.rs - `/Users/fohara/src/lash/crates/lash-cli/src/main.rs:87-92`
+#### Color Decision in main.rs - `crates/lash-cli/src/main.rs:87-92`
 
 ```rust
 // Determine if colors should be enabled based on:
@@ -138,7 +138,7 @@ Example methods:
 
 ## Testing
 
-Comprehensive integration tests verify color handling in `/Users/fohara/src/lash/crates/lash-cli/tests/color_handling_test.rs`:
+Comprehensive integration tests verify color handling in `crates/lash-cli/tests/color_handling_test.rs`:
 
 1. `test_no_color_flag_disables_colors` - Verifies `--no-color` works
 2. `test_no_color_env_var_disables_colors` - Verifies `NO_COLOR` env var
@@ -167,9 +167,9 @@ Lash follows standard Unix conventions for color output:
 
 Key files implementing color handling:
 
-- `/Users/fohara/src/lash/crates/lash-cli/src/theme.rs` - Theme and color support
-- `/Users/fohara/src/lash/crates/lash-cli/src/formatter.rs` - Output formatting with colors
-- `/Users/fohara/src/lash/crates/lash-cli/src/main.rs` - Main color decision logic
-- `/Users/fohara/src/lash/crates/lash-cli/tests/color_handling_test.rs` - Comprehensive tests
+- `crates/lash-cli/src/theme.rs` - Theme and color support
+- `crates/lash-cli/src/formatter.rs` - Output formatting with colors
+- `crates/lash-cli/src/main.rs` - Main color decision logic
+- `crates/lash-cli/tests/color_handling_test.rs` - Comprehensive tests
 
 All commands consistently use these modules to ensure uniform color handling across the entire CLI.

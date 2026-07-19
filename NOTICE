@@ -1,0 +1,27 @@
+Lash
+Copyright 2026 Lash Contributors
+
+This product includes software developed by the Lash Contributors, licensed
+under the Apache License, Version 2.0.
+
+--------------------------------------------------------------------------------
+Third-party attributions
+--------------------------------------------------------------------------------
+
+Terminal color schemes
+  File:    crates/lash-tui/data/themes.json
+  Source:  Gogh color scheme collection — https://github.com/Gogh-Co/Gogh
+  License: MIT License
+
+  The bundled color palettes are derived from the Gogh collection. Individual
+  scheme authors are credited in the "author" field of each entry in
+  themes.json. The Gogh project is distributed under the MIT License:
+
+      Permission is hereby granted, free of charge, to any person obtaining a
+      copy of this software and associated documentation files (the "Software"),
+      to deal in the Software without restriction, including without limitation
+      the rights to use, copy, modify, merge, publish, distribute, sublicense,
+      and/or sell copies of the Software, and to permit persons to whom the
+      Software is furnished to do so, subject to the inclusion of the above
+      copyright notice and this permission notice in all copies or substantial
+      portions of the Software.

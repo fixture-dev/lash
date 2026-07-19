@@ -1,6 +1,6 @@
 # Dependency Graph Architecture - Executive Summary
 
-**Full Design:** See `/Users/fohara/src/lash/docs/dependency-graph-architecture.md`
+**Full Design:** See `docs/dependency-graph-architecture.md`
 
 ---
 
@@ -277,8 +277,8 @@ graph.export(&mut output, ExportFormat::Dot, &options)?;
 
 ## Reference Files
 
-- **Full Design:** `/Users/fohara/src/lash/docs/dependency-graph-architecture.md`
-- **Task Requirements:** `/Users/fohara/src/lash/tasks/tasks.dependency-resolution.md`
-- **Existing Types:** `/Users/fohara/src/lash/crates/lash-types/src/dependency.rs`
-- **DB Layer:** `/Users/fohara/src/lash/crates/lash-db/src/repository/dependencies.rs`
-- **Design Doc:** `/Users/fohara/src/lash/docs/design-doc.md` (Section 5)
+- **Full Design:** `docs/dependency-graph-architecture.md`
+- **Task Requirements:** `tasks/tasks.dependency-resolution.md`
+- **Existing Types:** `crates/lash-types/src/dependency.rs`
+- **DB Layer:** `crates/lash-db/src/repository/dependencies.rs`
+- **Design Doc:** `docs/design-doc.md` (Section 5)
