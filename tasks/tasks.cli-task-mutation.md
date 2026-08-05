@@ -14,11 +14,11 @@ Fixes for the task-mutation and display gaps reported while dogfooding
   - [x] Unresolvable ref → hard error by default (no file written)
   - [x] `--allow-forward-ref` downgrades to warning for create-in-any-order
   - [x] Tests: dangling ref rejected, forward-ref flag allows with warning
-- [ ] Add `lash waive` command (#23)
-  - [ ] Mirrors `complete`: fuzzy resolver, `--dry-run`, `--cascade`, JSON
-  - [ ] Writes `- [-]` marker and reindexes atomically
-  - [ ] Optional `--reason "<text>"` records rationale
-  - [ ] Tests: status transition, cascade, dry-run, already-waived error
+- [x] Add `lash waive` command (#23)
+  - [x] Mirrors `complete`: fuzzy resolver, `--dry-run`, `--cascade`, JSON
+  - [x] Writes `- [-]` marker and reindexes atomically
+  - [x] Optional `--reason "<text>"` records rationale
+  - [x] Tests: status transition, cascade, dry-run, already-waived error
 - [ ] `lash show` displays full task record (#26)
   - [ ] `@agent-note`, `@depends-on` (with each dependency's current status)
   - [ ] One-line-per-child summary with checkbox states

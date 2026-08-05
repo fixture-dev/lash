@@ -21,4 +21,6 @@ pub mod show;
 pub mod skill;
 pub mod start;
 pub mod status;
+pub mod status_mutation;
 pub mod tui;
+pub mod waive;

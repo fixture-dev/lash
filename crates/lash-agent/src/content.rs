@@ -112,6 +112,7 @@ lash show <ID>                  # Show task/file details with dependencies
 lash add <DESCRIPTION>          # Add a new task (--file, --label, --id, --depends-on)
 lash start <ID>                 # Mark a task as in-progress
 lash complete <ID>              # Mark task as done (--cascade for child tasks)
+lash waive <ID>                 # Mark task as waived/not applicable (--cascade, --reason)
 
 # Validation & Formatting
 lash lint [PATH...]             # Validate task files (run after every edit!)
@@ -228,6 +229,7 @@ lash search <query>          # full-text search across tasks
 lash show <id>               # task details + dependencies
 lash add <description>       # create a new task
 lash complete <id>           # mark task done (--cascade for children)
+lash waive <id>              # mark task waived/not applicable (--reason)
 lash lint <path>             # validate after every edit
 lash agent-prompt            # get project-specific live context
 ```
@@ -271,7 +273,9 @@ List several dependencies with commas or repeated lines:
 refuses to create the task if it doesn't resolve (pass `--allow-forward-ref`
 to create tasks before their dependencies exist — this writes the reference
 anyway, as a warning). `lash complete` refuses while any dependency is still
-open (pass `--force` to override). Validate references with
+open (pass `--force` to override). `lash waive` never gates on dependencies —
+abandoning a task doesn't require its dependencies to be resolved. Validate
+references with
 `lash check-links` — it reports the same broken references as `lash lint`.
 Auto-fix typos with `lash check-links --fix`.
 
@@ -339,6 +343,7 @@ pub const TOP_LEVEL_SUBCOMMANDS: &[&str] = &[
     "start",
     "status",
     "tui",
+    "waive",
 ];
 
 #[cfg(test)]

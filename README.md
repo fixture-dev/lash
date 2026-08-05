@@ -273,6 +273,21 @@ lash complete --dry-run <task-id>    # Preview without changing files
 lash complete --json <task-id>       # Machine-readable output
 ```
 
+### Task Waiving
+
+```bash
+# Mark a task as waived (not applicable) instead of completed
+lash waive <task-id>
+lash waive --reason "Superseded by task-2" <task-id>  # Record why
+lash waive --cascade <task-id>       # Also waive unchecked plain-bullet children
+lash waive --dry-run <task-id>       # Preview without changing files
+```
+
+Writes the `[-]` checkbox marker and re-indexes in the same run — no
+separate `lash index` step needed. Already-waived tasks and completed
+(`[x]`) tasks are refused (hand-edit the checkbox if completed work truly
+needs to be waived).
+
 ### Dependencies
 
 ```bash

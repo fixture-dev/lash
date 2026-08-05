@@ -832,6 +832,83 @@ lash complete --json features#implement-login
 
 **Note:** After completing tasks, Lash automatically re-indexes the database.
 
+#### `lash waive`
+
+Mark one or more tasks as waived (not applicable). Mirrors `lash complete`,
+but doesn't require dependencies to be resolved — waiving abandons the
+task rather than finishing it.
+
+```bash
+# Waive a single task
+lash waive features#legacy-oauth-flow
+
+# Record why it's being waived (written as a contextual note)
+lash waive --reason "Superseded by the new OAuth2 flow" features#legacy-oauth-flow
+
+# Also waive unchecked plain-bullet children
+lash waive --cascade features#legacy-oauth-flow
+
+# Preview what would be changed (dry run)
+lash waive --dry-run features#legacy-oauth-flow
+
+# JSON output for scripting
+lash waive --json features#legacy-oauth-flow
+```
+
+**What it does:**
+- Updates the checkbox in the source Markdown file to `[-]`
+- Automatically re-indexes the database
+- With `--reason`, appends the text as a contextual note (a plain bullet
+  indented 2 spaces under the task) after any existing `@id`/`@depends-on`
+  annotations, so it round-trips through the parser and passes `lash lint`
+- Supports fuzzy matching with suggestions if task ID not found
+
+**Status transitions:**
+- `open`, `in-progress`, `blocked` → `waived`: allowed
+- Already `waived`: refused with `E_ALREADY_WAIVED`
+- `done` → `waived`: refused with `E_DONE` (completed work shouldn't be
+  silently waived; hand-edit the checkbox to `[-]` if this is truly
+  intended)
+- No `@depends-on` gating — abandoning a task doesn't require its
+  dependencies to be resolved first
+
+**Exit codes:**
+- `0` - All tasks waived successfully
+- `1` - Validation error (already waived, task is done, etc.)
+- `5` - Task not found
+
+**Options:**
+- `TASK_ID...` - One or more task IDs to waive (required)
+- `--dry-run` - Preview changes without modifying files
+- `--cascade` - Also waive unchecked plain-bullet children (without their
+  own `@id`)
+- `--reason TEXT` - One-line rationale recorded as a contextual note
+- `--json` - JSON output for scripting
+
+**Example output:**
+```
+[-] features#legacy-oauth-flow -> features/auth.md
+  reason: Superseded by the new OAuth2 flow
+```
+
+**JSON output:**
+```json
+{
+  "success": true,
+  "waived": [
+    {
+      "task_id": "features#legacy-oauth-flow",
+      "file_path": "features/auth.md",
+      "previous_status": "open",
+      "reason": "Superseded by the new OAuth2 flow"
+    }
+  ],
+  "errors": []
+}
+```
+
+**Note:** After waiving tasks, Lash automatically re-indexes the database.
+
 ### Dependencies
 
 #### `lash graph`

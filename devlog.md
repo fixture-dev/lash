@@ -1,5 +1,83 @@
 # Lash Development Log
 
+## 2026-08-05 - `lash waive` command (#23)
+
+### Summary
+
+`Waived` (`- [-]`) was already a first-class `TaskStatus` — understood by
+`status`, `list --status`, and `--depends-on` resolution — but the only
+status mutators were `complete` and `start`. Waiving a task meant hand-
+editing the checkbox and remembering to run `lash index`, which silently
+desynced the DB if forgotten.
+
+Added `lash waive <TASK_IDS>...`, mirroring `lash complete`:
+- Same task resolution (`crate::utils::task_target::resolve_task_target`,
+  fuzzy did-you-mean suggestions on not-found).
+- Writes the `- [-]` marker and re-indexes in the same run — no separate
+  `lash index` step.
+- `--dry-run` and `--cascade` (cascade flips unchecked plain-bullet
+  children to `[-]`; without it, warns about them, same as `complete`).
+- `--reason "<text>"` appends the rationale as a **contextual note** (a
+  plain bullet indented 2 spaces under the task — see `docs/design-doc.md`
+  "Contextual Notes") rather than an `@agent-note:` annotation, since a
+  reason is task-scoped prose, not an agent hint. The note is inserted
+  after any existing `@...` annotation lines, not before them: the parser's
+  annotation-block lookahead (`parser/mod.rs`) stops at the first non-`@`
+  line, so a note wedged between the checkbox and `@id:`/`@depends-on:`
+  would knock those into "orphaned annotation" handling and silently drop
+  `@id`. Verified round-tripping with `lash lint` in both the integration
+  test and manual e2e.
+- Status transitions: `open`/`in-progress`/`blocked` → `waived` allowed.
+  Already-waived → `E_ALREADY_WAIVED`. `done` → `E_DONE` (completed work
+  shouldn't be silently waived; message points at hand-editing if truly
+  intended). No `@depends-on` gating — abandoning a task doesn't require
+  its dependencies to be resolved.
+- Same JSON/theme/verbosity plumbing and exit codes as `complete` (0
+  success, 1 validation/partial, 3 DB, 5 not found).
+
+**Refactor**: `complete.rs`'s markdown-mutation machinery (checkbox
+rewriting, plain-bullet cascade detection/flipping, fuzzy suggestion
+lookup, re-indexing) was generic modulo the target status, so it moved into
+a new shared module, `commands/status_mutation.rs`, used by both
+`complete` and `waive`. `flip_open_to_done` generalized to
+`flip_open_child(line, new_status)` so cascade can flip to either `[x]` or
+`[-]`; `preview_cascade_children` now takes the parent's current status
+instead of assuming `Open`, fixing a latent dry-run gap where previewing a
+cascade on an `InProgress`/`Blocked` parent found nothing. `complete.rs`
+shrank from 1153 to 752 lines with its own tests (dependency-gating logic,
+result/error serialization) untouched and still passing.
+
+### Test Coverage
+
+- `crates/lash-cli/src/commands/status_mutation.rs`: unit tests for
+  checkbox-char mapping, cascade flip to `Done`/`Waived`, non-terminal
+  transitions never cascading, plain-child detection/dedent handling, and
+  status-aware dry-run preview.
+- `crates/lash-cli/src/commands/waive.rs`: unit tests for result/error
+  JSON shape and `--reason` note placement (after annotations, correct
+  indentation).
+- `crates/lash-cli/tests/waive_command_test.rs` (new, 18 tests): basic
+  waive, dry-run (including with `--reason`, which must not write
+  anything), multiple tasks, already-waived, done-task rejection,
+  open/in-progress/blocked all waivable, not-found, fuzzy matching,
+  cascade (with and without), JSON success/error, no-database, no-task-id,
+  mixed results, reindex-without-separate-index-run, and reason-note +
+  `lash lint` round-trip.
+- `crates/lash-cli/src/cli.rs`: parser tests for the new `Waive` variant
+  (single/multiple ids, `--dry-run`, `--cascade`, `--reason`, missing-id
+  error).
+- Updated the `regression_tests` agent-prompt snapshot and
+  `crates/lash-agent/src/content.rs` (`TOP_LEVEL_SUBCOMMANDS`,
+  `cli_reference()`, `hot_commands()`, dependency-gating note) — the
+  drift-guard tests in `agent_content_drift_test.rs` catch this
+  automatically if a future command is added without doc updates.
+
+### Docs
+
+`README.md` (Task Waiving section) and `docs/user-guide.md` (`lash waive`
+mirroring the `lash complete` section) updated with usage, exit codes, and
+JSON output examples.
+
 ## 2026-08-05 - `lash add --id` now persists; `--depends-on` validated at add time
 
 ### Summary

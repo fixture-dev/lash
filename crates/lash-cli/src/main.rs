@@ -617,6 +617,26 @@ fn run(cli: LashCli) -> Result<()> {
             process::exit(exit_code);
         }
 
+        Commands::Waive {
+            task_ids,
+            dry_run,
+            cascade,
+            reason,
+        } => {
+            let args = commands::waive::WaiveArgs {
+                task_ids,
+                dry_run,
+                cascade,
+                reason,
+                json: cli.json,
+                no_color: cli.no_color,
+                project_root,
+                verbosity,
+            };
+            let exit_code = commands::waive::execute(&args)?;
+            process::exit(exit_code);
+        }
+
         Commands::Start { task_ids, dry_run } => {
             let args = commands::start::StartArgs {
                 task_ids,

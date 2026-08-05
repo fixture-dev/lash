@@ -1,21 +1,23 @@
-//! Complete command implementation
+//! Waive command implementation
 //!
-//! The `lash complete` command marks one or more tasks as complete by updating
-//! the checkbox in the source markdown file from `[ ]` or `[!]` to `[x]`.
+//! The `lash waive` command marks one or more tasks as waived (not
+//! applicable) by updating the checkbox in the source markdown file to
+//! `[-]`. It mirrors `lash complete` (see `commands::complete` and the
+//! shared machinery in `commands::status_mutation`), but never gates on
+//! `@depends-on` — abandoning a task doesn't require its dependencies to be
+//! resolved first.
 
 use anyhow::{Context, Result};
 use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
 use lash_cli::formatter::{OutputFormat, Verbosity};
 use lash_cli::theme::CliTheme;
-use lash_core::dependency::reference::resolve_reference;
-use lash_core::linter::LintContext;
 use lash_db::{open_database, FileRepository, TaskRepository};
-use lash_types::config::LashConfig;
-use lash_types::dependency::DependencyKind;
 use lash_types::error::LashError;
-use lash_types::{make_full_id, Task, TaskFile, TaskStatus};
+use lash_types::TaskStatus;
+use regex::Regex;
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::status_mutation::{
@@ -23,27 +25,21 @@ use super::status_mutation::{
     CascadeOutcome,
 };
 use crate::utils::file_discovery::find_project_root;
-use crate::utils::project_loader::load_project;
 use crate::utils::task_target::TargetError;
 
-/// Arguments for the complete command
+/// Arguments for the waive command
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)]
-pub struct CompleteArgs {
-    /// Task ID(s) to mark as complete
+pub struct WaiveArgs {
+    /// Task ID(s) to mark as waived
     pub task_ids: Vec<String>,
     /// Preview what would be changed without modifying files
     pub dry_run: bool,
     /// Also mark unchecked plain-bullet children (without their own @id)
-    /// as complete. Plain-bullet children are sub-step breakdowns of the
-    /// parent rather than independently tracked tasks; cascading prevents
-    /// the silent footgun where the parent flips to `[x]` while its visible
-    /// sub-checkboxes stay `[ ]`.
+    /// as waived. Mirrors `complete --cascade`.
     pub cascade: bool,
-    /// Complete even when a resolvable `@depends-on` target is still open.
-    /// When false (the default) completion is refused until every dependency
-    /// is done or waived.
-    pub force: bool,
+    /// One-line rationale recorded as a contextual note under the task.
+    pub reason: Option<String>,
     /// Output JSON diagnostics
     pub json: bool,
     /// Disable colored output
@@ -54,22 +50,25 @@ pub struct CompleteArgs {
     pub verbosity: Verbosity,
 }
 
-/// Result of completing a single task
+/// Result of waiving a single task
 #[derive(Debug, Clone, Serialize)]
-pub struct CompleteResult {
+pub struct WaiveResult {
     /// Task full ID
     pub task_id: String,
     /// File path where task was updated
     pub file_path: PathBuf,
-    /// Previous status before completion
+    /// Previous status before waiving
     pub previous_status: String,
-    /// Number of plain-bullet children also marked complete by --cascade
+    /// Number of plain-bullet children also marked waived by --cascade
     #[serde(skip_serializing_if = "is_zero")]
     pub cascaded_children: usize,
     /// Plain-bullet children that were left unchecked (because --cascade
     /// was not set). Empty when there were none or when --cascade ran.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unchecked_children: Vec<String>,
+    /// Rationale recorded as a contextual note, if `--reason` was passed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -77,9 +76,9 @@ fn is_zero(n: &usize) -> bool {
     *n == 0
 }
 
-/// Error for a single task that could not be completed
+/// Error for a single task that could not be waived
 #[derive(Debug, Clone, Serialize)]
-pub struct CompleteError {
+pub struct WaiveError {
     /// The task ID that was requested
     pub task_id: String,
     /// Error code
@@ -91,88 +90,17 @@ pub struct CompleteError {
     pub suggestions: Vec<String>,
 }
 
-/// A dependency of the task being completed that is not yet done or waived.
-#[derive(Debug, Clone)]
-struct UnmetDep {
-    /// Target task full id (`file-id#task-id`).
-    full_id: String,
-    /// Target task title, for the refusal message.
-    title: String,
-    /// Target task status string (e.g. `open`, `in-progress`).
-    status: String,
-}
-
-/// Find the parsed task (and its file path) whose full id equals `full_id`.
-fn find_task_by_full_id<'a>(
-    project: &'a HashMap<PathBuf, TaskFile>,
-    full_id: &str,
-) -> Option<(&'a PathBuf, &'a TaskFile, &'a Task)> {
-    for (path, file) in project {
-        for task in file.tasks.tasks() {
-            if make_full_id(&file.id, &task.id) == full_id {
-                return Some((path, file, task));
-            }
-        }
-    }
-    None
-}
-
-/// Compute the dependencies of `source_full_id` that are not yet done or
-/// waived, resolving each `@depends-on` reference with the shared resolver so
-/// the gate matches what `lash lint`/`check-links` report.
-fn find_unmet_dependencies(
-    config: &LashConfig,
-    project: &HashMap<PathBuf, TaskFile>,
-    source_full_id: &str,
-) -> Vec<UnmetDep> {
-    let Some((src_path, src_file, src_task)) = find_task_by_full_id(project, source_full_id) else {
-        return Vec::new();
-    };
-
-    let ctx = LintContext::new(config, src_path.clone(), project);
-    let mut unmet = Vec::new();
-
-    for dep in &src_task.metadata.depends_on {
-        if matches!(
-            dep.kind,
-            DependencyKind::Hierarchy | DependencyKind::Directory
-        ) {
-            continue;
-        }
-        let resolve_path = |rel: &str| ctx.resolve_path(Path::new(rel));
-        let Ok(resolution) =
-            resolve_reference(&dep.target, src_path, &src_file.id, project, resolve_path)
-        else {
-            // Broken references are reported by lint/check-links, not here.
-            continue;
-        };
-        for target_full_id in resolution.full_ids() {
-            if let Some((_, _, target)) = find_task_by_full_id(project, &target_full_id) {
-                if !matches!(target.status, TaskStatus::Done | TaskStatus::Waived) {
-                    unmet.push(UnmetDep {
-                        full_id: target_full_id,
-                        title: target.title.clone(),
-                        status: target.status.as_str().to_string(),
-                    });
-                }
-            }
-        }
-    }
-
-    unmet
-}
-
-/// Execute the complete command
+/// Execute the waive command
 ///
 /// # Arguments
 ///
-/// * `args` - Complete command arguments
+/// * `args` - Waive command arguments
 ///
 /// # Returns
 ///
 /// Exit code: 0 (success), 1 (validation error), 3 (DB error), 5 (not found)
 #[allow(clippy::too_many_lines)]
-pub fn execute(args: &CompleteArgs) -> Result<i32> {
+pub fn execute(args: &WaiveArgs) -> Result<i32> {
     // Determine project root
     let project_root = if let Some(ref root) = args.project_root {
         root.clone()
@@ -185,7 +113,7 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
         project_root = %project_root.display(),
         task_ids = ?args.task_ids,
         dry_run = args.dry_run,
-        "Starting complete operation"
+        "Starting waive operation"
     );
 
     // Load theme for colored output
@@ -255,17 +183,9 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
             .collect()
     };
 
-    // Unless --force, reparse the tree once so completion can be gated on
-    // unmet @depends-on targets (GitHub issue #17).
-    let project = if args.force {
-        None
-    } else {
-        Some(load_project(&project_root))
-    };
-
     // Process each task ID
-    let mut results: Vec<CompleteResult> = Vec::new();
-    let mut errors: Vec<CompleteError> = Vec::new();
+    let mut results: Vec<WaiveResult> = Vec::new();
+    let mut errors: Vec<WaiveError> = Vec::new();
 
     for task_id in &unique_task_ids {
         match process_task(
@@ -275,7 +195,7 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
             &project_root,
             args.dry_run,
             args.cascade,
-            project.as_ref(),
+            args.reason.as_deref(),
         ) {
             Ok(result) => results.push(result),
             Err(error) => errors.push(error),
@@ -284,8 +204,8 @@ pub fn execute(args: &CompleteArgs) -> Result<i32> {
 
     // Re-index if we made changes and not in dry-run mode
     if !args.dry_run && !results.is_empty() {
-        if let Err(e) = status_mutation::reindex_project(&project_root, "task completion") {
-            tracing::warn!("Failed to re-index after completion: {e}");
+        if let Err(e) = status_mutation::reindex_project(&project_root, "waiving task") {
+            tracing::warn!("Failed to re-index after waiving: {e}");
             // Don't fail the command, just warn
         }
     }
@@ -321,8 +241,8 @@ fn process_task(
     project_root: &Path,
     dry_run: bool,
     cascade: bool,
-    project: Option<&(LashConfig, HashMap<PathBuf, TaskFile>)>,
-) -> std::result::Result<CompleteResult, CompleteError> {
+    reason: Option<&str>,
+) -> std::result::Result<WaiveResult, WaiveError> {
     // Try to find the task by full id or bare @id.
     let task = match crate::utils::task_target::resolve_task_target(task_repo, task_id) {
         Ok(task) => task,
@@ -331,7 +251,7 @@ fn process_task(
             let all_task_ids = task_repo.get_all_full_ids().unwrap_or_default();
             let suggestions = find_similar_task_ids(task_id, &all_task_ids);
 
-            return Err(CompleteError {
+            return Err(WaiveError {
                 task_id: task_id.to_string(),
                 code: "E_NOT_FOUND".to_string(),
                 message: format!("Task not found: {task_id}"),
@@ -339,7 +259,7 @@ fn process_task(
             });
         }
         Err(TargetError::Ambiguous(candidates)) => {
-            return Err(CompleteError {
+            return Err(WaiveError {
                 task_id: task_id.to_string(),
                 code: "E_AMBIGUOUS".to_string(),
                 message: format!(
@@ -350,7 +270,7 @@ fn process_task(
             });
         }
         Err(TargetError::Db(e)) => {
-            return Err(CompleteError {
+            return Err(WaiveError {
                 task_id: task_id.to_string(),
                 code: "E_DB_ERROR".to_string(),
                 message: format!("Database error: {e}"),
@@ -359,50 +279,33 @@ fn process_task(
         }
     };
 
-    // Check if task can be completed
+    // Check if task can be waived. Unlike `complete`, waiving never gates
+    // on unmet `@depends-on` targets — abandoning a task doesn't require
+    // its dependencies to be resolved.
     match task.status {
-        TaskStatus::Done => {
-            return Err(CompleteError {
+        TaskStatus::Waived => {
+            return Err(WaiveError {
                 task_id: task_id.to_string(),
-                code: "E_ALREADY_COMPLETE".to_string(),
-                message: format!("Task '{}' is already complete", task.full_id),
+                code: "E_ALREADY_WAIVED".to_string(),
+                message: format!("Task '{}' is already waived", task.full_id),
                 suggestions: vec![],
             });
         }
-        TaskStatus::Waived => {
-            return Err(CompleteError {
+        TaskStatus::Done => {
+            return Err(WaiveError {
                 task_id: task_id.to_string(),
-                code: "E_WAIVED".to_string(),
-                message: format!("Task '{}' is waived (not applicable)", task.full_id),
+                code: "E_DONE".to_string(),
+                message: format!(
+                    "Task '{}' is already complete; completed work shouldn't be silently \
+                     waived. Hand-edit the checkbox to `[-]` and run `lash index` if this is \
+                     truly intended.",
+                    task.full_id
+                ),
                 suggestions: vec![],
             });
         }
         TaskStatus::Open | TaskStatus::InProgress | TaskStatus::Blocked => {
-            // Can be completed
-        }
-    }
-
-    // Refuse completion while a resolvable @depends-on target is still open
-    // (GitHub issue #17). Skipped entirely when --force was passed (project
-    // is None in that case).
-    if let Some((config, proj)) = project {
-        let unmet = find_unmet_dependencies(config, proj, &task.full_id);
-        if !unmet.is_empty() {
-            let list = unmet
-                .iter()
-                .map(|d| format!("{} '{}' [{}]", d.full_id, d.title, d.status))
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(CompleteError {
-                task_id: task_id.to_string(),
-                code: "E_DEP_UNMET".to_string(),
-                message: format!(
-                    "Task '{}' has {} unmet dependency(ies): {list}. Pass --force to override.",
-                    task.full_id,
-                    unmet.len()
-                ),
-                suggestions: vec![],
-            });
+            // Can be waived
         }
     }
 
@@ -410,7 +313,7 @@ fn process_task(
     let file = match file_repo.get_by_db_id(task.file_id) {
         Ok(Some(file)) => file,
         Ok(None) => {
-            return Err(CompleteError {
+            return Err(WaiveError {
                 task_id: task_id.to_string(),
                 code: "E_FILE_NOT_FOUND".to_string(),
                 message: format!("File not found for task '{}'", task.full_id),
@@ -418,7 +321,7 @@ fn process_task(
             });
         }
         Err(e) => {
-            return Err(CompleteError {
+            return Err(WaiveError {
                 task_id: task_id.to_string(),
                 code: "E_DB_ERROR".to_string(),
                 message: format!("Database error: {e}"),
@@ -444,12 +347,12 @@ fn process_task(
             &file.path,
             &task.title,
             task.status,
-            TaskStatus::Done,
+            TaskStatus::Waived,
             cascade,
         ) {
             Ok(outcome) => outcome,
             Err(e) => {
-                return Err(CompleteError {
+                return Err(WaiveError {
                     task_id: task_id.to_string(),
                     code: "E_FILE_UPDATE".to_string(),
                     message: format!("Failed to update file: {e}"),
@@ -459,20 +362,101 @@ fn process_task(
         }
     };
 
-    Ok(CompleteResult {
+    // Record the rationale as a contextual note (unless dry-run).
+    if !dry_run {
+        if let Some(text) = reason {
+            if let Err(e) = insert_reason_note(project_root, &file.path, &task.title, text) {
+                return Err(WaiveError {
+                    task_id: task_id.to_string(),
+                    code: "E_FILE_UPDATE".to_string(),
+                    message: format!("Failed to record --reason note: {e}"),
+                    suggestions: vec![],
+                });
+            }
+        }
+    }
+
+    Ok(WaiveResult {
         task_id: task.full_id.clone(),
         file_path: file.path.clone(),
         previous_status: task.status.as_str().to_string(),
         cascaded_children: update_result.cascaded,
         unchecked_children: update_result.unchecked,
+        reason: reason.map(str::to_string),
     })
 }
 
+/// Record `--reason` as a contextual note under the now-waived task.
+///
+/// Contextual notes are plain bullet lines (no checkbox, no `@` marker)
+/// indented exactly 2 spaces deeper than their parent task — see
+/// `docs/design-doc.md` "Contextual Notes". The note is inserted after any
+/// existing `@...` annotation lines belonging to the task (so `@id`,
+/// `@depends-on`, etc. keep parsing as an unbroken annotation block — a
+/// plain-bullet line interrupting them would knock the rest into
+/// "orphaned annotation" handling) and before any child checkbox lines, so
+/// it round-trips through the parser and passes `lash lint` unchanged.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read/written or the (now-waived)
+/// task line cannot be found.
+fn insert_reason_note(
+    project_root: &Path,
+    file_path: &Path,
+    task_title: &str,
+    reason: &str,
+) -> Result<()> {
+    let full_path = project_root.join(file_path);
+    let content = fs::read_to_string(&full_path)
+        .with_context(|| format!("Failed to read file: {}", full_path.display()))?;
+
+    let waived_char = status_mutation::status_checkbox_char(TaskStatus::Waived);
+    let escaped_title = regex::escape(task_title);
+    let pattern = format!(r"^(\s*)- \[{waived_char}\] {escaped_title}\b");
+    let re = Regex::new(&pattern).context("Failed to compile regex")?;
+
+    let mut lines: Vec<String> = content.lines().map(str::to_string).collect();
+    let Some(task_idx) = lines.iter().position(|l| re.is_match(l)) else {
+        anyhow::bail!("Could not find task '{task_title}' in file to attach --reason note");
+    };
+
+    let task_indent = status_mutation::leading_space_count(&lines[task_idx]);
+    let note_indent = " ".repeat(task_indent + 2);
+
+    // Skip past any existing `@...` annotation lines directly under the
+    // task so the note lands after them, not between them.
+    let mut insert_at = task_idx + 1;
+    while insert_at < lines.len() {
+        let indent = status_mutation::leading_space_count(&lines[insert_at]);
+        let trimmed = lines[insert_at].trim_start();
+        if indent > task_indent && trimmed.starts_with('@') {
+            insert_at += 1;
+        } else {
+            break;
+        }
+    }
+
+    lines.insert(insert_at, format!("{note_indent}- {reason}"));
+
+    let updated_content = lines.join("\n");
+    let final_content = if content.ends_with('\n') && !updated_content.ends_with('\n') {
+        format!("{updated_content}\n")
+    } else {
+        updated_content
+    };
+
+    fs::write(&full_path, final_content)
+        .with_context(|| format!("Failed to write file: {}", full_path.display()))?;
+
+    Ok(())
+}
+
 /// Output results as JSON
-fn output_json_results(results: &[CompleteResult], errors: &[CompleteError]) -> Result<()> {
+fn output_json_results(results: &[WaiveResult], errors: &[WaiveError]) -> Result<()> {
     let json = serde_json::json!({
         "success": errors.is_empty(),
-        "completed": results,
+        "waived": results,
         "errors": errors,
     });
     println!("{}", serde_json::to_string_pretty(&json)?);
@@ -498,14 +482,14 @@ fn output_json_error(message: &str, code: &str, help: Option<&str>) -> Result<()
 /// Output results as text
 #[allow(clippy::too_many_lines)]
 fn output_text_results(
-    results: &[CompleteResult],
-    errors: &[CompleteError],
+    results: &[WaiveResult],
+    errors: &[WaiveError],
     dry_run: bool,
     theme: Option<&CliTheme>,
 ) {
     // Print results
     if dry_run && !results.is_empty() {
-        println!("Would complete:");
+        println!("Would waive:");
     }
 
     for result in results {
@@ -513,34 +497,42 @@ fn output_text_results(
             if dry_run {
                 println!(
                     "  {} {} ({})",
-                    t.style_success("[x]"),
+                    t.style_warning("[-]"),
                     t.style_label(&result.task_id),
                     t.style_muted(&result.file_path.display().to_string())
                 );
             } else {
                 println!(
                     "{} {} -> {}",
-                    t.style_success("[x]"),
+                    t.style_warning("[-]"),
                     t.style_label(&result.task_id),
                     t.style_muted(&result.file_path.display().to_string())
                 );
             }
         } else if dry_run {
-            println!("  [x] {} ({})", result.task_id, result.file_path.display());
+            println!("  [-] {} ({})", result.task_id, result.file_path.display());
         } else {
-            println!("[x] {} ({})", result.task_id, result.file_path.display());
+            println!("[-] {} ({})", result.task_id, result.file_path.display());
+        }
+
+        if let Some(ref reason) = result.reason {
+            if let Some(t) = theme {
+                println!("  {} {reason}", t.style_info("reason:"));
+            } else {
+                println!("  reason: {reason}");
+            }
         }
 
         if result.cascaded_children > 0 {
             if let Some(t) = theme {
                 println!(
-                    "  {} cascaded {} plain-bullet child(ren) to [x]",
+                    "  {} cascaded {} plain-bullet child(ren) to [-]",
                     t.style_info("↳"),
                     result.cascaded_children
                 );
             } else {
                 println!(
-                    "  ↳ cascaded {} plain-bullet child(ren) to [x]",
+                    "  ↳ cascaded {} plain-bullet child(ren) to [-]",
                     result.cascaded_children
                 );
             }
@@ -558,7 +550,7 @@ fn output_text_results(
                 .len()
                 .saturating_sub(preview.len());
             let header = format!(
-                "warning: parent completed but {} plain-bullet child(ren) remain unchecked:",
+                "warning: parent waived but {} plain-bullet child(ren) remain unchecked:",
                 result.unchecked_children.len()
             );
             if let Some(t) = theme {
@@ -572,7 +564,7 @@ fn output_text_results(
             if more > 0 {
                 eprintln!("    … and {more} more");
             }
-            let hint = "pass --cascade to also flip these to [x]";
+            let hint = "pass --cascade to also flip these to [-]";
             if let Some(t) = theme {
                 eprintln!("  {} {}", t.style_info("hint:"), hint);
             } else {
@@ -611,17 +603,13 @@ fn output_text_results(
         println!();
         if let Some(t) = theme {
             println!(
-                "{}: {} completed, {} failed",
+                "{}: {} waived, {} failed",
                 t.style_info("Summary"),
                 results.len(),
                 errors.len()
             );
         } else {
-            println!(
-                "Summary: {} completed, {} failed",
-                results.len(),
-                errors.len()
-            );
+            println!("Summary: {} waived, {} failed", results.len(), errors.len());
         }
     }
 }
@@ -630,103 +618,41 @@ fn output_text_results(
 mod tests {
     use super::*;
 
-    fn task(id: &str, status: TaskStatus, deps: &[&str]) -> Task {
-        use lash_types::dependency::{DependencyKind, DependencyRef};
-        use lash_types::TaskMetadata;
-        Task {
-            id: id.to_string(),
-            has_explicit_id: true,
-            title: id.to_string(),
-            status,
-            depth: 0,
-            parent_id: None,
-            order_index: 0,
-            line_number: 0,
-            metadata: TaskMetadata {
-                depends_on: deps
-                    .iter()
-                    .map(|d| DependencyRef::new((*d).to_string(), DependencyKind::ExplicitId))
-                    .collect(),
-                ..Default::default()
-            },
-            body: None,
-            contextual_notes: Vec::new(),
-        }
-    }
-
-    fn project_with(tasks: Vec<Task>) -> HashMap<PathBuf, TaskFile> {
-        use lash_types::{FileMetadata, TaskTree};
-        use std::time::SystemTime;
-        let mut tree = TaskTree::new();
-        for t in tasks {
-            tree.add_task(t).unwrap();
-        }
-        let file = TaskFile {
-            path: PathBuf::from("tasks.md"),
-            title: "T".to_string(),
-            id: "repro".to_string(),
-            metadata: FileMetadata::default(),
-            description: None,
-            description_agent_notes: Vec::new(),
-            tasks: tree,
-            hash: "h".to_string(),
-            mtime: SystemTime::now(),
-        };
-        let mut map = HashMap::new();
-        map.insert(PathBuf::from("tasks.md"), file);
-        map
-    }
-
-    // Issue #17: an open dependency must be reported as unmet.
     #[test]
-    fn test_find_unmet_dependencies_flags_open_dependency() {
-        let config = LashConfig::default();
-        let project = project_with(vec![
-            task("base-task", TaskStatus::Open, &[]),
-            task("dep-task", TaskStatus::Open, &["base-task"]),
-        ]);
-
-        let unmet = find_unmet_dependencies(&config, &project, "repro#dep-task");
-        assert_eq!(unmet.len(), 1);
-        assert_eq!(unmet[0].full_id, "repro#base-task");
-    }
-
-    // Issue #17: a done (or waived) dependency is satisfied.
-    #[test]
-    fn test_find_unmet_dependencies_satisfied_when_done_or_waived() {
-        let config = LashConfig::default();
-
-        let done = project_with(vec![
-            task("base-task", TaskStatus::Done, &[]),
-            task("dep-task", TaskStatus::Open, &["base-task"]),
-        ]);
-        assert!(find_unmet_dependencies(&config, &done, "repro#dep-task").is_empty());
-
-        let waived = project_with(vec![
-            task("base-task", TaskStatus::Waived, &[]),
-            task("dep-task", TaskStatus::Open, &["base-task"]),
-        ]);
-        assert!(find_unmet_dependencies(&config, &waived, "repro#dep-task").is_empty());
-    }
-
-    #[test]
-    fn test_complete_result_serialization() {
-        let result = CompleteResult {
+    fn test_waive_result_serialization() {
+        let result = WaiveResult {
             task_id: "test#task-1".to_string(),
             file_path: PathBuf::from("tasks.md"),
             previous_status: "open".to_string(),
             cascaded_children: 0,
             unchecked_children: vec![],
+            reason: None,
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("test#task-1"));
         assert!(json.contains("tasks.md"));
         assert!(json.contains("open"));
+        // Absent reason should not appear in JSON
+        assert!(!json.contains("reason"));
     }
 
     #[test]
-    fn test_complete_error_serialization() {
-        let error = CompleteError {
+    fn test_waive_result_serialization_with_reason() {
+        let result = WaiveResult {
+            task_id: "test#task-1".to_string(),
+            file_path: PathBuf::from("tasks.md"),
+            previous_status: "open".to_string(),
+            cascaded_children: 0,
+            unchecked_children: vec![],
+            reason: Some("Superseded by task-2".to_string()),
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("Superseded by task-2"));
+    }
+
+    #[test]
+    fn test_waive_error_serialization() {
+        let error = WaiveError {
             task_id: "test#task-1".to_string(),
             code: "E_NOT_FOUND".to_string(),
             message: "Task not found".to_string(),
@@ -738,15 +664,69 @@ mod tests {
     }
 
     #[test]
-    fn test_complete_error_no_suggestions() {
-        let error = CompleteError {
+    fn test_waive_error_no_suggestions() {
+        let error = WaiveError {
             task_id: "test#task-1".to_string(),
-            code: "E_ALREADY_COMPLETE".to_string(),
-            message: "Already complete".to_string(),
+            code: "E_ALREADY_WAIVED".to_string(),
+            message: "Already waived".to_string(),
             suggestions: vec![],
         };
         let json = serde_json::to_string(&error).unwrap();
         // Empty suggestions should not appear in JSON
         assert!(!json.contains("suggestions"));
+    }
+
+    #[test]
+    fn test_insert_reason_note_after_annotations() {
+        // The note must land after @id/@depends-on so they keep parsing as
+        // one contiguous annotation block (see doc comment on
+        // insert_reason_note for why order matters).
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = PathBuf::from("tasks.md");
+        let full = temp.path().join(&path);
+        let content = "# Tasks\n\
+                       \n\
+                       ## Tasks\n\
+                       \n\
+                       - [-] Waived task\n  \
+                       @id: task-1\n  \
+                       @depends-on: other-task\n";
+        std::fs::write(&full, content).unwrap();
+
+        insert_reason_note(temp.path(), &path, "Waived task", "No longer needed").unwrap();
+
+        let updated = std::fs::read_to_string(&full).unwrap();
+        let lines: Vec<&str> = updated.lines().collect();
+        let id_idx = lines
+            .iter()
+            .position(|l| l.contains("@id: task-1"))
+            .unwrap();
+        let dep_idx = lines
+            .iter()
+            .position(|l| l.contains("@depends-on: other-task"))
+            .unwrap();
+        let note_idx = lines
+            .iter()
+            .position(|l| l.contains("No longer needed"))
+            .unwrap();
+        assert!(id_idx < dep_idx);
+        assert!(dep_idx < note_idx, "note must come after annotations");
+        // Note must be a plain bullet (no checkbox, no @ marker) indented
+        // 2 spaces deeper than the task.
+        assert_eq!(lines[note_idx], "  - No longer needed");
+    }
+
+    #[test]
+    fn test_insert_reason_note_no_annotations() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = PathBuf::from("tasks.md");
+        let full = temp.path().join(&path);
+        let content = "- [-] Waived task\n";
+        std::fs::write(&full, content).unwrap();
+
+        insert_reason_note(temp.path(), &path, "Waived task", "Not applicable").unwrap();
+
+        let updated = std::fs::read_to_string(&full).unwrap();
+        assert_eq!(updated, "- [-] Waived task\n  - Not applicable\n");
     }
 }

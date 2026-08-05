@@ -428,6 +428,27 @@ pub enum Commands {
         force: bool,
     },
 
+    /// Mark one or more tasks as waived (not applicable)
+    Waive {
+        /// Task ID(s) to mark as waived (supports fuzzy matching)
+        #[arg(required = true, num_args = 1..)]
+        task_ids: Vec<String>,
+
+        /// Preview what would be changed without modifying files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Also mark unchecked plain-bullet children (those without their
+        /// own @id) as waived. Children with @id are independent tasks
+        /// and are never auto-waived.
+        #[arg(long)]
+        cascade: bool,
+
+        /// One-line rationale recorded as a contextual note under the task
+        #[arg(long)]
+        reason: Option<String>,
+    },
+
     /// Mark one or more tasks as in-progress
     Start {
         /// Task ID(s) to mark as in-progress (supports fuzzy matching)
@@ -1187,6 +1208,82 @@ mod tests {
     #[test]
     fn test_cli_parse_complete_requires_task_id() {
         let result = LashCli::try_parse_from(["lash", "complete"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_waive_single() {
+        let cli = LashCli::try_parse_from(["lash", "waive", "test#task-1"]).unwrap();
+        if let Commands::Waive {
+            task_ids,
+            dry_run,
+            cascade,
+            reason,
+        } = cli.command
+        {
+            assert_eq!(task_ids, vec!["test#task-1"]);
+            assert!(!dry_run);
+            assert!(!cascade);
+            assert_eq!(reason, None);
+        } else {
+            panic!("Expected Waive command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_waive_multiple() {
+        let cli = LashCli::try_parse_from(["lash", "waive", "test#task-1", "test#task-2"]).unwrap();
+        if let Commands::Waive { task_ids, .. } = cli.command {
+            assert_eq!(task_ids, vec!["test#task-1", "test#task-2"]);
+        } else {
+            panic!("Expected Waive command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_waive_dry_run() {
+        let cli = LashCli::try_parse_from(["lash", "waive", "--dry-run", "test#task-1"]).unwrap();
+        if let Commands::Waive {
+            task_ids, dry_run, ..
+        } = cli.command
+        {
+            assert_eq!(task_ids, vec!["test#task-1"]);
+            assert!(dry_run);
+        } else {
+            panic!("Expected Waive command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_waive_cascade() {
+        let cli = LashCli::try_parse_from(["lash", "waive", "--cascade", "test#task-1"]).unwrap();
+        if let Commands::Waive { cascade, .. } = cli.command {
+            assert!(cascade);
+        } else {
+            panic!("Expected Waive command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_waive_reason() {
+        let cli = LashCli::try_parse_from([
+            "lash",
+            "waive",
+            "--reason",
+            "Superseded by task-2",
+            "test#task-1",
+        ])
+        .unwrap();
+        if let Commands::Waive { reason, .. } = cli.command {
+            assert_eq!(reason, Some("Superseded by task-2".to_string()));
+        } else {
+            panic!("Expected Waive command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_waive_requires_task_id() {
+        let result = LashCli::try_parse_from(["lash", "waive"]);
         assert!(result.is_err());
     }
 
