@@ -1,5 +1,40 @@
 # Lash Development Log
 
+## 2026-08-05 - `lash list` task-level filters actually filter
+
+### Summary
+
+`lash list --status open` (and `--label`, `--owner`, `--blocked`,
+`--path`) parsed fine but printed the entire task tree — the flags were
+carried in `ListArgs` and then never read (the fields were even
+documented as "currently unused in file view").
+
+`commands/list.rs` now routes to a task-centric listing whenever a
+task-level filter is present: tasks are queried via
+`TaskRepository::find(&TaskFilter)`, files are restricted to those
+containing matches, and tree view renders only the matching tasks.
+Flat text and JSON output list the matching tasks grouped by file
+(`{count, tasks, files}`), matching the `--filter <id>` output shape.
+`--path` filters files by project-root-relative path prefix and
+composes with the other filters, as does `--docs`. Combining
+`--filter <id>` with the other filters now intersects instead of
+ignoring them. Zero matches reports "No tasks found matching the given
+filters" (or `{count: 0, ...}` in JSON) with exit code 0.
+
+Two adjacent bugs fixed along the way:
+
+- `TaskRepository::find` ignored `TaskFilter::blocked`; it now maps
+  `Some(true)`/`Some(false)` to `status = / != 'blocked'`.
+- The ASCII logo banner printed before `lash list --format json`
+  output, making stdout unparseable. The banner suppression check now
+  covers list's JSON formats like it already did for graph's.
+
+The two insta snapshots for `list --status open` / `--label backend`
+had locked in the buggy full-tree output; they now show filtered
+output. New integration coverage in
+`crates/lash-cli/tests/list_filter_test.rs` (8 tests: each filter,
+JSON shape, empty result, and an unfiltered regression check).
+
 ## 2026-05-22 - Activity bar backfills from DB at TUI startup
 
 ### Summary

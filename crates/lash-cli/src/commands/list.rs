@@ -9,7 +9,7 @@ use lash_cli::theme::CliTheme;
 use lash_cli::tree_formatter::TreeFormatter;
 use lash_core::fuzzy::FuzzyMatcher;
 use lash_db::repository::files::FileRecord;
-use lash_db::repository::tasks::TaskRecord;
+use lash_db::repository::tasks::{TaskFilter, TaskRecord};
 use lash_db::{open_database, DocRefRepository, FileRepository, TaskRepository};
 use lash_types::error::LashError;
 use lash_types::tree::TreeNode;
@@ -28,20 +28,19 @@ pub enum OutputFormat {
 
 /// Arguments for the list command
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ListArgs {
     /// Filter by task ID (supports fuzzy matching)
     pub filter: Option<String>,
-    /// Filter by label (can be specified multiple times) - currently unused in file view
+    /// Filter by label (can be specified multiple times)
     pub labels: Vec<String>,
-    /// Filter by status - currently unused in file view
+    /// Filter by status
     pub status: Option<lash_types::TaskStatus>,
-    /// Filter by path prefix - currently unused in file view
+    /// Filter by path prefix (relative to project root)
     pub path: Option<PathBuf>,
-    /// Only show blocked tasks - currently unused in file view
+    /// Only show blocked tasks
     pub blocked: bool,
-    /// Filter by owner - currently unused in file view
+    /// Filter by owner
     pub owner: Option<String>,
     /// Filter by files/tasks that reference a specific document
     pub docs: Option<String>,
@@ -171,19 +170,7 @@ pub fn execute(args: ListArgs) -> Result<i32> {
                 format!("Database query failed: {e}"),
                 Some("list_all".to_string()),
             );
-            if args.format == OutputFormat::Json || args.format == OutputFormat::JsonPretty {
-                output_json_error(&error)?;
-            } else {
-                let reporter_config = ErrorReporterConfig {
-                    verbosity: args.verbosity,
-                    output_format: OutputFormatTrait::Text,
-                    display_mode: ErrorDisplayMode::Streaming,
-                    theme: args.theme.clone(),
-                    show_summary: false,
-                };
-                let mut reporter = ErrorReporter::new(reporter_config);
-                reporter.report_error(&error);
-            }
+            report_db_error(&args, &error)?;
             return Ok(3); // Exit code 3 for DB error
         }
     };
@@ -200,19 +187,7 @@ pub fn execute(args: ListArgs) -> Result<i32> {
                     format!("Database query failed: {e}"),
                     Some("find_by_target_prefix".to_string()),
                 );
-                if args.format == OutputFormat::Json || args.format == OutputFormat::JsonPretty {
-                    output_json_error(&error)?;
-                } else {
-                    let reporter_config = ErrorReporterConfig {
-                        verbosity: args.verbosity,
-                        output_format: OutputFormatTrait::Text,
-                        display_mode: ErrorDisplayMode::Streaming,
-                        theme: args.theme.clone(),
-                        show_summary: false,
-                    };
-                    let mut reporter = ErrorReporter::new(reporter_config);
-                    reporter.report_error(&error);
-                }
+                report_db_error(&args, &error)?;
                 return Ok(3); // Exit code 3 for DB error
             }
         };
@@ -230,6 +205,30 @@ pub fn execute(args: ListArgs) -> Result<i32> {
     }
 
     tracing::debug!(file_count = files.len(), "Retrieved files");
+
+    // Filter by path prefix if requested (paths are stored absolute, so
+    // compare against the project-root-relative path as well)
+    if let Some(ref path_prefix) = args.path {
+        files.retain(|f| {
+            f.path
+                .strip_prefix(&project_root)
+                .unwrap_or(&f.path)
+                .starts_with(path_prefix)
+                || f.path.starts_with(path_prefix)
+        });
+        tracing::debug!(
+            filtered_count = files.len(),
+            "Filtered files by path prefix"
+        );
+    }
+
+    // Task-level filters switch to a task-centric listing: only matching
+    // tasks (and the files containing them) are shown
+    let has_task_filters =
+        args.status.is_some() || !args.labels.is_empty() || args.owner.is_some() || args.blocked;
+    if has_task_filters {
+        return execute_task_filtered_list(&args, &task_repo, files);
+    }
 
     // Apply limit if specified
     if let Some(max) = args.limit {
@@ -282,6 +281,148 @@ pub fn execute(args: ListArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// Execute the list command with task-level filters (status, labels, owner, blocked)
+///
+/// Queries matching tasks from the database and restricts output to the files
+/// containing them. Tree view shows only the matching tasks; flat and JSON
+/// output list the matching tasks grouped by file.
+fn execute_task_filtered_list(
+    args: &ListArgs,
+    task_repo: &TaskRepository,
+    files: Vec<FileRecord>,
+) -> Result<i32> {
+    let filter = TaskFilter {
+        status: args.status,
+        labels: args.labels.clone(),
+        owner: args.owner.clone(),
+        file_path: None,
+        blocked: if args.blocked { Some(true) } else { None },
+    };
+
+    let mut tasks = match task_repo.find(&filter) {
+        Ok(tasks) => tasks,
+        Err(e) => {
+            let error = LashError::internal(
+                format!("Database query failed: {e}"),
+                Some("find".to_string()),
+            );
+            report_db_error(args, &error)?;
+            return Ok(3); // Exit code 3 for DB error
+        }
+    };
+
+    // Restrict to the already-filtered file set (path/docs filters)
+    let file_ids: HashSet<i64> = files.iter().map(|f| f.id).collect();
+    tasks.retain(|t| file_ids.contains(&t.file_id));
+
+    if let Some(max) = args.limit {
+        tasks.truncate(max);
+    }
+
+    // Group tasks by file, in document order within each file
+    let mut file_tasks: HashMap<i64, Vec<TaskRecord>> = HashMap::new();
+    for task in &tasks {
+        file_tasks
+            .entry(task.file_id)
+            .or_default()
+            .push(task.clone());
+    }
+    for tasks_in_file in file_tasks.values_mut() {
+        tasks_in_file.sort_by_key(|t| t.order_index);
+    }
+
+    // Keep only files that contain matching tasks
+    let files: Vec<FileRecord> = files
+        .into_iter()
+        .filter(|f| file_tasks.contains_key(&f.id))
+        .collect();
+
+    tracing::debug!(
+        task_count = tasks.len(),
+        file_count = files.len(),
+        "Applied task-level filters"
+    );
+
+    if tasks.is_empty() {
+        output_no_filter_matches(args)?;
+        return Ok(0);
+    }
+
+    if args.format == OutputFormat::Text && determine_tree_view_enabled(args) {
+        output_text_tree(&files, &file_tasks, args);
+    } else {
+        output_filtered_tasks(args, &tasks, &files);
+    }
+
+    Ok(0)
+}
+
+/// Report a database error in the format requested by the user
+fn report_db_error(args: &ListArgs, error: &LashError) -> Result<()> {
+    if args.format == OutputFormat::Json || args.format == OutputFormat::JsonPretty {
+        output_json_error(error)?;
+    } else {
+        let reporter_config = ErrorReporterConfig {
+            verbosity: args.verbosity,
+            output_format: OutputFormatTrait::Text,
+            display_mode: ErrorDisplayMode::Streaming,
+            theme: args.theme.clone(),
+            show_summary: false,
+        };
+        let mut reporter = ErrorReporter::new(reporter_config);
+        reporter.report_error(error);
+    }
+    Ok(())
+}
+
+/// Output for the case where task-level filters matched no tasks
+fn output_no_filter_matches(args: &ListArgs) -> Result<()> {
+    match args.format {
+        OutputFormat::Json | OutputFormat::JsonPretty => {
+            use serde_json::json;
+            let output = json!({ "count": 0, "tasks": [], "files": [] });
+            if args.format == OutputFormat::JsonPretty {
+                println!("{}", serde_json::to_string_pretty(&output)?);
+            } else {
+                println!("{}", serde_json::to_string(&output)?);
+            }
+        }
+        OutputFormat::Text => {
+            let msg = "No tasks found matching the given filters";
+            if let Some(theme) = args.theme.as_ref() {
+                println!("{}", theme.style_warning(msg));
+            } else {
+                println!("{msg}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Check whether a task matches the task-level filters (status, blocked, owner, labels)
+///
+/// Mirrors the semantics of `TaskRepository::find`: labels match if the task
+/// has any of the requested labels.
+fn task_matches_filters(task: &TaskRecord, args: &ListArgs) -> bool {
+    if let Some(status) = args.status {
+        if task.status != status {
+            return false;
+        }
+    }
+    if args.blocked && task.status != lash_types::TaskStatus::Blocked {
+        return false;
+    }
+    if let Some(ref owner) = args.owner {
+        if task.owner.as_deref() != Some(owner.as_str()) {
+            return false;
+        }
+    }
+    if !args.labels.is_empty() && !args.labels.iter().any(|l| task.metadata.labels.contains(l)) {
+        return false;
+    }
+    true
+}
+
 /// Execute the list command with task ID filtering
 ///
 /// This function handles the --filter flag which allows filtering tasks by ID,
@@ -297,7 +438,11 @@ fn execute_filtered_list(
 
     // Try exact match first
     if let Ok(Some(task)) = task_repo.get_by_full_id(filter_id) {
-        // Found exact match - show this task
+        // Found exact match - show this task if it passes the other filters
+        if !task_matches_filters(&task, args) {
+            output_no_filter_matches(args)?;
+            return Ok(0);
+        }
         let file = file_repo
             .get_by_db_id(task.file_id)?
             .unwrap_or_else(|| FileRecord {
@@ -340,9 +485,16 @@ fn execute_filtered_list(
 
     for candidate in &similar_ids {
         if let Ok(Some(task)) = task_repo.get_by_full_id(&candidate.task_id) {
-            file_ids.insert(task.file_id);
-            tasks.push(task);
+            if task_matches_filters(&task, args) {
+                file_ids.insert(task.file_id);
+                tasks.push(task);
+            }
         }
+    }
+
+    if tasks.is_empty() {
+        output_no_filter_matches(args)?;
+        return Ok(0);
     }
 
     // Apply limit if specified

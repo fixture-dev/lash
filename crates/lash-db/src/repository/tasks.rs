@@ -71,7 +71,8 @@ pub struct TaskFilter {
     /// Filter by file path
     pub file_path: Option<String>,
 
-    /// Filter by blocked status
+    /// Filter by blocked status: `Some(true)` matches only blocked tasks,
+    /// `Some(false)` excludes blocked tasks, `None` applies no filter
     pub blocked: Option<bool>,
 }
 
@@ -511,6 +512,12 @@ impl<'conn> TaskRepository<'conn> {
             ));
         }
 
+        match filter.blocked {
+            Some(true) => wheres.push("t.status = ?".to_string()),
+            Some(false) => wheres.push("t.status != ?".to_string()),
+            None => {}
+        }
+
         // Combine query parts
         if !joins.is_empty() {
             query.push(' ');
@@ -529,6 +536,9 @@ impl<'conn> TaskRepository<'conn> {
 
         // Convert status to owned string to avoid lifetime issues
         let status_str = filter.status.map(|s| s.as_str().to_string());
+        let blocked_status_str = filter
+            .blocked
+            .map(|_| TaskStatus::Blocked.as_str().to_string());
 
         // Build parameter list
         let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
@@ -544,6 +554,9 @@ impl<'conn> TaskRepository<'conn> {
         }
         for label in &filter.labels {
             params.push(label);
+        }
+        if let Some(ref blocked_status) = blocked_status_str {
+            params.push(blocked_status);
         }
 
         let tasks = stmt
@@ -938,6 +951,44 @@ mod tests {
 
         // Missing local_id → empty.
         assert!(task_repo.get_by_local_id("ghost").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_find_blocked_filter() {
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+        let file_repo = FileRepository::new(&conn);
+        let task_repo = TaskRepository::new(&conn);
+        let file_db_id = file_repo
+            .insert(&create_test_file("test.md", "test"))
+            .unwrap();
+
+        let open_task = create_test_task("open1", "Open Task", 0, None, 0);
+        let mut blocked_task = create_test_task("blocked1", "Blocked Task", 0, None, 1);
+        blocked_task.status = TaskStatus::Blocked;
+        task_repo.insert(&open_task, file_db_id, "test").unwrap();
+        task_repo.insert(&blocked_task, file_db_id, "test").unwrap();
+
+        let only_blocked = task_repo
+            .find(&TaskFilter {
+                blocked: Some(true),
+                ..TaskFilter::default()
+            })
+            .unwrap();
+        assert_eq!(only_blocked.len(), 1);
+        assert_eq!(only_blocked[0].full_id, "test#blocked1");
+
+        let not_blocked = task_repo
+            .find(&TaskFilter {
+                blocked: Some(false),
+                ..TaskFilter::default()
+            })
+            .unwrap();
+        assert_eq!(not_blocked.len(), 1);
+        assert_eq!(not_blocked[0].full_id, "test#open1");
+
+        let all = task_repo.find(&TaskFilter::default()).unwrap();
+        assert_eq!(all.len(), 2);
     }
 
     #[test]

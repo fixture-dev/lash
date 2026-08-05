@@ -179,11 +179,18 @@ fn run(cli: LashCli) -> Result<()> {
                                | lash_cli::cli::GraphFormat::Mermaid
                                | lash_cli::cli::GraphFormat::Json)
     );
+    let uses_machine_readable_list_format = matches!(
+        &cli.command,
+        Commands::List { format, .. }
+            if matches!(format, lash_cli::cli::OutputFormat::Json
+                               | lash_cli::cli::OutputFormat::JsonPretty)
+    );
     let show_logo = !cli.json
         && !cli.quiet
         && !cli.no_logo
         && !matches!(cli.command, Commands::Tui)
-        && !uses_machine_readable_graph_format;
+        && !uses_machine_readable_graph_format
+        && !uses_machine_readable_list_format;
     if show_logo {
         print!("{}", TextFormatter::logo_banner());
     }
