@@ -526,14 +526,20 @@ lash add "Task" --estimate "invalid"
 
 ### E_CREATE_DEPENDENCY_NOT_FOUND
 
-**Description:** Specified dependency target does not exist
+**Description:** Specified `--depends-on` target does not exist in the project. `lash add` refuses
+to create the task — nothing is written — unless `--allow-forward-ref` is
+also passed, in which case this is a warning instead of a fatal error and
+the task is created with the reference as-is.
 
 **Example:**
 ```bash
 lash add "Task" --depends-on "path/to/nonexistent.md#task:id"
 ```
 
-**How to fix:** Ensure the referenced task exists before adding the dependency
+**How to fix:** Ensure the referenced task exists before adding the dependency, or pass
+`--allow-forward-ref` if you're intentionally creating tasks before their
+dependencies (a fuzzy "did you mean" suggestion is included when a close
+match exists, in case it's a typo)
 
 ---
 

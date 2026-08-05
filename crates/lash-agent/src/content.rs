@@ -109,7 +109,7 @@ lash search <QUERY>             # Full-text search tasks and descriptions
 lash show <ID>                  # Show task/file details with dependencies
 
 # Task Modification
-lash add <DESCRIPTION>          # Add a new task (--file, --label, --depends-on)
+lash add <DESCRIPTION>          # Add a new task (--file, --label, --id, --depends-on)
 lash start <ID>                 # Mark a task as in-progress
 lash complete <ID>              # Mark task as done (--cascade for child tasks)
 
@@ -267,10 +267,13 @@ Forms (the `task:` prefix on a fragment is optional everywhere):
 List several dependencies with commas or repeated lines:
 `@depends-on: auth.session, payment.gateway`.
 
-`lash complete` refuses while any dependency is still open (pass `--force`
-to override). Validate references with `lash check-links` — it reports the
-same broken references as `lash lint`. Auto-fix typos with
-`lash check-links --fix`.
+`lash add --depends-on <ref>` validates the reference immediately and
+refuses to create the task if it doesn't resolve (pass `--allow-forward-ref`
+to create tasks before their dependencies exist — this writes the reference
+anyway, as a warning). `lash complete` refuses while any dependency is still
+open (pass `--force` to override). Validate references with
+`lash check-links` — it reports the same broken references as `lash lint`.
+Auto-fix typos with `lash check-links --fix`.
 
 ## `@doc:` — Documentation References
 

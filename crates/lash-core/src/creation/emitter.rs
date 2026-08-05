@@ -88,11 +88,16 @@ impl MarkdownEmitter {
             &request.labels,
         );
 
-        // Format annotation lines (only depends-on and agent-note for tasks)
-        // Note: Task-level @id, @owner, @estimate are NOT stored in Markdown format
-        // They are part of the parser's internal representation only
+        // Format annotation lines. An explicit `--id` is written as `@id:` so
+        // the task's global id (`file#id`) resolves after creation (GitHub
+        // issue #24) — without this the ID was accepted, echoed in the
+        // success message, and then silently dropped. Auto-synthesized ids
+        // (no explicit `--id`) are still not persisted: the parser
+        // re-synthesizes them from the title, matching existing behavior.
+        // @owner/@estimate remain internal-only, as before.
         let annotation_lines = Self::format_task_annotations(
             placement.indent_level,
+            request.id.as_deref(),
             &request.depends_on,
             request.agent_note.as_deref(),
         );
@@ -345,24 +350,27 @@ impl MarkdownEmitter {
         line
     }
 
-    /// Format task annotations (depends-on and agent-note only)
+    /// Format task annotations (`@id`, `@depends-on`, `@agent-note`)
     ///
-    /// Generates annotation lines for task dependencies with proper indentation.
-    /// Annotations are formatted with 2 spaces of extra indentation relative to the task.
+    /// Generates annotation lines with proper indentation (2 spaces deeper
+    /// than the task checkbox line, matching the format documented in
+    /// `docs/agent-guide.md` and `docs/design-doc.md`).
     ///
-    /// Note: Task-level metadata like @id, @owner, @estimate are NOT stored in the Markdown
-    /// format. They are part of the internal parser representation and synthesized from
-    /// the task title and context.
+    /// Note: `@owner`/`@estimate` are still NOT stored in Markdown format —
+    /// they remain internal-only, synthesized/derived elsewhere. `@id` IS
+    /// written when the caller supplied an explicit id, since it is what
+    /// gives the task a stable, resolvable global id (`file#id`).
     ///
     /// # Arguments
     ///
     /// * `indent` - Base indentation level (for the task checkbox line)
+    /// * `id` - Explicit task id, if one was provided (`--id`)
     /// * `depends_on` - List of dependency references
     /// * `agent_note` - Optional agent note
     ///
     /// # Returns
     ///
-    /// A vector of formatted annotation lines.
+    /// A vector of formatted annotation lines, `@id` first.
     ///
     /// # Examples
     ///
@@ -371,22 +379,30 @@ impl MarkdownEmitter {
     ///
     /// let lines = MarkdownEmitter::format_task_annotations(
     ///     0,
+    ///     Some("auth-impl"),
     ///     &["tasks/core.md#task:session-manager".to_string()],
     ///     Some("Consider using existing auth middleware"),
     /// );
     ///
+    /// assert_eq!(lines[0], "  @id: auth-impl");
     /// assert!(lines.iter().any(|l| l.contains("@depends-on:")));
     /// assert!(lines.iter().any(|l| l.contains("@agent-note:")));
     /// ```
     #[must_use]
     pub fn format_task_annotations(
         indent: usize,
+        id: Option<&str>,
         depends_on: &[String],
         agent_note: Option<&str>,
     ) -> Vec<String> {
         let indent_str = "  ".repeat(indent);
         let annotation_indent = format!("{indent_str}  "); // Extra 2 spaces for annotations
         let mut lines = Vec::new();
+
+        // @id comes first, matching the documented annotation order.
+        if let Some(id) = id {
+            lines.push(format!("{annotation_indent}@id: {id}"));
+        }
 
         // Add @depends-on if present
         for dep in depends_on {
@@ -557,7 +573,7 @@ mod tests {
 
     #[test]
     fn test_format_task_annotations_empty() {
-        let lines = MarkdownEmitter::format_task_annotations(0, &[], None);
+        let lines = MarkdownEmitter::format_task_annotations(0, None, &[], None);
         assert_eq!(lines.len(), 0);
     }
 
@@ -565,6 +581,7 @@ mod tests {
     fn test_format_task_annotations_depends_on() {
         let lines = MarkdownEmitter::format_task_annotations(
             0,
+            None,
             &["tasks/core.md#task:session-manager".to_string()],
             None,
         );
@@ -579,6 +596,7 @@ mod tests {
     fn test_format_task_annotations_agent_note() {
         let lines = MarkdownEmitter::format_task_annotations(
             0,
+            None,
             &[],
             Some("Consider using existing auth middleware"),
         );
@@ -593,6 +611,7 @@ mod tests {
     fn test_format_task_annotations_both() {
         let lines = MarkdownEmitter::format_task_annotations(
             0,
+            None,
             &["dep1".to_string(), "dep2".to_string()],
             Some("Note here"),
         );
@@ -604,9 +623,31 @@ mod tests {
 
     #[test]
     fn test_format_task_annotations_with_indent() {
-        let lines = MarkdownEmitter::format_task_annotations(2, &["dep".to_string()], None);
+        let lines = MarkdownEmitter::format_task_annotations(2, None, &["dep".to_string()], None);
         assert_eq!(lines.len(), 1);
         assert!(lines[0].starts_with("      ")); // 4 spaces indent + 2 for annotation
+    }
+
+    #[test]
+    fn test_format_task_annotations_id_written_first() {
+        // GitHub issue #24: an explicit --id must be persisted as `@id:`,
+        // ahead of any other annotations, so the task resolves as `file#id`.
+        let lines = MarkdownEmitter::format_task_annotations(
+            0,
+            Some("auth-impl"),
+            &["dep1".to_string()],
+            Some("note"),
+        );
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "  @id: auth-impl");
+        assert!(lines[1].contains("@depends-on: dep1"));
+        assert!(lines[2].contains("@agent-note: note"));
+    }
+
+    #[test]
+    fn test_format_task_annotations_id_only() {
+        let lines = MarkdownEmitter::format_task_annotations(0, Some("short-e"), &[], None);
+        assert_eq!(lines, vec!["  @id: short-e".to_string()]);
     }
 
     #[test]
@@ -780,9 +821,11 @@ mod tests {
         let task = &parsed_file.tasks.tasks()[0];
         // Note: Parser includes inline labels in title
         assert_eq!(task.title, "Round trip task #test");
-        // Note: Parser synthesizes ID from title (including labels), not from our original ID
-        // This is expected - task IDs are not persisted in Markdown format
-        assert_eq!(task.id, "round-trip-task-test");
+        // GitHub issue #24: an explicit --id is now persisted as `@id:`, so
+        // it round-trips back out of the parser unchanged (previously the
+        // parser would re-synthesize a slug from the title instead).
+        assert_eq!(task.id, "roundtrip-task");
+        assert!(task.has_explicit_id);
         assert_eq!(task.status, TaskStatus::Open);
         // Verify the label was parsed
         assert_eq!(task.metadata.labels, vec!["test"]);

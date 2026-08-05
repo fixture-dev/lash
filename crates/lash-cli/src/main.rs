@@ -668,6 +668,7 @@ fn run(cli: LashCli) -> Result<()> {
             status,
             id,
             depends_on,
+            allow_forward_ref,
             agent_note,
             format,
             dry_run,
@@ -687,11 +688,13 @@ fn run(cli: LashCli) -> Result<()> {
                 status,
                 id,
                 depends_on,
+                allow_forward_ref,
                 agent_note,
                 format,
                 dry_run,
                 interactive,
                 no_color: cli.no_color,
+                project_root,
             };
             let exit_code = commands::add::execute(&args)?;
             process::exit(exit_code);

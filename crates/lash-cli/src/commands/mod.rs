@@ -1,6 +1,7 @@
 //! Command implementations for the CLI
 
 pub mod add;
+pub mod add_dependency_check;
 pub mod agent_prompt;
 pub mod ascii_graph;
 pub mod check_index;

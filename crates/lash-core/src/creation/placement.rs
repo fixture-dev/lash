@@ -278,18 +278,46 @@ impl PlacementResolver {
 
     /// Count the number of annotation lines that follow a task
     ///
-    /// Task annotations like @depends-on and @agent-note appear on separate lines
-    /// after the task checkbox line.
+    /// Every annotation type is written on its own line after the task
+    /// checkbox line, so appending correctly requires knowing exactly how
+    /// many trailing lines belong to the task being appended after —
+    /// undercounting here inserts the new task in the middle of that
+    /// annotation block, silently detaching a trailing annotation (e.g. an
+    /// existing task's `@id:`) from its owner.
+    ///
+    /// `@labels` is deliberately not counted: labels may be written inline
+    /// on the checkbox line (`#backend`) or as a separate `@labels:` block,
+    /// and [`lash_types::task::TaskMetadata`] doesn't record which form was
+    /// used, so it can't be counted without re-reading the source line.
+    /// `lash add` itself always emits labels inline (see
+    /// `MarkdownEmitter::format_task_line`), so this only affects appending
+    /// after a hand-edited task that used the block form.
     fn count_annotation_lines(task: &Task) -> usize {
         let mut count = 0;
 
-        // Each dependency gets its own line
-        count += task.metadata.depends_on.len();
+        // @id: one line, only when it's an explicit annotation (not a
+        // synthesized id, which isn't written to Markdown at all).
+        if task.has_explicit_id {
+            count += 1;
+        }
 
-        // Agent note gets one line if present
+        // @owner / @estimate / @agent-note: one line each when present.
+        if task.metadata.owner.is_some() {
+            count += 1;
+        }
+        if task.metadata.estimate.is_some() {
+            count += 1;
+        }
         if task.metadata.agent_note.is_some() {
             count += 1;
         }
+
+        // @depends-on / @doc: one line per reference.
+        count += task.metadata.depends_on.len();
+        count += task.metadata.docs.len();
+
+        // Custom annotations: one line per key.
+        count += task.metadata.custom.len();
 
         count
     }
@@ -901,20 +929,61 @@ mod tests {
 
         let file = create_test_file(tasks);
 
-        // Test: append after Level 1-4 should go on line 37
+        // Every task in this fixture is built via `.id(...)`, so
+        // `has_explicit_id` is true throughout and `count_annotation_lines`
+        // correctly attributes one extra `@id:` line to each — hence the
+        // "+1" past the last task's own line in both expectations below.
+
+        // Test: append after Level 1-4 should go on line 38 (37 = child's
+        // line + its @id: line, +1 to move past it).
         let request = TaskCreationRequestBuilder::new("Level 1-5").build();
         let ctx = validator.validate(&request, Some(&file)).unwrap();
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
-        assert_eq!(placement.line_number, 37);
+        assert_eq!(placement.line_number, 38);
         assert_eq!(placement.order_index, 4);
 
-        // Test: insert after Level 1-3 should go on line 34
+        // Test: insert after Level 1-3 should go on line 35 (34 = last
+        // child's line + its @id: line, +1 to move past it).
         let request = TaskCreationRequestBuilder::new("Level 1-3.5")
             .after("level-1-3")
             .build();
         let ctx = validator.validate(&request, Some(&file)).unwrap();
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
-        assert_eq!(placement.line_number, 34);
+        assert_eq!(placement.line_number, 35);
         assert_eq!(placement.order_index, 3);
+    }
+
+    #[test]
+    fn test_append_after_task_with_explicit_id_skips_its_annotation_line() {
+        // Regression test: appending after a task that carries an explicit
+        // `@id:` annotation used to insert one line too early, landing
+        // *between* the existing task's checkbox line and its own `@id:`
+        // line and detaching the annotation from its owner. This is the
+        // scenario `lash add --id` (GitHub issue #24) hits constantly, since
+        // essentially every well-formed task carries an `@id:`.
+        let config = ConfigBuilder::new().build().unwrap();
+        let validator = TaskValidator::new(config);
+
+        let mut tasks = TaskTree::new();
+        tasks
+            .add_task(
+                TaskBuilder::new("Existing task")
+                    .id("existing") // sets has_explicit_id = true
+                    .order_index(0)
+                    .line_number(6) // checkbox line
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        let file = create_test_file(tasks);
+
+        let request = TaskCreationRequestBuilder::new("New task").build();
+        let ctx = validator.validate(&request, Some(&file)).unwrap();
+        let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
+
+        // Checkbox on line 6, `@id:` annotation on line 7 -> insert at line 8,
+        // not line 7 (which would land on top of the `@id:` line).
+        assert_eq!(placement.line_number, 8);
+        assert_eq!(placement.order_index, 1);
     }
 }

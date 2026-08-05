@@ -485,6 +485,9 @@ mod tests {
         let content = fs::read_to_string(&file_path).unwrap();
         assert!(content.contains("# Test File"));
         assert!(content.contains("- [ ] First task #test"));
+        // GitHub issue #24: the explicit --id must be persisted as @id: so
+        // the task resolves as `new-file#first-task` after creation.
+        assert!(content.contains("@id: first-task"));
     }
 
     #[test]

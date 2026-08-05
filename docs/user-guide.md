@@ -731,10 +731,15 @@ lash add "Fix authentication bug" \
 # Add with explicit ID
 lash add "Deploy to staging" --id deploy-staging
 
-# Add with dependencies
+# Add with dependencies (each target must already resolve, or the task is
+# not created)
 lash add "Integration tests" \
   --depends-on backend/api.md#task:api-endpoints \
   --depends-on backend/database.md#task:migrations
+
+# Add a dependency on a task that doesn't exist yet (create-in-any-order);
+# writes the reference as a warning instead of a hard error
+lash add "Integration tests" --depends-on not-yet-created --allow-forward-ref
 
 # Add with agent note
 lash add "Refactor auth middleware" \
@@ -759,8 +764,9 @@ lash add --interactive
 - `--owner NAME` - Set owner
 - `--estimate DURATION` - Set estimate (e.g., 30m, 2h, 1d)
 - `--status STATUS` - Initial status (default: open)
-- `--id ID` - Explicit task ID
-- `--depends-on REF` - Add dependency (repeatable)
+- `--id ID` - Explicit task ID; written as `@id:` so `file#ID` resolves immediately
+- `--depends-on REF` - Add dependency (repeatable); each must resolve or the task is not created
+- `--allow-forward-ref` - Downgrade an unresolved `--depends-on` target to a warning and write anyway
 - `--agent-note TEXT` - Add agent note
 - `--dry-run` - Validate without creating
 - `--interactive` - Interactive mode

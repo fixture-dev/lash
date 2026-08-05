@@ -263,7 +263,7 @@ lash search <QUERY>             # Full-text search tasks and descriptions
 lash show <ID>                  # Show task/file details with dependencies
 
 # Task Modification
-lash add <DESCRIPTION>          # Add a new task (--file, --label, --depends-on)
+lash add <DESCRIPTION>          # Add a new task (--file, --label, --id, --depends-on)
 lash start <ID>                 # Mark a task as in-progress
 lash complete <ID>              # Mark task as done (--cascade for child tasks)
 

@@ -1,5 +1,73 @@
 # Lash Development Log
 
+## 2026-08-05 - `lash add --id` now persists; `--depends-on` validated at add time
+
+### Summary
+
+Two `lash add` bugs, both silent-failure footguns for agents scripting task
+creation (#24, #27).
+
+**#24** — `lash add "Title" --id short-e` accepted the flag, echoed it in the
+success message, but never wrote an `@id:` annotation. The task was indexed
+only under a title-derived slug, so `lash show <file>#short-e` resolved to
+nothing; the advertised ID was a lie. Root cause was explicit in a comment in
+`MarkdownEmitter::format_task_annotations`: "Task-level @id ... are NOT
+stored in Markdown format." `format_task_annotations` now writes `@id:
+<slug>` first in the annotation block when `request.id` is `Some` (auto-
+synthesized ids, with no `--id` given, are still not persisted — unchanged).
+ID format/uniqueness validation already existed in `TaskValidator::validate_id`
+and needed no changes.
+
+Fixing this exposed a second, unrelated latent bug: `PlacementResolver`'s
+`count_annotation_lines` only counted `@depends-on`/`@agent-note` lines when
+computing where a task's trailing annotation block ends. Any existing task
+with an `@id`/`@owner`/`@estimate`/`@doc`/custom annotation — i.e. almost
+every real task in an existing project — made `lash add`'s append position
+land one line too early, splitting that annotation from its owning task.
+This was already possible before #24 (e.g. appending after a task with
+`@owner:`), but writing `@id:` from `--id` made it trivially reproducible.
+Fixed by counting all annotation-only fields; `@labels` is deliberately still
+uncounted since inline (`#tag`) vs. block (`@labels:`) form isn't
+recoverable from `Task` metadata alone (`lash add` itself only ever emits
+labels inline, so this doesn't affect tasks created via `add`).
+
+**#27** — `lash add --depends-on <ref>` wrote the reference with no
+validation; a dangling target only surfaced later via `lash lint`
+(`E_LINK_NOT_FOUND`). New module `commands/add_dependency_check.rs` resolves
+every `--depends-on` reference against the on-disk project — using the same
+`lash_core::dependency::reference::resolve_reference` resolver
+`lint`/`check-links`/`complete` already share — before the task is created.
+An unresolvable reference is a hard error (nothing written), with a fuzzy
+"did you mean" suggestion when a close match exists. New `--allow-forward-ref`
+flag downgrades that to a warning (stderr in text mode, a `warnings` array in
+JSON mode) and writes anyway, for the legitimate create-in-any-order
+workflow. Reused `TaskCreationError::DependencyNotFound`'s error code
+(`E_CREATE_DEPENDENCY_NOT_FOUND`) for the hard-error path — it was already
+defined and documented in `docs/error-codes.md` but never actually
+constructed anywhere, i.e. exactly this validation was already speced but
+unimplemented.
+
+Also fixed in passing: `lash add` never read the global `--root` flag —
+`execute()` always re-derived the project root from the process's current
+directory. Every other command threads `main.rs`'s already-`--root`-aware
+`project_root` into its `Args` struct; `add` now does the same
+(`AddArgs::project_root`). Caught this by accidentally writing a test
+fixture task into the real repo's `tasks.md` while testing `--root` handling
+in isolation — cleaned up, not committed.
+
+Extracted `complete.rs`'s `load_project` (parse every task file into a
+`HashMap<PathBuf, TaskFile>` keyed by root-relative path, for
+`resolve_reference`) into `utils/project_loader.rs` so `add_dependency_check`
+can reuse it instead of duplicating it.
+
+New tests: `crates/lash-cli/tests/add_command_test.rs` (8 end-to-end cases:
+`--id` write + `show` resolution, id format/uniqueness rejection, dangling
+dep hard-error + untouched file, `--allow-forward-ref` warn-and-write,
+resolvable dep, and the #24/#27 interaction — depending on a task added
+moments earlier via explicit `--id`). Plus unit tests in
+`add_dependency_check.rs`, and a placement.rs regression test for the
+annotation-line miscount.
+
 ## 2026-08-05 - `lash list` task-level filters actually filter
 
 ### Summary

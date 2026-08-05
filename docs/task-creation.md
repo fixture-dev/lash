@@ -70,10 +70,28 @@ lash add [OPTIONS] <TITLE>
 | `--label <LABEL>` | `-l` | Add label (repeatable: `-l bug -l urgent`) |
 | `--owner <OWNER>` | `-o` | Task owner/assignee |
 | `--estimate <TIME>` | `-e` | Time estimate (e.g., `30m`, `2h`, `1d`, `2w`) |
-| `--id <ID>` | | Explicit task ID (auto-generated if omitted) |
+| `--id <ID>` | | Explicit task ID, written as `@id:` (auto-generated, unpersisted, if omitted) |
 | `--status <STATUS>` | | Initial status: `open`, `done`, `waived`, `blocked` |
-| `--depends-on <DEPS>` | | Dependencies (repeatable) |
+| `--depends-on <DEPS>` | | Dependencies (repeatable); each must resolve or the task is not created |
+| `--allow-forward-ref` | | Downgrade an unresolved `--depends-on` target to a warning and write anyway |
 | `--agent-note <NOTE>` | | Note for AI agents |
+
+**`--id`**: when given, the id is written as an `@id:` annotation under the
+task, so the task's global id (`file#id`) resolves immediately via `lash show
+file#id` — it is not just a local, in-memory label. The id must match
+`^[a-z][a-z0-9-]*$` and be unique within the target file; an invalid or
+duplicate id is rejected and nothing is created. Without `--id`, the task's
+displayed id is synthesized from the title and is *not* written to Markdown
+(the same task may get a different synthesized id if the title changes).
+
+**`--depends-on`**: each reference is resolved against the current on-disk
+project (the same resolver `lash lint`/`check-links`/`complete` use) before
+the task is created. An unresolvable reference is a hard error by default —
+no file is written — with a suggested fix if a close match exists. Pass
+`--allow-forward-ref` for the legitimate case of creating tasks before their
+dependencies exist yet; the reference is still written, but as a warning on
+stderr instead of a fatal error. Running `lash lint` afterward will still
+flag any reference that's never created.
 
 #### Output Options
 
@@ -134,6 +152,23 @@ lash add "Test task" --file tasks.md --dry-run
 
 # On success: "Validation passed. Task would be created at line 15"
 # On failure: Shows validation errors
+```
+
+#### Creating Tasks Out of Dependency Order
+
+```bash
+# This fails: "later-step" doesn't exist yet, so the task is not created.
+lash add "Second step" --file pipeline.md --depends-on later-step
+# Error [E_CREATE_DEPENDENCY_NOT_FOUND]: dependency not found 'later-step': ...
+
+# --allow-forward-ref writes it anyway, as a warning instead of a hard error,
+# for the legitimate case of sketching tasks before their dependencies exist.
+lash add "Second step" --file pipeline.md --depends-on later-step --allow-forward-ref
+# Warning: depends-on target 'later-step' not resolved (...); writing anyway
+# due to --allow-forward-ref
+
+lash add "Later step" --file pipeline.md --id later-step
+# `lash lint` now passes: the reference resolves.
 ```
 
 ## TUI Task Creation

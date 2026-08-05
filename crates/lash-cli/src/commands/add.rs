@@ -12,10 +12,15 @@ use lash_types::creation::{
 use lash_types::status::TaskStatus;
 use std::path::PathBuf;
 
+use crate::commands::add_dependency_check::{
+    emit_depends_on_warnings, file_target_relative_path, output_depends_on_errors,
+    validate_depends_on, UnresolvedDependency,
+};
 use crate::utils::file_discovery::find_project_root;
 
 /// Arguments for the add command
 #[derive(Args, Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)] // CLI flags are inherently boolean
 pub struct AddArgs {
     /// The task title (required)
     #[arg(required = true)]
@@ -69,6 +74,10 @@ pub struct AddArgs {
     #[arg(long, value_delimiter = ',')]
     pub depends_on: Vec<String>,
 
+    /// Allow --depends-on targets that don't exist yet (warn instead of error)
+    #[arg(long)]
+    pub allow_forward_ref: bool,
+
     /// Agent note text
     #[arg(long)]
     pub agent_note: Option<String>,
@@ -88,6 +97,15 @@ pub struct AddArgs {
     /// Disable colored output
     #[arg(long)]
     pub no_color: bool,
+
+    /// Project root (detected automatically if None)
+    ///
+    /// Populated from the global `--root` flag by `main.rs`, matching every
+    /// other command. Previously `add` ignored `--root` entirely and always
+    /// re-derived the project root from the process's current directory,
+    /// which could silently target the wrong project.
+    #[arg(skip)]
+    pub project_root: Option<PathBuf>,
 }
 
 /// Execute the add command
@@ -107,8 +125,12 @@ pub fn execute(args: &AddArgs) -> Result<i32> {
         CliTheme::load(None, !args.no_color)?
     };
 
-    // 1. Find project root
-    let project_root = {
+    // 1. Find project root, honoring the global `--root` override when
+    // given (previously `add` ignored `--root` and always re-derived the
+    // root from the process cwd, unlike every other command).
+    let project_root = if let Some(root) = &args.project_root {
+        root.clone()
+    } else {
         let cwd = std::env::current_dir().context("Failed to get current directory")?;
         find_project_root(&cwd)
     };
@@ -122,23 +144,45 @@ pub fn execute(args: &AddArgs) -> Result<i32> {
     // 2. Build TaskCreationRequest from args
     let request = build_request(args, &project_root)?;
 
-    // 3. Handle dry-run mode
+    // 3. Validate --depends-on refs against on-disk project state before
+    // doing anything else (GitHub issue #27). A dangling reference is a
+    // hard error by default — nothing is created or written. Passing
+    // --allow-forward-ref downgrades that to a warning for the legitimate
+    // case of creating tasks before their dependencies exist.
+    let mut depends_on_warnings: Vec<UnresolvedDependency> = Vec::new();
+    if !args.depends_on.is_empty() {
+        let target_path = file_target_relative_path(&request.file_target, &project_root);
+        let validation = validate_depends_on(
+            &project_root,
+            target_path.as_deref(),
+            &args.depends_on,
+            args.allow_forward_ref,
+        );
+        emit_depends_on_warnings(&validation.warnings, &args.format, theme.as_ref());
+        if validation.has_errors() {
+            output_depends_on_errors(&validation.errors, &args.format, theme.as_ref())?;
+            return Ok(1);
+        }
+        depends_on_warnings = validation.warnings;
+    }
+
+    // 4. Handle dry-run mode
     if args.dry_run {
         return handle_dry_run(&request, args);
     }
 
-    // 4. Create service and execute
+    // 5. Create service and execute
     let config = lash_types::config::LashConfig::from_root(&project_root)
         .unwrap_or_else(|_| lash_types::config::LashConfig::default());
     let service = TaskCreationService::new(config.clone());
 
     match service.create_task(&request) {
         Ok(result) => {
-            // 5. Re-index to update the database with the new task
+            // 6. Re-index to update the database with the new task
             // This ensures subsequent queries (lash list, lash show) see the new task
             reindex_project(&project_root, &config)?;
 
-            output_success(args, &result, theme.as_ref())?;
+            output_success(args, &result, &depends_on_warnings, theme.as_ref())?;
             Ok(0)
         }
         Err(errors) => {
@@ -247,16 +291,25 @@ fn parse_status(s: &str) -> Result<TaskStatus> {
 fn output_success(
     args: &AddArgs,
     result: &lash_types::creation::TaskCreationResult,
+    depends_on_warnings: &[UnresolvedDependency],
     theme: Option<&CliTheme>,
 ) -> Result<()> {
     if args.format == "json" {
-        // Output JSON
+        // Output JSON. Forward-ref warnings (GitHub issue #27) are folded in
+        // here rather than interleaved on stderr, since JSON output is
+        // machine-consumed and stderr text would not be structured.
         let json = serde_json::json!({
             "success": true,
             "task_id": result.task_id,
             "file_path": result.file_path,
             "line_number": result.line_number,
             "is_new_file": result.is_new_file,
+            "warnings": depends_on_warnings.iter().map(|w| serde_json::json!({
+                "code": "E_CREATE_DEPENDENCY_NOT_FOUND",
+                "target": w.target,
+                "message": w.reason,
+                "suggestions": w.suggestions,
+            })).collect::<Vec<_>>(),
         });
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else if let Some(t) = theme {
@@ -457,11 +510,13 @@ mod tests {
             status: "open".to_string(),
             id: None,
             depends_on: vec![],
+            allow_forward_ref: false,
             agent_note: None,
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
             no_color: true,
+            project_root: None,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -489,11 +544,13 @@ mod tests {
             status: "open".to_string(),
             id: None,
             depends_on: vec![],
+            allow_forward_ref: false,
             agent_note: None,
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
             no_color: true,
+            project_root: None,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -524,11 +581,13 @@ mod tests {
             status: "open".to_string(),
             id: None,
             depends_on: vec![],
+            allow_forward_ref: false,
             agent_note: None,
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
             no_color: true,
+            project_root: None,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -553,11 +612,13 @@ mod tests {
             status: "open".to_string(),
             id: None,
             depends_on: vec![],
+            allow_forward_ref: false,
             agent_note: None,
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
             no_color: true,
+            project_root: None,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -582,11 +643,13 @@ mod tests {
             status: "open".to_string(),
             id: None,
             depends_on: vec![],
+            allow_forward_ref: false,
             agent_note: None,
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
             no_color: true,
+            project_root: None,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -614,11 +677,13 @@ mod tests {
             status: "open".to_string(),
             id: None,
             depends_on: vec![],
+            allow_forward_ref: false,
             agent_note: None,
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
             no_color: true,
+            project_root: None,
         };
 
         let project_root = PathBuf::from("/tmp");
@@ -646,11 +711,13 @@ mod tests {
             status: "open".to_string(),
             id: Some("custom-id".to_string()),
             depends_on: vec!["dep1".to_string(), "dep2".to_string()],
+            allow_forward_ref: false,
             agent_note: Some("Important note".to_string()),
             format: "text".to_string(),
             dry_run: false,
             interactive: false,
             no_color: true,
+            project_root: None,
         };
 
         let project_root = PathBuf::from("/tmp");

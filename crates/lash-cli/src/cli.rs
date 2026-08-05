@@ -520,6 +520,12 @@ pub enum Commands {
         #[arg(long, value_delimiter = ',')]
         depends_on: Vec<String>,
 
+        /// Allow --depends-on targets that don't exist yet, downgrading the
+        /// normally-fatal unresolved reference to a warning and writing the
+        /// task anyway. Use for legitimate create-in-any-order workflows.
+        #[arg(long)]
+        allow_forward_ref: bool,
+
         /// Agent note text
         #[arg(long)]
         agent_note: Option<String>,

@@ -10,7 +10,6 @@ use lash_cli::theme::CliTheme;
 use lash_core::dependency::reference::resolve_reference;
 use lash_core::fuzzy::FuzzyMatcher;
 use lash_core::linter::LintContext;
-use lash_core::parser::parse_file;
 use lash_db::{open_database, FileRepository, Indexer, IndexerConfig, TaskRepository};
 use lash_types::config::LashConfig;
 use lash_types::dependency::DependencyKind;
@@ -22,7 +21,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::utils::file_discovery::{discover_markdown_files, find_project_root};
+use crate::utils::file_discovery::find_project_root;
+use crate::utils::project_loader::load_project;
 use crate::utils::task_target::TargetError;
 
 /// Arguments for the complete command
@@ -99,28 +99,6 @@ struct UnmetDep {
     title: String,
     /// Target task status string (e.g. `open`, `in-progress`).
     status: String,
-}
-
-/// Reparse every task file under `project_root` into a resolver-shaped map.
-///
-/// Explicit `@depends-on` edges aren't stored in the index, so enforcing them
-/// (GitHub issue #17) requires reading the current Markdown. Unparseable files
-/// are skipped — `lash lint` surfaces those separately.
-fn load_project(project_root: &Path) -> (LashConfig, HashMap<PathBuf, TaskFile>) {
-    let config = LashConfig::from_root(project_root).unwrap_or_default();
-    let mut files: HashMap<PathBuf, TaskFile> = HashMap::new();
-    if let Ok(markdown_files) = discover_markdown_files(&[project_root.to_path_buf()], true) {
-        for path in &markdown_files {
-            if let Ok(file) = parse_file(path, &config) {
-                let relative = path
-                    .strip_prefix(project_root)
-                    .unwrap_or(path)
-                    .to_path_buf();
-                files.insert(relative, file);
-            }
-        }
-    }
-    (config, files)
 }
 
 /// Find the parsed task (and its file path) whose full id equals `full_id`.
