@@ -10,6 +10,10 @@
 # IDEs
 .idea/
 .vscode/
+
+# Local AI assistant config
+.claude/
+CLAUDE.md
 *.swp
 *.swo
 *~

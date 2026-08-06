@@ -11,7 +11,7 @@ Establish comprehensive testing strategy covering unit tests, integration tests,
 
 ## Core Requirements
 
-From CLAUDE.md:
+From the project development practices:
 - Write appropriate layers of tests (unit, integration, end-to-end)
 - Prove functionality works and guard against regressions
 - Don't write frivolous tests to meet coverage thresholds
@@ -42,7 +42,7 @@ Set up testing infrastructure, fixtures, and utilities for all test types.
   - [x] `tempfile` for temp directories
   - [x] `insta` for snapshot testing
   - [x] `rstest` for parameterized tests (optional)
-  - [-] `mockall` for mocking (minimal use - not needed, following CLAUDE.md guidance)
+  - [-] `mockall` for mocking (minimal use - not needed, per project development practices)
 - [x] Create test fixture library
   - [x] Valid task files (various scenarios)
   - [x] Invalid task files (for error testing)
@@ -845,7 +845,7 @@ lash playground init --reset
 
 ## References
 
-- CLAUDE.md (General Development Practices)
+- CONTRIBUTING.md (General Development Practices)
 - Design doc section 13 (Architecture & Implementation Plan)
 - Rust testing guide: https://doc.rust-lang.org/book/ch11-00-testing.html
 - `criterion` docs: https://docs.rs/criterion/

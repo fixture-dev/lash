@@ -282,7 +282,7 @@ project/
 ## Additional Resources
 
 - **Design Document**: `../docs/design-doc.md` - Complete Lash specification
-- **CLAUDE.md**: `../CLAUDE.md` - Project guidelines and conventions
+- **CONTRIBUTING.md**: `../CONTRIBUTING.md` - Project guidelines and conventions
 - **Playground**: `../playground/` - PixelQuest game project demo
 
 ---

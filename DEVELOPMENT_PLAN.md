@@ -30,7 +30,7 @@ Their analyses are documented in:
 - ✅ Generated 16 detailed task files with ~80 actionable tasks
 - ✅ Defined 8-phase implementation timeline (40-60 days)
 - ✅ Made core technology and architecture decisions
-- ✅ Established development practices and workflow in CLAUDE.md
+- ✅ Established development practices and workflow
 - ✅ Ready to begin Phase 1: Project Setup
 
 ## Project Scope
@@ -265,7 +265,7 @@ Minor details that can be refined during implementation:
 
 ## Development Practices
 
-Per `CLAUDE.md`, this project follows:
+This project follows these development practices:
 
 - **Task Management:** All work tracked in `tasks/` directory with checkboxes
 - **Git Workflow:** Commit when work complete; keep clean `git status`
@@ -336,7 +336,7 @@ Per `CLAUDE.md`, this project follows:
 
 - **Design Document:** `/docs/design-doc.md`
 - **Task Index:** `/tasks/tasks.md`
-- **Development Guide:** `/CLAUDE.md`
+- **Contributing Guide:** `/CONTRIBUTING.md`
 - **Error Codes:** `/docs/error-codes.md` (to be created)
 - **Architecture:** `/docs/rust-architecture-recommendations.md`
 - **Graph Analysis:** `/docs/dependency-graph-analysis.md`

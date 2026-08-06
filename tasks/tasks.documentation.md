@@ -11,7 +11,7 @@ Create comprehensive documentation for Lash covering user guides, developer docu
 
 ## Core Requirements
 
-From CLAUDE.md:
+From the project development practices:
 - Keep README current with project purpose, setup, and usage
 - Document for both human users and AI agents
 - Provide examples and clear instructions
@@ -569,7 +569,7 @@ Set up processes to keep documentation up to date as code evolves.
 
 ## References
 
-- CLAUDE.md (Development practices)
+- CONTRIBUTING.md (Development practices)
 - Design doc (Source of truth for specifications)
 - Rust documentation guidelines: https://rust-lang.github.io/api-guidelines/documentation.html
 - Writing great documentation: https://documentation.divio.com/

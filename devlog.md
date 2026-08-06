@@ -1268,7 +1268,7 @@ Completed Task 2 (Unit Tests) from `tasks/tasks.testing.md`, implementing 292 ne
 
 ### Test Quality Standards Met
 
-All new tests adhere to project principles from `CLAUDE.md`:
+All new tests adhere to the project's testing principles:
 
 - ✅ **Fast execution:** All unit tests run in <100ms
 - ✅ **Descriptive naming:** Clear test names indicating behavior
