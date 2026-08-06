@@ -359,6 +359,19 @@ mod tests {
         Some(cmd)
     }
 
+    /// Assert the spawned `lash` process succeeded, including its exit
+    /// status, stdout, and stderr in the panic message so a child-process
+    /// failure is diagnosable from CI logs alone.
+    fn assert_cmd_success(out: &std::process::Output) {
+        assert!(
+            out.status.success(),
+            "lash exited with {:?}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            out.status,
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
     /// Create a minimal valid lash project in a temp directory.
     fn create_test_project() -> TempDir {
         let temp = TempDir::new().unwrap();
@@ -1077,7 +1090,7 @@ mod tests {
             .arg("--force")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             stdout.contains("Full rebuild complete"),
@@ -1103,7 +1116,7 @@ mod tests {
             .arg("index")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             stdout.contains("Incremental index complete"),
@@ -1139,7 +1152,7 @@ mod tests {
             .arg("index")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             stdout.contains("Added:"),
@@ -1173,7 +1186,7 @@ mod tests {
             .arg("index")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             !stdout.contains("Added:"),
@@ -1215,7 +1228,7 @@ mod tests {
             .arg("index")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             stdout.contains("Updated:"),
@@ -1249,7 +1262,7 @@ mod tests {
             .arg("index")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             !stdout.contains("Updated:"),
@@ -1325,7 +1338,7 @@ mod tests {
             .arg("index")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             !stdout.contains("Deleted:"),
@@ -1364,7 +1377,7 @@ mod tests {
             .arg("index")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             stdout.contains("Unchanged:"),
@@ -1386,7 +1399,7 @@ mod tests {
             .arg("index")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             !stdout.contains("Unchanged:"),
@@ -1419,7 +1432,7 @@ mod tests {
             .arg("index")
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert_cmd_success(&out);
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             !stdout.contains("Errors:"),
