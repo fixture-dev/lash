@@ -1,5 +1,19 @@
 # Lash Development Log
 
+## 2026-08-06 - Open-source readiness: repo hygiene
+
+### Summary
+
+Prepared the repository for public release. Removed local AI-assistant
+configuration from version control (now gitignored), pointed
+development-practice references in the planning and task docs at
+`CONTRIBUTING.md`, normalized commit metadata across the full history, and
+pruned stale remote branches. History was rewritten and force-pushed, so
+existing clones must be re-cloned or hard-reset to `origin/main`.
+
+- Commit: `62dc0f6` (config/doc cleanup; history normalization applied
+  repo-wide)
+
 ## 2026-08-05 - `lash update` command (#25)
 
 ### Summary
