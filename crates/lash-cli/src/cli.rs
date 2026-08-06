@@ -454,6 +454,63 @@ pub enum Commands {
         reason: Option<String>,
     },
 
+    /// Update fields on a single existing task
+    ///
+    /// Retitling a task without an explicit `@id` pins the old
+    /// title-derived id first, so existing `@depends-on` references that
+    /// point at it keep resolving.
+    Update {
+        /// Task ID to update (supports fuzzy matching)
+        task_id: String,
+
+        /// Rewrite the task's title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Add a label (repeatable)
+        #[arg(long, value_name = "LABEL")]
+        add_label: Vec<String>,
+
+        /// Remove a label (repeatable)
+        #[arg(long, value_name = "LABEL")]
+        remove_label: Vec<String>,
+
+        /// Set the task's owner (pass "" to remove)
+        #[arg(long)]
+        owner: Option<String>,
+
+        /// Set the task's time estimate (pass "" to remove)
+        #[arg(long)]
+        estimate: Option<String>,
+
+        /// Replace the task's @agent-note (adds one if absent)
+        #[arg(long)]
+        agent_note: Option<String>,
+
+        /// Append a line to the task's @agent-note (creates one if absent)
+        #[arg(long)]
+        append_agent_note: Option<String>,
+
+        /// Add a @depends-on reference (repeatable); validated against the
+        /// project unless --allow-forward-ref is passed
+        #[arg(long, value_name = "REF")]
+        add_depends_on: Vec<String>,
+
+        /// Remove a @depends-on reference (repeatable); matched by exact
+        /// string against the stored reference
+        #[arg(long, value_name = "REF")]
+        remove_depends_on: Vec<String>,
+
+        /// Allow --add-depends-on targets that don't exist yet, downgrading
+        /// the normally-fatal unresolved reference to a warning
+        #[arg(long)]
+        allow_forward_ref: bool,
+
+        /// Preview what would change without modifying files
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Mark one or more tasks as in-progress
     Start {
         /// Task ID(s) to mark as in-progress (supports fuzzy matching)

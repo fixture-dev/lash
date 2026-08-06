@@ -639,6 +639,42 @@ fn run(cli: LashCli) -> Result<()> {
             process::exit(exit_code);
         }
 
+        Commands::Update {
+            task_id,
+            title,
+            add_label,
+            remove_label,
+            owner,
+            estimate,
+            agent_note,
+            append_agent_note,
+            add_depends_on,
+            remove_depends_on,
+            allow_forward_ref,
+            dry_run,
+        } => {
+            let args = commands::update::UpdateArgs {
+                task_id,
+                title,
+                add_label,
+                remove_label,
+                owner,
+                estimate,
+                agent_note,
+                append_agent_note,
+                add_depends_on,
+                remove_depends_on,
+                allow_forward_ref,
+                dry_run,
+                json: cli.json,
+                no_color: cli.no_color,
+                project_root,
+                verbosity,
+            };
+            let exit_code = commands::update::execute(&args)?;
+            process::exit(exit_code);
+        }
+
         Commands::Start { task_ids, dry_run } => {
             let args = commands::start::StartArgs {
                 task_ids,

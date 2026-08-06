@@ -1,5 +1,87 @@
 # Lash Development Log
 
+## 2026-08-05 - `lash update` command (#25)
+
+### Summary
+
+Every task mutation besides status changes required hand-editing Markdown.
+The worst hazard: retitling a task changes its derived id (`file#first-40-
+chars-of-kebab-title`) when the task has no explicit `@id:`, silently
+orphaning every `@depends-on` reference in the project that pointed at the
+old slug. Added `lash update <task-id> [FLAGS]` to close that gap.
+
+- **`--title <text>`** — rewrites the task's title. If the task has no
+  explicit `@id:` (its id is title-derived), the old derived slug is pinned
+  as an explicit `@id:` *first*, then the title changes — so existing
+  `@depends-on` references keep resolving. Prints an informational
+  `pinned @id: <slug> to preserve references` line. Tasks that already
+  carry an explicit `@id:` are unaffected. Trailing inline `#label` tokens
+  on the title line are preserved across the rewrite.
+- **`--add-label` / `--remove-label`** (repeatable) — edits whichever form
+  the task already uses (inline `#tag` on the title line, or an
+  `@labels:` annotation), defaulting to the inline form for a task with no
+  labels yet, matching how `lash add --label` writes new tasks.
+- **`--owner` / `--estimate`** — set, replace, or (given `""`) remove the
+  annotation.
+- **`--agent-note`** (replace, including any existing multi-line
+  continuation) / **`--append-agent-note`** (add a continuation line,
+  creating the note if absent).
+- **`--add-depends-on`** (repeatable) — validated against the current
+  project via the same resolver `lash add --depends-on` uses
+  (`add_dependency_check::validate_depends_on`); an unresolvable reference
+  is a hard error with the file left untouched, unless
+  `--allow-forward-ref` downgrades it to a warning. **`--remove-depends-on`**
+  (repeatable) — matches by exact reference string, errors if absent.
+- `--dry-run` prints a unified diff of the affected lines (new
+  `DiffDisplay::unified_diff`, reusing the existing diff machinery instead
+  of the fix/diagnostic-specific `format_fix_diff` path) without writing;
+  `--json`; re-indexes atomically after a real write, same as
+  `complete`/`waive`.
+- At least one mutation flag is required.
+
+### Implementation
+
+Edits are targeted line splices on the raw Markdown (the codebase's
+established pattern — see `status_mutation.rs`'s checkbox rewrite and
+`waive.rs`'s `insert_reason_note`), not a full re-serialization through the
+creation emitter, so untouched content survives byte-for-byte. New module
+`crates/lash-cli/src/commands/update/`:
+
+- `mutations.rs` — `TaskLines`, a small type over a task file's lines that
+  knows where the task's own checkbox line is and can locate its
+  annotation block (mirroring the parser's own lookahead in
+  `parse_task_section_internal`, including its one-blank-line tolerance
+  and multi-line continuation support). Primitives: retitle (label-suffix
+  preserving), inline/`@labels:` label add/remove, single-value annotation
+  set/clear, always-first `@id:` pin, `@agent-note` replace/append,
+  `@depends-on` add (grouped with existing entries)/remove (comma-list
+  aware).
+- `apply.rs` — validates every flag *before* touching `TaskLines`
+  (dangling `--add-depends-on`, missing `--remove-label`/
+  `--remove-depends-on` targets), so a failure never leaves a
+  partially-edited file; only writes to disk once the whole plan succeeds.
+- `mod.rs` — CLI orchestration, resolution via
+  `utils::task_target::resolve_task_target` (fuzzy did-you-mean on
+  not-found, same as `complete`/`waive`), JSON/text output, exit codes
+  (0/1/3/5).
+
+### Tests
+
+- 29 unit tests for the `TaskLines` primitives and `UpdateArgs::has_mutation`.
+- 19 e2e tests in `crates/lash-cli/tests/update_command_test.rs`, including
+  the key round-trip: a two-file fixture with a cross-file `@depends-on`,
+  retitle the dependency target, assert the pinned `@id` round-trips
+  through `lash lint` clean and `lash show` still resolves the reference.
+  Also covers: retitle of an already-`@id`'d task (no duplicate pin),
+  label add/remove (and not-found), owner/estimate set+clear, agent-note
+  replace/append, dependency add (valid/dangling/forward-ref)/remove
+  (found/not-found), dry-run (no file changes), no-flags error,
+  not-found-with-suggestions, JSON success/error, and reindex-without-a-
+  separate-`lash-index`-step.
+- Agent docs updated (`crates/lash-agent/src/content.rs`:
+  `TOP_LEVEL_SUBCOMMANDS`, `cli_reference()`, `dependencies_reference()`);
+  `agent_prompt_output` insta snapshot re-recorded to match.
+
 ## 2026-08-06 - `lash show` displays the full task record (#26)
 
 ### Summary

@@ -288,6 +288,34 @@ separate `lash index` step needed. Already-waived tasks and completed
 (`[x]`) tasks are refused (hand-edit the checkbox if completed work truly
 needs to be waived).
 
+### Task Editing
+
+```bash
+# Rewrite a task's title (pins the old title-derived @id first, so any
+# @depends-on reference pointing at it keeps resolving)
+lash update <task-id> --title "New title"
+
+# Labels, owner, estimate
+lash update <task-id> --add-label urgent --remove-label backend
+lash update <task-id> --owner alice --estimate 2h
+lash update <task-id> --owner ""   # empty string clears the annotation
+
+# Agent notes
+lash update <task-id> --agent-note "Replace the whole note"
+lash update <task-id> --append-agent-note "Add a continuation line"
+
+# Dependencies (validated against the project, like `lash add --depends-on`)
+lash update <task-id> --add-depends-on other-task
+lash update <task-id> --remove-depends-on other-task
+lash update <task-id> --add-depends-on not-yet-created --allow-forward-ref
+
+# Preview without writing
+lash update <task-id> --title "New title" --dry-run
+```
+
+At least one mutation flag is required. Writes and re-indexes atomically,
+same as `complete`/`waive`.
+
 ### Dependencies
 
 ```bash

@@ -23,4 +23,5 @@ pub mod start;
 pub mod status;
 pub mod status_mutation;
 pub mod tui;
+pub mod update;
 pub mod waive;

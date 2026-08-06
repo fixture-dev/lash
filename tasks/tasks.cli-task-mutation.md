@@ -24,10 +24,10 @@ Fixes for the task-mutation and display gaps reported while dogfooding
   - [x] One-line-per-child summary with checkbox states
   - [x] `--short` flag preserves current terse output
   - [x] Tests: full output fields, dependency status, `--short`
-- [ ] Add `lash update` command (#25)
-  - [ ] `--title` with ID stability (auto-pin `@id:` for derived-slug tasks)
-  - [ ] `--add-label` / `--remove-label`
-  - [ ] `--estimate`, `--owner`
-  - [ ] `--agent-note` (replace) / `--append-agent-note`
-  - [ ] `--add-depends-on` / `--remove-depends-on`, validated against index
-  - [ ] Tests: each field, ID stability on retitle, dangling-dep rejection
+- [x] Add `lash update` command (#25)
+  - [x] `--title` with ID stability (auto-pin `@id:` for derived-slug tasks)
+  - [x] `--add-label` / `--remove-label`
+  - [x] `--estimate`, `--owner`
+  - [x] `--agent-note` (replace) / `--append-agent-note`
+  - [x] `--add-depends-on` / `--remove-depends-on`, validated against index
+  - [x] Tests: each field, ID stability on retitle, dangling-dep rejection

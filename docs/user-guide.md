@@ -923,6 +923,88 @@ lash waive --json features#legacy-oauth-flow
 
 **Note:** After waiving tasks, Lash automatically re-indexes the database.
 
+### Task Editing
+
+#### `lash update`
+
+Edit fields on a single existing task without hand-editing Markdown.
+
+```bash
+# Rewrite a task's title
+lash update features#legacy-oauth-flow --title "New OAuth2 flow"
+
+# Labels
+lash update features#legacy-oauth-flow --add-label urgent --remove-label backend
+
+# Owner and estimate ("" removes the annotation)
+lash update features#legacy-oauth-flow --owner alice --estimate 2h
+lash update features#legacy-oauth-flow --owner ""
+
+# Agent note: replace, or append a continuation line
+lash update features#legacy-oauth-flow --agent-note "Full replacement text"
+lash update features#legacy-oauth-flow --append-agent-note "One more detail"
+
+# Dependencies, validated against the project like `lash add --depends-on`
+lash update features#legacy-oauth-flow --add-depends-on backend/api.md#task:api-endpoints
+lash update features#legacy-oauth-flow --remove-depends-on backend/api.md#task:api-endpoints
+lash update features#legacy-oauth-flow --add-depends-on not-yet-created --allow-forward-ref
+
+# Preview without writing
+lash update features#legacy-oauth-flow --title "New title" --dry-run
+```
+
+**ID stability on retitle (the important part):** a task's derived id comes
+from the first 40 characters of its kebab-cased title unless it has an
+explicit `@id:`. Retitling a task with no explicit `@id` would normally
+change that derived id — silently orphaning every `@depends-on` reference
+elsewhere in the project that pointed at the old slug. `lash update --title`
+prevents this: if the task has no explicit `@id:` yet, it first writes
+`@id: <old-derived-slug>` under the task (pinning the id the title used to
+imply), *then* changes the title, and prints an informational line:
+`pinned @id: <slug> to preserve references`. Tasks that already carry an
+explicit `@id:` are unaffected — only the title changes.
+
+**What it does:**
+- Edits the task's Markdown in place with targeted line changes (not a full
+  file reformat) and automatically re-indexes the database
+- `--add-label`/`--remove-label` edit whichever form the task already
+  uses — inline `#tag` on the title line, or an `@labels:` annotation — and
+  default to the inline form (matching `lash add --label`) for a task with
+  no labels yet
+- `--owner`/`--estimate` set, replace, or (given `""`) remove the
+  annotation
+- `--agent-note` replaces the note (including any existing multi-line
+  continuation); `--append-agent-note` adds a new continuation line,
+  creating the note if the task doesn't have one yet
+- `--add-depends-on` is validated against the current project the same way
+  `lash add --depends-on` is — an unresolvable reference is a hard error and
+  the file is left untouched, unless `--allow-forward-ref` downgrades it to
+  a warning. `--remove-depends-on` matches by exact reference string and
+  errors if the task doesn't have it
+- Supports fuzzy matching with suggestions if the task ID isn't found
+
+**Exit codes:**
+- `0` - Update applied successfully
+- `1` - Validation error (no mutation flags, unresolved `--add-depends-on`
+  target, `--remove-label`/`--remove-depends-on` target not present, etc.)
+- `3` - Database or file I/O error
+- `5` - Task not found
+
+**Options:**
+- `TASK_ID` - The task to update (required)
+- `--title TEXT` - Rewrite the title
+- `--add-label LABEL` / `--remove-label LABEL` - Repeatable
+- `--owner NAME` / `--estimate DURATION` - Pass `""` to remove
+- `--agent-note TEXT` - Replace (or add) the agent note
+- `--append-agent-note TEXT` - Append a continuation line
+- `--add-depends-on REF` / `--remove-depends-on REF` - Repeatable
+- `--allow-forward-ref` - Downgrade an unresolved `--add-depends-on` target
+  to a warning
+- `--dry-run` - Preview changes without modifying files
+- `--json` - JSON output for scripting
+
+**Note:** After updating a task, Lash automatically re-indexes the database.
+
 ### Dependencies
 
 #### `lash graph`

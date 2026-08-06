@@ -1,5 +1,6 @@
 ---
 source: crates/lash-cli/tests/regression_tests.rs
+assertion_line: 343
 expression: normalized
 ---
 ┓    ┓
@@ -266,6 +267,7 @@ lash add <DESCRIPTION>          # Add a new task (--file, --label, --id, --depen
 lash start <ID>                 # Mark a task as in-progress
 lash complete <ID>              # Mark task as done (--cascade for child tasks)
 lash waive <ID>                 # Mark task as waived/not applicable (--cascade, --reason)
+lash update <ID>                # Edit title/labels/owner/estimate/agent-note/depends-on
 
 # Validation & Formatting
 lash lint [PATH...]             # Validate task files (run after every edit!)

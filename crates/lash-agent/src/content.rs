@@ -113,6 +113,7 @@ lash add <DESCRIPTION>          # Add a new task (--file, --label, --id, --depen
 lash start <ID>                 # Mark a task as in-progress
 lash complete <ID>              # Mark task as done (--cascade for child tasks)
 lash waive <ID>                 # Mark task as waived/not applicable (--cascade, --reason)
+lash update <ID>                # Edit title/labels/owner/estimate/agent-note/depends-on
 
 # Validation & Formatting
 lash lint [PATH...]             # Validate task files (run after every edit!)
@@ -272,7 +273,10 @@ List several dependencies with commas or repeated lines:
 `lash add --depends-on <ref>` validates the reference immediately and
 refuses to create the task if it doesn't resolve (pass `--allow-forward-ref`
 to create tasks before their dependencies exist — this writes the reference
-anyway, as a warning). `lash complete` refuses while any dependency is still
+anyway, as a warning). `lash update --add-depends-on <ref>` validates the
+same way against an existing task (also honoring `--allow-forward-ref`);
+`lash update --remove-depends-on <ref>` removes one by exact match.
+`lash complete` refuses while any dependency is still
 open (pass `--force` to override). `lash waive` never gates on dependencies —
 abandoning a task doesn't require its dependencies to be resolved. Validate
 references with
@@ -343,6 +347,7 @@ pub const TOP_LEVEL_SUBCOMMANDS: &[&str] = &[
     "start",
     "status",
     "tui",
+    "update",
     "waive",
 ];
 

@@ -220,6 +220,35 @@ impl DiffDisplay {
         }
     }
 
+    /// Generate a unified diff between two arbitrary strings, independent of
+    /// the `LintDiagnostic`/`Fix` machinery `format_fix_diff` requires.
+    ///
+    /// Used by commands (e.g. `lash update --dry-run`) that compute their
+    /// "would-be" file content directly via targeted line edits rather than
+    /// through a lint `Fix`. Returns `None` if the two strings are identical.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_cli::diff_display::DiffDisplay;
+    ///
+    /// let display = DiffDisplay::new();
+    /// let before = "line one\nline two\n";
+    /// let after = "line one\nline TWO\n";
+    /// let diff = display.unified_diff(before, after).unwrap();
+    /// assert!(diff.contains("line two"));
+    /// assert!(diff.contains("line TWO"));
+    ///
+    /// assert!(display.unified_diff(before, before).is_none());
+    /// ```
+    #[must_use]
+    pub fn unified_diff(&self, original: &str, modified: &str) -> Option<String> {
+        if original == modified {
+            return None;
+        }
+        Some(self.generate_unified_diff(original, modified))
+    }
+
     // Private helper methods
 
     fn format_reformat_message(&self) -> String {
