@@ -39,6 +39,7 @@ Tasks are organized by major module/component. Each task file contains:
 - [x] [tasks.cli-framework.md](tasks.cli-framework.md) - CLI infrastructure, output formatting, progress reporting (Tasks 1-8 complete) ✅
 - [x] [tasks.cli-commands.md](tasks.cli-commands.md) - Individual command implementations: lint, format, index, check-index, list, show, search, graph, check-links, agent-prompt (Tasks 1-14 complete) ✅
 - [x] [tasks.fuzzy-search.md](tasks.fuzzy-search.md) - Full-text search, ranking, search command (Tasks 1-5 complete) ✅
+- [x] [tasks.cli-task-mutation.md](tasks.cli-task-mutation.md) - Task mutation & display gaps: add --id/--depends-on validation, waive, show full record, update (GitHub #23–#27) ✅
 
 ### User Interfaces
 - [x] [tasks.tui.md](tasks.tui.md) - Terminal UI implementation ✅
