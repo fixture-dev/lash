@@ -19,11 +19,11 @@ Fixes for the task-mutation and display gaps reported while dogfooding
   - [x] Writes `- [-]` marker and reindexes atomically
   - [x] Optional `--reason "<text>"` records rationale
   - [x] Tests: status transition, cascade, dry-run, already-waived error
-- [ ] `lash show` displays full task record (#26)
-  - [ ] `@agent-note`, `@depends-on` (with each dependency's current status)
-  - [ ] One-line-per-child summary with checkbox states
-  - [ ] `--short` flag preserves current terse output
-  - [ ] Tests: full output fields, dependency status, `--short`
+- [x] `lash show` displays full task record (#26)
+  - [x] `@agent-note`, `@depends-on` (with each dependency's current status)
+  - [x] One-line-per-child summary with checkbox states
+  - [x] `--short` flag preserves current terse output
+  - [x] Tests: full output fields, dependency status, `--short`
 - [ ] Add `lash update` command (#25)
   - [ ] `--title` with ID stability (auto-pin `@id:` for derived-slug tasks)
   - [ ] `--add-label` / `--remove-label`

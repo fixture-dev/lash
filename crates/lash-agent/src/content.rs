@@ -106,7 +106,7 @@ lash list --tree               # Show task hierarchy
 lash list --label backend      # Filter by label
 lash list --status open        # Filter by status (open, done, blocked, waived)
 lash search <QUERY>             # Full-text search tasks and descriptions
-lash show <ID>                  # Show task/file details with dependencies
+lash show <ID>                  # Show task/file details: agent note, deps status, children (--short for terse)
 
 # Task Modification
 lash add <DESCRIPTION>          # Add a new task (--file, --label, --id, --depends-on)
@@ -226,7 +226,7 @@ pub fn hot_commands() -> &'static str {
 lash status                  # quick overview of in-progress/blocked
 lash list --status open      # list open tasks (--label, --tree, --path)
 lash search <query>          # full-text search across tasks
-lash show <id>               # task details + dependencies
+lash show <id>               # task details: agent note, deps status, children
 lash add <description>       # create a new task
 lash complete <id>           # mark task done (--cascade for children)
 lash waive <id>              # mark task waived/not applicable (--reason)

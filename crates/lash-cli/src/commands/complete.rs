@@ -13,7 +13,7 @@ use lash_db::{open_database, FileRepository, TaskRepository};
 use lash_types::config::LashConfig;
 use lash_types::dependency::DependencyKind;
 use lash_types::error::LashError;
-use lash_types::{make_full_id, Task, TaskFile, TaskStatus};
+use lash_types::{TaskFile, TaskStatus};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ use super::status_mutation::{
     CascadeOutcome,
 };
 use crate::utils::file_discovery::find_project_root;
-use crate::utils::project_loader::load_project;
+use crate::utils::project_loader::{find_task_by_full_id, load_project};
 use crate::utils::task_target::TargetError;
 
 /// Arguments for the complete command
@@ -100,21 +100,6 @@ struct UnmetDep {
     title: String,
     /// Target task status string (e.g. `open`, `in-progress`).
     status: String,
-}
-
-/// Find the parsed task (and its file path) whose full id equals `full_id`.
-fn find_task_by_full_id<'a>(
-    project: &'a HashMap<PathBuf, TaskFile>,
-    full_id: &str,
-) -> Option<(&'a PathBuf, &'a TaskFile, &'a Task)> {
-    for (path, file) in project {
-        for task in file.tasks.tasks() {
-            if make_full_id(&file.id, &task.id) == full_id {
-                return Some((path, file, task));
-            }
-        }
-    }
-    None
 }
 
 /// Compute the dependencies of `source_full_id` that are not yet done or
@@ -629,6 +614,7 @@ fn output_text_results(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lash_types::Task;
 
     fn task(id: &str, status: TaskStatus, deps: &[&str]) -> Task {
         use lash_types::dependency::{DependencyKind, DependencyRef};

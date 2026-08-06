@@ -288,6 +288,11 @@ pub enum Commands {
         /// Show reverse dependencies (tasks that depend on this)
         #[arg(long)]
         rdeps: bool,
+
+        /// Terse output: only ID/Title/Status/File/Labels, omitting agent
+        /// notes, dependency status, and children
+        #[arg(long)]
+        short: bool,
     },
 
     /// Output dependency graph in various formats
@@ -989,9 +994,26 @@ mod tests {
     #[test]
     fn test_cli_parse_show() {
         let cli = LashCli::try_parse_from(["lash", "show", "task:123", "--deps"]).unwrap();
-        if let Commands::Show { target, deps, .. } = cli.command {
+        if let Commands::Show {
+            target,
+            deps,
+            short,
+            ..
+        } = cli.command
+        {
             assert_eq!(target, "task:123");
             assert!(deps);
+            assert!(!short);
+        } else {
+            panic!("Expected Show command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_show_short() {
+        let cli = LashCli::try_parse_from(["lash", "show", "task:123", "--short"]).unwrap();
+        if let Commands::Show { short, .. } = cli.command {
+            assert!(short);
         } else {
             panic!("Expected Show command");
         }

@@ -504,8 +504,26 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
                 if trimmed.starts_with('@') {
                     annotation_lines.push(next_line);
                     j += 1;
-                } else if !annotation_lines.is_empty() && trimmed.starts_with(' ') {
-                    // Continuation line (indented) - part of previous annotation
+                } else if !annotation_lines.is_empty()
+                    && next_line.starts_with(' ')
+                    && !trimmed.starts_with('-')
+                {
+                    // Continuation line (indented, and not itself a `- ` bullet)
+                    // - part of the previous annotation's value.
+                    //
+                    // Must check the untrimmed `next_line` for indentation:
+                    // `trimmed` has already had its leading whitespace
+                    // stripped, so `trimmed.starts_with(' ')` can never be
+                    // true and this branch was dead code — task-level
+                    // multiline annotations (e.g. a multi-line `@agent-note`)
+                    // silently collapsed to their first line. Mirrors the
+                    // file-header equivalent in `header.rs`, which checks the
+                    // untrimmed line correctly.
+                    //
+                    // The `- ` exclusion keeps indented contextual-note
+                    // bullets (`  - a note`) immediately following a task's
+                    // annotations from being swallowed as continuation text;
+                    // those are handled separately as `TaskLineItem`s.
                     annotation_lines.push(next_line);
                     j += 1;
                 } else {
@@ -1819,6 +1837,41 @@ More text
         assert_eq!(task.metadata.estimate, Some("2h".to_string()));
         assert_eq!(task.metadata.docs.len(), 1);
         assert_eq!(task.metadata.depends_on.len(), 1);
+    }
+
+    /// Regression test: a task-level `@agent-note` continuation line was
+    /// silently dropped because the look-ahead loop checked the
+    /// already-trimmed line for a leading space (impossible after
+    /// trimming), so it never recognized a continuation and stopped
+    /// collecting after the first line. See GitHub issue #26 (`lash show`
+    /// rendering multi-line agent notes surfaced the bug).
+    #[test]
+    fn test_parse_file_task_level_multiline_agent_note() {
+        let content = "# Test File\n\n## Tasks\n\n- [ ] Task with a long note\n  @agent-note: First line of the note.\n    Second line of the note.\n    Third line with more detail.\n";
+        let config = LashConfig::default();
+        let file = parse_file_from_string(content, &config).unwrap();
+
+        let task = file.tasks.tasks().first().unwrap();
+        assert_eq!(
+            task.metadata.agent_note.as_deref(),
+            Some("First line of the note.\nSecond line of the note.\nThird line with more detail.")
+        );
+    }
+
+    /// Regression guard for the fix above: contextual-note bullets
+    /// immediately following a task's annotations must NOT be swallowed as
+    /// annotation continuation text just because they're indented.
+    #[test]
+    fn test_parse_file_task_annotations_then_contextual_notes_not_merged() {
+        let content = "# Test File\n\n## Tasks\n\n- [ ] Task with metadata\n  @id: explicit-task-id\n  @owner: bob\n  - This is a contextual note\n  - Another note here\n";
+        let config = LashConfig::default();
+        let file = parse_file_from_string(content, &config).unwrap();
+
+        let task = file.tasks.tasks().first().unwrap();
+        assert_eq!(task.metadata.owner, Some("bob".to_string()));
+        assert_eq!(task.contextual_notes.len(), 2);
+        assert_eq!(task.contextual_notes[0].text(), "This is a contextual note");
+        assert_eq!(task.contextual_notes[1].text(), "Another note here");
     }
 
     #[test]

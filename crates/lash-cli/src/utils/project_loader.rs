@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use lash_core::parser::parse_file;
 use lash_types::config::LashConfig;
-use lash_types::TaskFile;
+use lash_types::{make_full_id, Task, TaskFile};
 
 use crate::utils::file_discovery::discover_markdown_files;
 
@@ -38,6 +38,27 @@ pub fn load_project(project_root: &Path) -> (LashConfig, HashMap<PathBuf, TaskFi
         }
     }
     (config, files)
+}
+
+/// Find the parsed task (and its file path) whose full id equals `full_id`.
+///
+/// Used by callers that resolve a `@depends-on` target (or a task's own id)
+/// against the freshly-parsed project returned by [`load_project`] — e.g.
+/// `lash complete`'s unmet-dependency gate and `lash show`'s dependency
+/// status display — rather than the possibly-stale `SQLite` index.
+#[must_use]
+pub fn find_task_by_full_id<'a>(
+    project: &'a HashMap<PathBuf, TaskFile>,
+    full_id: &str,
+) -> Option<(&'a PathBuf, &'a TaskFile, &'a Task)> {
+    for (path, file) in project {
+        for task in file.tasks.tasks() {
+            if make_full_id(&file.id, &task.id) == full_id {
+                return Some((path, file, task));
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -68,5 +89,21 @@ mod tests {
 
         let (_, files) = load_project(temp.path());
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn find_task_by_full_id_locates_task_across_files() {
+        let temp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("tasks.md"),
+            "# Tasks\n\n@id: tasks\n\n## Tasks\n\n- [ ] Task A\n  @id: task-a\n",
+        )
+        .unwrap();
+
+        let (_, files) = load_project(temp.path());
+        let found = find_task_by_full_id(&files, "tasks#task-a").expect("task found");
+        assert_eq!(found.2.title, "Task A");
+
+        assert!(find_task_by_full_id(&files, "tasks#ghost").is_none());
     }
 }

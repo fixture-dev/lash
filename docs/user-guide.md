@@ -677,12 +677,24 @@ lash search "payment" --json
 
 Display detailed information about a specific task or file.
 
+For a task, the default output includes ID/title/status/file, owner and
+estimate (if set), labels, doc references, description and contextual
+notes, the full `@agent-note` (multi-line, line breaks preserved), each
+`@depends-on` reference resolved to its current status (e.g. `[done] ✓` /
+`[open] ✗` / `[unresolved]`, with a "N/M satisfied" summary), and a
+one-line-per-child summary of direct children with their checkbox state
+(plus a "N/M done" summary). Empty fields are omitted rather than printed
+blank.
+
 ```bash
 # Show task by ID
 lash show features/auth.md#task:oauth-flows
 
 # Show entire file
 lash show features/auth.md
+
+# Terse output: only ID/Title/Status/File/Labels
+lash show features/auth.md#task:oauth-flows --short
 
 # Include dependencies
 lash show features/auth.md --deps
@@ -698,7 +710,9 @@ lash show features/auth.md --deps --rdeps
 - `TASK_ID` - Task or file reference (required)
 - `--deps` - Show dependencies
 - `--rdeps` - Show reverse dependencies
-- `--json` - JSON output
+- `--short` - Terse output: only ID/Title/Status/File/Labels
+- `--json` - JSON output (includes `agent_note`, `depends_on` with resolved
+  statuses, and `children` alongside the task record)
 
 ### Task Creation
 

@@ -346,3 +346,238 @@ fn test_show_contextual_notes_are_serialized_to_json() {
     assert!(json.contains("Target < 100ms latency"));
     assert!(json.contains("Must handle edge cases"));
 }
+
+// ===== GitHub issue #26: `lash show` displays the full task record =====
+
+use common::{run_lash_command, TestProject};
+use predicates::prelude::*;
+
+/// A project with:
+/// - `launch.md`: a done task (`pay-flow`) and an open task (`email`)
+/// - `tasks.md`: `ship-feature`, which has a multi-line `@agent-note`,
+///   `@owner`/`@estimate`, three `@depends-on` refs (one satisfied, one
+///   unsatisfied, one dangling), and three children (one `@id`-tagged done
+///   child, one `@id`-tagged open child with its own nested child, and one
+///   plain-bullet waived child) — plus `no-frills`, a task with none of the
+///   above, to verify empty fields are suppressed rather than printed blank.
+fn project_with_full_task_record() -> TestProject {
+    TestProject::builder()
+        .with_index("show26", "Show26 Fixture")
+        .with_file(
+            "launch.md",
+            r#"# Launch
+
+@id: launch
+
+## Tasks
+
+- [x] Set up payment provider
+  @id: pay-flow
+
+- [ ] Send confirmation email
+  @id: email
+"#,
+        )
+        .with_file(
+            "tasks.md",
+            r#"# Tasks
+
+@id: tasks
+
+## Tasks
+
+- [ ] Ship feature
+  @id: ship-feature
+  @owner: alice
+  @estimate: 3d
+  @depends-on: launch#pay-flow, launch#email, launch#ghost-task
+  @agent-note: First line of the note.
+    Second line of the note.
+    Third line with more detail.
+  - [x] Set up Stripe account
+    @id: stripe-setup
+  - [ ] Configure webhook
+    @id: webhook
+    - [ ] Test webhook locally
+      @id: test-webhook
+  - [-] Old approach
+
+- [ ] No frills task
+  @id: no-frills
+"#,
+        )
+        .build()
+}
+
+fn index_project(project: &TestProject) {
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("index")
+        .assert()
+        .success();
+}
+
+#[test]
+fn show_full_output_includes_agent_note_dependency_status_and_children() {
+    let project = project_with_full_task_record();
+    index_project(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("--no-color")
+        .arg("show")
+        .arg("tasks#ship-feature")
+        .assert()
+        .success()
+        // Agent note: full multi-line content, line breaks preserved.
+        .stdout(predicate::str::contains("Agent note:"))
+        .stdout(predicate::str::contains("First line of the note."))
+        .stdout(predicate::str::contains("Second line of the note."))
+        .stdout(predicate::str::contains("Third line with more detail."))
+        // Dependencies: satisfied, unsatisfied, and a dangling reference —
+        // none of which should crash the command.
+        .stdout(predicate::str::contains("Depends on (1/3 satisfied):"))
+        .stdout(predicate::str::contains("[done]"))
+        .stdout(predicate::str::contains("launch#pay-flow"))
+        .stdout(predicate::str::contains("[open]"))
+        .stdout(predicate::str::contains("launch#email"))
+        .stdout(predicate::str::contains("[unresolved]"))
+        .stdout(predicate::str::contains("launch#ghost-task"))
+        // Children: both @id-tagged and plain-bullet, with checkbox state
+        // and a nested-descendant count for the one with a grandchild.
+        .stdout(predicate::str::contains("Children (2/3 done):"))
+        .stdout(predicate::str::contains(
+            "Set up Stripe account (tasks#stripe-setup)",
+        ))
+        .stdout(predicate::str::contains("Configure webhook"))
+        .stdout(predicate::str::contains("1 nested"))
+        .stdout(predicate::str::contains("Old approach"))
+        // Other populated metadata already shown by `show`.
+        .stdout(predicate::str::contains("Owner:    alice"))
+        .stdout(predicate::str::contains("Estimate: 3d"));
+}
+
+#[test]
+fn show_short_flag_preserves_terse_output() {
+    let project = project_with_full_task_record();
+    index_project(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("--no-color")
+        .arg("show")
+        .arg("tasks#ship-feature")
+        .arg("--short")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ID:       tasks#ship-feature"))
+        .stdout(predicate::str::contains("Title:    Ship feature"))
+        .stdout(predicate::str::contains("Status:   open"))
+        .stdout(predicate::str::contains("File:     tasks.md"))
+        // Everything issue #26 added must be absent under --short.
+        .stdout(predicate::str::contains("Agent note:").not())
+        .stdout(predicate::str::contains("Depends on").not())
+        .stdout(predicate::str::contains("Children").not())
+        .stdout(predicate::str::contains("Owner:").not())
+        .stdout(predicate::str::contains("Estimate:").not());
+}
+
+#[test]
+fn show_full_output_suppresses_empty_fields() {
+    let project = project_with_full_task_record();
+    index_project(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("--no-color")
+        .arg("show")
+        .arg("tasks#no-frills")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ID:       tasks#no-frills"))
+        // No agent note, deps, children, owner, estimate, or labels for a
+        // task that has none of them — nothing should print blank headers.
+        .stdout(predicate::str::contains("Agent note:").not())
+        .stdout(predicate::str::contains("Depends on").not())
+        .stdout(predicate::str::contains("Children").not())
+        .stdout(predicate::str::contains("Owner:").not())
+        .stdout(predicate::str::contains("Estimate:").not())
+        .stdout(predicate::str::contains("Labels:").not());
+}
+
+#[test]
+fn show_json_includes_agent_note_dependency_status_and_children() {
+    let project = project_with_full_task_record();
+    index_project(&project);
+
+    let output = run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("--json")
+        .arg("show")
+        .arg("tasks#ship-feature")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json = common::parse_json_output(&String::from_utf8(output).unwrap());
+
+    assert_eq!(
+        json["agent_note"],
+        "First line of the note.\nSecond line of the note.\nThird line with more detail."
+    );
+
+    assert_eq!(json["depends_on"]["satisfied"], 1);
+    assert_eq!(json["depends_on"]["total"], 3);
+    let deps = json["depends_on"]["items"].as_array().unwrap();
+    assert_eq!(deps.len(), 3);
+    assert!(deps
+        .iter()
+        .any(|d| d["full_id"] == "launch#pay-flow" && d["satisfied"] == true));
+    assert!(deps
+        .iter()
+        .any(|d| d["full_id"] == "launch#email" && d["satisfied"] == false));
+    // The dangling reference resolves to no full_id/title/status rather
+    // than crashing the command.
+    assert!(deps.iter().any(|d| d["reference"] == "launch#ghost-task"
+        && d["full_id"].is_null()
+        && d["satisfied"] == false));
+
+    assert_eq!(json["children"]["done"], 2);
+    assert_eq!(json["children"]["total"], 3);
+    let children = json["children"]["items"].as_array().unwrap();
+    assert!(children
+        .iter()
+        .any(|c| c["full_id"] == "tasks#webhook" && c["nested_count"] == 1));
+}
+
+#[test]
+fn show_json_short_omits_extended_fields() {
+    let project = project_with_full_task_record();
+    index_project(&project);
+
+    let output = run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("--json")
+        .arg("show")
+        .arg("tasks#ship-feature")
+        .arg("--short")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json = common::parse_json_output(&String::from_utf8(output).unwrap());
+
+    assert_eq!(json["id"], "tasks#ship-feature");
+    assert_eq!(json["title"], "Ship feature");
+    assert!(json.get("agent_note").is_none());
+    assert!(json.get("depends_on").is_none());
+    assert!(json.get("children").is_none());
+}

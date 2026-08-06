@@ -1,5 +1,84 @@
 # Lash Development Log
 
+## 2026-08-06 - `lash show` displays the full task record (#26)
+
+### Summary
+
+`lash show <task-id>` printed ID/Title/Status/File/Owner/Estimate/Labels/
+Docs/Body/Notes, but silently dropped the fields agents most need to act
+on a task without re-reading the whole file: `@agent-note`, `@depends-on`
+status, and progress on children. Extended the default (non-`--short`)
+output with:
+
+- **Agent note** — full `@agent-note` content, multi-line, line breaks
+  preserved under an "Agent note:" heading.
+- **Depends on (N/M satisfied)** — each `@depends-on` reference resolved
+  via the shared `lash_core::dependency::reference::resolve_reference`
+  (reparsing the project fresh, same approach as `lash complete`'s unmet-
+  dependency gate — markdown is the source of truth) to its current
+  status, e.g. `✓ [done] Set up payment provider (launch#pay-flow)` /
+  `✗ [open] ... ` / `✗ [unresolved] some-dangling-ref`. A dangling
+  reference reports as unresolved rather than crashing `show` — that
+  diagnosis is `check-links`'s job. Directory-kind deps are skipped (out
+  of scope for a single task's detail view).
+- **Children (N/M done)** — one line per direct child (both `@id`-tagged
+  and plain-bullet-with-checkbox) with its checkbox state and a "N nested"
+  suffix when a child has its own descendants, via the existing
+  `TaskRepository::get_children`/`get_descendants`.
+- Any custom annotation (e.g. `@created`) already captured in
+  `TaskMetadata.custom` now prints too.
+- New `--short` flag restores exactly the terse ID/Title/Status/File/Labels
+  view for scripts that depend on it.
+- `--json` gained top-level `agent_note`, `depends_on` (items + satisfied/
+  total), and `children` (items + done/total) fields; `--short --json`
+  mirrors the terse text view.
+
+**Parser bug fix (blocking, found while testing this)**: task-level
+multi-line annotation continuation (e.g. a multi-line `@agent-note`) never
+actually worked. `parser/mod.rs`'s annotation-lookahead loop checked
+`trimmed.starts_with(' ')` where `trimmed` had already had its leading
+whitespace stripped — always false, so continuation lines were silently
+dropped after the first line. The file-header equivalent in `header.rs`
+checked the untrimmed line correctly; task-level code didn't. Fixed by
+checking the untrimmed `next_line`, with an added exclusion for lines that
+are themselves `- ` bullets (contextual notes immediately following a
+task's annotations must not be swallowed as continuation text — a
+regression the first attempt at this fix introduced, caught by the
+existing `test_round_trip_preserves_task_annotations` formatter test).
+
+**Refactor**: `commands/show.rs` (~1100 lines before this change) split
+into `commands/show/{mod,file_view,task_view,format,detail}.rs`. `mod.rs`
+now just orchestrates (arg parsing, DB open, dispatch, JSON-error
+helpers); `file_view.rs`/`task_view.rs` hold the file/task text+JSON
+renderers respectively; `format.rs` holds the three status-formatting
+helpers shared by both; `detail.rs` is the new issue-#26 logic (dependency
+resolution, children summary, agent-note/custom-metadata rendering).
+`find_task_by_full_id` (previously private to `complete.rs`) moved to
+`utils/project_loader.rs` so both `complete`'s unmet-dependency gate and
+`show`'s dependency-status resolution share one implementation.
+
+### Test Coverage
+
+- `crates/lash-core/src/parser/mod.rs`: regression tests for the
+  multiline-continuation fix (`test_parse_file_task_level_multiline_agent_note`)
+  and the bullet-swallowing regression it could have introduced
+  (`test_parse_file_task_annotations_then_contextual_notes_not_merged`).
+- `crates/lash-cli/src/commands/show/detail.rs`: unit tests for dependency
+  resolution (satisfied, unresolved/dangling, directory-kind skipped) and
+  `capitalize`.
+- `crates/lash-cli/tests/show_command_test.rs` (5 new e2e tests): full
+  output includes agent note/deps-with-status/children; `--short`
+  preserves the terse view and omits everything else; empty fields
+  suppressed for a task with none of the above; `--json` includes the new
+  fields with correct counts; `--short --json` omits them.
+- `crates/lash-cli/src/cli.rs`: parser test for the new `--short` flag.
+- `crates/lash-cli/src/utils/project_loader.rs`: unit test for the moved
+  `find_task_by_full_id`.
+- Reviewed and accepted the `agent_prompt_output` regression snapshot
+  (`cargo insta accept`) after updating the `lash show` one-liner in
+  `crates/lash-agent/src/content.rs`; updated `docs/user-guide.md` and
+  `README.md` similarly.
+
 ## 2026-08-05 - `lash waive` command (#23)
 
 ### Summary

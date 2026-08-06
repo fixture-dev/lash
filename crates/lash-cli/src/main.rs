@@ -412,6 +412,7 @@ fn run(cli: LashCli) -> Result<()> {
             target,
             deps,
             rdeps,
+            short,
         } => {
             // Determine tree view settings
             let tree_view = if cli.tree_view {
@@ -433,6 +434,7 @@ fn run(cli: LashCli) -> Result<()> {
                 max_depth: cli.max_depth,
                 ascii: cli.ascii,
                 verbosity,
+                short,
             };
             let exit_code = commands::show::execute(&args)?;
             process::exit(exit_code);

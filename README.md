@@ -250,8 +250,8 @@ lash list [--tree] [--show-descriptions] [--show-notes]
 # Search tasks (full-text)
 lash search "authentication" [--limit 20]
 
-# Show task details
-lash show <task-id> [--deps] [--rdeps]
+# Show task details (agent note, dependency status, children; --short for terse)
+lash show <task-id> [--deps] [--rdeps] [--short]
 ```
 
 ### Task Creation
