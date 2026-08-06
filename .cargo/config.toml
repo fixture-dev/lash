@@ -1,0 +1,14 @@
+# Windows links binaries with a 1 MiB main-thread stack reserve (vs 8 MiB on
+# Linux/macOS). Unoptimized debug builds of the CLI have large stack frames
+# (clap parse + the command dispatch match), which overflow that 1 MiB and
+# crash with STATUS_STACK_OVERFLOW (0xC00000FD) before printing anything.
+# Reserve 8 MiB to match Unix; this is virtual reserve only, not committed
+# memory, so release binaries are unaffected in practice.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
+
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "link-args=-Wl,--stack,8388608"]

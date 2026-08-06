@@ -2253,3 +2253,16 @@ them.
   (`E_DEP_UNMET`), with `--force` to override (commit 6d78042).
 - Skill docs (`references/dependencies.md`) updated to document the natural
   forms and the completion gate.
+
+---
+
+## Windows CI stack overflow after CLI surface growth (post #23–#27)
+
+The #23–#27 batch grew the debug-build stack frames of the `lash` binary
+(clap parse + `run()` dispatch) past Windows' 1 MiB default main-thread
+stack reserve, so every spawned `lash.exe` in the `index.rs` subprocess
+tests died at startup with STATUS_STACK_OVERFLOW (0xC00000FD) and empty
+output — Windows CI only, since Linux/macOS default to 8 MiB and release
+builds have small frames. Diagnosed by adding child status/stdout/stderr
+to the subprocess test assertions (commit a2b2caf). Fixed by reserving an
+8 MiB stack for Windows targets in `.cargo/config.toml`.
