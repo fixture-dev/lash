@@ -765,6 +765,28 @@ cargo bench --bench parser_bench -- --save-baseline before
 cargo bench --bench parser_bench -- --baseline before
 ```
 
+### Releases (maintainers)
+
+Releases are automated with [cargo-dist](https://github.com/astral-sh/cargo-dist)
+via `.github/workflows/release.yml`. Pushing a version tag builds binaries for
+Linux, macOS, and Windows, generates installer scripts, and publishes a GitHub
+Release with notes taken from the matching `CHANGELOG.md` section.
+
+To cut a release:
+
+1. Bump `version` in the root `Cargo.toml` (`[workspace.package]`)
+2. Move entries from `[Unreleased]` to a new `## [X.Y.Z] - YYYY-MM-DD` section
+   in `CHANGELOG.md` and update the link references at the bottom
+3. Commit, then tag and push:
+
+   ```bash
+   git tag vX.Y.Z
+   git push origin main vX.Y.Z
+   ```
+
+After changing dist settings in `dist-workspace.toml`, run `dist generate` to
+regenerate the workflow and commit the result — do not edit `release.yml` by hand.
+
 ### Security
 
 **If you discover a security vulnerability**:

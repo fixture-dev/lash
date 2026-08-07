@@ -6,12 +6,13 @@
   **Minimalist task tracker for devs and agents**
 
   [![CI](https://github.com/fixture-dev/lash/actions/workflows/ci.yml/badge.svg)](https://github.com/fixture-dev/lash/actions/workflows/ci.yml)
+  [![Release](https://img.shields.io/github/v/release/fixture-dev/lash?sort=semver)](https://github.com/fixture-dev/lash/releases/latest)
   [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
   [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
   [![Built with Markdown](https://img.shields.io/badge/built%20with-markdown-000000.svg?logo=markdown)](https://commonmark.org/)
   [![SQLite](https://img.shields.io/badge/database-SQLite-003B57.svg?logo=sqlite)](https://www.sqlite.org/)
 
-  **Status:** Active development · v0.1.0
+  **Status:** Active development
 </div>
 
 ## Overview
@@ -70,6 +71,24 @@ cargo clippy --workspace -- -D warnings
 ```
 
 ## Installation
+
+### Prebuilt binaries (recommended)
+
+Download a prebuilt binary for Linux, macOS, or Windows from the
+[latest release](https://github.com/fixture-dev/lash/releases/latest), or use
+the installer scripts published with each release:
+
+```bash
+# Linux / macOS
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/fixture-dev/lash/releases/latest/download/lash-cli-installer.sh | sh
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/fixture-dev/lash/releases/latest/download/lash-cli-installer.ps1 | iex"
+```
+
+### From source
 
 Install Lash globally using the install script:
 

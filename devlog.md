@@ -1,5 +1,21 @@
 # Lash Development Log
 
+## 2026-08-07 - Release automation: cargo-dist, changelog, release badge
+
+### Summary
+
+Set up automated releases with cargo-dist (v0.28.7, astral-sh fork). `dist
+init` added `dist-workspace.toml`, a `[profile.dist]` build profile, and a
+tag-triggered `.github/workflows/release.yml` that builds `lash` binaries
+for Linux (x86_64/aarch64), macOS (x86_64/aarch64), and Windows (x86_64),
+generates shell/PowerShell installers, and publishes a GitHub Release on
+every `vX.Y.Z` tag. Added `CHANGELOG.md` (Keep a Changelog format) with a
+0.1.0 section that dist will use for release notes, documented the release
+process for maintainers in `CONTRIBUTING.md`, and replaced the hardcoded
+version in the README status line with a self-updating GitHub release
+badge plus prebuilt-binary install instructions. Cutting the first release
+is now: bump version, update changelog, tag `v0.1.0`, push.
+
 ## 2026-08-07 - Open-source readiness: prune stale planning docs
 
 ### Summary
