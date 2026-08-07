@@ -712,4 +712,4 @@ Support efficient graph updates when tasks or dependencies change, without full 
 - Design doc section 5 (Dependency model)
 - Design doc section 5.4 (Completion semantics)
 - Design doc section 7.3.4 (Graph commands)
-- `/docs/dependency-graph-analysis.md` (if exists)
+- `/docs/dependency-graph-architecture.md` - Graph architecture design

@@ -456,8 +456,6 @@ Analyzed potential caching opportunities and determined none are needed:
 
 **Decision:** No caching layer needed for v1.0. Monitor real-world usage and add only if profiling shows benefit.
 
-**Full Documentation:** See `docs/optimization-report-task6.md` for detailed analysis and decision-making rationale.
-
 ---
 
 ## Non-Goals (for v1)

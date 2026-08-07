@@ -1,10 +1,22 @@
 # Lash Development Log
 
+## 2026-08-07 - Open-source readiness: prune stale planning docs
+
+### Summary
+
+Removed stale point-in-time planning and analysis documents ahead of the
+public release: the v1.0 development plan, dated performance/coverage
+snapshot reports, task-numbered implementation plans, and the `-summary`
+docs that duplicated `docs/dependency-graph-architecture.md` and
+`docs/indexing-architecture.md`. Updated `tasks/` and `.lashignore`
+references that pointed at the removed files so the surviving docs remain
+the single source for architecture guidance.
+
 ## 2026-08-06 - Open-source readiness: repo hygiene
 
 ### Summary
 
-Prepared the repository for public release. Removed local AI-assistant
+Prepared the repository for public release. Removed local development-tool
 configuration from version control (now gitignored), pointed
 development-practice references in the planning and task docs at
 `CONTRIBUTING.md`, normalized commit metadata across the full history, and

@@ -9,7 +9,7 @@
 
 Implement the Markdown parser that transforms raw `.md` files into the core data structures (`TaskFile`, `Task`, etc.). The parser must be robust, performant, and produce helpful error messages.
 
-**Design Approach:** Use `pulldown-cmark` for Markdown parsing, then walk the event stream to build our task structures. See `docs/rust-architecture-recommendations.md` for details.
+**Design Approach:** Use `pulldown-cmark` for Markdown parsing, then walk the event stream to build our task structures.
 
 **Performance Target:** <100ms for typical files (for pre-commit hooks)
 

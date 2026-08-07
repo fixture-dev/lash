@@ -230,7 +230,7 @@ Phase 1 (Design)
 ### Nice to Have
 - [x] Note ordering style warnings
 - [x] `--show-notes` flag in list command
-- [x] Performance benchmarks documented (docs/performance-notes-benchmarks.md)
+- [x] Performance benchmarks added (`notes_parser`, `notes_indexing`, `notes_search` criterion benches)
 
 ## References
 

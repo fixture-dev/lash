@@ -1,7 +1,6 @@
 # Dependency Graph Architecture Design
 
 **Document Version:** 1.0
-**Author:** Graph Architecture Analysis
 **Date:** 2025-11-20
 **Status:** Design Specification
 

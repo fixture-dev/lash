@@ -9,7 +9,7 @@
 
 Define the core data structures that represent tasks, files, dependencies, and labels. These types are the foundation of the entire system and must be carefully designed.
 
-**Key Design Principle:** Use arena allocation during parsing, convert to flat indexed representation for database storage (see docs/rust-architecture-recommendations.md).
+**Key Design Principle:** Use arena allocation during parsing, convert to flat indexed representation for database storage.
 
 ## Tasks
 

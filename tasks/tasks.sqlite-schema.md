@@ -11,14 +11,14 @@ Design and implement the SQLite database schema that serves as the acceleration 
 
 **Key Principle:** Markdown is the source of truth; SQLite is for performance.
 
-**Design:** See `docs/dependency-graph-analysis.md` for detailed schema recommendations.
+**Design:** See `crates/lash-db/schema.sql` for the authoritative schema.
 
 ## Tasks
 
 ### 1. Design Schema
 
 - [x] **Finalize table structures**
-  - [x] Review schema design from dependency-graph-analysis.md
+  - [x] Review initial schema design proposal
   - [x] Adjust based on final data model from core-data-model tasks
   - [x] Document final schema in `docs/sqlite-schema.md`
 - [x] **Design `files` table**

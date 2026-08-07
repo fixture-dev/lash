@@ -189,8 +189,8 @@ Parallelization opportunities exist within each phase (see individual task files
 The following analysis documents informed this task breakdown:
 
 - `/docs/design-doc.md` - Comprehensive design specification
-- `/docs/dependency-graph-analysis.md` - Graph architecture analysis
-- `/docs/rust-architecture-recommendations.md` - Rust implementation guidance
+- `/docs/dependency-graph-architecture.md` - Graph architecture design
+- `/docs/indexing-architecture.md` - Indexing engine architecture
 
 ## Notes
 
