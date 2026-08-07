@@ -25,6 +25,10 @@ Lash is a terminal-first task management system that uses Markdown as the single
 - **Agent-friendly**: Token-minimized output for LLM integration
 - **Dependency-aware**: Cross-file task dependencies with cycle detection
 
+<p align="center">
+  <img src="demos/lash-demo.gif" alt="Demo of Lash: project status, task details, fuzzy search, error explanation, and the TUI" width="700">
+</p>
+
 ## What's Implemented
 
 All core functionality is production-ready and backed by an extensive test suite (3,000+ tests):
