@@ -74,6 +74,15 @@ do_install() {
     # Change to project root
     cd "$PROJECT_ROOT"
 
+    # Migrate installs from before the package was renamed lash-cli -> lash:
+    # cargo tracks the binary under the old package name and refuses to
+    # overwrite it from the new one, so remove the stale registration first.
+    if cargo install --list | grep -q '^lash-cli '; then
+        echo -e "${DIM}Removing previous install registered under old package name (lash-cli)...${NC}"
+        cargo uninstall lash-cli
+        echo ""
+    fi
+
     echo -e "${DIM}Building release binary from crates/lash-cli...${NC}"
     echo -e "${DIM}This compiles with optimizations (LTO enabled) - may take a minute.${NC}"
     echo ""
