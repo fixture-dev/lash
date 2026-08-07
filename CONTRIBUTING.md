@@ -774,14 +774,18 @@ Release with notes taken from the matching `CHANGELOG.md` section.
 
 To cut a release:
 
-1. Bump `version` in the root `Cargo.toml` (`[workspace.package]`)
+1. On a branch, bump `version` in the root `Cargo.toml`
+   (`[workspace.package]`)
 2. Move entries from `[Unreleased]` to a new `## [X.Y.Z] - YYYY-MM-DD` section
    in `CHANGELOG.md` and update the link references at the bottom
-3. Commit, then tag and push:
+3. Open a pull request and merge it once required checks pass (`main` only
+   accepts changes via PR)
+4. Tag the merge commit and push the tag:
 
    ```bash
+   git checkout main && git pull
    git tag vX.Y.Z
-   git push origin main vX.Y.Z
+   git push origin vX.Y.Z
    ```
 
 After changing dist settings in `dist-workspace.toml`, run `dist generate` to
