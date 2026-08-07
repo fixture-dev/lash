@@ -32,6 +32,8 @@ playground/
 demos/*.gif
 demos/*.mp4
 demos/*.webm
+# The README embeds this one demo gif, so it is tracked
+!demos/lash-demo.gif
 
 # Test artifacts
 /tests/tmp/
