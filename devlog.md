@@ -12,6 +12,12 @@ crate references (`lash_cli::` → `lash::`), `cargo uninstall` instructions
 `-p lash-cli` command examples in the docs. Tagged and pushed `v0.1.0`,
 the first public release, built and published by the cargo-dist workflow.
 
+The first release run stalled: dist 0.28 assigns Mac builds to the
+retired `macos-13` runner label, so those jobs queued indefinitely.
+Fixed with `[dist.github-custom-runners]` pinning both Mac targets to
+`macos-14` (x86_64 cross-compiled), then re-pointed the `v0.1.0` tag at
+the fix and re-ran the release.
+
 ## 2026-08-07 - Release automation: cargo-dist, changelog, release badge
 
 ### Summary
