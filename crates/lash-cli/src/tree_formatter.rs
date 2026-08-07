@@ -14,7 +14,7 @@ use lash_types::tree::{TreeChars, TreeNode};
 /// # Examples
 ///
 /// ```no_run
-/// use lash_cli::tree_formatter::TreeFormatter;
+/// use lash::tree_formatter::TreeFormatter;
 /// use lash_types::tree::{TreeNode, TreeChars};
 ///
 /// let formatter = TreeFormatter::new(false, 5, None);
@@ -46,7 +46,7 @@ impl TreeFormatter {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::tree_formatter::TreeFormatter;
+    /// use lash::tree_formatter::TreeFormatter;
     ///
     /// // Unicode formatter with max depth of 5
     /// let formatter = TreeFormatter::new(false, 5, None);
@@ -86,7 +86,7 @@ impl TreeFormatter {
     /// # Examples
     ///
     /// ```no_run
-    /// use lash_cli::tree_formatter::TreeFormatter;
+    /// use lash::tree_formatter::TreeFormatter;
     /// use lash_types::tree::TreeNode;
     ///
     /// let formatter = TreeFormatter::new(false, 5, None);

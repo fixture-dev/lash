@@ -3,10 +3,10 @@
 //! The `lash list` command queries and filters tasks from the `SQLite` database.
 
 use anyhow::{Context, Result};
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{OutputFormat as OutputFormatTrait, Verbosity};
-use lash_cli::theme::CliTheme;
-use lash_cli::tree_formatter::TreeFormatter;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{OutputFormat as OutputFormatTrait, Verbosity};
+use lash::theme::CliTheme;
+use lash::tree_formatter::TreeFormatter;
 use lash_core::fuzzy::FuzzyMatcher;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::tasks::{TaskFilter, TaskRecord};

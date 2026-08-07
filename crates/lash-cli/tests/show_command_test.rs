@@ -118,7 +118,7 @@ fn setup_test_project_with_deps() -> (tempfile::TempDir, PathBuf) {
 fn test_show_command_exists() {
     // Verify the show command is registered in the CLI
     use clap::CommandFactory;
-    use lash_cli::cli::LashCli;
+    use lash::cli::LashCli;
 
     let cli = LashCli::command();
     let show_cmd = cli.find_subcommand("show");
@@ -127,7 +127,7 @@ fn test_show_command_exists() {
 
 #[test]
 fn test_show_accepts_target() {
-    use lash_cli::cli::LashCli;
+    use lash::cli::LashCli;
 
     // Should parse successfully with just a target
     let result = LashCli::try_parse_from(["lash", "show", "file#task"]);
@@ -136,7 +136,7 @@ fn test_show_accepts_target() {
 
 #[test]
 fn test_show_accepts_deps_flag() {
-    use lash_cli::cli::LashCli;
+    use lash::cli::LashCli;
 
     let result = LashCli::try_parse_from(["lash", "show", "file#task", "--deps"]);
     assert!(result.is_ok(), "Should parse show command with --deps");
@@ -144,7 +144,7 @@ fn test_show_accepts_deps_flag() {
 
 #[test]
 fn test_show_accepts_rdeps_flag() {
-    use lash_cli::cli::LashCli;
+    use lash::cli::LashCli;
 
     let result = LashCli::try_parse_from(["lash", "show", "file#task", "--rdeps"]);
     assert!(result.is_ok(), "Should parse show command with --rdeps");
@@ -152,7 +152,7 @@ fn test_show_accepts_rdeps_flag() {
 
 #[test]
 fn test_show_accepts_both_flags() {
-    use lash_cli::cli::LashCli;
+    use lash::cli::LashCli;
 
     let result = LashCli::try_parse_from(["lash", "show", "file#task", "--deps", "--rdeps"]);
     assert!(

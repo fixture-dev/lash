@@ -1,5 +1,5 @@
 [package]
-name = "lash-cli"
+name = "lash"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

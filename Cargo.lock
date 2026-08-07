@@ -1092,19 +1092,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lash-agent"
-version = "0.1.0"
-dependencies = [
- "lash-core",
- "lash-types",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "lash-cli"
+name = "lash"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1141,6 +1129,18 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "walkdir",
+]
+
+[[package]]
+name = "lash-agent"
+version = "0.1.0"
+dependencies = [
+ "lash-core",
+ "lash-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

@@ -9,7 +9,7 @@ use lash_core::display;
 use lash_types::TaskStatus;
 use std::collections::{BTreeMap, HashSet};
 
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 
 /// Configuration for ASCII graph rendering
 #[derive(Debug, Clone)]

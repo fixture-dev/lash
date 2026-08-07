@@ -6,10 +6,10 @@
 //! issue #26) lives in `task_view.rs`.
 
 use anyhow::Result;
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::OutputFormat;
-use lash_cli::theme::CliTheme;
-use lash_cli::tree_formatter::TreeFormatter;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::OutputFormat;
+use lash::theme::CliTheme;
+use lash::tree_formatter::TreeFormatter;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::tasks::TaskRecord;
 use lash_db::{DocRefRepository, FileRepository, TaskRepository};

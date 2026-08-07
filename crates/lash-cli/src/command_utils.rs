@@ -28,7 +28,7 @@ use std::io::{self, Write};
 /// # Example
 ///
 /// ```no_run
-/// use lash_cli::command_utils::prompt_confirmation;
+/// use lash::command_utils::prompt_confirmation;
 ///
 /// if prompt_confirmation("Delete all tasks?", false)? {
 ///     println!("Deleting...");
@@ -83,7 +83,7 @@ pub fn prompt_confirmation(prompt: &str, default: bool) -> Result<bool> {
 /// # Example
 ///
 /// ```no_run
-/// use lash_cli::command_utils::ensure_indexed;
+/// use lash::command_utils::ensure_indexed;
 ///
 /// // Ensure index is ready before querying
 /// ensure_indexed(false)?;
@@ -124,8 +124,8 @@ pub fn ensure_indexed(_force: bool) -> lash_types::error::Result<()> {
 /// # Example
 ///
 /// ```no_run
-/// use lash_cli::context::Context;
-/// use lash_cli::command_utils::get_db;
+/// use lash::context::Context;
+/// use lash::command_utils::get_db;
 ///
 /// # let ctx = Context::new_for_testing();
 /// // Will be implemented once database module is available
@@ -155,8 +155,8 @@ pub fn get_db(_ctx: &crate::context::Context) -> lash_types::error::Result<()> {
 /// # Example
 ///
 /// ```no_run
-/// use lash_cli::context::Context;
-/// use lash_cli::command_utils::get_parser;
+/// use lash::context::Context;
+/// use lash::command_utils::get_parser;
 ///
 /// # let ctx = Context::new_for_testing();
 /// // Will be implemented once parser is needed

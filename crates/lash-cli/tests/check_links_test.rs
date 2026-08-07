@@ -4,7 +4,7 @@ mod common;
 
 use clap::CommandFactory;
 use common::temp_test_dir;
-use lash_cli::cli::LashCli;
+use lash::cli::LashCli;
 use lash_db::{init_database, run_migrations, Indexer, IndexerConfig};
 use lash_types::LashConfig;
 use std::fs;

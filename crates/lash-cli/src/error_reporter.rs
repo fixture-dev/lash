@@ -11,8 +11,8 @@
 //! ## Streaming Mode (errors printed immediately)
 //!
 //! ```no_run
-//! use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
-//! use lash_cli::formatter::{OutputFormat, Verbosity};
+//! use lash::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
+//! use lash::formatter::{OutputFormat, Verbosity};
 //! use lash_types::error::LashError;
 //! use std::path::PathBuf;
 //!
@@ -42,8 +42,8 @@
 //! ## Batch Mode (errors collected and printed at end)
 //!
 //! ```no_run
-//! use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
-//! use lash_cli::formatter::{OutputFormat, Verbosity};
+//! use lash::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
+//! use lash::formatter::{OutputFormat, Verbosity};
 //! use lash_types::error::LashError;
 //! use std::path::PathBuf;
 //!
@@ -175,13 +175,13 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
-    /// use lash_cli::formatter::{OutputFormat, Verbosity};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::formatter::{OutputFormat, Verbosity};
     ///
     /// let config = ErrorReporterConfig {
     ///     verbosity: Verbosity::Normal,
     ///     output_format: OutputFormat::Text,
-    ///     display_mode: lash_cli::error_reporter::ErrorDisplayMode::Streaming,
+    ///     display_mode: lash::error_reporter::ErrorDisplayMode::Streaming,
     ///     theme: None,
     ///     show_summary: true,
     /// };
@@ -207,8 +207,8 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
-    /// use lash_cli::formatter::{OutputFormat, Verbosity};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
+    /// use lash::formatter::{OutputFormat, Verbosity};
     /// use lash_types::error::LashError;
     /// use std::path::PathBuf;
     ///
@@ -252,7 +252,7 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
     /// use lash_types::error::{Diagnostic, Severity};
     ///
     /// let config = ErrorReporterConfig::default();
@@ -295,7 +295,7 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
     /// use lash_types::error::LashError;
     /// use std::path::PathBuf;
     ///
@@ -333,8 +333,8 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
-    /// use lash_cli::formatter::{OutputFormat, Verbosity};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
+    /// use lash::formatter::{OutputFormat, Verbosity};
     /// use lash_types::error::LashError;
     /// use std::path::PathBuf;
     /// use indicatif::ProgressBar;
@@ -394,8 +394,8 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
-    /// use lash_cli::formatter::{OutputFormat, Verbosity};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig, ErrorDisplayMode};
+    /// use lash::formatter::{OutputFormat, Verbosity};
     ///
     /// let config = ErrorReporterConfig {
     ///     verbosity: Verbosity::Normal,
@@ -421,7 +421,7 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
     ///
     /// let reporter = ErrorReporter::new(ErrorReporterConfig::default());
     /// reporter.flush_with_summary();
@@ -439,8 +439,8 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
-    /// use lash_cli::formatter::Verbosity;
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::formatter::Verbosity;
     /// use lash_types::error::LashError;
     /// use std::path::PathBuf;
     ///
@@ -469,7 +469,7 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
     /// use lash_types::error::{Diagnostic, Severity};
     ///
     /// let reporter = ErrorReporter::new(ErrorReporterConfig::default());
@@ -506,7 +506,7 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
     /// use lash_types::error::LashError;
     /// use std::path::PathBuf;
     ///
@@ -532,7 +532,7 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
     ///
     /// let reporter = ErrorReporter::new(ErrorReporterConfig::default());
     /// assert!(!reporter.has_errors());
@@ -547,7 +547,7 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
     ///
     /// let reporter = ErrorReporter::new(ErrorReporterConfig::default());
     /// assert_eq!(reporter.error_count(), 0);
@@ -562,7 +562,7 @@ impl ErrorReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_reporter::{ErrorReporter, ErrorReporterConfig};
+    /// use lash::error_reporter::{ErrorReporter, ErrorReporterConfig};
     /// use lash_types::error::{ExitCode, LashError};
     /// use std::path::PathBuf;
     ///

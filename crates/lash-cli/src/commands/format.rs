@@ -7,11 +7,11 @@
 #![allow(clippy::similar_names)]
 
 use anyhow::{Context, Result};
-use lash_cli::command::Command;
-use lash_cli::context::Context as CliContext;
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{OutputFormat, Verbosity};
-use lash_cli::theme::CliTheme;
+use lash::command::Command;
+use lash::context::Context as CliContext;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{OutputFormat, Verbosity};
+use lash::theme::CliTheme;
 use lash_core::formatter::{FormatOptions, Formatter};
 use lash_core::parser::parse_file;
 use lash_types::error::{Diagnostic, LashError, Severity};

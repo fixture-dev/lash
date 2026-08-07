@@ -1,5 +1,17 @@
 # Lash Development Log
 
+## 2026-08-07 - Rename `lash-cli` package to `lash`; first release (v0.1.0)
+
+### Summary
+
+Renamed the `lash-cli` package to `lash` so release artifacts and installer
+scripts are named `lash-*` instead of `lash-cli-*` (the directory remains
+`crates/lash-cli`; the binary was already `lash`). Updated the library
+crate references (`lash_cli::` → `lash::`), `cargo uninstall` instructions
+(install script keeps a `lash-cli` fallback for old installs), and
+`-p lash-cli` command examples in the docs. Tagged and pushed `v0.1.0`,
+the first public release, built and published by the cargo-dist workflow.
+
 ## 2026-08-07 - Release automation: cargo-dist, changelog, release badge
 
 ### Summary

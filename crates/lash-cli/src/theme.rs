@@ -20,7 +20,7 @@ pub use lash_tui::colors::Theme;
 /// # Examples
 ///
 /// ```
-/// use lash_cli::theme::CliTheme;
+/// use lash::theme::CliTheme;
 ///
 /// if let Some(theme) = CliTheme::load(None, true).unwrap() {
 ///     let success = theme.style_success("Operation completed");
@@ -46,7 +46,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     /// use lash_tui::colors::{Theme, REGISTRY};
     ///
     /// let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
@@ -79,7 +79,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```no_run
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     ///
     /// // Load from user config or default
     /// let theme = CliTheme::load(None, true)?;
@@ -161,7 +161,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     /// use lash_tui::colors::{Theme, REGISTRY};
     ///
     /// let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
@@ -181,7 +181,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     /// use lash_tui::colors::{Theme, REGISTRY};
     ///
     /// let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
@@ -201,7 +201,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     /// use lash_tui::colors::{Theme, REGISTRY};
     ///
     /// let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
@@ -221,7 +221,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     /// use lash_tui::colors::{Theme, REGISTRY};
     ///
     /// let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
@@ -241,7 +241,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     /// use lash_tui::colors::{Theme, REGISTRY};
     ///
     /// let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
@@ -261,7 +261,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     /// use lash_tui::colors::{Theme, REGISTRY};
     ///
     /// let scheme = REGISTRY.get_scheme("Base2Tone Desert").unwrap();
@@ -286,7 +286,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     /// use lash_tui::colors::{Theme, REGISTRY};
     /// use lash_types::TaskStatus;
     ///
@@ -318,7 +318,7 @@ impl CliTheme {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::theme::CliTheme;
     /// use lash_tui::colors::{Theme, REGISTRY};
     /// use lash_types::TaskStatus;
     ///
@@ -346,7 +346,7 @@ impl CliTheme {
 /// # Examples
 ///
 /// ```
-/// use lash_cli::theme::supports_color;
+/// use lash::theme::supports_color;
 ///
 /// if supports_color() {
 ///     println!("Colors are supported");

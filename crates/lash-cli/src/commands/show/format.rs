@@ -5,7 +5,7 @@
 //! are used by both the file and task text renderers, so they live here
 //! rather than in either.
 
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 
 /// Format task status with color
 pub fn format_task_status(status: lash_types::TaskStatus, theme: Option<&CliTheme>) -> String {

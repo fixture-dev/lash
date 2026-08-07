@@ -3,9 +3,9 @@
 //! The `lash check-links` command finds broken dependency references in task files.
 
 use anyhow::{Context, Result};
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{OutputFormat, Verbosity};
-use lash_cli::theme::CliTheme;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{OutputFormat, Verbosity};
+use lash::theme::CliTheme;
 use lash_core::dependency::reference::resolve_reference;
 use lash_core::linter::rules::semantic::BrokenDocFragmentRule;
 use lash_core::linter::{LintContext, LintDiagnostic, LintRule};

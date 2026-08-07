@@ -128,7 +128,7 @@ impl TextFormatter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::formatter::{TextFormatter, Verbosity};
+    /// use lash::formatter::{TextFormatter, Verbosity};
     ///
     /// let formatter = TextFormatter::new(true, Verbosity::Normal);
     /// ```
@@ -154,8 +154,8 @@ impl TextFormatter {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::formatter::{TextFormatter, Verbosity};
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::formatter::{TextFormatter, Verbosity};
+    /// use lash::theme::CliTheme;
     ///
     /// let theme = CliTheme::load(None, true).unwrap();
     /// let formatter = TextFormatter::with_theme(theme, Verbosity::Normal);
@@ -362,7 +362,7 @@ impl TextFormatter {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::formatter::{TextFormatter, Verbosity};
+    /// use lash::formatter::{TextFormatter, Verbosity};
     /// use lash_types::TaskStatus;
     ///
     /// let formatter = TextFormatter::new(true, Verbosity::Normal);
@@ -382,7 +382,7 @@ impl TextFormatter {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::formatter::{TextFormatter, Verbosity};
+    /// use lash::formatter::{TextFormatter, Verbosity};
     ///
     /// let formatter = TextFormatter::new(true, Verbosity::Normal);
     /// let formatted = formatter.format_label("#backend");
@@ -401,7 +401,7 @@ impl TextFormatter {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::formatter::{TextFormatter, Verbosity};
+    /// use lash::formatter::{TextFormatter, Verbosity};
     ///
     /// let formatter = TextFormatter::new(true, Verbosity::Normal);
     /// let formatted = formatter.format_muted("(optional)");
@@ -572,7 +572,7 @@ impl JsonFormatter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::formatter::JsonFormatter;
+    /// use lash::formatter::JsonFormatter;
     ///
     /// let formatter = JsonFormatter::new(true);
     /// ```
@@ -666,7 +666,7 @@ impl QuietFormatter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::formatter::QuietFormatter;
+    /// use lash::formatter::QuietFormatter;
     ///
     /// let formatter = QuietFormatter::new();
     /// ```

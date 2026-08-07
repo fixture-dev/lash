@@ -15,7 +15,7 @@
 //! # Example
 //!
 //! ```
-//! use lash_cli::context::Context;
+//! use lash::context::Context;
 //! use std::path::PathBuf;
 //!
 //! // Create context with project root
@@ -76,7 +76,7 @@ impl Context {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::context::Context;
+    /// use lash::context::Context;
     ///
     /// let ctx = Context::builder()
     ///     .build()
@@ -92,7 +92,7 @@ impl Context {
     /// # Example
     ///
     /// ```
-    /// # use lash_cli::context::Context;
+    /// # use lash::context::Context;
     /// # let ctx = Context::new_for_testing();
     /// let config = ctx.config();
     /// println!("Verbosity: {}", config.output.verbosity);
@@ -109,7 +109,7 @@ impl Context {
     /// # Example
     ///
     /// ```
-    /// # use lash_cli::context::Context;
+    /// # use lash::context::Context;
     /// # let ctx = Context::new_for_testing();
     /// let project_config = ctx.project_config();
     /// println!("Max depth: {}", project_config.max_depth);
@@ -126,7 +126,7 @@ impl Context {
     /// # Example
     ///
     /// ```
-    /// # use lash_cli::context::Context;
+    /// # use lash::context::Context;
     /// # let ctx = Context::new_for_testing();
     /// if let Some(root) = ctx.project_root() {
     ///     println!("Project root: {}", root.display());
@@ -144,7 +144,7 @@ impl Context {
     /// # Example
     ///
     /// ```
-    /// # use lash_cli::context::Context;
+    /// # use lash::context::Context;
     /// # let ctx = Context::new_for_testing();
     /// let formatter = ctx.formatter();
     /// // Use formatter to display results
@@ -162,7 +162,7 @@ impl Context {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::context::Context;
+    /// use lash::context::Context;
     ///
     /// let ctx = Context::new_for_testing();
     /// assert!(ctx.project_root().is_none());
@@ -190,7 +190,7 @@ impl Context {
 /// # Example
 ///
 /// ```
-/// use lash_cli::context::Context;
+/// use lash::context::Context;
 /// use std::path::PathBuf;
 ///
 /// let ctx = Context::builder()
@@ -221,8 +221,8 @@ impl ContextBuilder {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::context::Context;
-    /// use lash_cli::config::Config;
+    /// use lash::context::Context;
+    /// use lash::config::Config;
     ///
     /// let config = Config::default();
     /// let ctx = Context::builder()
@@ -243,7 +243,7 @@ impl ContextBuilder {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::context::Context;
+    /// use lash::context::Context;
     /// use std::path::PathBuf;
     ///
     /// let ctx = Context::builder()
@@ -264,8 +264,8 @@ impl ContextBuilder {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::context::Context;
-    /// use lash_cli::formatter::{JsonFormatter, Verbosity};
+    /// use lash::context::Context;
+    /// use lash::formatter::{JsonFormatter, Verbosity};
     ///
     /// let formatter = Box::new(JsonFormatter::new(false));
     /// let ctx = Context::builder()
@@ -292,7 +292,7 @@ impl ContextBuilder {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::context::Context;
+    /// use lash::context::Context;
     ///
     /// let ctx = Context::builder()
     ///     .build()

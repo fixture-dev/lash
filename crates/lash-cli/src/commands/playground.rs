@@ -8,12 +8,12 @@
 #![allow(clippy::too_many_lines)]
 
 use anyhow::{Context, Result};
-use lash_cli::formatter::Verbosity;
+use lash::formatter::Verbosity;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::instrument;
 
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 
 /// Arguments for the playground command
 #[derive(Debug, Clone)]

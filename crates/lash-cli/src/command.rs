@@ -14,8 +14,8 @@
 //! # Example
 //!
 //! ```
-//! use lash_cli::command::Command;
-//! use lash_cli::context::Context;
+//! use lash::command::Command;
+//! use lash::context::Context;
 //! use lash_types::error::Result;
 //!
 //! struct MyCommand {
@@ -49,8 +49,8 @@ use crate::context::Context;
 /// # Example Implementation
 ///
 /// ```
-/// use lash_cli::command::Command;
-/// use lash_cli::context::Context;
+/// use lash::command::Command;
+/// use lash::context::Context;
 /// use lash_types::error::Result;
 ///
 /// struct ListCommand {

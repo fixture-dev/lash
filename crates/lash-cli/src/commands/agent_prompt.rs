@@ -5,16 +5,16 @@
 //! filtered task lists in various output formats.
 
 use anyhow::{Context, Result};
+use lash::cli::AgentFormat;
 use lash_agent::{
     DocRefInfo, PromptBuilder, PromptConfig, PromptFormat as AgentPromptFormat, TaskFileSummary,
 };
-use lash_cli::cli::AgentFormat;
 use lash_db::{open_database, DocRefRepository, FileRepository, TaskRepository};
 use lash_types::TaskStatus;
 use std::path::{Path, PathBuf};
 
 use crate::utils::file_discovery::find_project_root;
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 
 /// Arguments for the agent-prompt command
 #[derive(Debug, Clone)]

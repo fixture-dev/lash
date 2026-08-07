@@ -4,8 +4,8 @@
 //! It creates the `lash.index.md` file and `.lash/` directory, then runs indexing.
 
 use anyhow::{Context, Result};
-use lash_cli::formatter::Verbosity;
-use lash_cli::theme::CliTheme;
+use lash::formatter::Verbosity;
+use lash::theme::CliTheme;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::instrument;

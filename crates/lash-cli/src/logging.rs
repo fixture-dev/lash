@@ -41,8 +41,8 @@ impl LogConfig {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::logging::LogConfig;
-    /// use lash_cli::formatter::Verbosity;
+    /// use lash::logging::LogConfig;
+    /// use lash::formatter::Verbosity;
     ///
     /// let config = LogConfig::new(Verbosity::Normal, false, false);
     /// ```
@@ -61,8 +61,8 @@ impl LogConfig {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::logging::LogConfig;
-    /// use lash_cli::formatter::Verbosity;
+    /// use lash::logging::LogConfig;
+    /// use lash::formatter::Verbosity;
     /// use std::path::PathBuf;
     ///
     /// let config = LogConfig::new(Verbosity::Normal, false, false)
@@ -84,8 +84,8 @@ impl LogConfig {
     /// # Examples
     ///
     /// ```
-    /// use lash_cli::logging::LogConfig;
-    /// use lash_cli::formatter::Verbosity;
+    /// use lash::logging::LogConfig;
+    /// use lash::formatter::Verbosity;
     ///
     /// let config = LogConfig::new(Verbosity::Normal, false, false);
     /// let level = config.determine_level();
@@ -127,8 +127,8 @@ impl LogConfig {
 /// # Examples
 ///
 /// ```no_run
-/// use lash_cli::logging::{LogConfig, init_logging};
-/// use lash_cli::formatter::Verbosity;
+/// use lash::logging::{LogConfig, init_logging};
+/// use lash::formatter::Verbosity;
 ///
 /// let config = LogConfig::new(Verbosity::Normal, false, false);
 /// init_logging(&config)?;
@@ -140,7 +140,7 @@ pub fn init_logging(config: &LogConfig) -> Result<()> {
     // Create environment filter
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(format!(
-            "lash={level},lash_cli={level},lash_core={level},lash_db={level}"
+            "lash={level},lash={level},lash_core={level},lash_db={level}"
         ))
     });
 
@@ -193,8 +193,8 @@ pub fn init_logging(config: &LogConfig) -> Result<()> {
 /// # Examples
 ///
 /// ```no_run
-/// use lash_cli::logging::{LogConfig, init_logging_with_file};
-/// use lash_cli::formatter::Verbosity;
+/// use lash::logging::{LogConfig, init_logging_with_file};
+/// use lash::formatter::Verbosity;
 /// use std::path::PathBuf;
 ///
 /// let config = LogConfig::new(Verbosity::Normal, false, false)
@@ -208,7 +208,7 @@ pub fn init_logging_with_file(config: &LogConfig) -> Result<()> {
     // Create environment filter
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(format!(
-            "lash={level},lash_cli={level},lash_core={level},lash_db={level}"
+            "lash={level},lash={level},lash_core={level},lash_db={level}"
         ))
     });
 
@@ -288,7 +288,7 @@ pub fn init_logging_with_file(config: &LogConfig) -> Result<()> {
 /// # Examples
 ///
 /// ```
-/// use lash_cli::logging::install_panic_hook;
+/// use lash::logging::install_panic_hook;
 ///
 /// install_panic_hook();
 /// ```
@@ -346,7 +346,7 @@ pub fn install_panic_hook() {
 /// # Examples
 ///
 /// ```
-/// use lash_cli::logging::get_diagnostic_info;
+/// use lash::logging::get_diagnostic_info;
 ///
 /// let info = get_diagnostic_info();
 /// println!("Lash version: {}", info.version);
@@ -376,8 +376,8 @@ pub struct DiagnosticInfo {
 /// # Examples
 ///
 /// ```
-/// use lash_cli::logging::verbosity_to_level;
-/// use lash_cli::formatter::Verbosity;
+/// use lash::logging::verbosity_to_level;
+/// use lash::formatter::Verbosity;
 /// use tracing::Level;
 ///
 /// assert_eq!(verbosity_to_level(Verbosity::Quiet), Level::ERROR);
@@ -402,7 +402,7 @@ pub fn verbosity_to_level(verbosity: Verbosity) -> Level {
 /// # Examples
 ///
 /// ```
-/// use lash_cli::logging::parse_log_level;
+/// use lash::logging::parse_log_level;
 /// use tracing::Level;
 ///
 /// assert_eq!(parse_log_level("error").unwrap(), Level::ERROR);

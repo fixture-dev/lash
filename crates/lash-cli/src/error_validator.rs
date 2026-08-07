@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use lash_cli::error_validator::ErrorValidator;
+//! use lash::error_validator::ErrorValidator;
 //! use lash_core::linter::LintDiagnostic;
 //! use std::path::Path;
 //!
@@ -89,7 +89,7 @@ impl ErrorValidator {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_validator::ErrorValidator;
+    /// use lash::error_validator::ErrorValidator;
     ///
     /// let validator = ErrorValidator::new();
     /// ```
@@ -105,7 +105,7 @@ impl ErrorValidator {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_validator::ErrorValidator;
+    /// use lash::error_validator::ErrorValidator;
     /// use lash_types::LashConfig;
     ///
     /// let config = LashConfig::default();
@@ -142,7 +142,7 @@ impl ErrorValidator {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::error_validator::ErrorValidator;
+    /// use lash::error_validator::ErrorValidator;
     /// use lash_core::linter::LintDiagnostic;
     /// use std::path::Path;
     ///
@@ -211,7 +211,7 @@ impl ErrorValidator {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::error_validator::ErrorValidator;
+    /// use lash::error_validator::ErrorValidator;
     /// use lash_core::linter::LintDiagnostic;
     /// use std::path::Path;
     ///

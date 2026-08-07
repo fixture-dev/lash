@@ -114,7 +114,7 @@ do_uninstall() {
 
     if [ -x "$LASH_BINARY" ]; then
         echo -e "${DIM}Removing binary from $CARGO_BIN...${NC}"
-        cargo uninstall lash-cli 2>/dev/null || rm -f "$LASH_BINARY"
+        cargo uninstall lash 2>/dev/null || cargo uninstall lash-cli 2>/dev/null || rm -f "$LASH_BINARY"
         echo ""
         echo -e "${GREEN}✅ Lash has been uninstalled${NC}"
 

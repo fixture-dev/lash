@@ -6,8 +6,8 @@
 //! fail loudly so the agent documentation is kept up-to-date alongside code.
 
 use clap::CommandFactory;
+use lash::cli::LashCli;
 use lash_agent::content;
-use lash_cli::cli::LashCli;
 
 /// Names of subcommands intentionally hidden from agent documentation.
 ///

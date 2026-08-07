@@ -8,13 +8,13 @@
 #![allow(clippy::trivially_copy_pass_by_ref)]
 
 use anyhow::Context;
-use lash_cli::command::Command;
-use lash_cli::context::Context as CliContext;
-use lash_cli::diff_display::DiffDisplay;
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::error_validator::ErrorValidator;
-use lash_cli::formatter::{OutputFormat, Verbosity};
-use lash_cli::theme::CliTheme;
+use lash::command::Command;
+use lash::context::Context as CliContext;
+use lash::diff_display::DiffDisplay;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::error_validator::ErrorValidator;
+use lash::formatter::{OutputFormat, Verbosity};
+use lash::theme::CliTheme;
 use lash_core::linter::{register_default_rules, FixApplicator, LintConfig, LintDiagnostic};
 use lash_core::parser::parse_file;
 use lash_types::error::Diagnostic;
@@ -529,7 +529,7 @@ fn configure_linter(
     project_root: Option<&std::path::Path>,
 ) -> anyhow::Result<LintConfig> {
     // Load CLI config from .lash/config.toml (if available)
-    let cli_config = lash_cli::config::Config::load_merged(project_root)?;
+    let cli_config = lash::config::Config::load_merged(project_root)?;
 
     // Build LintConfig from CLI config
     let mut config = LintConfig {
@@ -1098,7 +1098,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let config = configure_linter(&args, Some(temp_dir.path())).unwrap();
@@ -1122,7 +1122,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let config = configure_linter(&args, Some(temp_dir.path())).unwrap();
@@ -1145,7 +1145,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let config = configure_linter(&args, Some(temp_dir.path())).unwrap();
@@ -1170,7 +1170,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let config = configure_linter(&args, Some(temp_dir.path())).unwrap();
@@ -1255,7 +1255,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let result = execute(args).unwrap();
@@ -1289,7 +1289,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let result = execute(args).unwrap();
@@ -1314,7 +1314,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let result = execute(args).unwrap();
@@ -1354,7 +1354,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
         assert_eq!(execute(args_clean).unwrap(), 0);
 
@@ -1369,7 +1369,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
         assert_eq!(execute(args_bad).unwrap(), 2);
     }
@@ -1400,7 +1400,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         // json=true path must not error and must return 0 for a clean file
@@ -1432,7 +1432,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let result = execute(args).unwrap();
@@ -1464,7 +1464,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         // The warning branch (args.interactive && !args.fix) should be taken
@@ -1495,7 +1495,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         // interactive=true AND fix=true: warning branch is NOT taken, apply_fixes IS called
@@ -1529,7 +1529,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let result = execute(args).unwrap();
@@ -1560,7 +1560,7 @@ mod tests {
             min_severity: None,
             no_color: true,
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         let result = execute(args).unwrap();
@@ -1592,7 +1592,7 @@ mod tests {
             min_severity: None,
             no_color: true, // CliTheme::load(None, false) -> Ok(None)
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         assert_eq!(execute(args).unwrap(), 0);
@@ -1627,7 +1627,7 @@ mod tests {
             min_severity: None,
             no_color: false, // loads a CliTheme -> exercises all Some(t) branches
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         // Must succeed and return 0; exercises the theme-based success path
@@ -1659,7 +1659,7 @@ mod tests {
             min_severity: None,
             no_color: false, // loads a CliTheme -> exercises the error_count > 0 themed branch
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         // Must succeed and return 2 (errors found); exercises the theme-based error path
@@ -1690,7 +1690,7 @@ mod tests {
             min_severity: None,
             no_color: false, // loads theme -> exercises warning_count > 0 and warning_count == 0 branches
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         // Warning-only file: exit code 0, themed warning path is taken
@@ -1721,7 +1721,7 @@ mod tests {
             min_severity: None,
             no_color: false, // loads theme
             project_root: None,
-            verbosity: lash_cli::formatter::Verbosity::Normal,
+            verbosity: lash::formatter::Verbosity::Normal,
         };
 
         assert_eq!(execute(args).unwrap(), 2);

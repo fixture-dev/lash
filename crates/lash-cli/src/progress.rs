@@ -14,7 +14,7 @@ use std::time::Instant;
 /// # Example
 ///
 /// ```no_run
-/// use lash_cli::progress::{ProgressReporter, TerminalProgressReporter};
+/// use lash::progress::{ProgressReporter, TerminalProgressReporter};
 ///
 /// let mut reporter = TerminalProgressReporter::new();
 /// reporter.start(100, "Processing files");
@@ -77,7 +77,7 @@ impl TerminalProgressReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::progress::TerminalProgressReporter;
+    /// use lash::progress::TerminalProgressReporter;
     ///
     /// let reporter = TerminalProgressReporter::new();
     /// ```
@@ -208,7 +208,7 @@ impl JsonProgressReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::progress::JsonProgressReporter;
+    /// use lash::progress::JsonProgressReporter;
     ///
     /// let reporter = JsonProgressReporter::new();
     /// ```
@@ -293,7 +293,7 @@ impl QuietProgressReporter {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::progress::QuietProgressReporter;
+    /// use lash::progress::QuietProgressReporter;
     ///
     /// let reporter = QuietProgressReporter::new();
     /// ```

@@ -4,7 +4,7 @@
 //! including what causes them, why they matter, and how to fix them.
 
 use anyhow::Result;
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 use lash_types::error_explanations::{all_error_codes, explain_error};
 
 /// Arguments for the explain command

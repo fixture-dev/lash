@@ -7,8 +7,8 @@
 //! # Example
 //!
 //! ```no_run
-//! use lash_cli::diff_display::DiffDisplay;
-//! use lash_cli::theme::CliTheme;
+//! use lash::diff_display::DiffDisplay;
+//! use lash::theme::CliTheme;
 //! use lash_core::linter::LintDiagnostic;
 //! use std::path::PathBuf;
 //!
@@ -43,7 +43,7 @@ const MAX_LINE_LENGTH: usize = 120;
 /// # Example
 ///
 /// ```
-/// use lash_cli::diff_display::DiffDisplay;
+/// use lash::diff_display::DiffDisplay;
 ///
 /// let display = DiffDisplay::new();
 /// assert_eq!(display.context_lines(), 3);
@@ -59,7 +59,7 @@ impl DiffDisplay {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::diff_display::DiffDisplay;
+    /// use lash::diff_display::DiffDisplay;
     ///
     /// let display = DiffDisplay::new();
     /// ```
@@ -76,8 +76,8 @@ impl DiffDisplay {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::diff_display::DiffDisplay;
-    /// use lash_cli::theme::CliTheme;
+    /// use lash::diff_display::DiffDisplay;
+    /// use lash::theme::CliTheme;
     ///
     /// let theme = CliTheme::load(None, true).unwrap().unwrap();
     /// let display = DiffDisplay::with_theme(theme);
@@ -95,7 +95,7 @@ impl DiffDisplay {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::diff_display::DiffDisplay;
+    /// use lash::diff_display::DiffDisplay;
     ///
     /// let display = DiffDisplay::new().with_context_lines(5);
     /// assert_eq!(display.context_lines(), 5);
@@ -111,7 +111,7 @@ impl DiffDisplay {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::diff_display::DiffDisplay;
+    /// use lash::diff_display::DiffDisplay;
     ///
     /// let display = DiffDisplay::new();
     /// assert_eq!(display.context_lines(), 3);
@@ -134,7 +134,7 @@ impl DiffDisplay {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::diff_display::DiffDisplay;
+    /// use lash::diff_display::DiffDisplay;
     /// use lash_core::linter::{Fix, LintDiagnostic};
     /// use std::path::PathBuf;
     ///
@@ -195,7 +195,7 @@ impl DiffDisplay {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::diff_display::DiffDisplay;
+    /// use lash::diff_display::DiffDisplay;
     /// use lash_core::linter::{Fix, LintDiagnostic};
     /// use std::path::PathBuf;
     ///
@@ -230,7 +230,7 @@ impl DiffDisplay {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::diff_display::DiffDisplay;
+    /// use lash::diff_display::DiffDisplay;
     ///
     /// let display = DiffDisplay::new();
     /// let before = "line one\nline two\n";

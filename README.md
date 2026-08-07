@@ -80,12 +80,12 @@ the installer scripts published with each release:
 
 ```bash
 # Linux / macOS
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/fixture-dev/lash/releases/latest/download/lash-cli-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/fixture-dev/lash/releases/latest/download/lash-installer.sh | sh
 ```
 
 ```powershell
 # Windows
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/fixture-dev/lash/releases/latest/download/lash-cli-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/fixture-dev/lash/releases/latest/download/lash-installer.ps1 | iex"
 ```
 
 ### From source
@@ -117,7 +117,7 @@ Alternatively, install directly with Cargo:
 ```bash
 cargo install --path crates/lash-cli          # Install
 cargo install --path crates/lash-cli --force  # Reinstall
-cargo uninstall lash-cli                      # Uninstall
+cargo uninstall lash                          # Uninstall
 ```
 
 ## Try the Playground

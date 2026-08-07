@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use owo_colors::OwoColorize;
 use std::io::{self, Write};
 
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 
 use super::fuzzy_matcher::FuzzyCandidate;
 

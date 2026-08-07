@@ -7,9 +7,9 @@
 //! `detail.rs`), in addition to the fields `show` already printed.
 
 use anyhow::Result;
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{OutputFormat, Verbosity};
-use lash_cli::theme::CliTheme;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{OutputFormat, Verbosity};
+use lash::theme::CliTheme;
 use lash_db::repository::files::FileRecord;
 use lash_db::repository::tasks::TaskRecord;
 use lash_db::{DependencyRepository, DocRefRepository, FileRepository, TaskRepository};

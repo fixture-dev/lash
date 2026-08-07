@@ -8,9 +8,9 @@ use lash_types::error::LashError;
 use lash_types::LashConfig;
 use std::path::{Path, PathBuf};
 
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{OutputFormat, Verbosity};
-use lash_cli::theme::CliTheme;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{OutputFormat, Verbosity};
+use lash::theme::CliTheme;
 
 use crate::utils::file_discovery::find_project_root;
 use crate::utils::output::create_progress_bar;
@@ -350,7 +350,7 @@ mod tests {
     ///
     /// Uses `assert_cmd::Command::cargo_bin` which locates the binary built by
     /// `cargo build --bin lash`.  When running the full test suite via
-    /// `cargo test -p lash-cli`, cargo builds all binaries before running
+    /// `cargo test -p lash`, cargo builds all binaries before running
     /// tests, so `target/debug/lash` is always present.
     fn lash_cmd() -> Option<assert_cmd::Command> {
         #[allow(deprecated)] // cargo_bin is the correct method for this use case

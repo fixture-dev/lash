@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 use lash_core::dependency::reference::{resolve_reference, RefError};
 use lash_core::fuzzy::FuzzyMatcher;
 use lash_core::linter::LintContext;

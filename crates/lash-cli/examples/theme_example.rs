@@ -4,7 +4,7 @@
 //!
 //! Run with: cargo run --example `theme_example`
 
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 use lash_types::TaskStatus;
 
 fn main() -> anyhow::Result<()> {

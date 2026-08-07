@@ -27,7 +27,7 @@ Run integration tests for a specific crate:
 ```bash
 cargo test -p lash-core --test '*'
 cargo test -p lash-db --test '*'
-cargo test -p lash-cli --test '*'
+cargo test -p lash --test '*'
 ```
 
 ### End-to-End CLI Tests
@@ -35,7 +35,7 @@ cargo test -p lash-cli --test '*'
 Run E2E tests that exercise the actual binary:
 
 ```bash
-cargo test -p lash-cli --test e2e_cli_tests
+cargo test -p lash --test e2e_cli_tests
 ```
 
 ### Doc Tests

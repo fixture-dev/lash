@@ -8,9 +8,9 @@
 //! resolved first.
 
 use anyhow::{Context, Result};
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{OutputFormat, Verbosity};
-use lash_cli::theme::CliTheme;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{OutputFormat, Verbosity};
+use lash::theme::CliTheme;
 use lash_db::{open_database, FileRepository, TaskRepository};
 use lash_types::error::LashError;
 use lash_types::TaskStatus;

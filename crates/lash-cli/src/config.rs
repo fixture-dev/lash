@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 /// # Example
 ///
 /// ```no_run
-/// use lash_cli::config::Config;
+/// use lash::config::Config;
 /// use std::path::Path;
 ///
 /// let config = Config::load_from_file(Path::new(".lash/config.toml"))
@@ -207,7 +207,7 @@ impl Config {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::config::Config;
+    /// use lash::config::Config;
     /// use std::path::Path;
     ///
     /// let config = Config::load_from_file(Path::new(".lash/config.toml"))?;
@@ -242,7 +242,7 @@ impl Config {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::config::Config;
+    /// use lash::config::Config;
     /// use std::path::Path;
     ///
     /// let config = Config::load_merged(Some(Path::new("/path/to/project")))?;
@@ -278,7 +278,7 @@ impl Config {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::config::Config;
+    /// use lash::config::Config;
     ///
     /// if let Some(path) = Config::user_config_path() {
     ///     println!("User config: {}", path.display());

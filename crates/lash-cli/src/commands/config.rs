@@ -4,9 +4,9 @@
 //! at both project level (.lash/config.toml) and user level (~/.config/lash/config.toml).
 
 use anyhow::{Context, Result};
-use lash_cli::cli::ConfigCommand;
-use lash_cli::config::Config;
-use lash_cli::theme::CliTheme;
+use lash::cli::ConfigCommand;
+use lash::config::Config;
+use lash::theme::CliTheme;
 use std::path::PathBuf;
 
 /// Arguments for the config command

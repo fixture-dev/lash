@@ -33,7 +33,7 @@ fn test_search_command_exists() {
     // Verify the search command is registered in the CLI
     // This is a smoke test to ensure the command is wired up
     use clap::CommandFactory;
-    use lash_cli::cli::LashCli;
+    use lash::cli::LashCli;
 
     let cli = LashCli::command();
     let search_cmd = cli.find_subcommand("search");
@@ -43,7 +43,7 @@ fn test_search_command_exists() {
 /// Test that search command accepts query argument
 #[test]
 fn test_search_accepts_query() {
-    use lash_cli::cli::LashCli;
+    use lash::cli::LashCli;
 
     // Should parse successfully with just a query
     let result = LashCli::try_parse_from(["lash", "search", "test query"]);
@@ -53,7 +53,7 @@ fn test_search_accepts_query() {
 /// Test that search command accepts limit flag
 #[test]
 fn test_search_accepts_limit() {
-    use lash_cli::cli::LashCli;
+    use lash::cli::LashCli;
 
     let result = LashCli::try_parse_from(["lash", "search", "test", "--limit", "50"]);
     assert!(result.is_ok(), "Should parse search command with --limit");

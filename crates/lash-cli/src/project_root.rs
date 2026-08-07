@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 /// # Example
 ///
 /// ```
-/// use lash_cli::project_root::ProjectRootFinder;
+/// use lash::project_root::ProjectRootFinder;
 /// use std::env;
 ///
 /// let finder = ProjectRootFinder::new();
@@ -36,7 +36,7 @@ impl ProjectRootFinder {
     /// # Example
     ///
     /// ```
-    /// use lash_cli::project_root::ProjectRootFinder;
+    /// use lash::project_root::ProjectRootFinder;
     ///
     /// let finder = ProjectRootFinder::new();
     /// ```
@@ -60,7 +60,7 @@ impl ProjectRootFinder {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::project_root::ProjectRootFinder;
+    /// use lash::project_root::ProjectRootFinder;
     ///
     /// let finder = ProjectRootFinder::new();
     /// let root = finder.find_from_cwd().expect("No project root found");
@@ -92,7 +92,7 @@ impl ProjectRootFinder {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::project_root::ProjectRootFinder;
+    /// use lash::project_root::ProjectRootFinder;
     /// use std::path::Path;
     ///
     /// let finder = ProjectRootFinder::new();
@@ -182,7 +182,7 @@ impl ProjectRootFinder {
     /// # Example
     ///
     /// ```no_run
-    /// use lash_cli::project_root::ProjectRootFinder;
+    /// use lash::project_root::ProjectRootFinder;
     /// use std::path::Path;
     ///
     /// let finder = ProjectRootFinder::new();

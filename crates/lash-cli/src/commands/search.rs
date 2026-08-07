@@ -13,10 +13,10 @@
 //! The search uses `SQLite`'s FTS5 virtual table for efficient full-text indexing and retrieval.
 
 use anyhow::{Context, Result};
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{OutputFormat, TextFormatter, Verbosity};
-use lash_cli::theme::{self, CliTheme};
-use lash_cli::tree_formatter::TreeFormatter;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{OutputFormat, TextFormatter, Verbosity};
+use lash::theme::{self, CliTheme};
+use lash::tree_formatter::TreeFormatter;
 use lash_db::{open_database, search, SearchQuery};
 use lash_types::error::LashError;
 use lash_types::tree::TreeNode;

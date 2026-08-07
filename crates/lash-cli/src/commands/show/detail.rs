@@ -22,7 +22,7 @@ use lash_types::dependency::DependencyKind;
 use lash_types::{TaskFile, TaskStatus};
 use serde::Serialize;
 
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 
 use crate::utils::project_loader::find_task_by_full_id;
 

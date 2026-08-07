@@ -4,7 +4,7 @@
 
 use anyhow::{Context as AnyhowContext, Result};
 use clap::Args;
-use lash_cli::theme::CliTheme;
+use lash::theme::CliTheme;
 use lash_core::creation::service::TaskCreationService;
 use lash_types::creation::{
     FileTarget, InsertPosition, ParentRef, TaskCreationRequest, TaskCreationRequestBuilder,

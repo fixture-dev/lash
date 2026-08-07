@@ -9,8 +9,8 @@ pub mod fuzzy_matcher;
 mod interactive;
 
 use anyhow::{Context, Result};
-use lash_cli::formatter::Verbosity;
-use lash_cli::theme::CliTheme;
+use lash::formatter::Verbosity;
+use lash::theme::CliTheme;
 use lash_db::open_database;
 use std::path::{Path, PathBuf};
 

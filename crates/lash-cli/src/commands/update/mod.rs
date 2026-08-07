@@ -23,10 +23,10 @@ mod apply;
 mod mutations;
 
 use anyhow::{Context, Result};
-use lash_cli::diff_display::DiffDisplay;
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{OutputFormat, Verbosity};
-use lash_cli::theme::CliTheme;
+use lash::diff_display::DiffDisplay;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{OutputFormat, Verbosity};
+use lash::theme::CliTheme;
 use lash_db::{open_database, TaskRepository};
 use lash_types::error::LashError;
 use std::path::{Path, PathBuf};

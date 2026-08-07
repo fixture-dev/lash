@@ -3,9 +3,9 @@
 //! The `lash graph` command exports dependency graphs in various formats.
 
 use anyhow::{Context, Result};
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{OutputFormat, Verbosity};
-use lash_cli::theme::CliTheme;
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{OutputFormat, Verbosity};
+use lash::theme::CliTheme;
 use lash_core::dependency::{FilterOptions, GraphExporter};
 use lash_db::{graph_builder::GraphBuilder, open_database};
 use lash_types::error::LashError;
@@ -368,20 +368,20 @@ mod tests {
         // We can't access the reporter after construction, but we can verify
         // that the constant false in the source is meaningful by testing a
         // config we construct ourselves.
-        let config = lash_cli::error_reporter::ErrorReporterConfig {
+        let config = lash::error_reporter::ErrorReporterConfig {
             verbosity: Verbosity::Normal,
-            output_format: lash_cli::formatter::OutputFormat::Text,
-            display_mode: lash_cli::error_reporter::ErrorDisplayMode::Streaming,
+            output_format: lash::formatter::OutputFormat::Text,
+            display_mode: lash::error_reporter::ErrorDisplayMode::Streaming,
             theme: None,
             show_summary: false,
         };
         assert!(!config.show_summary);
 
         // And a config with show_summary=true would be different
-        let config_with_summary = lash_cli::error_reporter::ErrorReporterConfig {
+        let config_with_summary = lash::error_reporter::ErrorReporterConfig {
             verbosity: Verbosity::Normal,
-            output_format: lash_cli::formatter::OutputFormat::Text,
-            display_mode: lash_cli::error_reporter::ErrorDisplayMode::Streaming,
+            output_format: lash::formatter::OutputFormat::Text,
+            display_mode: lash::error_reporter::ErrorDisplayMode::Streaming,
             theme: None,
             show_summary: true,
         };
@@ -472,7 +472,7 @@ mod tests {
     // summary section by setting show_summary=false.
     #[test]
     fn test_show_summary_false_in_reporter_config_for_graph_execute() {
-        use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter};
+        use lash::error_reporter::{ErrorDisplayMode, ErrorReporter};
         use lash_types::error::LashError;
 
         // Construct the same ErrorReporterConfig that execute() builds.

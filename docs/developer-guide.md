@@ -1847,7 +1847,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
    cargo publish -p lash-db
    cargo publish -p lash-agent
    cargo publish -p lash-tui
-   cargo publish -p lash-cli
+   cargo publish -p lash
    ```
 
 8. **Create GitHub release**:

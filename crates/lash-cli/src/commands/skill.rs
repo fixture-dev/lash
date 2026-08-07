@@ -8,11 +8,11 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use lash::cli::{SkillCommand, SkillScope, SkillTarget};
+use lash::theme::CliTheme;
 use lash_agent::installer::{
     self, FileAction, FileOutcome, InstallOptions, InstallReport, InstallerError, Scope, Target,
 };
-use lash_cli::cli::{SkillCommand, SkillScope, SkillTarget};
-use lash_cli::theme::CliTheme;
 
 use crate::utils::file_discovery::find_project_root;
 

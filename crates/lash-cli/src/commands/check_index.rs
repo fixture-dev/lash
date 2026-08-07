@@ -3,8 +3,8 @@
 //! The `lash check-index` command verifies `SQLite` database consistency with Markdown files.
 
 use anyhow::{Context, Result};
-use lash_cli::formatter::Verbosity;
-use lash_cli::theme::CliTheme;
+use lash::formatter::Verbosity;
+use lash::theme::CliTheme;
 use lash_db::{open_database, IndexVerifier, VerifierConfig};
 use std::path::{Path, PathBuf};
 
@@ -307,7 +307,7 @@ mod tests {
             json: false,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
 
         let result = execute(args).unwrap();
@@ -326,7 +326,7 @@ mod tests {
             json: true,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
 
         let result = execute(args).unwrap();
@@ -438,7 +438,7 @@ mod tests {
             json: false,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
 
         let result = execute(args).unwrap();
@@ -464,7 +464,7 @@ mod tests {
             json: true,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
 
         let result = execute(args).unwrap();
@@ -491,7 +491,7 @@ mod tests {
             json: false,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
 
         let result = execute(args).unwrap();
@@ -530,7 +530,7 @@ mod tests {
             json: false,
             no_color: true, // no_color=true: CliTheme::load called with true
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
         let result = execute(args).unwrap();
         assert_eq!(result, 3);
@@ -545,7 +545,7 @@ mod tests {
             json: false,
             no_color: false, // no_color=false: CliTheme::load called with false (kills mut-000210)
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
         let result = execute(args).unwrap();
         assert_eq!(result, 3);
@@ -561,7 +561,7 @@ mod tests {
             json: false,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
         // DB doesn't exist, so we still get 3
         let result = execute(args).unwrap();
@@ -610,7 +610,7 @@ mod tests {
             json: false,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
 
         let result = execute(args).unwrap();
@@ -662,7 +662,7 @@ mod tests {
             json: true,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
 
         let result = execute(args).unwrap();
@@ -698,7 +698,7 @@ mod tests {
             json: false,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
 
         // Original: filter applied → walker errors on the missing path → execute() Err.
@@ -792,7 +792,7 @@ mod tests {
                 json: json_flag,
                 no_color: true,
                 project_root: Some(temp.path().to_path_buf()),
-                verbosity: lash_cli::formatter::Verbosity::Quiet,
+                verbosity: lash::formatter::Verbosity::Quiet,
             };
             let result = execute(args).unwrap();
             assert_eq!(
@@ -814,7 +814,7 @@ mod tests {
                 json: false,
                 no_color: no_color_flag,
                 project_root: Some(temp.path().to_path_buf()),
-                verbosity: lash_cli::formatter::Verbosity::Quiet,
+                verbosity: lash::formatter::Verbosity::Quiet,
             };
             let result = execute(args).unwrap();
             assert_eq!(
@@ -851,7 +851,7 @@ mod tests {
             json: false,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
         assert_eq!(
             execute(args_empty).unwrap(),
@@ -871,7 +871,7 @@ mod tests {
             json: false,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
         assert_eq!(
             execute(args_abs).unwrap(),
@@ -901,7 +901,7 @@ mod tests {
                 json: json_flag,
                 no_color: true,
                 project_root: Some(temp.path().to_path_buf()),
-                verbosity: lash_cli::formatter::Verbosity::Quiet,
+                verbosity: lash::formatter::Verbosity::Quiet,
             };
             assert_eq!(
                 execute(args).unwrap(),
@@ -949,7 +949,7 @@ mod tests {
                 json: json_flag,
                 no_color: true,
                 project_root: Some(temp.path().to_path_buf()),
-                verbosity: lash_cli::formatter::Verbosity::Quiet,
+                verbosity: lash::formatter::Verbosity::Quiet,
             };
             assert_eq!(
                 execute(args).unwrap(),
@@ -1658,7 +1658,7 @@ mod tests {
             json: false,
             no_color: true,
             project_root: Some(temp.path().to_path_buf()),
-            verbosity: lash_cli::formatter::Verbosity::Quiet,
+            verbosity: lash::formatter::Verbosity::Quiet,
         };
 
         // The function may return Ok or Err; either is fine.  We only assert

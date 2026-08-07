@@ -10,14 +10,14 @@ mod utils;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use lash_cli::cli::{Commands, LashCli};
-use lash_cli::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
-use lash_cli::formatter::{
+use lash::cli::{Commands, LashCli};
+use lash::error_reporter::{ErrorDisplayMode, ErrorReporter, ErrorReporterConfig};
+use lash::formatter::{
     JsonFormatter, OutputFormat, OutputFormatter, QuietFormatter, TextFormatter, Verbosity,
 };
-use lash_cli::logging::{init_logging, install_panic_hook, LogConfig};
-use lash_cli::project_root::ProjectRootFinder;
-use lash_cli::theme::{supports_color, CliTheme};
+use lash::logging::{init_logging, install_panic_hook, LogConfig};
+use lash::project_root::ProjectRootFinder;
+use lash::theme::{supports_color, CliTheme};
 use lash_types::error::ExitCode;
 use std::process;
 
@@ -175,15 +175,15 @@ fn run(cli: LashCli) -> Result<()> {
     let uses_machine_readable_graph_format = matches!(
         &cli.command,
         Commands::Graph { format, .. }
-            if matches!(format, lash_cli::cli::GraphFormat::Dot
-                               | lash_cli::cli::GraphFormat::Mermaid
-                               | lash_cli::cli::GraphFormat::Json)
+            if matches!(format, lash::cli::GraphFormat::Dot
+                               | lash::cli::GraphFormat::Mermaid
+                               | lash::cli::GraphFormat::Json)
     );
     let uses_machine_readable_list_format = matches!(
         &cli.command,
         Commands::List { format, .. }
-            if matches!(format, lash_cli::cli::OutputFormat::Json
-                               | lash_cli::cli::OutputFormat::JsonPretty)
+            if matches!(format, lash::cli::OutputFormat::Json
+                               | lash::cli::OutputFormat::JsonPretty)
     );
     let show_logo = !cli.json
         && !cli.quiet
@@ -222,10 +222,10 @@ fn run(cli: LashCli) -> Result<()> {
         } => {
             // Convert min_severity to lash_types::Severity
             let severity = min_severity.map(|s| match s {
-                lash_cli::cli::SeverityLevel::Error => lash_types::Severity::Error,
-                lash_cli::cli::SeverityLevel::Warning => lash_types::Severity::Warning,
-                lash_cli::cli::SeverityLevel::Info => lash_types::Severity::Info,
-                lash_cli::cli::SeverityLevel::Hint => lash_types::Severity::Hint,
+                lash::cli::SeverityLevel::Error => lash_types::Severity::Error,
+                lash::cli::SeverityLevel::Warning => lash_types::Severity::Warning,
+                lash::cli::SeverityLevel::Info => lash_types::Severity::Info,
+                lash::cli::SeverityLevel::Hint => lash_types::Severity::Hint,
             });
 
             let args = commands::lint::LintArgs {
@@ -311,10 +311,10 @@ fn run(cli: LashCli) -> Result<()> {
         } => {
             // Convert status to lash_types::TaskStatus
             let task_status = status.map(|s| match s {
-                lash_cli::cli::TaskStatus::Open => lash_types::TaskStatus::Open,
-                lash_cli::cli::TaskStatus::Done => lash_types::TaskStatus::Done,
-                lash_cli::cli::TaskStatus::Waived => lash_types::TaskStatus::Waived,
-                lash_cli::cli::TaskStatus::Blocked => lash_types::TaskStatus::Blocked,
+                lash::cli::TaskStatus::Open => lash_types::TaskStatus::Open,
+                lash::cli::TaskStatus::Done => lash_types::TaskStatus::Done,
+                lash::cli::TaskStatus::Waived => lash_types::TaskStatus::Waived,
+                lash::cli::TaskStatus::Blocked => lash_types::TaskStatus::Blocked,
             });
 
             // Convert format to OutputFormat
@@ -323,11 +323,9 @@ fn run(cli: LashCli) -> Result<()> {
                 commands::list::OutputFormat::JsonPretty
             } else {
                 match format {
-                    lash_cli::cli::OutputFormat::Text => commands::list::OutputFormat::Text,
-                    lash_cli::cli::OutputFormat::Json => commands::list::OutputFormat::Json,
-                    lash_cli::cli::OutputFormat::JsonPretty => {
-                        commands::list::OutputFormat::JsonPretty
-                    }
+                    lash::cli::OutputFormat::Text => commands::list::OutputFormat::Text,
+                    lash::cli::OutputFormat::Json => commands::list::OutputFormat::Json,
+                    lash::cli::OutputFormat::JsonPretty => commands::list::OutputFormat::JsonPretty,
                 }
             };
 
@@ -373,10 +371,10 @@ fn run(cli: LashCli) -> Result<()> {
         } => {
             // Convert status to lash_types::TaskStatus
             let task_status = status.map(|s| match s {
-                lash_cli::cli::TaskStatus::Open => lash_types::TaskStatus::Open,
-                lash_cli::cli::TaskStatus::Done => lash_types::TaskStatus::Done,
-                lash_cli::cli::TaskStatus::Waived => lash_types::TaskStatus::Waived,
-                lash_cli::cli::TaskStatus::Blocked => lash_types::TaskStatus::Blocked,
+                lash::cli::TaskStatus::Open => lash_types::TaskStatus::Open,
+                lash::cli::TaskStatus::Done => lash_types::TaskStatus::Done,
+                lash::cli::TaskStatus::Waived => lash_types::TaskStatus::Waived,
+                lash::cli::TaskStatus::Blocked => lash_types::TaskStatus::Blocked,
             });
 
             // Determine tree view settings
@@ -452,10 +450,10 @@ fn run(cli: LashCli) -> Result<()> {
                 commands::graph::GraphFormat::Json
             } else {
                 match format {
-                    lash_cli::cli::GraphFormat::Ascii => commands::graph::GraphFormat::Ascii,
-                    lash_cli::cli::GraphFormat::Dot => commands::graph::GraphFormat::Dot,
-                    lash_cli::cli::GraphFormat::Mermaid => commands::graph::GraphFormat::Mermaid,
-                    lash_cli::cli::GraphFormat::Json => commands::graph::GraphFormat::Json,
+                    lash::cli::GraphFormat::Ascii => commands::graph::GraphFormat::Ascii,
+                    lash::cli::GraphFormat::Dot => commands::graph::GraphFormat::Dot,
+                    lash::cli::GraphFormat::Mermaid => commands::graph::GraphFormat::Mermaid,
+                    lash::cli::GraphFormat::Json => commands::graph::GraphFormat::Json,
                 }
             };
 
@@ -496,7 +494,7 @@ fn run(cli: LashCli) -> Result<()> {
         } => {
             // Global --json flag overrides command-specific format
             let agent_format = if cli.json {
-                lash_cli::cli::AgentFormat::Json
+                lash::cli::AgentFormat::Json
             } else {
                 format
             };
@@ -544,7 +542,7 @@ fn run(cli: LashCli) -> Result<()> {
         }
 
         Commands::Playground { command } => {
-            use lash_cli::cli::PlaygroundCommand;
+            use lash::cli::PlaygroundCommand;
             match command {
                 PlaygroundCommand::Init { path, reset } => {
                     let args = commands::playground::PlaygroundArgs {
@@ -561,7 +559,7 @@ fn run(cli: LashCli) -> Result<()> {
 
         Commands::Completion { shell } => {
             use clap::CommandFactory;
-            use lash_cli::cli::Shell;
+            use lash::cli::Shell;
 
             let shell_type = match shell {
                 Shell::Bash => clap_complete::Shell::Bash,
