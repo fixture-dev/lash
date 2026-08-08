@@ -285,6 +285,13 @@ impl PlacementResolver {
     /// annotation block, silently detaching a trailing annotation (e.g. an
     /// existing task's `@id:`) from its owner.
     ///
+    /// An annotation value may span several source lines: the parser folds
+    /// indented continuation lines into the value, joining them with `\n`
+    /// (see `parser::annotations::parse_annotation_block`). Such a value
+    /// therefore occupies `value.lines().count()` source lines, not one, and
+    /// counting it as one splices the new task into the middle of the note —
+    /// destroying the continuation lines on the next reindex.
+    ///
     /// `@labels` is deliberately not counted: labels may be written inline
     /// on the checkbox line (`#backend`) or as a separate `@labels:` block,
     /// and [`lash_types::task::TaskMetadata`] doesn't record which form was
@@ -293,6 +300,14 @@ impl PlacementResolver {
     /// `MarkdownEmitter::format_task_line`), so this only affects appending
     /// after a hand-edited task that used the block form.
     fn count_annotation_lines(task: &Task) -> usize {
+        /// Source lines occupied by a single annotation value.
+        ///
+        /// Always at least 1 (the `@key:` line itself), plus one per folded
+        /// continuation line.
+        fn value_lines(value: &str) -> usize {
+            value.lines().count().max(1)
+        }
+
         let mut count = 0;
 
         // @id: one line, only when it's an explicit annotation (not a
@@ -301,23 +316,34 @@ impl PlacementResolver {
             count += 1;
         }
 
-        // @owner / @estimate / @agent-note: one line each when present.
-        if task.metadata.owner.is_some() {
-            count += 1;
+        // @owner / @estimate / @agent-note: one line each, plus any folded
+        // continuation lines.
+        if let Some(owner) = &task.metadata.owner {
+            count += value_lines(owner);
         }
-        if task.metadata.estimate.is_some() {
-            count += 1;
+        if let Some(estimate) = &task.metadata.estimate {
+            count += value_lines(estimate);
         }
-        if task.metadata.agent_note.is_some() {
-            count += 1;
+        if let Some(note) = &task.metadata.agent_note {
+            count += value_lines(note);
         }
 
-        // @depends-on / @doc: one line per reference.
+        // @depends-on / @doc: one line per reference, as emitted by
+        // `MarkdownEmitter::format_task_annotations`. A hand-written
+        // comma-separated `@depends-on: a, b, c` parses to several references
+        // from a single line and is over-counted here; that is the same
+        // inline-vs-block ambiguity described above for `@labels`, and
+        // over-counting appends after the block rather than inside it.
         count += task.metadata.depends_on.len();
         count += task.metadata.docs.len();
 
-        // Custom annotations: one line per key.
-        count += task.metadata.custom.len();
+        // Custom annotations: one line per key, plus folded continuations.
+        count += task
+            .metadata
+            .custom
+            .values()
+            .map(|v| value_lines(v))
+            .sum::<usize>();
 
         count
     }
@@ -985,5 +1011,87 @@ mod tests {
         // not line 7 (which would land on top of the `@id:` line).
         assert_eq!(placement.line_number, 8);
         assert_eq!(placement.order_index, 1);
+    }
+
+    /// Build a single-task file whose one task carries `note` as its
+    /// `@agent-note`, with the checkbox on line 6.
+    fn file_with_agent_note(note: &str) -> lash_types::TaskFile {
+        let mut task = TaskBuilder::new("Existing task")
+            .id("existing")
+            .order_index(0)
+            .line_number(6)
+            .build()
+            .unwrap();
+        task.metadata.agent_note = Some(note.to_string());
+
+        let mut tasks = TaskTree::new();
+        tasks.add_task(task).unwrap();
+        create_test_file(tasks)
+    }
+
+    fn append_line_for(file: &lash_types::TaskFile) -> usize {
+        let config = ConfigBuilder::new().build().unwrap();
+        let validator = TaskValidator::new(config);
+        let request = TaskCreationRequestBuilder::new("New task").build();
+        let ctx = validator.validate(&request, Some(file)).unwrap();
+        PlacementResolver::resolve(&ctx, &request)
+            .unwrap()
+            .line_number
+    }
+
+    #[test]
+    fn test_append_after_task_with_multiline_agent_note_clears_whole_note() {
+        // Regression test: a multi-line `@agent-note` was counted as a single
+        // line, so appending landed *between* the note's first line and its
+        // continuation lines. The orphaned continuations were then destroyed
+        // on reindex — silent data loss, exit code 0.
+        //
+        // The parser folds indented continuation lines into the value joined
+        // by '\n' (parser::annotations::parse_annotation_block), so a value of
+        // "a\nb\nc" occupies three source lines.
+        //
+        // Layout: checkbox 6, @id: 7, @agent-note: 8, continuations 9 and 10
+        // -> append at 11.
+        let file = file_with_agent_note("line one\nline two\nline three");
+        assert_eq!(append_line_for(&file), 11);
+    }
+
+    #[test]
+    fn test_append_after_task_with_single_line_agent_note_is_unchanged() {
+        // Guards the fix against over-correcting: a one-line note must still
+        // count as exactly one line. Checkbox 6, @id: 7, @agent-note: 8
+        // -> append at 9.
+        let file = file_with_agent_note("just one line");
+        assert_eq!(append_line_for(&file), 9);
+    }
+
+    #[test]
+    fn test_append_after_task_with_empty_agent_note_counts_one_line() {
+        // An empty value still occupies its own `@agent-note:` line, but
+        // "".lines().count() is 0 — hence the .max(1) floor. Without it this
+        // would append at 8, landing on top of the annotation.
+        let file = file_with_agent_note("");
+        assert_eq!(append_line_for(&file), 9);
+    }
+
+    #[test]
+    fn test_append_after_task_with_multiline_owner_and_estimate() {
+        // The same folding applies to every single-value annotation, not just
+        // `@agent-note`. Checkbox 6, @id: 7, @owner: 8-9, @estimate: 10-11
+        // -> append at 12.
+        let mut task = TaskBuilder::new("Existing task")
+            .id("existing")
+            .order_index(0)
+            .line_number(6)
+            .build()
+            .unwrap();
+        task.metadata.owner = Some("alice\ncontinued".to_string());
+        task.metadata.estimate = Some("3d\ncontinued".to_string());
+
+        let mut tasks = TaskTree::new();
+        tasks.add_task(task).unwrap();
+        let file = create_test_file(tasks);
+
+        assert_eq!(append_line_for(&file), 12);
     }
 }

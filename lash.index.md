@@ -68,3 +68,101 @@ For background docs, see:
     finders are thin wrappers handling their own error/fallback semantics
     (anyhow vs LashError vs DbError vs return-self-on-miss). Side benefit:
     lash-db's variant used to ignore `index.lash.md` — now it doesn't.
+
+### Launch polish (Flawd dogfooding, 2026-08-08)
+
+Found while running Flawd v0.7.0 against this repo. The `lash add` item is a
+silent data-loss bug in our own write path and blocks the OSS launch; the other
+two are rot in this repo's Flawd config, which means a contributor following
+the README cannot run Flawd on Lash at all. Counterpart Flawd-side findings are
+filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
+
+- [x] `lash add` splices into a preceding multi-line note and silently destroys content #cli #bug #launch-blocker
+  - LAUNCH BLOCKER — silent data loss in the primary write path. When the last
+    task in the target file carries a multi-line `@agent-note`, `lash add`
+    inserts the new task after the *first line* of that note instead of after
+    the whole task block. On reindex the orphaned continuation lines are
+    destroyed, not merely misattributed. Exit code is 0 with a normal success
+    message, so nothing signals the loss
+  - Minimal repro: a file with one task whose note is a `@agent-note:` line plus
+    two continuation lines; run `lash add "second task" -f tasks/t.md -l x`. The
+    new task lands between note line one and line two. After `lash index`,
+    `lash show` on the first task returns only line one, and the second task has
+    no note at all — lines two and three are gone from the index entirely
+  - Hit twice unprompted while filing real tickets in the flawd repo, so this is
+    not a contrived edge case: any repo using multi-line notes loses content on
+    every subsequent add
+  - Fix: insertion point must be the end of the full task block (checkbox line
+    plus all indented continuation lines including `@`-directives). Regression
+    tests: add after a task with (a) a multi-line note, (b) several
+    `@`-directives, (c) a note containing a blank continuation line, (d) no note
+    — assert byte-exact preservation of every pre-existing task and note, and
+    that the new task lands last. Plus a round-trip property test: parse → add →
+    parse preserves all prior notes verbatim
+- [ ] Remove the `[llm]` section from `flawd.toml` (removed in Flawd v0.7.0) #flawd #config
+  - Our committed `flawd.toml` still carries an `[llm]` table (`mode = "off"`,
+    `max_edit_chars = 120`). Flawd removed LLM semantic operators in v0.7.0 and
+    treats a lingering `[llm]` table as a hard config error, so `flawd run` on a
+    fresh clone dead-ends immediately and produces no output. The config had not
+    been exercised since the last run in March, so this rotted unnoticed
+  - Deleting those three lines is the whole fix — with `[llm]` gone the rest
+    validates clean against v0.7.0 (`flawd config show`, no other stale keys)
+  - Consider a CI job running `flawd config show` against the committed config
+    so version drift in our own tool is caught by the build, not by a human
+    months later
+- [ ] Make `flawd.toml`'s coverage command work in container mode #flawd #docker #ci
+  - `flawd.toml` sets coverage to `cargo llvm-cov ...`, but the Dockerfile never
+    installs `cargo-llvm-cov`. Flawd defaults to docker isolation, so the
+    documented `flawd run` builds the image, runs coverage inside it, and fails
+    with cargo exit 101 having written nothing
+  - The committed command also hardcodes host paths (`LLVM_COV=/opt/homebrew/...`,
+    `LLVM_PROFDATA=/opt/homebrew/...`) — macOS Homebrew paths that cannot resolve
+    inside a Linux container
+  - Fix: install `cargo-llvm-cov` plus `llvm-tools-preview` in the Dockerfile, or
+    point `[coverage] command` at a tool the image has; make the paths portable
+    rather than machine-specific. Verify by running `flawd run` with default
+    isolation and confirming per-test collection succeeds instead of falling back
+- [ ] `@depends-on` comma form over-counts lines, appending outside the tasks section #cli #bug
+  - Follow-up to the multi-line note fix, same function
+    (`PlacementResolver::count_annotation_lines`). `count += depends_on.len()`
+    assumes one source line per reference, which holds for what
+    `MarkdownEmitter::format_task_annotations` writes. But the parser splits a
+    hand-written comma-separated `@depends-on: a, b, c` into three references
+    from a *single* line, so the count runs two lines long
+  - Over-counting is not content-destroying like the note bug, but it is not
+    harmless either: the insertion point escapes the task block. Repro — a file
+    whose last task carries `@depends-on: a, b, c` on line 9, followed by a
+    blank line, `## Notes` on line 11, then prose. `lash add "second task"`
+    computes line 12 and writes the new task *after the `## Notes` heading*,
+    landing it outside `## Tasks` entirely and splitting Notes from its prose.
+    Correct placement is line 10
+  - When the task is last in the file the emitter's `.min(lines.len())` clamp
+    hides it — placement reported line 12 for a 10-line file and appended at the
+    end, correct by accident. So this only bites when content follows
+  - Fix needs the same information `@labels` lacks: whether the source used the
+    inline or one-per-line form. Options: have the parser record the source line
+    span for each annotation (fixes this, `@labels`, and any future variant at
+    once), or count `min(depends_on.len(), actual_lines)` by re-reading the
+    source. The first is the real fix; `TaskFile` currently retains no raw
+    content, so it needs plumbing
+  - Regression test: append after a task with comma-separated `@depends-on`
+    followed by a section heading; assert the new task lands inside `## Tasks`
+- [ ] `lash add --agent-note` with an embedded newline writes a malformed file and loses content #cli #bug #data-loss
+  - Latent counterpart to the multi-line note fix, on the write side.
+    `MarkdownEmitter::format_task_annotations` builds the note with
+    `format!("{annotation_indent}@agent-note: {note}")` and pushes it as one
+    "line". If the value contains a newline, the continuation is emitted with no
+    indentation, so the parser stops at it and the content is dropped
+  - I previously assessed this as unreachable from the CLI because notes are
+    single-line. That is wrong — it is trivially reachable:
+    `lash add "noted task" -f tasks/t.md --agent-note "$(printf 'first\nsecond')"`
+    writes `  @agent-note: first` followed by a bare unindented `second`, and
+    `lash show` afterwards returns only "first". The second line is silently
+    gone, exit code 0
+  - Fix: re-indent continuation lines to the annotation indent when emitting, so
+    a multi-line value round-trips through parse -> emit -> parse. Reject or
+    escape values that cannot round-trip rather than writing a file the parser
+    will silently truncate
+  - Regression test: emit a task with a two-line note, reparse the written file,
+    assert both lines survive; plus a round-trip property test over notes with
+    varying line counts and indentation
