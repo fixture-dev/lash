@@ -1,0 +1,99 @@
+# Publishes the dist-generated Homebrew formula to the tap repo.
+#
+# This replaces dist's built-in `publish-homebrew-formula` job, which is broken
+# upstream: it checks out the tap with `persist-credentials: false` and then
+# ends in a bare `git push` that needs those credentials, so it fails with
+# "could not read Username for 'https://github.com/'"
+# (astral-sh/cargo-dist#29, open as of dist 0.28.7).
+#
+# Working around that in the generated release.yml would mean hand-patching a
+# generated file and setting `allow-dirty = ["ci"]`, which switches off dist's
+# check that release.yml matches dist-workspace.toml. Owning this one job keeps
+# release.yml fully generated and that check enabled.
+#
+# dist calls this via `publish-jobs = ["./homebrew-tap"]`, passing the release
+# plan and inheriting secrets. Drop it and revert to the built-in job if #29 is
+# ever fixed.
+
+name: Publish Homebrew formula
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        description: "The dist release plan, as JSON"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-homebrew-formula:
+    runs-on: "ubuntu-22.04"
+    env:
+      PLAN: ${{ inputs.plan }}
+    steps:
+      - name: Check out the tap
+        uses: actions/checkout@v4
+        with:
+          repository: "fixture-dev/homebrew-tap"
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # Deliberately persisted — the push step below relies on them.
+          persist-credentials: true
+
+      # Pulls every release artifact, but only the .rb files are ever staged.
+      - name: Fetch generated formulae
+        uses: actions/download-artifact@v4
+        with:
+          pattern: artifacts-*
+          path: Formula/
+          merge-multiple: true
+
+      # No `brew style --fix` here, unlike dist's built-in job: the formula is
+      # machine-generated and consistent, so the only effect would be to pay for
+      # a `brew update` on every release.
+      - name: Commit and push formulae
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          found=0
+          committed=0
+
+          for release in $(echo "$PLAN" | jq --compact-output '.releases[] | select([.artifacts[] | endswith(".rb")] | any)'); do
+            found=$((found + 1))
+            filename=$(echo "$release" | jq --raw-output '.artifacts[] | select(endswith(".rb"))')
+            version=$(echo "$release" | jq --raw-output '.app_version')
+            name="${filename%.rb}"
+
+            if [ ! -f "Formula/${filename}" ]; then
+              echo "::error::${filename} is in the release plan but was not among the build artifacts"
+              exit 1
+            fi
+
+            git add "Formula/${filename}"
+
+            if git diff --cached --quiet -- "Formula/${filename}"; then
+              echo "Formula/${filename} is already at ${version}; nothing to commit"
+              continue
+            fi
+
+            git commit -m "${name} ${version}"
+            committed=$((committed + 1))
+          done
+
+          if [ "$found" -eq 0 ]; then
+            echo "::error::No formula found in the release plan. Is \"homebrew\" still in \`installers\` in dist-workspace.toml?"
+            exit 1
+          fi
+
+          if [ "$committed" -eq 0 ]; then
+            echo "Tap is already up to date; nothing to push."
+            exit 0
+          fi
+
+          git push
+          echo "Pushed ${committed} formula update(s) to the tap."

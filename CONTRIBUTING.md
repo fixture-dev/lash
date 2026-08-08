@@ -789,16 +789,17 @@ To cut a release:
    ```
 
 After changing dist settings in `dist-workspace.toml`, run `dist generate` to
-regenerate the workflow and commit the result — do not edit `release.yml` by hand,
-with one documented exception (see the Homebrew tap section below).
+regenerate the workflow and commit the result — do not edit `release.yml` by hand.
+The `plan` job runs `dist plan`, which fails the build if `release.yml` has
+drifted from `dist-workspace.toml`, so a hand-edit is caught on the next PR.
 
 #### Homebrew tap
 
 Each release also publishes a formula to the
 [fixture-dev/homebrew-tap](https://github.com/fixture-dev/homebrew-tap) repo,
-which backs `brew install fixture-dev/tap/lash`. The `publish-homebrew-formula`
-job commits `Formula/lash.rb` to that repo using a `HOMEBREW_TAP_TOKEN` secret —
-a personal access token with `contents: write` on the tap repo only.
+which backs `brew install fixture-dev/tap/lash`. The publish job commits
+`Formula/lash.rb` to that repo using a `HOMEBREW_TAP_TOKEN` secret — a personal
+access token with `contents: write` on the tap repo only.
 
 The formula is generated, not maintained by hand: it points at the prebuilt
 release tarballs for both macOS architectures and both Linux architectures, so
@@ -809,24 +810,30 @@ If a release succeeds but the formula does not update, `HOMEBREW_TAP_TOKEN` has
 most likely expired — reissue it and re-run the failed job. The publish job is
 skipped for prereleases unless `publish-prereleases` is enabled.
 
-**One hand-patch lives in `release.yml`.** dist 0.28.5+ generates
-`persist-credentials: false` on the tap checkout, but the job ends in a bare
-`git push` that needs those credentials, so the job fails with
+**We own the publish job.** dist's built-in `publish-homebrew-formula` is broken
+in 0.28.5+: it checks out the tap with `persist-credentials: false` and then ends
+in a bare `git push` that needs those credentials, failing with
 `could not read Username for 'https://github.com/'`
 ([astral-sh/cargo-dist#29](https://github.com/astral-sh/cargo-dist/issues/29),
-open as of 0.28.7). We flip that single line to `true`, marked with a
-`LOCAL PATCH` comment in the file.
+still open as of 0.28.7 and unfixed on upstream `main`).
 
-`dist generate` silently reverts it. After any regeneration or dist upgrade,
-re-apply it and confirm with:
+So `dist-workspace.toml` sets `publish-jobs = ["./homebrew-tap"]`, and dist
+generates a caller job that invokes our own
+[`.github/workflows/homebrew-tap.yml`](.github/workflows/homebrew-tap.yml) with
+the release plan and `secrets: inherit`. `release.yml` stays fully generated, so
+dist's drift check stays enabled.
 
-```bash
-grep -A3 'fixture-dev/homebrew-tap' .github/workflows/release.yml
-```
+The alternative — hand-patching the generated file — requires
+`allow-dirty = ["ci"]`, which disables that drift check for the whole release
+workflow and lets future config changes silently fail to reach `release.yml`.
+That is why it was rejected.
 
-The failure mode is loud rather than silent — if the patch is lost, the publish
-job fails and blocks `announce`, so you will not ship a release with a stale
-formula. Drop the patch once #29 is fixed upstream.
+Our version also skips `brew style --fix` (the formula is generated, so the only
+effect is paying for a `brew update` each release) and is safe to re-run: an
+unchanged formula is a no-op instead of a "nothing to commit" failure.
+
+If #29 is ever fixed, delete `homebrew-tap.yml` and set
+`publish-jobs = ["homebrew"]`.
 
 ### Security
 

@@ -2363,12 +2363,25 @@ Note the macos-14 runner pins from commit 23c7e8f are not literals in
 `persist-credentials: false` on the tap checkout (PR #18), but the publish job
 ends in a bare `git push` that depends on those credentials, so it dies with
 `could not read Username for 'https://github.com/'`. Still unfixed on upstream
-main, so 0.30.1-prerelease is affected too. Options were: pin dist back to
-0.28.3 (last known-good, but reverts four patch releases across the whole
-pipeline), own the publish job via a custom reusable workflow, or hand-patch the
-one line. Took the hand-patch — the revert risk is loud rather than silent,
-since losing it fails the job and blocks `announce` instead of shipping a stale
-formula. Documented in CONTRIBUTING with a re-check grep.
+main, so 0.30.1-prerelease is affected too.
+
+First attempt was a one-line hand-patch of the generated `release.yml`. CI
+rejected it: the release workflow's own `plan` job runs `dist plan`, which
+verifies `release.yml` matches `dist-workspace.toml` and failed with "has out of
+date contents and needs to be regenerated" (PR #30, run 31267186110). Keeping the
+patch would have required `allow-dirty = ["ci"]`, which disables that drift check
+for the entire release workflow — future config changes would silently fail to
+reach `release.yml`. Worse footgun than the bug being worked around.
+
+Settled on owning the job instead: `publish-jobs = ["./homebrew-tap"]` makes dist
+generate a caller that invokes our `.github/workflows/homebrew-tap.yml` with the
+plan and `secrets: inherit`. `release.yml` stays fully generated and the drift
+check stays on. Ours also drops `brew style --fix` (pure cost on a generated
+formula) and is re-run safe — an unchanged formula is a no-op rather than a
+"nothing to commit" failure, which the built-in job gets wrong. Verified the
+publish logic locally against a real `dist plan` JSON across four cases: fresh
+formula commits with the right message and stages only the `.rb`; unchanged
+formula no-ops; missing artifact and missing-formula-in-plan both fail loudly.
 
 **2. Empty tap repo.** `actions/checkout` cannot check out a repository with no
 commits (actions/checkout#1477, #746), so the tap needs at least one commit

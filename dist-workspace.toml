@@ -12,8 +12,12 @@ installers = ["shell", "powershell", "homebrew"]
 # Homebrew tap that receives the generated formula on each release. Publishing
 # needs a HOMEBREW_TAP_TOKEN repo secret with contents:write on the tap repo.
 tap = "fixture-dev/homebrew-tap"
-# Publish jobs to run in CI
-publish-jobs = ["homebrew"]
+# Publish via our own .github/workflows/homebrew-tap.yml rather than dist's
+# built-in homebrew job, which is broken upstream (astral-sh/cargo-dist#29):
+# it sets persist-credentials: false on the tap checkout but then relies on
+# those credentials for its final `git push`. Owning the job keeps release.yml
+# fully generated, so dist's up-to-date check stays enabled.
+publish-jobs = ["./homebrew-tap"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in
