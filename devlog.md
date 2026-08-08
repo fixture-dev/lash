@@ -2386,3 +2386,36 @@ formula no-ops; missing artifact and missing-formula-in-plan both fail loudly.
 **2. Empty tap repo.** `actions/checkout` cannot check out a repository with no
 commits (actions/checkout#1477, #746), so the tap needs at least one commit
 before the first release runs.
+
+---
+
+## Watcher shutdown race (`dropping_handle_stops_events`)
+
+`Test (macos-latest, stable)` failed once on PR #30 with
+`no events expected after handle is dropped; got [".../tasks.md"]`, then passed
+on re-run with no code change. The diff at the time was workflow YAML only, so
+the test — not the change — was at fault.
+
+`FileWatcherHandle` held `_debouncer_thread: JoinHandle<()>`, and dropping a
+`JoinHandle` detaches rather than joins. So `drop(handle)` merely *started*
+teardown; the test's fixed 50 ms sleep was the only thing standing between that
+and the following write, with the debounce window also 50 ms — right on the
+boundary.
+
+Joining the thread alone is not sufficient. The `notify` backend can outlive its
+own drop briefly (FSEvents does), so the debouncer can reach the flush deadline
+for an already-pending path and emit it before it ever observes the disconnect;
+a join would just wait through that emission. The fix is an
+`Arc<AtomicBool>` shutdown flag that `Drop` sets *before* dropping the watcher,
+checked by the loop before every emit. Drop order is load-bearing and commented:
+signal, drop the watcher (which disconnects the debouncer's input), then join.
+Joining before dropping the watcher would deadlock.
+
+Testing: the sleep-based test could not be made to fail locally even under CPU
+contention (40/40 passes), so it is a poor regression guard. Replaced the guard
+with `shutdown_flag_suppresses_due_emissions`, which drives `debouncer_loop`
+directly with a zero debounce — the path is due the instant it is recorded — and
+asserts both directions: emitted when not shutting down, abandoned when it is.
+No sleeps, no filesystem, runs in 0.00s, and verified to FAIL when the guard is
+removed. `dropping_handle_stops_events` also lost its post-drop settling sleep,
+since the whole point is that none is needed.

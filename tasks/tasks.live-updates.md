@@ -121,7 +121,10 @@ paths. Forwards collapsed events as `PathBuf` on an `mpsc::Sender`.
 - [x] `watcher::start(project_root, tx)` spawns thread, returns handle
 - [x] Debounce window 150ms (configurable via `start_with_debounce` for tests); coalesce per-path
 - [x] Ignore-list: `.git/`, `target/`, `.lash/`, `node_modules/`, and any path not ending in `.md`
-- [x] Graceful shutdown on handle drop (verified by test)
+- [x] Graceful shutdown on handle drop: `Drop` signals a shutdown flag, drops
+      the watcher, then joins the debouncer, so no path can be emitted once
+      `drop` returns (verified by `shutdown_flag_suppresses_due_emissions`;
+      the original sleep-based test was an unreliable guard and flaked on CI)
 - [x] Test: edit a fixture file, assert a small number of events surface after debounce
 - [x] Test: non-`.md` writes produce 0 events
 
