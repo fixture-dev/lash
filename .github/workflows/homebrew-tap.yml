@@ -25,8 +25,15 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
+# No `permissions:` block here on purpose. dist's generated caller job declares
+# its own set ("id-token": write, "packages": write), and for a reusable workflow
+# that set is the complete grant — anything unlisted, including `contents`, is
+# `none`. Declaring `contents: read` here would request more than the caller
+# grants, which GitHub rejects before any job starts ("startup_failure").
+#
+# Nothing below needs `contents` on this repo anyway: the tap checkout
+# authenticates with HOMEBREW_TAP_TOKEN, and download-artifact reads same-run
+# artifacts via the runtime token.
 
 jobs:
   publish-homebrew-formula:
