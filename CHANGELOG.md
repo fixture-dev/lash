@@ -8,11 +8,19 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-08
+
 ### Added
 
 - Homebrew installs via `brew install fixture-dev/tap/lash`. Each release
   publishes a generated formula to the `fixture-dev/homebrew-tap` repo, covering
   macOS and Linux on both x86_64 and arm64.
+
+### Fixed
+
+- File watcher shutdown is now synchronous: dropping the handle signals the
+  debouncer, drops the watcher, and joins the thread, so no path can be emitted
+  once `drop` returns.
 
 ## [0.1.0] - 2026-08-07
 
@@ -31,5 +39,6 @@ Initial release.
 - Project scaffolding: `lash init` and the PixelQuest `lash playground`
 - Configuration management, shell completions, and `lash explain` error catalog
 
-[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/fixture-dev/lash/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fixture-dev/lash/releases/tag/v0.1.0
