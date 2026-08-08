@@ -7,7 +7,9 @@
 //! The watcher runs on its own thread and forwards events to a caller-owned
 //! `mpsc::Sender<PathBuf>`. Returning a handle that owns the underlying
 //! `notify::RecommendedWatcher` makes shutdown trivial: drop the handle and
-//! the watcher (and its thread) tear down.
+//! the watcher (and its thread) tear down. The handle's `Drop` joins the
+//! debouncer thread, so shutdown is complete — not merely started — by the
+//! time `drop` returns.
 //!
 //! Filtering & debouncing happen inline in the watcher thread:
 //! - non-`.md` paths are dropped
@@ -18,7 +20,9 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -36,12 +40,39 @@ const IGNORED_DIRS: &[&str] = &[".git", "target", ".lash", "node_modules"];
 
 /// Handle to a running watcher. Drop this to stop the watcher thread.
 ///
-/// We hold both the `notify` watcher (whose drop stops backend events) and
-/// the debouncer thread's join handle (which the watcher's death will cause
-/// to exit cleanly as its input channel is hung up).
+/// Shutdown is synchronous: once `drop` returns, the debouncer thread has
+/// exited and no further paths can be sent to the caller's channel. Callers
+/// can therefore drop the handle and immediately assume the channel is inert.
+///
+/// The watcher and thread fields are `Option` only so `Drop` can take them
+/// and enforce the order below; they are always `Some` while the handle is
+/// alive.
 pub struct FileWatcherHandle {
-    _watcher: notify::RecommendedWatcher,
-    _debouncer_thread: thread::JoinHandle<()>,
+    watcher: Option<notify::RecommendedWatcher>,
+    debouncer_thread: Option<thread::JoinHandle<()>>,
+    shutdown: Arc<AtomicBool>,
+}
+
+impl Drop for FileWatcherHandle {
+    fn drop(&mut self) {
+        // Signal before anything else. Dropping the watcher is not enough on
+        // its own: the backend can outlive its own drop briefly (FSEvents on
+        // macOS does), during which the debouncer may reach the flush deadline
+        // for an already-pending path and emit it — after the caller believed
+        // the watcher was gone. The flag closes that window; the debouncer
+        // checks it before every emit.
+        self.shutdown.store(true, Ordering::Release);
+
+        // Then drop the watcher, which destroys the `notify` closure holding
+        // the debouncer's input sender. That disconnect is what lets the loop
+        // return, so this must happen before the join or it would deadlock.
+        drop(self.watcher.take());
+
+        if let Some(thread) = self.debouncer_thread.take() {
+            // A panicking debouncer must not turn into a panic-in-drop.
+            let _ = thread.join();
+        }
+    }
 }
 
 /// Start a watcher rooted at `root`. Each Markdown file change (after
@@ -93,9 +124,12 @@ pub fn start_with_debounce(
             io_error: Some(e.to_string()),
         })?;
 
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let thread_shutdown = Arc::clone(&shutdown);
+
     let debouncer_thread = thread::Builder::new()
         .name("lash-file-watcher-debouncer".into())
-        .spawn(move || debouncer_loop(raw_rx, out, debounce))
+        .spawn(move || debouncer_loop(raw_rx, out, debounce, &thread_shutdown))
         .map_err(|e| LashError::IO {
             code: codes::E_IO_READ_ERROR,
             message: format!("failed to spawn watcher debouncer thread: {e}"),
@@ -104,8 +138,9 @@ pub fn start_with_debounce(
         })?;
 
     Ok(FileWatcherHandle {
-        _watcher: watcher,
-        _debouncer_thread: debouncer_thread,
+        watcher: Some(watcher),
+        debouncer_thread: Some(debouncer_thread),
+        shutdown,
     })
 }
 
@@ -128,7 +163,12 @@ fn is_relevant(path: &Path) -> bool {
 /// even if no further events arrive — without that, the very last event in a
 /// burst would sit in the pending map forever.
 #[allow(clippy::needless_pass_by_value)]
-fn debouncer_loop(raw_rx: mpsc::Receiver<Event>, out: Sender<PathBuf>, debounce: Duration) {
+fn debouncer_loop(
+    raw_rx: mpsc::Receiver<Event>,
+    out: Sender<PathBuf>,
+    debounce: Duration,
+    shutdown: &AtomicBool,
+) {
     let mut pending: HashMap<PathBuf, Instant> = HashMap::new();
 
     loop {
@@ -153,6 +193,12 @@ fn debouncer_loop(raw_rx: mpsc::Receiver<Event>, out: Sender<PathBuf>, debounce:
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        }
+
+        // The handle has been dropped: abandon anything still pending rather
+        // than racing the teardown to emit it.
+        if shutdown.load(Ordering::Acquire) {
+            return;
         }
 
         let now = Instant::now();
@@ -207,6 +253,43 @@ mod tests {
             }
         }
         out
+    }
+
+    fn md_event(path: &Path) -> Event {
+        Event::new(EventKind::Modify(notify::event::ModifyKind::Any)).add_path(path.to_path_buf())
+    }
+
+    /// The shutdown flag must win over a path that is already due to flush.
+    /// A zero debounce makes the path due the instant it is recorded, which is
+    /// the race the flag exists to close — the backend can keep feeding events
+    /// for a short while after the handle is dropped, and without the flag the
+    /// debouncer would emit them.
+    #[test]
+    fn shutdown_flag_suppresses_due_emissions() {
+        let path = PathBuf::from("/tmp/proj/tasks.md");
+
+        // Control: no shutdown signalled, so the due path is emitted.
+        let (raw_tx, raw_rx) = mpsc::channel();
+        let (out_tx, out_rx) = mpsc::channel();
+        raw_tx.send(md_event(&path)).unwrap();
+        drop(raw_tx);
+        debouncer_loop(raw_rx, out_tx, Duration::ZERO, &AtomicBool::new(false));
+        assert_eq!(
+            out_rx.iter().collect::<Vec<_>>(),
+            vec![path.clone()],
+            "control: a due path should be emitted when not shutting down"
+        );
+
+        // Same input, shutdown already signalled: the path is abandoned.
+        let (raw_tx, raw_rx) = mpsc::channel();
+        let (out_tx, out_rx) = mpsc::channel();
+        raw_tx.send(md_event(&path)).unwrap();
+        drop(raw_tx);
+        debouncer_loop(raw_rx, out_tx, Duration::ZERO, &AtomicBool::new(true));
+        assert!(
+            out_rx.iter().next().is_none(),
+            "no path may be emitted once shutdown is signalled"
+        );
     }
 
     #[test]
@@ -303,11 +386,16 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let handle = start_with_debounce(root, tx, Duration::from_millis(50)).unwrap();
         std::thread::sleep(Duration::from_millis(80));
-        drop(handle);
-        // Allow watcher to fully tear down.
-        std::thread::sleep(Duration::from_millis(50));
 
-        std::fs::write(&path, "after drop\n").unwrap();
+        // No settling sleep after this point on purpose: `drop` joins the
+        // debouncer thread, so the channel must already be inert when it
+        // returns. A sleep here would hide a regression back to detached
+        // shutdown, which failed intermittently on loaded CI runners.
+        drop(handle);
+
+        for i in 0..10 {
+            std::fs::write(&path, format!("after drop {i}\n")).unwrap();
+        }
         let events = drain_events(&rx, Duration::from_millis(200));
         assert!(
             events.is_empty(),
