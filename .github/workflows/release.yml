@@ -293,7 +293,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          # LOCAL PATCH — not produced by `dist generate`.
+          # Upstream astral-sh/cargo-dist#29: dist 0.28.5+ sets this to false,
+          # but the "Commit formula files" step below ends in a bare `git push`
+          # that needs these credentials, so the job dies with
+          # "could not read Username for 'https://github.com/'".
+          # Re-apply this after every `dist generate` until #29 is fixed.
+          persist-credentials: true
           repository: "fixture-dev/homebrew-tap"
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
       # So we have access to the formula

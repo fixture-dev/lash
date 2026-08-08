@@ -2356,3 +2356,20 @@ transfer, and `lash` is a contested name in a global namespace.
 Note the macos-14 runner pins from commit 23c7e8f are not literals in
 `release.yml` — the build matrix is computed at runtime by the `plan` job from
 `dist-workspace.toml`, so regenerating the workflow does not disturb them.
+
+### Two blockers found before the first tagged release
+
+**1. Upstream dist bug (astral-sh/cargo-dist#29).** dist 0.28.5+ emits
+`persist-credentials: false` on the tap checkout (PR #18), but the publish job
+ends in a bare `git push` that depends on those credentials, so it dies with
+`could not read Username for 'https://github.com/'`. Still unfixed on upstream
+main, so 0.30.1-prerelease is affected too. Options were: pin dist back to
+0.28.3 (last known-good, but reverts four patch releases across the whole
+pipeline), own the publish job via a custom reusable workflow, or hand-patch the
+one line. Took the hand-patch — the revert risk is loud rather than silent,
+since losing it fails the job and blocks `announce` instead of shipping a stale
+formula. Documented in CONTRIBUTING with a re-check grep.
+
+**2. Empty tap repo.** `actions/checkout` cannot check out a repository with no
+commits (actions/checkout#1477, #746), so the tap needs at least one commit
+before the first release runs.

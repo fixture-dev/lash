@@ -789,7 +789,8 @@ To cut a release:
    ```
 
 After changing dist settings in `dist-workspace.toml`, run `dist generate` to
-regenerate the workflow and commit the result — do not edit `release.yml` by hand.
+regenerate the workflow and commit the result — do not edit `release.yml` by hand,
+with one documented exception (see the Homebrew tap section below).
 
 #### Homebrew tap
 
@@ -807,6 +808,25 @@ release.
 If a release succeeds but the formula does not update, `HOMEBREW_TAP_TOKEN` has
 most likely expired — reissue it and re-run the failed job. The publish job is
 skipped for prereleases unless `publish-prereleases` is enabled.
+
+**One hand-patch lives in `release.yml`.** dist 0.28.5+ generates
+`persist-credentials: false` on the tap checkout, but the job ends in a bare
+`git push` that needs those credentials, so the job fails with
+`could not read Username for 'https://github.com/'`
+([astral-sh/cargo-dist#29](https://github.com/astral-sh/cargo-dist/issues/29),
+open as of 0.28.7). We flip that single line to `true`, marked with a
+`LOCAL PATCH` comment in the file.
+
+`dist generate` silently reverts it. After any regeneration or dist upgrade,
+re-apply it and confirm with:
+
+```bash
+grep -A3 'fixture-dev/homebrew-tap' .github/workflows/release.yml
+```
+
+The failure mode is loud rather than silent — if the patch is lost, the publish
+job fails and blocks `announce`, so you will not ship a release with a stale
+formula. Drop the patch once #29 is fixed upstream.
 
 ### Security
 
