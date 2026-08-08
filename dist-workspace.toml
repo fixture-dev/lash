@@ -8,7 +8,12 @@ cargo-dist-version = "0.28.7"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
-installers = ["shell", "powershell"]
+installers = ["shell", "powershell", "homebrew"]
+# Homebrew tap that receives the generated formula on each release. Publishing
+# needs a HOMEBREW_TAP_TOKEN repo secret with contents:write on the tap repo.
+tap = "fixture-dev/homebrew-tap"
+# Publish jobs to run in CI
+publish-jobs = ["homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in

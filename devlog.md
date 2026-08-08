@@ -2326,3 +2326,33 @@ output — Windows CI only, since Linux/macOS default to 8 MiB and release
 builds have small frames. Diagnosed by adding child status/stdout/stderr
 to the subprocess test assertions (commit a2b2caf). Fixed by reserving an
 8 MiB stack for Windows targets in `.cargo/config.toml`.
+
+---
+
+## Homebrew tap installer (Path A)
+
+Added `brew install fixture-dev/tap/lash` by turning on cargo-dist's Homebrew
+installer rather than hand-maintaining a formula. Config-only change in
+`dist-workspace.toml`: `"homebrew"` added to `installers`, plus `tap` and
+`publish-jobs`. `dist generate` added a `publish-homebrew-formula` job that
+commits the formula to the tap repo with a `HOMEBREW_TAP_TOKEN` secret, and
+wired `announce` to wait on it.
+
+`dist` warned that the Homebrew installer needs a `homepage`, which the
+workspace never set — added to `[workspace.package]` and inherited by
+`lash-cli`. Also replaced the self-referential crate description ("Command-line
+interface for Lash") since it becomes the formula's `desc` and shows up in
+`brew info`.
+
+The generated formula downloads the prebuilt release tarballs for both macOS
+arches and both Linux arches, so installs are a download rather than a source
+build, and Linuxbrew works for free. Verified locally with
+`dist build --artifacts=global` and `ruby -c` on the emitted `lash.rb`.
+
+Homebrew-core (bare `brew install lash`) was considered and deferred: it gates
+on notability, rejects binary-only formulae so the generated file would not
+transfer, and `lash` is a contested name in a global namespace.
+
+Note the macos-14 runner pins from commit 23c7e8f are not literals in
+`release.yml` — the build matrix is computed at runtime by the `plan` job from
+`dist-workspace.toml`, so regenerating the workflow does not disturb them.

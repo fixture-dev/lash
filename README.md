@@ -76,7 +76,15 @@ cargo clippy --workspace -- -D warnings
 
 ## Installation
 
-### Prebuilt binaries (recommended)
+### Homebrew (macOS / Linux)
+
+```bash
+brew install fixture-dev/tap/lash
+```
+
+Upgrade with `brew upgrade lash`, remove with `brew uninstall lash`.
+
+### Prebuilt binaries
 
 Download a prebuilt binary for Linux, macOS, or Windows from the
 [latest release](https://github.com/fixture-dev/lash/releases/latest), or use
@@ -91,6 +99,11 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/fixture-dev/lash/releas
 # Windows
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/fixture-dev/lash/releases/latest/download/lash-installer.ps1 | iex"
 ```
+
+> **Pick one method.** The installer script and `cargo install` place `lash` in
+> `~/.cargo/bin`, while Homebrew uses its own prefix. Installing both leaves two
+> binaries on your PATH, and whichever comes first wins — which makes version
+> mismatches confusing. Run `which -a lash` if output looks stale.
 
 ### From source
 

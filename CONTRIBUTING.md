@@ -791,6 +791,23 @@ To cut a release:
 After changing dist settings in `dist-workspace.toml`, run `dist generate` to
 regenerate the workflow and commit the result — do not edit `release.yml` by hand.
 
+#### Homebrew tap
+
+Each release also publishes a formula to the
+[fixture-dev/homebrew-tap](https://github.com/fixture-dev/homebrew-tap) repo,
+which backs `brew install fixture-dev/tap/lash`. The `publish-homebrew-formula`
+job commits `Formula/lash.rb` to that repo using a `HOMEBREW_TAP_TOKEN` secret —
+a personal access token with `contents: write` on the tap repo only.
+
+The formula is generated, not maintained by hand: it points at the prebuilt
+release tarballs for both macOS architectures and both Linux architectures, so
+`brew install` downloads a binary rather than compiling. Nothing needs doing per
+release.
+
+If a release succeeds but the formula does not update, `HOMEBREW_TAP_TOKEN` has
+most likely expired — reissue it and re-run the failed job. The publish job is
+skipped for prereleases unless `publish-prereleases` is enabled.
+
 ### Security
 
 **If you discover a security vulnerability**:
