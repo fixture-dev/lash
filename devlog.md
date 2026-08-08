@@ -2326,3 +2326,63 @@ output — Windows CI only, since Linux/macOS default to 8 MiB and release
 builds have small frames. Diagnosed by adding child status/stdout/stderr
 to the subprocess test assertions (commit a2b2caf). Fixed by reserving an
 8 MiB stack for Windows targets in `.cargo/config.toml`.
+
+---
+
+## Homebrew tap installer (Path A)
+
+Added `brew install fixture-dev/tap/lash` by turning on cargo-dist's Homebrew
+installer rather than hand-maintaining a formula. Config-only change in
+`dist-workspace.toml`: `"homebrew"` added to `installers`, plus `tap` and
+`publish-jobs`. `dist generate` added a `publish-homebrew-formula` job that
+commits the formula to the tap repo with a `HOMEBREW_TAP_TOKEN` secret, and
+wired `announce` to wait on it.
+
+`dist` warned that the Homebrew installer needs a `homepage`, which the
+workspace never set — added to `[workspace.package]` and inherited by
+`lash-cli`. Also replaced the self-referential crate description ("Command-line
+interface for Lash") since it becomes the formula's `desc` and shows up in
+`brew info`.
+
+The generated formula downloads the prebuilt release tarballs for both macOS
+arches and both Linux arches, so installs are a download rather than a source
+build, and Linuxbrew works for free. Verified locally with
+`dist build --artifacts=global` and `ruby -c` on the emitted `lash.rb`.
+
+Homebrew-core (bare `brew install lash`) was considered and deferred: it gates
+on notability, rejects binary-only formulae so the generated file would not
+transfer, and `lash` is a contested name in a global namespace.
+
+Note the macos-14 runner pins from commit 23c7e8f are not literals in
+`release.yml` — the build matrix is computed at runtime by the `plan` job from
+`dist-workspace.toml`, so regenerating the workflow does not disturb them.
+
+### Two blockers found before the first tagged release
+
+**1. Upstream dist bug (astral-sh/cargo-dist#29).** dist 0.28.5+ emits
+`persist-credentials: false` on the tap checkout (PR #18), but the publish job
+ends in a bare `git push` that depends on those credentials, so it dies with
+`could not read Username for 'https://github.com/'`. Still unfixed on upstream
+main, so 0.30.1-prerelease is affected too.
+
+First attempt was a one-line hand-patch of the generated `release.yml`. CI
+rejected it: the release workflow's own `plan` job runs `dist plan`, which
+verifies `release.yml` matches `dist-workspace.toml` and failed with "has out of
+date contents and needs to be regenerated" (PR #30, run 31267186110). Keeping the
+patch would have required `allow-dirty = ["ci"]`, which disables that drift check
+for the entire release workflow — future config changes would silently fail to
+reach `release.yml`. Worse footgun than the bug being worked around.
+
+Settled on owning the job instead: `publish-jobs = ["./homebrew-tap"]` makes dist
+generate a caller that invokes our `.github/workflows/homebrew-tap.yml` with the
+plan and `secrets: inherit`. `release.yml` stays fully generated and the drift
+check stays on. Ours also drops `brew style --fix` (pure cost on a generated
+formula) and is re-run safe — an unchanged formula is a no-op rather than a
+"nothing to commit" failure, which the built-in job gets wrong. Verified the
+publish logic locally against a real `dist plan` JSON across four cases: fresh
+formula commits with the right message and stages only the `.rb`; unchanged
+formula no-ops; missing artifact and missing-formula-in-plan both fail loudly.
+
+**2. Empty tap repo.** `actions/checkout` cannot check out a repository with no
+commits (actions/checkout#1477, #746), so the tap needs at least one commit
+before the first release runs.

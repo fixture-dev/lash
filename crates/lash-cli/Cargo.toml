@@ -6,7 +6,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Command-line interface for Lash"
+homepage.workspace = true
+description = "Minimalist, Markdown-native task tracker for devs and agents"
 
 [[bin]]
 name = "lash"

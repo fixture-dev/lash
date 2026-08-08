@@ -8,6 +8,12 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- Homebrew installs via `brew install fixture-dev/tap/lash`. Each release
+  publishes a generated formula to the `fixture-dev/homebrew-tap` repo, covering
+  macOS and Linux on both x86_64 and arm64.
+
 ## [0.1.0] - 2026-08-07
 
 Initial release.

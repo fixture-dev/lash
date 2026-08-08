@@ -790,6 +790,50 @@ To cut a release:
 
 After changing dist settings in `dist-workspace.toml`, run `dist generate` to
 regenerate the workflow and commit the result — do not edit `release.yml` by hand.
+The `plan` job runs `dist plan`, which fails the build if `release.yml` has
+drifted from `dist-workspace.toml`, so a hand-edit is caught on the next PR.
+
+#### Homebrew tap
+
+Each release also publishes a formula to the
+[fixture-dev/homebrew-tap](https://github.com/fixture-dev/homebrew-tap) repo,
+which backs `brew install fixture-dev/tap/lash`. The publish job commits
+`Formula/lash.rb` to that repo using a `HOMEBREW_TAP_TOKEN` secret — a personal
+access token with `contents: write` on the tap repo only.
+
+The formula is generated, not maintained by hand: it points at the prebuilt
+release tarballs for both macOS architectures and both Linux architectures, so
+`brew install` downloads a binary rather than compiling. Nothing needs doing per
+release.
+
+If a release succeeds but the formula does not update, `HOMEBREW_TAP_TOKEN` has
+most likely expired — reissue it and re-run the failed job. The publish job is
+skipped for prereleases unless `publish-prereleases` is enabled.
+
+**We own the publish job.** dist's built-in `publish-homebrew-formula` is broken
+in 0.28.5+: it checks out the tap with `persist-credentials: false` and then ends
+in a bare `git push` that needs those credentials, failing with
+`could not read Username for 'https://github.com/'`
+([astral-sh/cargo-dist#29](https://github.com/astral-sh/cargo-dist/issues/29),
+still open as of 0.28.7 and unfixed on upstream `main`).
+
+So `dist-workspace.toml` sets `publish-jobs = ["./homebrew-tap"]`, and dist
+generates a caller job that invokes our own
+[`.github/workflows/homebrew-tap.yml`](.github/workflows/homebrew-tap.yml) with
+the release plan and `secrets: inherit`. `release.yml` stays fully generated, so
+dist's drift check stays enabled.
+
+The alternative — hand-patching the generated file — requires
+`allow-dirty = ["ci"]`, which disables that drift check for the whole release
+workflow and lets future config changes silently fail to reach `release.yml`.
+That is why it was rejected.
+
+Our version also skips `brew style --fix` (the formula is generated, so the only
+effect is paying for a `brew update` each release) and is safe to re-run: an
+unchanged formula is a no-op instead of a "nothing to commit" failure.
+
+If #29 is ever fixed, delete `homebrew-tap.yml` and set
+`publish-jobs = ["homebrew"]`.
 
 ### Security
 
