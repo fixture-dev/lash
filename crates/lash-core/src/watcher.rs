@@ -16,12 +16,22 @@
 //! - any path inside `.git/`, `target/`, `.lash/`, or `node_modules/` is dropped
 //! - identical path events arriving within `DEBOUNCE` are coalesced into one
 //!
-//! See `docs/live-tui-updates.md` Phase C for the broader context.
+//! The outbound channel is bounded. A burst large enough to fill it (a
+//! `git checkout` across a branch that touches thousands of task files, say)
+//! would otherwise queue thousands of individual reindexes for a consumer that
+//! drains on a ~100ms tick. Instead the watcher drops the paths it cannot
+//! enqueue and raises an overflow flag, and the consumer reloads everything
+//! once. Losing which files changed is fine when the answer is "too many to
+//! be worth tracking"; what must not happen is losing the fact that something
+//! changed.
+//!
+//! See `docs/live-tui-updates.md` Phase C for the broader context, and Phase D
+//! for the backpressure above.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, SyncSender, TrySendError};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -34,9 +44,54 @@ use lash_types::{LashError, Result};
 /// Default debounce window for coalescing watcher events per-path.
 pub const DEBOUNCE: Duration = Duration::from_millis(150);
 
+/// Capacity of the watcher's outbound channel.
+///
+/// Comfortably above what a normal editing session produces, and far below
+/// what a branch switch does. Past it, per-path delivery stops being useful
+/// and [`WatcherEvents::drain`] reports an overflow instead.
+pub const CHANNEL_CAPACITY: usize = 256;
+
 /// Directory components we never recurse into. Cheap substring check — these
 /// are well-known directories so false positives are not a concern.
 const IGNORED_DIRS: &[&str] = &[".git", "target", ".lash", "node_modules"];
+
+/// What a drain of the watcher channel found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatcherDrain {
+    /// Paths that changed, debounced and filtered.
+    pub paths: Vec<PathBuf>,
+
+    /// True if the watcher had to drop paths because the channel was full.
+    ///
+    /// `paths` is then an arbitrary subset of what changed, and the consumer
+    /// should reload everything rather than trust it.
+    pub overflowed: bool,
+}
+
+/// Receive end of the watcher's bounded channel.
+///
+/// Wraps the channel together with the overflow flag so a consumer cannot read
+/// one without the other: the paths are only complete if `overflowed` is false.
+pub struct WatcherEvents {
+    rx: mpsc::Receiver<PathBuf>,
+    overflowed: Arc<AtomicBool>,
+}
+
+impl WatcherEvents {
+    /// Take everything currently queued, without blocking.
+    ///
+    /// Reading the overflow flag clears it, so an overflow is reported to
+    /// exactly one drain.
+    #[must_use]
+    pub fn drain(&self) -> WatcherDrain {
+        // Paths first: a path dropped between here and the flag read is
+        // covered by the flag, whereas clearing the flag first could discard
+        // an overflow whose paths were never delivered.
+        let paths: Vec<PathBuf> = self.rx.try_iter().collect();
+        let overflowed = self.overflowed.swap(false, Ordering::AcqRel);
+        WatcherDrain { paths, overflowed }
+    }
+}
 
 /// Handle to a running watcher. Drop this to stop the watcher thread.
 ///
@@ -85,8 +140,8 @@ impl Drop for FileWatcherHandle {
 /// Returns an error if the underlying `notify` watcher fails to start or
 /// fails to register `root`.
 #[allow(clippy::needless_pass_by_value)]
-pub fn start(root: PathBuf, tx: Sender<PathBuf>) -> Result<FileWatcherHandle> {
-    start_with_debounce(root, tx, DEBOUNCE)
+pub fn start(root: PathBuf) -> Result<(FileWatcherHandle, WatcherEvents)> {
+    start_with_debounce(root, DEBOUNCE)
 }
 
 /// Variant of `start` that exposes the debounce window. Used by tests to
@@ -98,9 +153,12 @@ pub fn start(root: PathBuf, tx: Sender<PathBuf>) -> Result<FileWatcherHandle> {
 #[allow(clippy::needless_pass_by_value)]
 pub fn start_with_debounce(
     root: PathBuf,
-    out: Sender<PathBuf>,
     debounce: Duration,
-) -> Result<FileWatcherHandle> {
+) -> Result<(FileWatcherHandle, WatcherEvents)> {
+    let (out, rx) = mpsc::sync_channel::<PathBuf>(CHANNEL_CAPACITY);
+    let overflowed = Arc::new(AtomicBool::new(false));
+    let thread_overflowed = Arc::clone(&overflowed);
+
     let (raw_tx, raw_rx) = mpsc::channel::<Event>();
 
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
@@ -129,7 +187,9 @@ pub fn start_with_debounce(
 
     let debouncer_thread = thread::Builder::new()
         .name("lash-file-watcher-debouncer".into())
-        .spawn(move || debouncer_loop(raw_rx, out, debounce, &thread_shutdown))
+        .spawn(move || {
+            debouncer_loop(raw_rx, out, debounce, &thread_shutdown, &thread_overflowed);
+        })
         .map_err(|e| LashError::IO {
             code: codes::E_IO_READ_ERROR,
             message: format!("failed to spawn watcher debouncer thread: {e}"),
@@ -137,11 +197,14 @@ pub fn start_with_debounce(
             io_error: Some(e.to_string()),
         })?;
 
-    Ok(FileWatcherHandle {
-        watcher: Some(watcher),
-        debouncer_thread: Some(debouncer_thread),
-        shutdown,
-    })
+    Ok((
+        FileWatcherHandle {
+            watcher: Some(watcher),
+            debouncer_thread: Some(debouncer_thread),
+            shutdown,
+        },
+        WatcherEvents { rx, overflowed },
+    ))
 }
 
 /// Returns true if the path is a Markdown file we care about (i.e. has `.md`
@@ -165,9 +228,10 @@ fn is_relevant(path: &Path) -> bool {
 #[allow(clippy::needless_pass_by_value)]
 fn debouncer_loop(
     raw_rx: mpsc::Receiver<Event>,
-    out: Sender<PathBuf>,
+    out: SyncSender<PathBuf>,
     debounce: Duration,
     shutdown: &AtomicBool,
+    overflowed: &AtomicBool,
 ) {
     let mut pending: HashMap<PathBuf, Instant> = HashMap::new();
 
@@ -212,8 +276,13 @@ fn debouncer_loop(
             }
         });
         for path in to_emit {
-            if out.send(path).is_err() {
-                return;
+            // Never block here. The debouncer thread is also what notices
+            // shutdown, so parking it on a full channel would make `drop` wait
+            // for a consumer that may itself be waiting on us.
+            match out.try_send(path) {
+                Ok(()) => {}
+                Err(TrySendError::Full(_)) => overflowed.store(true, Ordering::Release),
+                Err(TrySendError::Disconnected(_)) => return,
             }
         }
     }
@@ -239,7 +308,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    fn drain_events(rx: &mpsc::Receiver<PathBuf>, deadline: Duration) -> Vec<PathBuf> {
+    fn drain_events(events: &WatcherEvents, deadline: Duration) -> Vec<PathBuf> {
         let mut out = Vec::new();
         let end = Instant::now() + deadline;
         loop {
@@ -247,7 +316,7 @@ mod tests {
             if remaining.is_zero() {
                 break;
             }
-            match rx.recv_timeout(remaining) {
+            match events.rx.recv_timeout(remaining) {
                 Ok(p) => out.push(p),
                 Err(_) => break,
             }
@@ -270,10 +339,16 @@ mod tests {
 
         // Control: no shutdown signalled, so the due path is emitted.
         let (raw_tx, raw_rx) = mpsc::channel();
-        let (out_tx, out_rx) = mpsc::channel();
+        let (out_tx, out_rx) = mpsc::sync_channel(CHANNEL_CAPACITY);
         raw_tx.send(md_event(&path)).unwrap();
         drop(raw_tx);
-        debouncer_loop(raw_rx, out_tx, Duration::ZERO, &AtomicBool::new(false));
+        debouncer_loop(
+            raw_rx,
+            out_tx,
+            Duration::ZERO,
+            &AtomicBool::new(false),
+            &AtomicBool::new(false),
+        );
         assert_eq!(
             out_rx.iter().collect::<Vec<_>>(),
             vec![path.clone()],
@@ -282,14 +357,98 @@ mod tests {
 
         // Same input, shutdown already signalled: the path is abandoned.
         let (raw_tx, raw_rx) = mpsc::channel();
-        let (out_tx, out_rx) = mpsc::channel();
+        let (out_tx, out_rx) = mpsc::sync_channel(CHANNEL_CAPACITY);
         raw_tx.send(md_event(&path)).unwrap();
         drop(raw_tx);
-        debouncer_loop(raw_rx, out_tx, Duration::ZERO, &AtomicBool::new(true));
+        debouncer_loop(
+            raw_rx,
+            out_tx,
+            Duration::ZERO,
+            &AtomicBool::new(true),
+            &AtomicBool::new(false),
+        );
         assert!(
             out_rx.iter().next().is_none(),
             "no path may be emitted once shutdown is signalled"
         );
+    }
+
+    /// Run the debouncer over `count` distinct paths with a zero debounce (so
+    /// everything is due immediately) against a channel of size `capacity`.
+    fn run_debouncer_over(count: usize, capacity: usize) -> (Vec<PathBuf>, bool) {
+        let (raw_tx, raw_rx) = mpsc::channel();
+        let (out_tx, out_rx) = mpsc::sync_channel(capacity);
+        for i in 0..count {
+            raw_tx
+                .send(md_event(&PathBuf::from(format!("/tmp/proj/task-{i}.md"))))
+                .unwrap();
+        }
+        drop(raw_tx);
+
+        let overflowed = Arc::new(AtomicBool::new(false));
+        debouncer_loop(
+            raw_rx,
+            out_tx,
+            Duration::ZERO,
+            &AtomicBool::new(false),
+            &overflowed,
+        );
+
+        let events = WatcherEvents {
+            rx: out_rx,
+            overflowed,
+        };
+        let drained = events.drain();
+        (drained.paths, drained.overflowed)
+    }
+
+    #[test]
+    fn a_burst_within_capacity_does_not_overflow() {
+        let (paths, overflowed) = run_debouncer_over(4, 8);
+
+        assert_eq!(paths.len(), 4);
+        assert!(!overflowed, "capacity was never reached");
+    }
+
+    #[test]
+    fn a_burst_past_capacity_reports_overflow_and_keeps_running() {
+        // A branch switch touching far more files than the channel holds. The
+        // paths that do fit are still delivered, but the flag says they are
+        // only a subset.
+        let (paths, overflowed) = run_debouncer_over(40, 8);
+
+        assert!(overflowed, "dropped paths must be reported");
+        assert_eq!(
+            paths.len(),
+            8,
+            "the channel should be full, not empty or unbounded"
+        );
+    }
+
+    #[test]
+    fn overflow_is_reported_to_exactly_one_drain() {
+        let events = WatcherEvents {
+            rx: mpsc::sync_channel::<PathBuf>(1).1,
+            overflowed: Arc::new(AtomicBool::new(true)),
+        };
+
+        assert!(events.drain().overflowed);
+        assert!(
+            !events.drain().overflowed,
+            "a second drain must not re-report the same overflow"
+        );
+    }
+
+    #[test]
+    fn a_full_channel_does_not_block_shutdown() {
+        // The debouncer thread is also what observes the shutdown flag, so
+        // blocking it on a full channel would make `drop` wait for a consumer
+        // that may never drain. Capacity 1 with 200 due paths would deadlock
+        // if the send blocked; that it returns at all is the assertion.
+        let (paths, overflowed) = run_debouncer_over(200, 1);
+
+        assert!(overflowed);
+        assert_eq!(paths.len(), 1);
     }
 
     #[test]
@@ -318,8 +477,7 @@ mod tests {
         let path = root.join("tasks.md");
         std::fs::write(&path, "initial\n").unwrap();
 
-        let (tx, rx) = mpsc::channel();
-        let _handle = start_with_debounce(root, tx, Duration::from_millis(50)).unwrap();
+        let (_handle, rx) = start_with_debounce(root, Duration::from_millis(50)).unwrap();
 
         // notify needs a moment to wire up after watch() returns.
         std::thread::sleep(Duration::from_millis(80));
@@ -355,8 +513,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_path_buf();
 
-        let (tx, rx) = mpsc::channel();
-        let _handle = start_with_debounce(root.clone(), tx, Duration::from_millis(50)).unwrap();
+        let (_handle, rx) = start_with_debounce(root.clone(), Duration::from_millis(50)).unwrap();
 
         std::thread::sleep(Duration::from_millis(80));
         std::fs::write(root.join("ignored.txt"), "hi\n").unwrap();
@@ -383,8 +540,7 @@ mod tests {
         let path = root.join("tasks.md");
         std::fs::write(&path, "initial\n").unwrap();
 
-        let (tx, rx) = mpsc::channel();
-        let handle = start_with_debounce(root, tx, Duration::from_millis(50)).unwrap();
+        let (handle, rx) = start_with_debounce(root, Duration::from_millis(50)).unwrap();
         std::thread::sleep(Duration::from_millis(80));
 
         // Clear anything the watcher queued before the drop. macOS FSEvents

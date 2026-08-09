@@ -57,7 +57,17 @@ For background docs, see:
     warning-colored. User Esc-discards and retries against fresh state.
     The other (transient) confirm modals are not yet covered — typical
     open-window is sub-second so the risk window is much smaller
-- [ ] Bounded watcher channel with `FullReload` overflow path #core
+- [x] Bounded watcher channel with `FullReload` overflow path #core
+  - The watcher's outbound channel is a `sync_channel` of 256. Past that the
+    debouncer stops sending and raises an overflow flag instead of queueing;
+    `WatcherEvents::drain` hands the consumer paths and the flag together, so
+    a partial path list cannot be read as a complete one. The TUI answers an
+    overflow with `Store::handle_watcher_overflow`, which clears the
+    self-write hash table and emits `StateDelta::FullReload`, and reindexes
+    the whole project instead of acting on the subset
+  - Sends never block: the debouncer thread is also what observes the shutdown
+    flag, so parking it on a full channel would make `drop` wait on a consumer
+    that may itself be waiting
 
 ### CLI hygiene
 
