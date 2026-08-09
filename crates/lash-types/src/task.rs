@@ -15,6 +15,63 @@ pub const NOTE_LENGTH_WARNING_THRESHOLD: usize = 200;
 /// Notes exceeding this length will trigger an error during linting.
 pub const NOTE_LENGTH_ERROR_THRESHOLD: usize = 500;
 
+/// Longest synthesized task ID, in characters.
+pub const MAX_SYNTHESIZED_ID_LENGTH: usize = 40;
+
+/// Derive a task ID from a task title
+///
+/// This is the one place a task ID is derived from a title. Both the parser,
+/// when a task carries no `@id:`, and `lash add`, when reporting what it just
+/// created, go through here, so the ID a user is shown is the ID that ends up
+/// in the index. They used to compute it separately and disagree: the same
+/// title produced `ship-v0-7-0-release-notes` in one and
+/// `ship-v070-release-notes-docs` in the other, and an `@depends-on` written
+/// against the first dangled.
+///
+/// Inline labels are stripped before slugging. A task's identity should not
+/// change because someone tagged it.
+///
+/// # Examples
+///
+/// ```
+/// use lash_types::task::synthesize_task_id;
+///
+/// assert_eq!(synthesize_task_id("Implement OAuth2 Flow"), "implement-oauth2-flow");
+///
+/// // Punctuation inside a version becomes a separator, not nothing.
+/// assert_eq!(synthesize_task_id("Ship v0.7.0 release notes"), "ship-v0-7-0-release-notes");
+///
+/// // A label is metadata, not identity.
+/// assert_eq!(synthesize_task_id("Ship it #docs"), "ship-it");
+///
+/// // Long titles are truncated, and never left ending in a separator.
+/// assert_eq!(
+///     synthesize_task_id("Coverage fail fast when the coverage command fails"),
+///     "coverage-fail-fast-when-the-coverage-com"
+/// );
+/// ```
+#[must_use]
+pub fn synthesize_task_id(title: &str) -> String {
+    let without_labels: String = title
+        .split_whitespace()
+        .filter(|word| !crate::label::is_inline_label(word))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let slug = without_labels
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    let truncated: String = slug.chars().take(MAX_SYNTHESIZED_ID_LENGTH).collect();
+    truncated.trim_matches('-').to_string()
+}
+
 /// A contextual note attached to a task.
 ///
 /// Contextual notes are plain bullet points (without checkboxes) that provide

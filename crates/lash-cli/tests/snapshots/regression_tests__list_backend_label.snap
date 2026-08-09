@@ -9,16 +9,16 @@ expression: normalized
     ├── ○ api.md (backend.api)
     │   ├── [x] Design REST API (backend.api#design-rest-api)
     │   │   ├── [x] Define endpoints (backend.api#define-endpoints)
-    │   │   └── [x] Design request/response schemas (backend.api#design-requestresponse-schemas)
-    │   ├── [ ] Implement authentication #security (backend.api#implement-authentication-security) #security
+    │   │   └── [x] Design request/response schemas (backend.api#design-request-response-schemas)
+    │   ├── [ ] Implement authentication #security (backend.api#implement-authentication) #security
     │   │   ├── [x] JWT token generation (backend.api#jwt-token-generation)
-    │   │   ├── [ ] OAuth2 integration #p1 (backend.api#oauth2-integration-p1) #p1
+    │   │   ├── [ ] OAuth2 integration #p1 (backend.api#oauth2-integration) #p1
     │   │   └── [ ] Session management (backend.api#session-management)
-    │   ├── [ ] Implement CRUD endpoints #core (backend.api#implement-crud-endpoints-core) #core
+    │   ├── [ ] Implement CRUD endpoints #core (backend.api#implement-crud-endpoints) #core
     │   │   ├── [x] User endpoints (backend.api#user-endpoints)
     │   │   ├── [ ] Task endpoints (backend.api#task-endpoints)
     │   │   └── [ ] Project endpoints (backend.api#project-endpoints)
-    │   └── [ ] Add API documentation #docs (backend.api#add-api-documentation-docs) #docs
+    │   └── [ ] Add API documentation #docs (backend.api#add-api-documentation) #docs
     │       ├── [ ] OpenAPI spec (backend.api#openapi-spec)
     │       └── [ ] Example requests (backend.api#example-requests)
     ├── ✓ database.md (backend.database)
@@ -27,15 +27,15 @@ expression: normalized
     │   │   ├── [x] Tasks table (backend.database#tasks-table)
     │   │   ├── [x] Projects table (backend.database#projects-table)
     │   │   └── [x] Relationships (backend.database#relationships)
-    │   ├── [x] Set up migrations #infrastructure (backend.database#set-up-migrations-infrastructure) #infrastructure
+    │   ├── [x] Set up migrations #infrastructure (backend.database#set-up-migrations) #infrastructure
     │   │   ├── [x] Migration framework (backend.database#migration-framework)
     │   │   ├── [x] Initial schema migration (backend.database#initial-schema-migration)
     │   │   └── [x] Seed data (backend.database#seed-data)
-    │   ├── [x] Add database layer #core (backend.database#add-database-layer-core) #core
+    │   ├── [x] Add database layer #core (backend.database#add-database-layer) #core
     │   │   ├── [x] Connection pooling (backend.database#connection-pooling)
     │   │   ├── [x] Query builders (backend.database#query-builders)
     │   │   └── [x] Transaction support (backend.database#transaction-support)
-    │   └── [x] Performance optimization #performance (backend.database#performance-optimization-performance) #performance
+    │   └── [x] Performance optimization #performance (backend.database#performance-optimization) #performance
     │       ├── [x] Add indexes (backend.database#add-indexes)
     │       └── [x] Query optimization (backend.database#query-optimization)
     └── ○ tests.md (backend.tests)
@@ -43,18 +43,18 @@ expression: normalized
         │   ├── [x] Test database (backend.tests#test-database)
         │   ├── [x] Test fixtures (backend.tests#test-fixtures)
         │   └── [x] Helper functions (backend.tests#helper-functions)
-        ├── [ ] Unit tests #unit-testing (backend.tests#unit-tests-unit-testing) #unit-testing
+        ├── [ ] Unit tests #unit-testing (backend.tests#unit-tests) #unit-testing
         │   ├── [x] Model tests (backend.tests#model-tests)
         │   ├── [ ] Service tests (backend.tests#service-tests)
         │   └── [ ] Utility tests (backend.tests#utility-tests)
-        ├── [ ] Integration tests #integration-testing (backend.tests#integration-tests-integration-testing) #integration-testing
+        ├── [ ] Integration tests #integration-testing (backend.tests#integration-tests) #integration-testing
         │   ├── [x] API endpoint tests (backend.tests#api-endpoint-tests)
         │   ├── [ ] Database integration tests (backend.tests#database-integration-tests)
         │   └── [ ] Auth flow tests (backend.tests#auth-flow-tests)
-        └── [ ] Performance tests #performance (backend.tests#performance-tests-performance) #performance
+        └── [ ] Performance tests #performance (backend.tests#performance-tests) #performance
             ├── [ ] Load testing (backend.tests#load-testing)
             └── [ ] Stress testing (backend.tests#stress-testing)
 └── ○ lash.index.md (medium-project)
-    └── [ ] Backend development #backend (medium-project#backend-development-backend) #backend
+    └── [ ] Backend development #backend (medium-project#backend-development) #backend
 
 Total: 4 file(s), 46 task(s)

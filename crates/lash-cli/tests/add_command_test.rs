@@ -794,3 +794,144 @@ Prose that must stay under its heading.
         "task escaped the Tasks section:\n{content}"
     );
 }
+
+// ---------------------------------------------------------------------
+// The reported task ID must be the indexed one
+//
+// `lash add` printed an ID derived by the emitter while the index stored
+// one derived by the parser, and the two disagreed three ways: `v0.7.0`
+// slugged to `v0-7-0` in one and `v070` in the other, the parser folded
+// inline labels into the ID, and only the parser truncated at 40
+// characters. Anything that copied the printed ID (`lash show`,
+// `@depends-on`) failed.
+// ---------------------------------------------------------------------
+
+/// The ID out of `Created task <id> ...`.
+fn reported_id(stdout: &str) -> String {
+    stdout
+        .lines()
+        .find_map(|line| line.split("Created task ").nth(1))
+        .and_then(|rest| rest.split_whitespace().next())
+        .unwrap_or_else(|| panic!("no created-task line in:\n{stdout}"))
+        .to_string()
+}
+
+#[test]
+fn test_add_reports_the_id_the_index_stores() {
+    let project = project_with_tasks_file();
+    index(&project);
+
+    // Every discrepancy from the original report in one title: a dotted
+    // version number, an inline label, and enough characters to truncate.
+    let stdout = run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Ship v0.7.0 release notes")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--label")
+        .arg("docs")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let id = reported_id(&String::from_utf8(stdout).unwrap());
+
+    assert_eq!(id, "ship-v0-7-0-release-notes");
+
+    index(&project);
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("show")
+        .arg(format!("tasks#{id}"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Ship v0.7.0 release notes"));
+}
+
+#[test]
+fn test_add_reports_the_truncated_id_for_a_long_title() {
+    let project = project_with_tasks_file();
+    index(&project);
+
+    let stdout = run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Coverage fail fast when the coverage command fails and its output predates the run")
+        .arg("--file")
+        .arg("tasks.md")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let id = reported_id(&String::from_utf8(stdout).unwrap());
+
+    assert_eq!(
+        id.chars().count(),
+        40,
+        "reported ID was not truncated: {id}"
+    );
+
+    index(&project);
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("show")
+        .arg(format!("tasks#{id}"))
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_add_reports_the_numeric_suffix_used_to_break_a_collision() {
+    // Only the parser knows about the suffix, so this is the case the
+    // emitter could not get right on its own.
+    let project = project_with_tasks_file();
+    index(&project);
+
+    add_task(&project, "Repeated title", "tasks.md");
+    let stdout = add_task(&project, "Repeated title", "tasks.md");
+    let id = reported_id(&stdout);
+
+    assert_eq!(id, "repeated-title-2");
+
+    index(&project);
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("show")
+        .arg("tasks#repeated-title-2")
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_add_reported_id_resolves_as_a_dependency_target() {
+    // The consequence that made this more than an ergonomic problem: a
+    // `@depends-on` written against the reported ID used to dangle, and the
+    // dangling-reference check rejects it.
+    let project = project_with_tasks_file();
+    index(&project);
+
+    let stdout = add_task(&project, "Ship v0.7.0 release notes", "tasks.md");
+    let id = reported_id(&stdout);
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Follow-up task")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--depends-on")
+        .arg(&id)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Warning").not());
+}
