@@ -15,6 +15,6 @@ pub mod service;
 pub mod validation;
 
 pub use emitter::MarkdownEmitter;
-pub use placement::{PlacementInfo, PlacementResolver};
+pub use placement::{InsertAnchor, PlacementInfo, PlacementResolver};
 pub use service::TaskCreationService;
 pub use validation::{TaskValidator, ValidationContext};

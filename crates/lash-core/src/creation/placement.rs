@@ -10,16 +10,48 @@ use lash_types::task::Task;
 
 use super::validation::ValidationContext;
 
+/// Where in the target file the new task goes
+///
+/// Most placements resolve to a concrete line, but appending to a file whose
+/// `## Tasks` section holds no tasks yet cannot: a parsed
+/// [`TaskFile`] records task line numbers and nothing about section
+/// boundaries, so the line is only knowable from the source text the emitter
+/// reads. [`Self::EndOfTasksSection`] carries that intent through to the
+/// emitter rather than guessing a number here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InsertAnchor {
+    /// A concrete 1-indexed source line; the task is inserted before it.
+    Line(usize),
+
+    /// After the last content line of the `## Tasks` section.
+    ///
+    /// Used when the section has no tasks to append after. If the file has no
+    /// `## Tasks` heading at all, the emitter appends at the end of the file.
+    EndOfTasksSection,
+}
+
+impl InsertAnchor {
+    /// The 1-indexed line this anchor names, if it names one
+    ///
+    /// Returns `None` for [`Self::EndOfTasksSection`], which only the emitter
+    /// can turn into a line.
+    #[must_use]
+    pub fn line(self) -> Option<usize> {
+        match self {
+            Self::Line(line_number) => Some(line_number),
+            Self::EndOfTasksSection => None,
+        }
+    }
+}
+
 /// Information about where to insert a task in a file
 ///
 /// Contains all the placement details needed by the emitter to write
 /// the new task to the correct location with proper formatting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlacementInfo {
-    /// Line number to insert at (1-indexed)
-    ///
-    /// Special value 0 means insert at beginning of new file.
-    pub line_number: usize,
+    /// Where to insert the task
+    pub anchor: InsertAnchor,
 
     /// Order index among siblings (0-indexed)
     pub order_index: usize,
@@ -54,7 +86,7 @@ impl PlacementResolver {
     /// # Examples
     ///
     /// ```
-    /// use lash_core::creation::placement::{PlacementResolver, PlacementInfo};
+    /// use lash_core::creation::placement::{InsertAnchor, PlacementResolver, PlacementInfo};
     /// use lash_core::creation::validation::{TaskValidator, ValidationContext};
     /// use lash_types::config::ConfigBuilder;
     /// use lash_types::creation::{TaskCreationRequest, FileTarget, ParentRef, InsertPosition};
@@ -82,7 +114,9 @@ impl PlacementResolver {
     ///
     /// // Then resolve placement
     /// let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
-    /// assert_eq!(placement.line_number, 0); // New file
+    /// // The file has no tasks, so the line is resolved from the source text
+    /// // when the task is written.
+    /// assert_eq!(placement.anchor, InsertAnchor::EndOfTasksSection);
     /// assert_eq!(placement.order_index, 0);
     /// assert_eq!(placement.indent_level, 0); // Top-level task
     /// ```
@@ -103,33 +137,26 @@ impl PlacementResolver {
     ///
     /// Finds the last task at the same level and inserts after it.
     fn resolve_append(ctx: &ValidationContext) -> PlacementInfo {
-        // Handle empty file case
-        if ctx.resolved_file.tasks.is_empty() {
-            return PlacementInfo {
-                line_number: 0, // Signal for new file
-                order_index: 0,
-                indent_level: ctx.computed_depth as usize,
-            };
-        }
-
         let siblings = Self::get_siblings(&ctx.resolved_file, ctx.parent_task.as_ref());
         let order_index = siblings.len();
 
-        // Compute line number: after last sibling's subtree
-        let line_number = if let Some(last_sibling) = siblings.last() {
-            Self::find_end_of_task_subtree(&ctx.resolved_file, last_sibling) + 1
+        let anchor = if let Some(last_sibling) = siblings.last() {
+            // After the last sibling's subtree
+            InsertAnchor::Line(Self::find_end_of_task_subtree(&ctx.resolved_file, last_sibling) + 1)
         } else if let Some(parent) = &ctx.parent_task {
             // No siblings, insert right after parent (accounting for annotations)
             let parent_line = Self::get_task_line(&ctx.resolved_file, parent);
             let annotation_lines = Self::count_annotation_lines(parent);
-            parent_line + annotation_lines + 1
+            InsertAnchor::Line(parent_line + annotation_lines + 1)
         } else {
-            // No siblings and no parent - append at end of tasks section
-            Self::find_end_of_tasks_section(&ctx.resolved_file)
+            // Nothing to append after: the file has no tasks at this level and
+            // no parent to hang off. Only the source text says where the
+            // section ends, so defer to the emitter.
+            InsertAnchor::EndOfTasksSection
         };
 
         PlacementInfo {
-            line_number,
+            anchor,
             order_index,
             indent_level: ctx.computed_depth as usize,
         }
@@ -159,7 +186,7 @@ impl PlacementResolver {
         let line_number = Self::get_task_line(&ctx.resolved_file, target);
 
         Ok(PlacementInfo {
-            line_number,
+            anchor: InsertAnchor::Line(line_number),
             order_index: index,
             indent_level: ctx.computed_depth as usize,
         })
@@ -188,7 +215,7 @@ impl PlacementResolver {
         let line_number = Self::get_task_line(&ctx.resolved_file, task);
 
         Ok(PlacementInfo {
-            line_number,
+            anchor: InsertAnchor::Line(line_number),
             order_index,
             indent_level: ctx.computed_depth as usize,
         })
@@ -221,36 +248,10 @@ impl PlacementResolver {
         let line_number = Self::find_end_of_task_subtree(&ctx.resolved_file, task) + 1;
 
         Ok(PlacementInfo {
-            line_number,
+            anchor: InsertAnchor::Line(line_number),
             order_index,
             indent_level: ctx.computed_depth as usize,
         })
-    }
-
-    /// Find the end of the ## Tasks section (before next section or EOF)
-    ///
-    /// For now, we estimate based on the last task in the file.
-    /// In a future enhancement, this could parse the actual markdown structure.
-    fn find_end_of_tasks_section(file: &TaskFile) -> usize {
-        if file.tasks.is_empty() {
-            // Estimate: after file header (typically ~10 lines)
-            return 15;
-        }
-
-        // Find the last top-level task and return line after its subtree
-        let top_level_tasks: Vec<_> = file
-            .tasks
-            .tasks()
-            .iter()
-            .filter(|t| t.parent_id.is_none())
-            .collect();
-
-        if let Some(last_task) = top_level_tasks.last() {
-            Self::find_end_of_task_subtree(file, last_task) + 1
-        } else {
-            // Fallback: estimate
-            15
-        }
     }
 
     /// Find the end of a task's subtree (last descendant line number)
@@ -443,7 +444,9 @@ mod tests {
         let ctx = validator.validate(&request, None).unwrap();
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
 
-        assert_eq!(placement.line_number, 0); // New file signal
+        // No tasks to append after and no `## Tasks` line numbers to work
+        // from, so the emitter resolves the line from the source text.
+        assert_eq!(placement.anchor, InsertAnchor::EndOfTasksSection);
         assert_eq!(placement.order_index, 0);
         assert_eq!(placement.indent_level, 0); // Top-level
     }
@@ -469,7 +472,7 @@ mod tests {
 
         assert_eq!(placement.order_index, 2); // After 2 existing tasks
         assert_eq!(placement.indent_level, 0); // Top-level
-        assert!(placement.line_number > 0);
+        assert!(placement.anchor.line().unwrap() > 0);
     }
 
     #[test]
@@ -508,7 +511,7 @@ mod tests {
 
         assert_eq!(placement.order_index, 1); // After 1 existing child
         assert_eq!(placement.indent_level, 1); // Depth 1
-        assert!(placement.line_number > 0);
+        assert!(placement.anchor.line().unwrap() > 0);
     }
 
     #[test]
@@ -965,7 +968,7 @@ mod tests {
         let request = TaskCreationRequestBuilder::new("Level 1-5").build();
         let ctx = validator.validate(&request, Some(&file)).unwrap();
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
-        assert_eq!(placement.line_number, 38);
+        assert_eq!(placement.anchor.line(), Some(38));
         assert_eq!(placement.order_index, 4);
 
         // Test: insert after Level 1-3 should go on line 35 (34 = last
@@ -975,7 +978,7 @@ mod tests {
             .build();
         let ctx = validator.validate(&request, Some(&file)).unwrap();
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
-        assert_eq!(placement.line_number, 35);
+        assert_eq!(placement.anchor.line(), Some(35));
         assert_eq!(placement.order_index, 3);
     }
 
@@ -1009,7 +1012,7 @@ mod tests {
 
         // Checkbox on line 6, `@id:` annotation on line 7 -> insert at line 8,
         // not line 7 (which would land on top of the `@id:` line).
-        assert_eq!(placement.line_number, 8);
+        assert_eq!(placement.anchor.line(), Some(8));
         assert_eq!(placement.order_index, 1);
     }
 
@@ -1036,7 +1039,9 @@ mod tests {
         let ctx = validator.validate(&request, Some(file)).unwrap();
         PlacementResolver::resolve(&ctx, &request)
             .unwrap()
-            .line_number
+            .anchor
+            .line()
+            .expect("appending after an existing task resolves to a line")
     }
 
     #[test]
