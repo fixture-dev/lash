@@ -332,7 +332,18 @@ impl UserConfig {
     ///
     /// Returns error if config file exists but is invalid
     pub fn load() -> Result<Self> {
-        let config_path = Self::user_config_path()?;
+        Self::load_from(Self::user_config_path()?)
+    }
+
+    /// Load user configuration from an explicit path
+    ///
+    /// If the file doesn't exist, returns default configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if config file exists but is invalid
+    pub fn load_from(config_path: impl Into<PathBuf>) -> Result<Self> {
+        let config_path = config_path.into();
 
         if !config_path.exists() {
             return Ok(Self::default());
@@ -366,17 +377,30 @@ impl UserConfig {
     ///
     /// Returns error if config cannot be written
     pub fn save(&self) -> Result<()> {
-        let config_dir = Self::user_config_dir()?;
-        let config_path = Self::user_config_path()?;
+        self.save_to(Self::user_config_path()?)
+    }
+
+    /// Save user configuration to an explicit path
+    ///
+    /// Creates the parent directory if it doesn't exist. Uses atomic writes to
+    /// prevent corruption.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if config cannot be written
+    pub fn save_to(&self, config_path: impl Into<PathBuf>) -> Result<()> {
+        let config_path = config_path.into();
 
         // Create directory if it doesn't exist
-        if !config_dir.exists() {
-            fs::create_dir_all(&config_dir).map_err(|e| LashError::IO {
-                code: codes::E_IO_WRITE_ERROR,
-                message: format!("Failed to create user config directory: {e}"),
-                path: Some(config_dir.clone()),
-                io_error: Some(e.to_string()),
-            })?;
+        if let Some(config_dir) = config_path.parent() {
+            if !config_dir.exists() {
+                fs::create_dir_all(config_dir).map_err(|e| LashError::IO {
+                    code: codes::E_IO_WRITE_ERROR,
+                    message: format!("Failed to create user config directory: {e}"),
+                    path: Some(config_dir.to_path_buf()),
+                    io_error: Some(e.to_string()),
+                })?;
+            }
         }
 
         // Serialize to TOML
@@ -718,33 +742,48 @@ mod tests {
 
     #[test]
     fn test_user_config_load_nonexistent() {
-        // This test assumes ~/.lash/config.toml doesn't exist or is valid
-        // If it exists, it should parse successfully
-        let result = UserConfig::load();
-        assert!(result.is_ok());
+        let dir = TempDir::new().unwrap();
+        let missing = dir.path().join("config.toml");
+
+        let loaded = UserConfig::load_from(&missing).unwrap();
+
+        assert_eq!(loaded, UserConfig::default());
+        assert!(!missing.exists(), "load must not create the config file");
     }
 
     #[test]
     fn test_user_config_save_and_load() {
-        // Create a custom config
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+
         let config = UserConfig {
             color_scheme: "Test Theme".to_string(),
             tree_view: TreeViewConfig::default(),
         };
+        config.save_to(&path).unwrap();
 
-        // Save it
-        let save_result = config.save();
-        assert!(
-            save_result.is_ok(),
-            "Failed to save config: {:?}",
-            save_result
-        );
+        let loaded = UserConfig::load_from(&path).unwrap();
 
-        // Load it back
-        let loaded = UserConfig::load().unwrap();
-        assert_eq!(loaded.color_scheme, "Test Theme");
+        assert_eq!(loaded, config);
+    }
 
-        // Restore default
-        UserConfig::default().save().unwrap();
+    #[test]
+    fn test_user_config_save_creates_missing_parent_directory() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("nested").join(".lash").join("config.toml");
+
+        UserConfig::default().save_to(&path).unwrap();
+
+        assert!(path.exists());
+        assert_eq!(UserConfig::load_from(&path).unwrap(), UserConfig::default());
+    }
+
+    #[test]
+    fn test_user_config_load_rejects_invalid_toml() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "color_scheme = ").unwrap();
+
+        assert!(UserConfig::load_from(&path).is_err());
     }
 }
