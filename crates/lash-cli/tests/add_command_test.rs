@@ -654,3 +654,143 @@ fn test_add_rejects_an_agent_note_line_starting_with_an_annotation() {
     let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
     assert!(!content.contains("At note task"));
 }
+
+// ---------------------------------------------------------------------
+// `@depends-on` written in comma form
+//
+// `count_annotation_lines` added one line per parsed dependency, which
+// holds for what the emitter writes but not for a hand-written
+// `@depends-on: a, b, c`. The parser splits that single line into three
+// references, so the count ran two lines long and the insertion point
+// escaped the task block, landing the new task outside `## Tasks`.
+// ---------------------------------------------------------------------
+
+#[test]
+fn test_add_after_comma_form_depends_on_stays_inside_the_tasks_section() {
+    let project = TestProject::builder()
+        .with_index("test-project", "Test Project")
+        .with_file(
+            "tasks.md",
+            r#"# Tasks
+
+@id: tasks
+
+## Tasks
+
+- [ ] Alpha
+- [ ] Beta
+- [ ] Gamma
+- [ ] Last task
+  @depends-on: alpha, beta, gamma
+
+## Notes
+
+Prose that must stay under its heading.
+"#,
+        )
+        .build();
+    index(&project);
+
+    add_task(&project, "Second task", "tasks.md");
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+
+    let task = task_line_number(&content, "- [ ] Second task");
+    assert!(
+        task > task_line_number(&content, "@depends-on: alpha, beta, gamma"),
+        "task must land after the dependency line:\n{content}"
+    );
+    assert!(
+        task < task_line_number(&content, "## Notes"),
+        "task escaped the Tasks section:\n{content}"
+    );
+    assert!(
+        content.contains("## Notes\n\nProse that must stay under its heading."),
+        "the Notes heading was split from its prose:\n{content}"
+    );
+}
+
+#[test]
+fn test_add_after_one_dependency_per_line_still_clears_the_block() {
+    // The other half of the ambiguity: the same three references written the
+    // way the emitter writes them occupy three lines, not one.
+    let project = TestProject::builder()
+        .with_index("test-project", "Test Project")
+        .with_file(
+            "tasks.md",
+            r#"# Tasks
+
+@id: tasks
+
+## Tasks
+
+- [ ] Alpha
+- [ ] Beta
+- [ ] Gamma
+- [ ] Last task
+  @depends-on: alpha
+  @depends-on: beta
+  @depends-on: gamma
+
+## Notes
+
+Prose that must stay under its heading.
+"#,
+        )
+        .build();
+    index(&project);
+
+    add_task(&project, "Second task", "tasks.md");
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+
+    let task = task_line_number(&content, "- [ ] Second task");
+    assert!(
+        task > task_line_number(&content, "@depends-on: gamma"),
+        "task was spliced into the dependency block:\n{content}"
+    );
+    assert!(
+        task < task_line_number(&content, "## Notes"),
+        "task escaped the Tasks section:\n{content}"
+    );
+}
+
+#[test]
+fn test_add_after_a_task_whose_labels_use_the_block_form() {
+    // `@labels:` used to be uncountable for the same reason, since labels can
+    // also live inline on the checkbox line.
+    let project = TestProject::builder()
+        .with_index("test-project", "Test Project")
+        .with_file(
+            "tasks.md",
+            r#"# Tasks
+
+@id: tasks
+
+## Tasks
+
+- [ ] Last task
+  @labels: backend, infra
+
+## Notes
+
+Prose that must stay under its heading.
+"#,
+        )
+        .build();
+    index(&project);
+
+    add_task(&project, "Second task", "tasks.md");
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+
+    let task = task_line_number(&content, "- [ ] Second task");
+    assert!(
+        task > task_line_number(&content, "@labels: backend, infra"),
+        "task was spliced above the labels line:\n{content}"
+    );
+    assert!(
+        task < task_line_number(&content, "## Notes"),
+        "task escaped the Tasks section:\n{content}"
+    );
+}

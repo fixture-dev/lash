@@ -742,6 +742,7 @@ mod tests {
             parent_id: parent.map(std::string::ToString::to_string),
             order_index: 0,
             line_number: 0,
+            annotation_line_count: 0,
             metadata: TaskMetadata::default(),
             body: None,
             contextual_notes: Vec::new(),

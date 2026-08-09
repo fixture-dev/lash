@@ -279,27 +279,31 @@ impl PlacementResolver {
 
     /// Count the number of annotation lines that follow a task
     ///
-    /// Every annotation type is written on its own line after the task
-    /// checkbox line, so appending correctly requires knowing exactly how
-    /// many trailing lines belong to the task being appended after —
-    /// undercounting here inserts the new task in the middle of that
-    /// annotation block, silently detaching a trailing annotation (e.g. an
-    /// existing task's `@id:`) from its owner.
+    /// Appending after a task means stepping past its whole block: the
+    /// checkbox line plus every annotation line below it. Getting this wrong
+    /// in either direction is a bug. Undercounting splices the new task into
+    /// the middle of the annotation block, detaching a trailing annotation
+    /// from its owner or destroying the continuation lines of a multi-line
+    /// note. Overcounting pushes the insertion point past the end of the
+    /// block, which can land the new task outside the `## Tasks` section
+    /// entirely.
     ///
-    /// An annotation value may span several source lines: the parser folds
-    /// indented continuation lines into the value, joining them with `\n`
-    /// (see `parser::annotations::parse_annotation_block`). Such a value
-    /// therefore occupies `value.lines().count()` source lines, not one, and
-    /// counting it as one splices the new task into the middle of the note —
-    /// destroying the continuation lines on the next reindex.
+    /// For a task that came from a file, the count is whatever the parser
+    /// counted, recorded on [`Task::annotation_line_count`]. It is the only
+    /// place with the answer, because the same metadata can be written in more
+    /// than one shape and the parsed [`lash_types::task::TaskMetadata`] does
+    /// not record which was used:
     ///
-    /// `@labels` is deliberately not counted: labels may be written inline
-    /// on the checkbox line (`#backend`) or as a separate `@labels:` block,
-    /// and [`lash_types::task::TaskMetadata`] doesn't record which form was
-    /// used, so it can't be counted without re-reading the source line.
-    /// `lash add` itself always emits labels inline (see
-    /// `MarkdownEmitter::format_task_line`), so this only affects appending
-    /// after a hand-edited task that used the block form.
+    /// - `@depends-on: a, b, c` on one line, or one `@depends-on:` line each
+    /// - `#backend` inline on the checkbox line, or an `@labels:` block
+    /// - a value folded across several indented continuation lines
+    ///
+    /// For a task built programmatically rather than parsed (the TUI's
+    /// in-memory tasks, test fixtures), there are no source lines to have
+    /// counted, so the count is derived from the metadata on the assumption
+    /// that it will be written the way [`super::emitter::MarkdownEmitter`]
+    /// writes it: one line per annotation, one line per `@depends-on` and
+    /// `@doc` reference, labels inline.
     fn count_annotation_lines(task: &Task) -> usize {
         /// Source lines occupied by a single annotation value.
         ///
@@ -307,6 +311,10 @@ impl PlacementResolver {
         /// continuation line.
         fn value_lines(value: &str) -> usize {
             value.lines().count().max(1)
+        }
+
+        if task.annotation_line_count > 0 {
+            return task.annotation_line_count;
         }
 
         let mut count = 0;
@@ -330,11 +338,7 @@ impl PlacementResolver {
         }
 
         // @depends-on / @doc: one line per reference, as emitted by
-        // `MarkdownEmitter::format_task_annotations`. A hand-written
-        // comma-separated `@depends-on: a, b, c` parses to several references
-        // from a single line and is over-counted here; that is the same
-        // inline-vs-block ambiguity described above for `@labels`, and
-        // over-counting appends after the block rather than inside it.
+        // `MarkdownEmitter::format_task_annotations`.
         count += task.metadata.depends_on.len();
         count += task.metadata.docs.len();
 
@@ -980,6 +984,71 @@ mod tests {
         let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
         assert_eq!(placement.anchor.line(), Some(35));
         assert_eq!(placement.order_index, 3);
+    }
+
+    /// An explicit-id dependency reference, the form `lash add --depends-on`
+    /// produces.
+    fn dep_ref(target: &str) -> lash_types::DependencyRef {
+        lash_types::DependencyRef::new(target.to_string(), lash_types::DependencyKind::ExplicitId)
+    }
+
+    #[test]
+    fn test_parsed_annotation_line_count_wins_over_the_derived_estimate() {
+        // A hand-written `@depends-on: a, b, c` parses to three references off
+        // a single line. Deriving the count from the metadata says three
+        // lines, which pushes the insertion point two lines past the end of
+        // the task block; the parser's own count says one.
+        let config = ConfigBuilder::new().build().unwrap();
+        let validator = TaskValidator::new(config);
+
+        let mut task = TaskBuilder::new("Existing task")
+            .id("existing")
+            .order_index(0)
+            .line_number(6)
+            .build()
+            .unwrap();
+        task.metadata.depends_on = ["a", "b", "c"].map(dep_ref).to_vec();
+        // `@id:` on line 7, `@depends-on: a, b, c` on line 8.
+        task.annotation_line_count = 2;
+
+        let mut tasks = TaskTree::new();
+        tasks.add_task(task).unwrap();
+        let file = create_test_file(tasks);
+
+        let request = TaskCreationRequestBuilder::new("New task").build();
+        let ctx = validator.validate(&request, Some(&file)).unwrap();
+        let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
+
+        assert_eq!(placement.anchor.line(), Some(9));
+    }
+
+    #[test]
+    fn test_unparsed_task_falls_back_to_deriving_the_count() {
+        // Tasks built in memory rather than parsed have no source lines to
+        // have counted, so the derived estimate is all there is. It assumes
+        // the emitter's shape: one line per reference.
+        let config = ConfigBuilder::new().build().unwrap();
+        let validator = TaskValidator::new(config);
+
+        let mut task = TaskBuilder::new("Existing task")
+            .id("existing")
+            .order_index(0)
+            .line_number(6)
+            .build()
+            .unwrap();
+        task.metadata.depends_on = ["a", "b"].map(dep_ref).to_vec();
+        assert_eq!(task.annotation_line_count, 0);
+
+        let mut tasks = TaskTree::new();
+        tasks.add_task(task).unwrap();
+        let file = create_test_file(tasks);
+
+        let request = TaskCreationRequestBuilder::new("New task").build();
+        let ctx = validator.validate(&request, Some(&file)).unwrap();
+        let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
+
+        // Checkbox on 6, `@id:` on 7, two `@depends-on:` lines on 8 and 9.
+        assert_eq!(placement.anchor.line(), Some(10));
     }
 
     #[test]
