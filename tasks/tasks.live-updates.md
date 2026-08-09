@@ -93,8 +93,8 @@ rare, and `lash format` from the CLI never races with a running TUI).
 - [x] `update_markdown_task_status` → `store.apply(SetTaskStatus { ... })`
 - [x] All five callers (`handle_toggle_status` + 3 cascade handlers + linked-file complete) go through the new helper unchanged
 - [x] Existing TUI tests (160 lib tests) still pass
-- [ ] `handle_submit_task_creation` write path → `store.apply(CreateTask { ... })` — deferred; needs `Mutation::CreateTask`
-- [ ] `lash_core::formatter::format_file_in_place` uses `write_atomic` — deferred; nice-to-have for safety, no behavioral impact
+- [x] `handle_submit_task_creation` write path → `store.apply(CreateTask { ... })`
+- [x] `lash_core::formatter::format_file_in_place` uses `write_atomic`
 
 ### Acceptance
 
@@ -199,10 +199,10 @@ If an in-flight task-creation or edit modal targets a file that is
 
 ### Subtasks
 
-- [ ] Add `stale: bool` to relevant modal states
-- [ ] On `FileReloaded { path }`, set `stale = true` if any open modal targets `path`
-- [ ] On submit, refuse if stale; show banner
-- [ ] `R` key reloads the modal's baseline from the Store and clears the stale flag
+- [x] Add `stale: bool` to relevant modal states
+- [x] On `FileReloaded { path }`, set `stale = true` if any open modal targets `path`
+- [x] On submit, refuse if stale; show banner
+- [-] `R` key reloads the modal's baseline from the Store and clears the stale flag — Esc-and-retry covers it; a reload-in-place key is not worth the extra state
 
 ### Acceptance
 
@@ -219,5 +219,5 @@ If an in-flight task-creation or edit modal targets a file that is
 
 ### Description
 
-- Bounded watcher channel; on overflow, emit a `FullReload` delta instead.
-- Optional: directory-scoped watch for very large projects (deferred unless a real perf complaint surfaces).
+- [x] Bounded watcher channel; on overflow, emit a `FullReload` delta instead.
+- [-] Optional: directory-scoped watch for very large projects — deferred; no perf complaint has surfaced, and the bounded channel now caps the damage from a large burst.

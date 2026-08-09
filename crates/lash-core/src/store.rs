@@ -74,6 +74,10 @@ pub enum StateDelta {
         /// Absolute path of the file that changed externally.
         absolute_path: PathBuf,
     },
+    /// The watcher dropped events because its channel filled, so which files
+    /// changed is no longer known. Consumers should reindex the whole project
+    /// and reload the current view.
+    FullReload,
     /// A new task was created (either in an existing file or by creating a
     /// new file). Consumers should reindex and reload the affected file.
     TaskCreated {
@@ -179,6 +183,19 @@ impl Store {
                 }])
             }
         }
+    }
+
+    /// Handle the watcher having dropped events because its channel filled.
+    ///
+    /// Which files changed is unknowable at that point, so the only honest
+    /// answer is to reload everything. The write-hash table is cleared as part
+    /// of that: its entries exist to recognize the watcher echoing one of our
+    /// own writes, and an echo we never received is one we can no longer match.
+    /// Keeping a stale entry would let a genuine later edit that happens to
+    /// reproduce those bytes be mistaken for our own write and dropped.
+    pub fn handle_watcher_overflow(&mut self) -> Vec<StateDelta> {
+        self.last_written_hash.clear();
+        vec![StateDelta::FullReload]
     }
 
     /// Process an external-change notification for `path`. Returns an empty
@@ -482,6 +499,44 @@ mod tests {
             deltas[0],
             StateDelta::FileReloaded { ref absolute_path } if absolute_path == &path
         ));
+    }
+
+    #[test]
+    fn handle_watcher_overflow_asks_for_a_full_reload() {
+        let mut store = Store::new();
+
+        assert_eq!(
+            store.handle_watcher_overflow(),
+            vec![StateDelta::FullReload]
+        );
+    }
+
+    #[test]
+    fn handle_watcher_overflow_forgets_pending_self_write_hashes() {
+        // The hash exists to recognize the watcher echoing our own write. If
+        // the echo was among the dropped events it will never arrive, and a
+        // stale entry would let a later genuine edit that reproduces those
+        // bytes be mistaken for the echo and dropped.
+        let (_dir, path) = fixture();
+        let mut store = Store::new();
+        store
+            .apply(Mutation::SetTaskStatus {
+                absolute_path: path.clone(),
+                task_title: "First task".into(),
+                old_status: TaskStatus::Open,
+                new_status: TaskStatus::Done,
+            })
+            .unwrap();
+        assert!(store.has_recorded_hash(&path));
+
+        store.handle_watcher_overflow();
+
+        assert!(!store.has_recorded_hash(&path));
+        assert_eq!(
+            store.handle_external_change(&path).unwrap().len(),
+            1,
+            "the same content must now read as an external edit, not an echo"
+        );
     }
 
     #[test]

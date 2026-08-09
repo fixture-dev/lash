@@ -4,7 +4,6 @@ use ratatui::{backend::Backend, backend::CrosstermBackend, Terminal};
 use rusqlite::Connection;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 use std::time::Duration;
 
 use lash_core::store::StateDelta;
@@ -48,7 +47,7 @@ pub struct TuiAppCore<B: Backend, E: EventSource> {
     store: lash_core::store::Store,
 
     /// Receiver for paths reported by the file watcher (production only)
-    external_rx: Option<mpsc::Receiver<PathBuf>>,
+    external_rx: Option<lash_core::watcher::WatcherEvents>,
 
     /// Live file watcher handle; kept alive for the app's lifetime so the
     /// watcher thread doesn't shut down. `None` in tests where no real fs
@@ -300,15 +299,14 @@ fn start_watcher(
     project_root: &Path,
 ) -> Result<
     (
-        mpsc::Receiver<PathBuf>,
+        lash_core::watcher::WatcherEvents,
         lash_core::watcher::FileWatcherHandle,
     ),
     String,
 > {
-    let (tx, rx) = mpsc::channel();
-    let handle =
-        lash_core::watcher::start(project_root.to_path_buf(), tx).map_err(|e| format!("{e}"))?;
-    Ok((rx, handle))
+    let (handle, events) =
+        lash_core::watcher::start(project_root.to_path_buf()).map_err(|e| format!("{e}"))?;
+    Ok((events, handle))
 }
 
 // Generic implementation for all backend and event source combinations
@@ -1435,11 +1433,22 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     /// Drain any pending file-watcher events, route them through the Store's
     /// hash dedupe, and apply the resulting state deltas.
     fn drain_external_changes(&mut self) -> TuiResult<()> {
-        let Some(rx) = self.external_rx.as_ref() else {
+        let Some(events) = self.external_rx.as_ref() else {
             return Ok(());
         };
-        let paths: Vec<PathBuf> = rx.try_iter().collect();
-        for path in paths {
+        let drained = events.drain();
+
+        // The watcher dropped paths, so `drained.paths` is an arbitrary subset
+        // of what changed. Reload everything instead of acting on a partial
+        // list, and skip the per-path work: a full reload subsumes it.
+        if drained.overflowed {
+            for delta in self.store.handle_watcher_overflow() {
+                self.apply_delta(delta)?;
+            }
+            return Ok(());
+        }
+
+        for path in drained.paths {
             self.process_external_change(&path)?;
         }
         Ok(())
@@ -1466,6 +1475,7 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
     fn apply_delta(&mut self, delta: StateDelta) -> TuiResult<()> {
         match delta {
             StateDelta::FileReloaded { absolute_path } => self.handle_file_reloaded(&absolute_path),
+            StateDelta::FullReload => self.handle_full_reload(),
             // TaskStatusChanged is only emitted by `Store::apply` (the call
             // site already handles it directly) — external changes manifest
             // as FileReloaded which routes through `apply_external_status_diff`.
@@ -1528,6 +1538,45 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
                     .get_by_file(file_id)
                     .map_err(|e| TuiError::App(format!("Failed to reload tasks: {e}")))?;
             }
+            self.state.build_task_tree();
+            self.state.restore_expansion_state(&expanded_ids);
+            if let Some(full_id) = preserved_full_id {
+                self.state.restore_task_selection_by_full_id(&full_id);
+            }
+        }
+
+        self.refresh_project_stats()?;
+        Ok(())
+    }
+
+    /// Reindex the whole project and reload the view, for when the watcher
+    /// dropped events and the set of changed files is no longer known.
+    ///
+    /// Deliberately no status diffing: the activity bar reports transitions,
+    /// and after an overflow there is no per-file before-state to compare
+    /// against. A branch switch is not a set of task transitions the user
+    /// wants narrated anyway.
+    fn handle_full_reload(&mut self) -> TuiResult<()> {
+        if let Err(e) = self.reindex_all() {
+            self.state
+                .set_warning_message(format!("full reindex failed: {e}"));
+            return Ok(());
+        }
+
+        // Every open modal is now stale: its baseline came from state that may
+        // no longer exist.
+        self.mark_all_modals_stale();
+
+        let viewing_id = self.currently_viewed_file_id();
+        self.refresh_files_and_tree()?;
+
+        if let Some(file_id) = viewing_id {
+            let preserved_full_id = self.state.selected_task_full_id();
+            let expanded_ids = self.state.collect_expansion_state();
+
+            self.state.tasks = TaskRepository::new(&self.conn)
+                .get_by_file(file_id)
+                .map_err(|e| TuiError::App(format!("Failed to reload tasks: {e}")))?;
             self.state.build_task_tree();
             self.state.restore_expansion_state(&expanded_ids);
             if let Some(full_id) = preserved_full_id {
@@ -1622,6 +1671,19 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
         }
     }
 
+    /// Mark every open modal stale, for a reload where the set of changed
+    /// files is unknown and so no modal's baseline can be trusted.
+    fn mark_all_modals_stale(&mut self) {
+        if let Some(modal) = self.state.task_creation_modal_state.as_mut() {
+            if !modal.stale {
+                modal.stale = true;
+                self.state.set_warning_message(
+                    "Project changed on disk — press Esc to discard and retry",
+                );
+            }
+        }
+    }
+
     /// Compare the post-reindex tasks of `absolute_path` against `pre` and
     /// route every status change through `ActivityState::record_transition`.
     fn apply_external_status_diff(
@@ -1663,6 +1725,23 @@ impl<B: Backend, E: EventSource> TuiAppCore<B, E> {
             return selected.file_record.as_ref().map(|f| f.id);
         }
         self.state.selected_file().map(|f| f.id)
+    }
+
+    /// Reindex every task file under the project root.
+    ///
+    /// Still incremental: the indexer skips files whose content hash is
+    /// unchanged, so the cost is proportional to what actually changed rather
+    /// than to project size.
+    fn reindex_all(&self) -> Result<(), String> {
+        let parser_config = lash_types::LashConfig::default();
+        let config = lash_db::indexer::IndexerConfig::new(self.project_root.clone())
+            .with_incremental(true)
+            .with_progress(false);
+        let mut indexer = lash_db::indexer::Indexer::new(&self.conn, config, &parser_config);
+        indexer
+            .index_project()
+            .map(|_| ())
+            .map_err(|e| format!("{e}"))
     }
 
     fn reindex_paths(&self, paths: &[PathBuf]) -> Result<(), String> {
