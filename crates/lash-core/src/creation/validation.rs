@@ -14,6 +14,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use super::emitter::MarkdownEmitter;
+
 // Constants
 const MAX_TITLE_LENGTH: usize = 200;
 
@@ -141,6 +143,14 @@ impl TaskValidator {
         // Validate estimate if provided
         if let Some(ref estimate) = request.estimate {
             Self::validate_estimate(estimate, &mut errors);
+        }
+
+        // Reject an agent note that would not survive being read back, rather
+        // than writing a file the parser silently truncates.
+        if let Some(ref note) = request.agent_note {
+            if let Err(reason) = MarkdownEmitter::check_agent_note(note) {
+                errors.push(TaskCreationError::InvalidAgentNote { reason });
+            }
         }
 
         // Note: Owner validation is currently a no-op

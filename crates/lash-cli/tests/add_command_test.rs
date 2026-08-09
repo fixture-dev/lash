@@ -557,3 +557,100 @@ fn test_add_leaves_the_file_ending_in_a_newline() {
         "file ends mid-line, every later diff shows '\\ No newline at end of file':\n{content}"
     );
 }
+
+// ---------------------------------------------------------------------
+// `--agent-note` with an embedded newline
+//
+// The emitter built the note with a single `format!`, so a value holding
+// a newline was written as one `@agent-note:` line followed by a bare
+// unindented line. The parser treats an unindented line as the end of
+// the annotation block, so everything after the first line was silently
+// dropped, with exit code 0.
+// ---------------------------------------------------------------------
+
+#[test]
+fn test_add_multiline_agent_note_survives_a_round_trip() {
+    let project = project_with_tasks_file();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Noted task")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--id")
+        .arg("noted")
+        .arg("--agent-note")
+        .arg("first line\nsecond line")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+    assert!(
+        content.contains("  @agent-note: first line\n  second line"),
+        "continuation line was written without indentation:\n{content}"
+    );
+
+    // The parser has to read both lines back, not just the first.
+    index(&project);
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("show")
+        .arg("tasks#noted")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("first line"))
+        .stdout(predicate::str::contains("second line"));
+}
+
+#[test]
+fn test_add_rejects_an_agent_note_with_a_blank_line() {
+    let project = project_with_tasks_file();
+    index(&project);
+
+    let before = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Blank note task")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--agent-note")
+        .arg("first line\n\nthird line")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("E_CREATE_INVALID_AGENT_NOTE"));
+
+    assert_eq!(
+        before,
+        fs::read_to_string(project.file_path("tasks.md")).unwrap(),
+        "file must be untouched when the note is rejected"
+    );
+}
+
+#[test]
+fn test_add_rejects_an_agent_note_line_starting_with_an_annotation() {
+    let project = project_with_tasks_file();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("At note task")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--agent-note")
+        .arg("first line\n@owner: someone")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("E_CREATE_INVALID_AGENT_NOTE"));
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+    assert!(!content.contains("At note task"));
+}

@@ -147,7 +147,7 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     content, so it needs plumbing
   - Regression test: append after a task with comma-separated `@depends-on`
     followed by a section heading; assert the new task lands inside `## Tasks`
-- [ ] `lash add --agent-note` with an embedded newline writes a malformed file and loses content #cli #bug #data-loss
+- [x] `lash add --agent-note` with an embedded newline writes a malformed file and loses content #cli #bug #data-loss
   - Latent counterpart to the multi-line note fix, on the write side.
     `MarkdownEmitter::format_task_annotations` builds the note with
     `format!("{annotation_indent}@agent-note: {note}")` and pushes it as one
@@ -166,6 +166,15 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
   - Regression test: emit a task with a two-line note, reparse the written file,
     assert both lines survive; plus a round-trip property test over notes with
     varying line counts and indentation
+  - Fixed on both halves. The emitter now writes each continuation line with
+    the annotation indent, which is the shape the parser folds back into one
+    value. Values that cannot round-trip regardless of indentation are
+    rejected up front by `MarkdownEmitter::check_agent_note`: a blank
+    continuation line (the parser skips blanks) or one starting with `@` (read
+    back as a separate annotation). Both produce
+    `E_CREATE_INVALID_AGENT_NOTE` and leave the file untouched. Leading
+    whitespace on a continuation is normalized rather than rejected, since the
+    parser trims it and no text is lost
 - [x] `lash add` prepends above the H1 when the target file has no tasks yet, and the task is never indexed #cli #bug #data-loss
   - Severe: the task is written to disk, invisible to Lash, and `lash lint`
     passes clean. Found 2026-08-08 while verifying the multi-line note fix
