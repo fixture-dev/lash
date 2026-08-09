@@ -40,6 +40,7 @@ fn create_test_task(
         parent_id,
         order_index: order,
         line_number: 0,
+        annotation_line_count: 0,
         metadata: TaskMetadata::default(),
         body: None,
         contextual_notes: Vec::new(),

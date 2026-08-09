@@ -47,6 +47,13 @@ pub struct CheckboxLine {
 
     /// Annotation block following the task line (if any)
     pub annotations: Option<AnnotationBlock>,
+
+    /// Number of source lines the annotation block occupies
+    ///
+    /// Tracked separately from `annotations` because a single annotation may
+    /// be written across several lines, and several annotations may share one
+    /// line, so the parsed block does not imply a line count.
+    pub annotation_line_count: usize,
 }
 
 impl CheckboxLine {
@@ -80,6 +87,7 @@ impl CheckboxLine {
             line_num,
             column,
             annotations: None,
+            annotation_line_count: 0,
         }
     }
 

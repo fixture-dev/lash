@@ -151,6 +151,7 @@ mod tests {
             parent_id: None,
             order_index: 0,
             line_number: 0,
+            annotation_line_count: 0,
             metadata: TaskMetadata {
                 estimate: estimate.map(std::string::ToString::to_string),
                 ..Default::default()

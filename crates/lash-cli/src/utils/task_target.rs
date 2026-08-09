@@ -86,6 +86,7 @@ mod tests {
             parent_id: None,
             order_index: order,
             line_number: 0,
+            annotation_line_count: 0,
             metadata: TaskMetadata::default(),
             body: None,
             contextual_notes: Vec::new(),

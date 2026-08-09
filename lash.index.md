@@ -122,7 +122,7 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     point `[coverage] command` at a tool the image has; make the paths portable
     rather than machine-specific. Verify by running `flawd run` with default
     isolation and confirming per-test collection succeeds instead of falling back
-- [ ] `@depends-on` comma form over-counts lines, appending outside the tasks section #cli #bug
+- [x] `@depends-on` comma form over-counts lines, appending outside the tasks section #cli #bug
   - Follow-up to the multi-line note fix, same function
     (`PlacementResolver::count_annotation_lines`). `count += depends_on.len()`
     assumes one source line per reference, which holds for what
@@ -147,6 +147,14 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     content, so it needs plumbing
   - Regression test: append after a task with comma-separated `@depends-on`
     followed by a section heading; assert the new task lands inside `## Tasks`
+  - Fixed the way the ticket called for: the parser now records how many source
+    lines a task's annotation block occupies, on `Task::annotation_line_count`,
+    and the resolver uses that instead of re-deriving a count from the parsed
+    metadata. This settles `@labels` too, which was previously uncountable for
+    the same reason, and any future annotation that can be written in more than
+    one shape. Tasks built in memory rather than parsed (the TUI, test
+    fixtures) have no source lines to have counted, so they keep the derived
+    estimate
 - [x] `lash add --agent-note` with an embedded newline writes a malformed file and loses content #cli #bug #data-loss
   - Latent counterpart to the multi-line note fix, on the write side.
     `MarkdownEmitter::format_task_annotations` builds the note with
@@ -207,6 +215,44 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     reported line now comes from where the task was actually written, so the
     `:0` in the success message is gone too, as is the missing trailing
     newline noted under the ID ticket below
+- [ ] `lash format` deletes every section after `## Tasks` #cli #bug #data-loss #launch-blocker
+  - Worse than the `lash add` bugs it was found next to, because `format` is
+    documented as a normalizer and the README tells people to run it. Found
+    2026-08-09 while checking that the empty-Tasks-section fix left files
+    lint-clean
+  - Repro: a file with `## Tasks`, then `## Notes` with prose, then
+    `## References` with a link. `lash format` on it emits the header and the
+    Tasks section and nothing else. Notes, References and all their content are
+    gone. Exit code 0, no warning
+  - This repo's own `lash.index.md` has a `## Description` section that sits
+    *before* `## Tasks` and so survives, which is probably why nobody hit it
+  - Cause is in the emit half of the formatter: it reconstructs the file from
+    the parsed model, and the model keeps the header, the description and the
+    task tree but nothing about sections it does not understand. Anything the
+    parser did not model is not written back
+  - Fix: the formatter must preserve source it does not model. Either carry the
+    unmodelled tail through the parse (a raw span per unrecognized section) or
+    have the formatter rewrite in place, editing only the lines it owns rather
+    than regenerating the file
+  - Regression tests: format a file with sections before and after `## Tasks`
+    and assert byte-exact preservation of both; a file with a trailing section
+    containing a fenced code block; and a round-trip property test asserting
+    `format(format(x)) == format(x)`
+- [ ] `lash format` duplicates inline labels on every run #cli #bug
+  - Not idempotent, and the file grows without bound. `- [ ] task one #docs
+    #infra` becomes `#docs #infra #docs #infra` after one run and
+    `#docs #infra #docs #infra #docs #infra` after two
+  - The parser records inline labels in `metadata.labels` while leaving them in
+    the title text, so the emitter writes the title (labels included) and then
+    appends the labels again. Same double-counting shape as the annotation-line
+    bugs: one piece of information recorded in two places with no note of which
+    is authoritative
+  - `lash format --check` reports a file as needing formatting forever, since
+    the output never reaches a fixed point
+  - Fix: strip inline labels from the stored title, or have the emitter write
+    the title verbatim and skip the label pass. Whichever, add the
+    `format(format(x)) == format(x)` property test above; it catches this and
+    the section-deletion bug at once
 - [ ] `lash add` reports a task ID that does not match the indexed one #cli #bug #ux
   - The ID printed on creation cannot be used with `lash show` / `lash complete`
     / `@depends-on`, so any workflow that copies it fails. Observed repeatedly
