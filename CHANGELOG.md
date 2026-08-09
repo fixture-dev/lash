@@ -8,6 +8,58 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-09
+
+A sweep of the Markdown write path. `lash add` and `lash format` both
+regenerated Markdown from a parsed model that did not carry everything the
+source did, and neither noticed when the difference cost content. Several of
+these fixes address silent data loss that exited 0.
+
+### Added
+
+- The file watcher's outbound channel is bounded at 256 events. Past that the
+  debouncer stops sending and raises an overflow flag, and the TUI answers with
+  a single full reload instead of thousands of individual reindexes. A branch
+  switch across a large project no longer grows memory and latency with the size
+  of the burst.
+
+### Changed
+
+- Synthesized task IDs come from one derivation (`synthesize_task_id`) shared by
+  `lash add` and the parser, and `lash add` now reports the ID the index will
+  actually store. **Task IDs change** for titles containing inline labels or
+  punctuation inside a word — a task titled `Ship v0.7.0 release notes #docs`
+  was printed as `ship-v0-7-0-release-notes` and stored as
+  `ship-v070-release-notes-docs`. Tasks with an explicit `@id:` are unaffected.
+  Run `lash check-links` after upgrading to catch `@depends-on` references
+  written against a previously printed ID.
+
+### Fixed
+
+- `lash format` no longer deletes sections it does not model. Rebuilding from
+  the parsed model dropped every section other than the header, Description and
+  Tasks — a file with `## Notes` and `## References` came back with neither, and
+  sections above `## Tasks` went too. The formatter now regenerates only the
+  spans it owns and copies every other line through unchanged.
+- `lash format` no longer appends a duplicate copy of every inline label on each
+  run, which left `format --check` reporting a file as dirty forever.
+- `lash add` no longer splices a new task into the middle of the preceding
+  task's annotation block, which silently truncated multi-line `@agent-note`
+  values on the next reindex.
+- `lash add` no longer inserts past the end of the annotation block, which
+  landed new tasks under a following `## Notes` section, split from the tasks.
+- `lash add` into a file with an empty `## Tasks` section no longer prepends the
+  checkbox above the H1, where the parser never saw it — the task was written to
+  disk while `lash index` reported 0 tasks and `lash lint` passed.
+- `lash add --agent-note` with an embedded newline emitted an unindented
+  continuation line the parser then dropped. Notes are emitted so they round
+  trip, and values that cannot round trip regardless of indentation (a blank
+  line, a line starting with `@`) are rejected up front.
+- `UserConfig` save/load take an explicit path, so running the test suite no
+  longer writes the developer's real `~/.lash/config.toml`. An interrupted run
+  previously left `color_scheme = "Test Theme"` behind, which no theme resolves,
+  breaking every later `lash` invocation on that machine.
+
 ## [0.2.0] - 2026-08-08
 
 ### Added
@@ -39,6 +91,7 @@ Initial release.
 - Project scaffolding: `lash init` and the PixelQuest `lash playground`
 - Configuration management, shell completions, and `lash explain` error catalog
 
-[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/fixture-dev/lash/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fixture-dev/lash/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fixture-dev/lash/releases/tag/v0.1.0
