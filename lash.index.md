@@ -166,3 +166,75 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
   - Regression test: emit a task with a two-line note, reparse the written file,
     assert both lines survive; plus a round-trip property test over notes with
     varying line counts and indentation
+- [ ] `lash add` prepends above the H1 when the target file has no tasks yet, and the task is never indexed #cli #bug #data-loss
+  - Severe: the task is written to disk, invisible to Lash, and `lash lint`
+    passes clean. Found 2026-08-08 while verifying the multi-line note fix
+  - Repro: a well-formed file with a header and an empty `## Tasks` section
+    (`# T` / `@id: t` / `## Tasks`). `lash add "Ship it" -f tasks/t.md -l docs`
+    writes the checkbox at **line 1, above the `# T` heading**, reports
+    `at tasks/t.md:0`, and a following `lash index` reports `0 task(s)`
+  - Contrast confirming the trigger is the empty section: the identical command
+    against the same file with one seed task appends correctly at line 9
+  - Cause: `PlacementResolver::resolve_append` returns `line_number: 0` when
+    `ctx.resolved_file.tasks.is_empty()`, commented "Signal for new file". The
+    emitter maps `line_number == 0` to `insert_idx = 0`
+    (`MarkdownEmitter::insert_into_existing`) and prepends. The sentinel
+    conflates "brand-new file" with "existing file whose Tasks section is
+    empty" — only the first is safe to write at offset 0
+  - Fix: distinguish the two cases. For an existing file with no tasks, append
+    at the end of the `## Tasks` section (`find_end_of_tasks_section` already
+    exists and is used for the no-siblings-no-parent branch). Consider replacing
+    the magic 0 with an explicit enum so the ambiguity cannot recur
+  - Regression tests: add to (a) an existing file with an empty `## Tasks`
+    section, (b) an existing file with a `## Tasks` section followed by other
+    sections, (c) a genuinely new file — assert the header survives at line 1
+    in (a) and (b), and that `lash index` finds the task in all three
+- [ ] `lash add` reports a task ID that does not match the indexed one #cli #bug #ux
+  - The ID printed on creation cannot be used with `lash show` / `lash complete`
+    / `@depends-on`, so any workflow that copies it fails. Observed repeatedly
+    while filing tickets on 2026-08-08
+  - Repro: `lash add "Ship v0.7.0 release notes" -f tasks/t.md -l docs` prints
+    `Created task ship-v0-7-0-release-notes`, but the indexed id is
+    `t#ship-v070-release-notes-docs`. Three separate discrepancies in one line:
+    1. Version numbers slug differently — `v0-7-0` when reported, `v070` when
+       indexed. Same input, two normalizations
+    2. The label tag is folded into the identity — `#docs` becomes a `-docs`
+       suffix. A task's id should not change because someone added a label
+    3. Long titles are truncated to 40 chars on index but reported in full
+       (e.g. reported `coverage-fail-fast-when-the-coverage-command-fails-and-its-output-predates-the-run`,
+       indexed `coverage-fail-fast-when-the-coverage-com`)
+  - Consequence beyond ergonomics: `@depends-on` written against the reported id
+    dangles, and #27's dangling-reference check will reject it
+  - Fix: derive the id once, in one place, and have `lash add` report exactly
+    what the indexer will store. Label folding looks like the slug being
+    computed from the raw checkbox line rather than the parsed title — labels
+    should be excluded from identity
+  - Minor, same code path: the appended final line has no trailing newline, so
+    the file ends mid-line and diffs show "\ No newline at end of file"
+- [ ] `test_user_config_save_and_load` writes to the real `~/.lash/config.toml` and can leave the CLI broken #testing #bug #isolation
+  - A unit test in `crates/lash-types/src/config.rs` (`test_user_config_save_and_land`
+    at ~L727) constructs a `UserConfig` with `color_scheme = "Test Theme"` and
+    calls `config.save()`, which writes the developer's REAL home-directory
+    config. It restores at the end via `UserConfig::default().save()`
+  - Two problems with that. Even on success it does not restore what the user
+    had — it overwrites with defaults, silently destroying real settings. And if
+    the test panics, is filtered out mid-run, or the process is killed, the
+    restore never executes and `~/.lash/config.toml` is left containing
+    `color_scheme = "Test Theme"`, which no theme resolves. Every subsequent
+    `lash` invocation then fails with
+    `error: Color scheme 'Test Theme' not found`
+  - Observed 2026-08-09: after a Flawd mutation run executed the suite hundreds
+    of times (with mutants killed mid-execution), `~/.lash/config.toml` was left
+    with the test value, mtime inside the run window. `lash index` broke
+    machine-wide until the line was removed by hand. Mutation testing did not
+    cause the bug, it amplified it — any interrupted `cargo test` does the same
+  - The neighbouring `test_user_config_load_nonexistent` comments "This test
+    assumes ~/.lash/config.toml doesn't exist or is valid", which acknowledges
+    the hazard without containing it
+  - Fix: never touch the real home directory from tests. Parameterise the config
+    path (e.g. `UserConfig::save_to(path)` / `load_from(path)`) and point the
+    test at a `tempfile::TempDir`, or gate resolution behind an env var the test
+    sets. Restoring in a `Drop` guard is not sufficient on its own — a SIGKILL
+    still skips it, and it still cannot restore settings it never captured
+  - Audit the rest of the suite for the same pattern: `crates/lash-cli/tests/`
+    has several files referencing `user_config_path`
