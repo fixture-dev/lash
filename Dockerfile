@@ -1,9 +1,29 @@
 # Dockerfile for flawd mutation testing - Rust
 FROM rust:1.77-slim
 
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# flawd.toml's [coverage] command runs `cargo llvm-cov`, which shells out to
+# llvm-cov and llvm-profdata. The llvm-tools component supplies both, so the
+# command needs no LLVM_COV/LLVM_PROFDATA overrides. rust-toolchain.toml lands
+# first so the component is added to the toolchain the build actually uses
+# rather than the image's default.
+COPY rust-toolchain.toml ./
+RUN rustup component add llvm-tools-preview
+
+# cargo-llvm-cov ships prebuilt binaries; installing from source here would add
+# several minutes to every image build.
+RUN set -eux; \
+    case "$(uname -m)" in \
+      x86_64)  target=x86_64-unknown-linux-gnu ;; \
+      aarch64) target=aarch64-unknown-linux-gnu ;; \
+      *) echo "no cargo-llvm-cov release for $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-${target}.tar.gz" \
+      | tar xzf - -C "${CARGO_HOME}/bin"; \
+    cargo llvm-cov --version
 
 # Pre-fetch and build dependencies for layer caching (debug/test profile)
 COPY Cargo.toml Cargo.lock ./

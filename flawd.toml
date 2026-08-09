@@ -5,7 +5,7 @@ enabled = ["rs"]
 inputs = [
   { format = "lcov", path = "coverage/lcov.info" }
 ]
-command = "LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata cargo llvm-cov --lcov --output-path coverage/lcov.info"
+command = "mkdir -p coverage && cargo llvm-cov --workspace --lcov --output-path coverage/lcov.info"
 timeout_seconds = 300
 
 [test]
@@ -23,10 +23,6 @@ risky_operators = false
 dedupe = true
 sampling = "weighted"
 cache = true
-
-[llm]
-mode = "off"
-max_edit_chars = 120
 
 [docker]
 dockerfile = "Dockerfile"
