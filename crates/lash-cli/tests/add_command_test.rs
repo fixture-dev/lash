@@ -266,3 +266,103 @@ fn test_add_depends_on_resolves_task_added_earlier_via_explicit_id() {
     let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
     assert!(content.contains("@depends-on: base-step"));
 }
+
+// ---------------------------------------------------------------------
+// Multi-line @agent-note preservation
+//
+// `lash add` counted a multi-line `@agent-note` as a single line when
+// computing the append point, so the new task was spliced between the
+// note's first line and its continuations. The orphaned continuation
+// lines were then destroyed on reindex — silent data loss, exit code 0.
+// ---------------------------------------------------------------------
+
+/// A project whose single task carries a three-line `@agent-note`.
+fn project_with_multiline_note() -> TestProject {
+    TestProject::builder()
+        .with_index("test-project", "Test Project")
+        .with_file(
+            "tasks.md",
+            r#"# Tasks
+
+@id: tasks
+
+## Tasks
+
+- [ ] Existing task
+  @id: existing
+  @agent-note: line one of the note
+  line two of the note
+  line three of the note
+"#,
+        )
+        .build()
+}
+
+#[test]
+fn test_add_preserves_preceding_multiline_agent_note_in_file() {
+    let project = project_with_multiline_note();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Second task")
+        .arg("--file")
+        .arg("tasks.md")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+
+    // The note must remain contiguous: all three lines still adjacent, with
+    // no task line spliced between them.
+    assert!(
+        content.contains(
+            "  @agent-note: line one of the note\n  line two of the note\n  line three of the note"
+        ),
+        "multi-line agent note was split apart:\n{content}"
+    );
+
+    // And the new task must land after the whole note, not inside it.
+    let note_end = content.find("line three of the note").unwrap();
+    let new_task = content
+        .find("- [ ] Second task")
+        .expect("new task missing from file");
+    assert!(
+        new_task > note_end,
+        "new task was inserted inside the preceding note:\n{content}"
+    );
+}
+
+#[test]
+fn test_add_preserves_multiline_agent_note_through_reindex() {
+    // The destructive step: even when the on-disk splice looks survivable,
+    // reindexing used to drop the orphaned continuation lines entirely.
+    let project = project_with_multiline_note();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Second task")
+        .arg("--file")
+        .arg("tasks.md")
+        .assert()
+        .success();
+
+    index(&project);
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+    for line in [
+        "line one of the note",
+        "line two of the note",
+        "line three of the note",
+    ] {
+        assert!(
+            content.contains(line),
+            "note content '{line}' lost after reindex:\n{content}"
+        );
+    }
+}

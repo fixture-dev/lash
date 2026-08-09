@@ -68,3 +68,173 @@ For background docs, see:
     finders are thin wrappers handling their own error/fallback semantics
     (anyhow vs LashError vs DbError vs return-self-on-miss). Side benefit:
     lash-db's variant used to ignore `index.lash.md` — now it doesn't.
+
+### Launch polish (Flawd dogfooding, 2026-08-08)
+
+Found while running Flawd v0.7.0 against this repo. The `lash add` item is a
+silent data-loss bug in our own write path and blocks the OSS launch; the other
+two are rot in this repo's Flawd config, which means a contributor following
+the README cannot run Flawd on Lash at all. Counterpart Flawd-side findings are
+filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
+
+- [x] `lash add` splices into a preceding multi-line note and silently destroys content #cli #bug #launch-blocker
+  - LAUNCH BLOCKER — silent data loss in the primary write path. When the last
+    task in the target file carries a multi-line `@agent-note`, `lash add`
+    inserts the new task after the *first line* of that note instead of after
+    the whole task block. On reindex the orphaned continuation lines are
+    destroyed, not merely misattributed. Exit code is 0 with a normal success
+    message, so nothing signals the loss
+  - Minimal repro: a file with one task whose note is a `@agent-note:` line plus
+    two continuation lines; run `lash add "second task" -f tasks/t.md -l x`. The
+    new task lands between note line one and line two. After `lash index`,
+    `lash show` on the first task returns only line one, and the second task has
+    no note at all — lines two and three are gone from the index entirely
+  - Hit twice unprompted while filing real tickets in the flawd repo, so this is
+    not a contrived edge case: any repo using multi-line notes loses content on
+    every subsequent add
+  - Fix: insertion point must be the end of the full task block (checkbox line
+    plus all indented continuation lines including `@`-directives). Regression
+    tests: add after a task with (a) a multi-line note, (b) several
+    `@`-directives, (c) a note containing a blank continuation line, (d) no note
+    — assert byte-exact preservation of every pre-existing task and note, and
+    that the new task lands last. Plus a round-trip property test: parse → add →
+    parse preserves all prior notes verbatim
+- [ ] Remove the `[llm]` section from `flawd.toml` (removed in Flawd v0.7.0) #flawd #config
+  - Our committed `flawd.toml` still carries an `[llm]` table (`mode = "off"`,
+    `max_edit_chars = 120`). Flawd removed LLM semantic operators in v0.7.0 and
+    treats a lingering `[llm]` table as a hard config error, so `flawd run` on a
+    fresh clone dead-ends immediately and produces no output. The config had not
+    been exercised since the last run in March, so this rotted unnoticed
+  - Deleting those three lines is the whole fix — with `[llm]` gone the rest
+    validates clean against v0.7.0 (`flawd config show`, no other stale keys)
+  - Consider a CI job running `flawd config show` against the committed config
+    so version drift in our own tool is caught by the build, not by a human
+    months later
+- [ ] Make `flawd.toml`'s coverage command work in container mode #flawd #docker #ci
+  - `flawd.toml` sets coverage to `cargo llvm-cov ...`, but the Dockerfile never
+    installs `cargo-llvm-cov`. Flawd defaults to docker isolation, so the
+    documented `flawd run` builds the image, runs coverage inside it, and fails
+    with cargo exit 101 having written nothing
+  - The committed command also hardcodes host paths (`LLVM_COV=/opt/homebrew/...`,
+    `LLVM_PROFDATA=/opt/homebrew/...`) — macOS Homebrew paths that cannot resolve
+    inside a Linux container
+  - Fix: install `cargo-llvm-cov` plus `llvm-tools-preview` in the Dockerfile, or
+    point `[coverage] command` at a tool the image has; make the paths portable
+    rather than machine-specific. Verify by running `flawd run` with default
+    isolation and confirming per-test collection succeeds instead of falling back
+- [ ] `@depends-on` comma form over-counts lines, appending outside the tasks section #cli #bug
+  - Follow-up to the multi-line note fix, same function
+    (`PlacementResolver::count_annotation_lines`). `count += depends_on.len()`
+    assumes one source line per reference, which holds for what
+    `MarkdownEmitter::format_task_annotations` writes. But the parser splits a
+    hand-written comma-separated `@depends-on: a, b, c` into three references
+    from a *single* line, so the count runs two lines long
+  - Over-counting is not content-destroying like the note bug, but it is not
+    harmless either: the insertion point escapes the task block. Repro — a file
+    whose last task carries `@depends-on: a, b, c` on line 9, followed by a
+    blank line, `## Notes` on line 11, then prose. `lash add "second task"`
+    computes line 12 and writes the new task *after the `## Notes` heading*,
+    landing it outside `## Tasks` entirely and splitting Notes from its prose.
+    Correct placement is line 10
+  - When the task is last in the file the emitter's `.min(lines.len())` clamp
+    hides it — placement reported line 12 for a 10-line file and appended at the
+    end, correct by accident. So this only bites when content follows
+  - Fix needs the same information `@labels` lacks: whether the source used the
+    inline or one-per-line form. Options: have the parser record the source line
+    span for each annotation (fixes this, `@labels`, and any future variant at
+    once), or count `min(depends_on.len(), actual_lines)` by re-reading the
+    source. The first is the real fix; `TaskFile` currently retains no raw
+    content, so it needs plumbing
+  - Regression test: append after a task with comma-separated `@depends-on`
+    followed by a section heading; assert the new task lands inside `## Tasks`
+- [ ] `lash add --agent-note` with an embedded newline writes a malformed file and loses content #cli #bug #data-loss
+  - Latent counterpart to the multi-line note fix, on the write side.
+    `MarkdownEmitter::format_task_annotations` builds the note with
+    `format!("{annotation_indent}@agent-note: {note}")` and pushes it as one
+    "line". If the value contains a newline, the continuation is emitted with no
+    indentation, so the parser stops at it and the content is dropped
+  - I previously assessed this as unreachable from the CLI because notes are
+    single-line. That is wrong — it is trivially reachable:
+    `lash add "noted task" -f tasks/t.md --agent-note "$(printf 'first\nsecond')"`
+    writes `  @agent-note: first` followed by a bare unindented `second`, and
+    `lash show` afterwards returns only "first". The second line is silently
+    gone, exit code 0
+  - Fix: re-indent continuation lines to the annotation indent when emitting, so
+    a multi-line value round-trips through parse -> emit -> parse. Reject or
+    escape values that cannot round-trip rather than writing a file the parser
+    will silently truncate
+  - Regression test: emit a task with a two-line note, reparse the written file,
+    assert both lines survive; plus a round-trip property test over notes with
+    varying line counts and indentation
+- [ ] `lash add` prepends above the H1 when the target file has no tasks yet, and the task is never indexed #cli #bug #data-loss
+  - Severe: the task is written to disk, invisible to Lash, and `lash lint`
+    passes clean. Found 2026-08-08 while verifying the multi-line note fix
+  - Repro: a well-formed file with a header and an empty `## Tasks` section
+    (`# T` / `@id: t` / `## Tasks`). `lash add "Ship it" -f tasks/t.md -l docs`
+    writes the checkbox at **line 1, above the `# T` heading**, reports
+    `at tasks/t.md:0`, and a following `lash index` reports `0 task(s)`
+  - Contrast confirming the trigger is the empty section: the identical command
+    against the same file with one seed task appends correctly at line 9
+  - Cause: `PlacementResolver::resolve_append` returns `line_number: 0` when
+    `ctx.resolved_file.tasks.is_empty()`, commented "Signal for new file". The
+    emitter maps `line_number == 0` to `insert_idx = 0`
+    (`MarkdownEmitter::insert_into_existing`) and prepends. The sentinel
+    conflates "brand-new file" with "existing file whose Tasks section is
+    empty" — only the first is safe to write at offset 0
+  - Fix: distinguish the two cases. For an existing file with no tasks, append
+    at the end of the `## Tasks` section (`find_end_of_tasks_section` already
+    exists and is used for the no-siblings-no-parent branch). Consider replacing
+    the magic 0 with an explicit enum so the ambiguity cannot recur
+  - Regression tests: add to (a) an existing file with an empty `## Tasks`
+    section, (b) an existing file with a `## Tasks` section followed by other
+    sections, (c) a genuinely new file — assert the header survives at line 1
+    in (a) and (b), and that `lash index` finds the task in all three
+- [ ] `lash add` reports a task ID that does not match the indexed one #cli #bug #ux
+  - The ID printed on creation cannot be used with `lash show` / `lash complete`
+    / `@depends-on`, so any workflow that copies it fails. Observed repeatedly
+    while filing tickets on 2026-08-08
+  - Repro: `lash add "Ship v0.7.0 release notes" -f tasks/t.md -l docs` prints
+    `Created task ship-v0-7-0-release-notes`, but the indexed id is
+    `t#ship-v070-release-notes-docs`. Three separate discrepancies in one line:
+    1. Version numbers slug differently — `v0-7-0` when reported, `v070` when
+       indexed. Same input, two normalizations
+    2. The label tag is folded into the identity — `#docs` becomes a `-docs`
+       suffix. A task's id should not change because someone added a label
+    3. Long titles are truncated to 40 chars on index but reported in full
+       (e.g. reported `coverage-fail-fast-when-the-coverage-command-fails-and-its-output-predates-the-run`,
+       indexed `coverage-fail-fast-when-the-coverage-com`)
+  - Consequence beyond ergonomics: `@depends-on` written against the reported id
+    dangles, and #27's dangling-reference check will reject it
+  - Fix: derive the id once, in one place, and have `lash add` report exactly
+    what the indexer will store. Label folding looks like the slug being
+    computed from the raw checkbox line rather than the parsed title — labels
+    should be excluded from identity
+  - Minor, same code path: the appended final line has no trailing newline, so
+    the file ends mid-line and diffs show "\ No newline at end of file"
+- [ ] `test_user_config_save_and_load` writes to the real `~/.lash/config.toml` and can leave the CLI broken #testing #bug #isolation
+  - A unit test in `crates/lash-types/src/config.rs` (`test_user_config_save_and_land`
+    at ~L727) constructs a `UserConfig` with `color_scheme = "Test Theme"` and
+    calls `config.save()`, which writes the developer's REAL home-directory
+    config. It restores at the end via `UserConfig::default().save()`
+  - Two problems with that. Even on success it does not restore what the user
+    had — it overwrites with defaults, silently destroying real settings. And if
+    the test panics, is filtered out mid-run, or the process is killed, the
+    restore never executes and `~/.lash/config.toml` is left containing
+    `color_scheme = "Test Theme"`, which no theme resolves. Every subsequent
+    `lash` invocation then fails with
+    `error: Color scheme 'Test Theme' not found`
+  - Observed 2026-08-09: after a Flawd mutation run executed the suite hundreds
+    of times (with mutants killed mid-execution), `~/.lash/config.toml` was left
+    with the test value, mtime inside the run window. `lash index` broke
+    machine-wide until the line was removed by hand. Mutation testing did not
+    cause the bug, it amplified it — any interrupted `cargo test` does the same
+  - The neighbouring `test_user_config_load_nonexistent` comments "This test
+    assumes ~/.lash/config.toml doesn't exist or is valid", which acknowledges
+    the hazard without containing it
+  - Fix: never touch the real home directory from tests. Parameterise the config
+    path (e.g. `UserConfig::save_to(path)` / `load_from(path)`) and point the
+    test at a `tempfile::TempDir`, or gate resolution behind an env var the test
+    sets. Restoring in a `Drop` guard is not sufficient on its own — a SIGKILL
+    still skips it, and it still cannot restore settings it never captured
+  - Audit the rest of the suite for the same pattern: `crates/lash-cli/tests/`
+    has several files referencing `user_config_path`
