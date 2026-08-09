@@ -2419,3 +2419,102 @@ asserts both directions: emitted when not shutting down, abandoned when it is.
 No sleeps, no filesystem, runs in 0.00s, and verified to FAIL when the guard is
 removed. `dropping_handle_stops_events` also lost its post-drop settling sleep,
 since the whole point is that none is needed.
+
+---
+
+## Launch-blocker sweep on the write path (2026-08-09)
+
+Nine tickets, all in `lash.index.md`, plus two more filed and fixed along the
+way. Seven were in `lash add` or `lash format`; the common thread is that both
+regenerate Markdown from a parsed model that does not carry everything the
+source did, and neither noticed when the difference cost the user content.
+
+### Placement: three ways to compute the same number wrong
+
+`lash add` decides where to insert by counting how many lines the previous
+task's annotation block occupies. That count was derived from parsed metadata,
+which cannot answer the question. The same metadata has several written forms:
+`@depends-on: a, b, c` on one line or one line each, a label inline on the
+checkbox or in an `@labels:` block, a value folded across continuation lines.
+
+Undercounting spliced the new task into the middle of the block. A multi-line
+`@agent-note` lost its continuation lines on the next reindex (#33) — silent
+data loss with exit code 0. Overcounting pushed the insertion past the end of
+the block; with a `## Notes` section below, the new task landed under it, split
+from the tasks (#43).
+
+Both fixed by recording the count where it is known. The parser already
+collects a task's annotation lines, so it now keeps the length on
+`Task::annotation_line_count`. Tasks built in memory rather than parsed keep the
+old derived estimate, which is correct for them because they will be written in
+the emitter's shape.
+
+### The sentinel that meant two things
+
+`resolve_append` returned `line_number: 0` for "brand-new file", and the emitter
+mapped 0 to insert index 0. For an existing file with an empty `## Tasks`
+section that prepended the checkbox above the H1, where the parser never saw it:
+`lash index` reported 0 tasks and `lash lint` passed (#36). The task was on disk
+and nowhere else.
+
+Replaced with `InsertAnchor`, either a concrete `Line(n)` or
+`EndOfTasksSection`. The ambiguity cannot recur because no number means anything
+other than a line. Resolving `EndOfTasksSection` needs the source, since a
+parsed `TaskFile` records task line numbers and no section boundaries — the old
+code fell back to a hardcoded guess of line 15. New
+`parser::header::section_span` returns a section's line span through
+pulldown-cmark, so a `##` in a code fence neither opens nor closes one.
+
+### Two derivations of one ID
+
+`lash add` printed `ship-v0-7-0-release-notes`; the index stored
+`ship-v070-release-notes-docs` (#41). Punctuation became a separator in one and
+vanished in the other, the parser folded inline labels into identity, and only
+the parser truncated at 40 characters. Anything that copied the printed ID
+failed, and an `@depends-on` written against it dangled.
+
+`lash_types::task::synthesize_task_id` is now the only derivation. On top of
+that the creation service re-reads the file it wrote and reports the ID the
+parser assigned, which is the only way to get the collision suffix right.
+Synthesized IDs change for titles with inline labels or punctuation inside a
+word; explicit `@id:` values are untouched.
+
+### `lash format` was worse than any of them
+
+Found while checking that the empty-section fix left files lint-clean (#44).
+`format_file` rebuilt the file from the model, and the model holds the header,
+the Description section and the tasks. Everything else was deleted. A file with
+`## Notes` and `## References` came back with neither. Sections *above*
+`## Tasks` went too, folded into "overview" text `TaskFile` never stored.
+
+Separately, the parser records inline labels in metadata without removing them
+from the title, and the formatter wrote both — so every run appended another
+copy and `format --check` reported the file as dirty forever.
+
+`format_file` now takes the source and regenerates only the spans it owns,
+copying every other line through. The test that catches both at once is
+`format(format(x)) == format(x)`.
+
+### Everything else
+
+- `--agent-note` with an embedded newline emitted an unindented continuation the
+  parser dropped (#40). Fixed on the emit side; values that cannot round-trip
+  regardless of indentation (a blank line, a line starting with `@`) are now
+  rejected up front rather than written into a file the parser will truncate.
+- `test_user_config_save_and_load` wrote the developer's real
+  `~/.lash/config.toml` and restored it with defaults, destroying real settings
+  on success and leaving `color_scheme = "Test Theme"` behind on any interrupted
+  run — which broke `lash` machine-wide (#34). `load_from`/`save_to` take the
+  path; the tests use a `TempDir`.
+- `flawd.toml` still carried an `[llm]` table Flawd removed in v0.7.0, and its
+  coverage command pointed at Homebrew paths that cannot resolve in the Linux
+  container Flawd defaults to (#35). Verified with a real `flawd run`: per-test
+  targeting 6/6, no full-suite fallback.
+- Bounded the watcher channel with a `FullReload` overflow path (#42), the last
+  item in `tasks/tasks.live-updates.md`. A branch switch used to queue thousands
+  of individual reindexes; it now reloads once.
+- `dropping_handle_stops_events` flaked twice on macOS in an hour, on unrelated
+  PRs (#38). It was catching events queued *before* the drop — FSEvents reports
+  changes from shortly before the stream opened.
+- The two tests `tasks/tasks.status-bar-activity.md` deferred for want of a TUI
+  harness are written now that one exists (#45).
