@@ -400,6 +400,7 @@ mod tests {
             parent_id: parent_id.map(String::from),
             order_index: 0,
             line_number: 0,
+            annotation_line_count: 0,
             metadata: TaskMetadata::default(),
             body: None,
             contextual_notes: Vec::new(),

@@ -220,6 +220,7 @@ impl TaskTreeBuilder {
             parent_id,
             order_index,
             line_number: line.line_num,
+            annotation_line_count: line.annotation_line_count,
             metadata,
             body: None,
             contextual_notes: Vec::new(),

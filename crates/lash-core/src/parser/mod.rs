@@ -536,12 +536,14 @@ fn parse_task_section_internal(content: &str, ctx: &mut ParseContext) -> ParseRe
             if annotation_lines.is_empty() {
                 i += 1;
             } else {
+                let annotation_line_count = annotation_lines.len();
                 match annotations::parse_annotation_block(
                     annotation_lines.into_iter(),
                     Some(ctx.config),
                 ) {
                     Ok(block) => {
                         cb_line.annotations = Some(block);
+                        cb_line.annotation_line_count = annotation_line_count;
                         i = j; // Skip past the annotation lines we consumed
                     }
                     Err(e) => {

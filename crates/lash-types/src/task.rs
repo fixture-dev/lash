@@ -193,6 +193,18 @@ pub struct Task {
     #[serde(default)]
     pub line_number: usize,
 
+    /// Source lines the task's annotation block occupies, directly below the
+    /// checkbox line
+    ///
+    /// Recorded by the parser, which is the only place that can know it: the
+    /// same metadata can be written in more than one shape (`@depends-on: a, b`
+    /// on one line or one `@depends-on:` line each, labels inline on the
+    /// checkbox or in an `@labels:` block), so the count cannot be recovered
+    /// from [`TaskMetadata`] afterwards. 0 for a task that was not parsed from
+    /// a file.
+    #[serde(default)]
+    pub annotation_line_count: usize,
+
     /// Optional metadata
     pub metadata: TaskMetadata,
 
@@ -355,6 +367,7 @@ pub struct TaskBuilder {
     parent_id: Option<String>,
     order_index: usize,
     line_number: usize,
+    annotation_line_count: usize,
     id: Option<String>,
     has_explicit_id: bool,
     metadata: TaskMetadata,
@@ -373,6 +386,7 @@ impl TaskBuilder {
             parent_id: None,
             order_index: 0,
             line_number: 0,
+            annotation_line_count: 0,
             id: None,
             has_explicit_id: false,
             metadata: TaskMetadata::default(),
@@ -506,6 +520,7 @@ impl TaskBuilder {
             parent_id: self.parent_id,
             order_index: self.order_index,
             line_number: self.line_number,
+            annotation_line_count: self.annotation_line_count,
             metadata: self.metadata,
             body: self.body,
             contextual_notes: self.contextual_notes,
