@@ -10,8 +10,9 @@ use lash_types::TaskStatus;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::placement::PlacementInfo;
+use super::placement::{InsertAnchor, PlacementInfo};
 use super::validation::ValidationContext;
+use crate::parser::header;
 
 /// Markdown emitter for task creation
 ///
@@ -41,7 +42,7 @@ impl MarkdownEmitter {
     /// # Examples
     ///
     /// ```
-    /// use lash_core::creation::{MarkdownEmitter, PlacementInfo};
+    /// use lash_core::creation::{InsertAnchor, MarkdownEmitter, PlacementInfo};
     /// use lash_core::creation::{TaskValidator, ValidationContext};
     /// use lash_types::config::ConfigBuilder;
     /// use lash_types::creation::{TaskCreationRequestBuilder, FileTarget};
@@ -54,7 +55,7 @@ impl MarkdownEmitter {
     /// #     .build();
     /// # let ctx = validator.validate(&request, None).unwrap();
     /// let placement = PlacementInfo {
-    ///     line_number: 5,
+    ///     anchor: InsertAnchor::Line(5),
     ///     order_index: 0,
     ///     indent_level: 0,
     /// };
@@ -103,24 +104,20 @@ impl MarkdownEmitter {
         );
 
         // Either create new file or insert into existing file
-        let file_path = if is_new_file {
+        let (file_path, line_number) = if is_new_file {
             Self::create_new_file(request, &task_line, &annotation_lines)?
         } else {
             // Get the file path from the resolved file in context
             let file_path = ctx.resolved_file.path.clone();
-            Self::insert_into_existing(
-                &file_path,
-                &task_line,
-                &annotation_lines,
-                placement.line_number,
-            )?;
-            file_path
+            let line_number =
+                Self::insert_into_existing(&file_path, &task_line, &annotation_lines, placement)?;
+            (file_path, line_number)
         };
 
         Ok(TaskCreationResult {
             task_id,
             file_path,
-            line_number: placement.line_number,
+            line_number,
             is_new_file,
         })
     }
@@ -135,7 +132,11 @@ impl MarkdownEmitter {
     /// * `file_path` - Path to the existing file
     /// * `task_line` - The formatted task line
     /// * `annotation_lines` - Additional annotation lines to insert
-    /// * `line_number` - Line number to insert at (1-indexed)
+    /// * `placement` - Where the resolver decided the task goes
+    ///
+    /// # Returns
+    ///
+    /// The 1-indexed line the task was written to.
     ///
     /// # Errors
     ///
@@ -144,8 +145,8 @@ impl MarkdownEmitter {
         file_path: &Path,
         task_line: &str,
         annotation_lines: &[String],
-        line_number: usize,
-    ) -> Result<(), TaskCreationError> {
+        placement: &PlacementInfo,
+    ) -> Result<usize, TaskCreationError> {
         // Read the file
         let content = fs::read_to_string(file_path).map_err(|e| TaskCreationError::IoError {
             path: file_path.to_path_buf(),
@@ -153,14 +154,9 @@ impl MarkdownEmitter {
         })?;
 
         let lines: Vec<&str> = content.lines().collect();
-        let mut new_lines = Vec::new();
+        let insert_idx = Self::resolve_insert_index(&content, &lines, placement.anchor);
 
-        // Calculate insertion index (line_number is 1-indexed)
-        let insert_idx = if line_number == 0 {
-            0
-        } else {
-            (line_number - 1).min(lines.len())
-        };
+        let mut new_lines = Vec::new();
 
         // Copy lines before insertion point
         new_lines.extend_from_slice(&lines[..insert_idx]);
@@ -178,10 +174,47 @@ impl MarkdownEmitter {
             new_lines.extend_from_slice(&lines[insert_idx..]);
         }
 
-        // Write back atomically
-        Self::write_file_atomic(file_path, &new_lines.join("\n"))?;
+        // Write back atomically. The trailing newline is restored explicitly:
+        // `join` alone leaves the file ending mid-line, which shows up in every
+        // subsequent diff as "\ No newline at end of file".
+        let mut updated = new_lines.join("\n");
+        updated.push('\n');
+        Self::write_file_atomic(file_path, &updated)?;
 
-        Ok(())
+        Ok(insert_idx + 1)
+    }
+
+    /// Translate a [`InsertAnchor`] into a 0-indexed position in `lines`
+    ///
+    /// [`InsertAnchor::EndOfTasksSection`] is resolved here rather than in the
+    /// resolver because it depends on the source text: a parsed file records
+    /// task line numbers but no section boundaries, so a `## Tasks` section
+    /// with no tasks in it has nothing to anchor to. The new task goes after
+    /// the section's last content line, keeping it inside `## Tasks` and below
+    /// the file header.
+    fn resolve_insert_index(content: &str, lines: &[&str], anchor: InsertAnchor) -> usize {
+        match anchor {
+            InsertAnchor::Line(line_number) => line_number.saturating_sub(1).min(lines.len()),
+            InsertAnchor::EndOfTasksSection => {
+                // No `## Tasks` heading at all: append at the end of the file
+                // rather than guessing where the section would have been.
+                let Some(body) = header::tasks_section_body(content) else {
+                    return lines.len();
+                };
+                let body_end = body.end.min(lines.len());
+                let last_content = lines[body.start..body_end]
+                    .iter()
+                    .rposition(|line| !line.trim().is_empty());
+
+                match last_content {
+                    Some(offset) => body.start + offset + 1,
+                    // Section is empty. Land on the line after the heading's
+                    // blank separator so the file keeps its usual
+                    // heading/blank/task shape.
+                    None => (body.start + 1).min(body_end),
+                }
+            }
+        }
     }
 
     /// Create a new task file with proper structure
@@ -196,7 +229,8 @@ impl MarkdownEmitter {
     ///
     /// # Returns
     ///
-    /// Returns the path to the newly created file.
+    /// Returns the path to the newly created file and the 1-indexed line the
+    /// task was written to.
     ///
     /// # Errors
     ///
@@ -205,7 +239,7 @@ impl MarkdownEmitter {
         request: &TaskCreationRequest,
         task_line: &str,
         annotation_lines: &[String],
-    ) -> Result<PathBuf, TaskCreationError> {
+    ) -> Result<(PathBuf, usize), TaskCreationError> {
         // Extract file details from FileTarget::NewFile
         let (path, title, description) = match &request.file_target {
             FileTarget::NewFile {
@@ -270,6 +304,7 @@ impl MarkdownEmitter {
         // 4. Tasks section
         content.push_str("## Tasks\n");
         content.push('\n');
+        let task_line_number = content.lines().count() + 1;
         content.push_str(task_line);
         content.push('\n');
 
@@ -292,7 +327,7 @@ impl MarkdownEmitter {
         // Write file atomically
         Self::write_file_atomic(&path, &content)?;
 
-        Ok(path)
+        Ok((path, task_line_number))
     }
 
     /// Format a single task line in Markdown
@@ -708,13 +743,18 @@ mod tests {
         let task_line = "- [ ] New Task";
         let annotation_lines = vec![]; // No task-level annotations
 
+        let placement = PlacementInfo {
+            anchor: InsertAnchor::Line(8), // Line 8 (after Task 1)
+            order_index: 1,
+            indent_level: 0,
+        };
         let result = MarkdownEmitter::insert_into_existing(
             &file_path,
             task_line,
             &annotation_lines,
-            8, // Line 8 (after Task 1)
+            &placement,
         );
-        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 8);
 
         // Verify content
         let content = fs::read_to_string(&file_path).unwrap();
@@ -753,7 +793,7 @@ mod tests {
 
         // Create placement info
         let placement = PlacementInfo {
-            line_number: 1,
+            anchor: InsertAnchor::Line(1),
             order_index: 0,
             indent_level: 0,
         };
@@ -801,7 +841,7 @@ mod tests {
         let ctx = validator.validate(&request, None).unwrap();
 
         let placement = PlacementInfo {
-            line_number: 1,
+            anchor: InsertAnchor::Line(1),
             order_index: 0,
             indent_level: 0,
         };
@@ -832,5 +872,55 @@ mod tests {
 
         // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// Resolve an anchor against `content`, returning the 0-indexed position.
+    fn insert_index(content: &str, anchor: InsertAnchor) -> usize {
+        let lines: Vec<&str> = content.lines().collect();
+        MarkdownEmitter::resolve_insert_index(content, &lines, anchor)
+    }
+
+    #[test]
+    fn test_end_of_tasks_section_lands_below_an_empty_heading() {
+        // The bug: an existing file with an empty `## Tasks` section resolved
+        // to index 0, prepending the task above the H1 where the parser never
+        // saw it.
+        let content = "# T\n\n@id: t\n\n## Tasks\n";
+        assert_eq!(insert_index(content, InsertAnchor::EndOfTasksSection), 5);
+    }
+
+    #[test]
+    fn test_end_of_tasks_section_stays_above_a_following_section() {
+        let content = "# T\n\n@id: t\n\n## Tasks\n\n## Notes\n\nprose\n";
+        // Line index 6 is `## Notes`, so the task goes just above it and keeps
+        // the blank separator under the Tasks heading.
+        assert_eq!(insert_index(content, InsertAnchor::EndOfTasksSection), 6);
+    }
+
+    #[test]
+    fn test_end_of_tasks_section_follows_the_last_task_not_the_trailing_blanks() {
+        let content = "# T\n\n## Tasks\n\n- [ ] One\n\n\n## Notes\n";
+        assert_eq!(insert_index(content, InsertAnchor::EndOfTasksSection), 5);
+    }
+
+    #[test]
+    fn test_end_of_tasks_section_ignores_a_heading_inside_a_code_fence() {
+        let content = "# T\n\n## Tasks\n\n- [ ] One\n\n```\n## Notes\n```\n";
+        // The fenced `## Notes` must not close the section, so the whole fence
+        // counts as section content and the task appends after it.
+        assert_eq!(insert_index(content, InsertAnchor::EndOfTasksSection), 9);
+    }
+
+    #[test]
+    fn test_end_of_tasks_section_without_a_heading_appends_at_eof() {
+        let content = "# T\n\nJust prose, no sections.\n";
+        assert_eq!(insert_index(content, InsertAnchor::EndOfTasksSection), 3);
+    }
+
+    #[test]
+    fn test_line_anchor_is_clamped_to_the_file_length() {
+        let content = "# T\n\n## Tasks\n";
+        assert_eq!(insert_index(content, InsertAnchor::Line(2)), 1);
+        assert_eq!(insert_index(content, InsertAnchor::Line(99)), 3);
     }
 }

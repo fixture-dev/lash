@@ -348,6 +348,78 @@ pub fn content_has_tasks_section(content: &str) -> bool {
     false
 }
 
+/// Line span of the body of the `## Tasks` section
+///
+/// The range is 0-indexed and half-open: it starts at the first line after the
+/// `## Tasks` heading and ends at the line holding the next H1 or H2 heading,
+/// or at the end of the file. H3 and deeper headings sit inside the section
+/// (files often group tasks under `### Subsection` headings) and do not close
+/// it. Returns `None` if the file has no `## Tasks` heading.
+///
+/// A parsed [`lash_types::TaskFile`] records task line numbers but no section
+/// boundaries, so anything that needs the extent of the Tasks section (in
+/// particular appending to a section with no tasks in it yet) has to go back to
+/// the source text. Heading detection runs through pulldown-cmark, so a `##`
+/// inside a fenced code block does not close the section.
+///
+/// # Example
+///
+/// ```
+/// use lash_core::parser::header::tasks_section_body;
+///
+/// let content = "# T\n\n## Tasks\n\n- [ ] One\n\n## Notes\n\nprose\n";
+/// // Lines 3 through 5: the blank line, the task, and the blank line after it.
+/// assert_eq!(tasks_section_body(content), Some(3..6));
+///
+/// // An empty section still has a body, it is just blank.
+/// assert_eq!(tasks_section_body("# T\n\n## Tasks\n"), Some(3..3));
+///
+/// assert_eq!(tasks_section_body("# T\n\nno section here\n"), None);
+/// ```
+#[must_use]
+pub fn tasks_section_body(content: &str) -> Option<std::ops::Range<usize>> {
+    let mut heading_level: Option<HeadingLevel> = None;
+    let mut heading_text = String::new();
+    let mut body_start_byte: Option<usize> = None;
+    let mut body_end_byte = content.len();
+
+    for (event, range) in Parser::new(content).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                if body_start_byte.is_some() && matches!(level, HeadingLevel::H1 | HeadingLevel::H2)
+                {
+                    body_end_byte = range.start;
+                    break;
+                }
+                heading_level = Some(level);
+                heading_text.clear();
+            }
+            Event::Text(text) if heading_level.is_some() => heading_text.push_str(&text),
+            Event::End(TagEnd::Heading(level)) => {
+                if body_start_byte.is_none()
+                    && level == HeadingLevel::H2
+                    && heading_text.trim().eq_ignore_ascii_case("tasks")
+                {
+                    body_start_byte = Some(range.end);
+                }
+                heading_level = None;
+            }
+            _ => {}
+        }
+    }
+
+    let body_start_byte = body_start_byte?;
+    Some(line_at_byte(content, body_start_byte)..line_at_byte(content, body_end_byte))
+}
+
+/// 0-indexed line holding the given byte offset
+fn line_at_byte(content: &str, byte: usize) -> usize {
+    content[..byte.min(content.len())]
+        .bytes()
+        .filter(|b| *b == b'\n')
+        .count()
+}
+
 /// Find the ## Description section heading
 ///
 /// Returns the line number where "## Description" appears (0-indexed).

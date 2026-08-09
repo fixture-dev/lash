@@ -166,7 +166,7 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
   - Regression test: emit a task with a two-line note, reparse the written file,
     assert both lines survive; plus a round-trip property test over notes with
     varying line counts and indentation
-- [ ] `lash add` prepends above the H1 when the target file has no tasks yet, and the task is never indexed #cli #bug #data-loss
+- [x] `lash add` prepends above the H1 when the target file has no tasks yet, and the task is never indexed #cli #bug #data-loss
   - Severe: the task is written to disk, invisible to Lash, and `lash lint`
     passes clean. Found 2026-08-08 while verifying the multi-line note fix
   - Repro: a well-formed file with a header and an empty `## Tasks` section
@@ -189,6 +189,15 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     section, (b) an existing file with a `## Tasks` section followed by other
     sections, (c) a genuinely new file — assert the header survives at line 1
     in (a) and (b), and that `lash index` finds the task in all three
+  - Fixed by replacing the magic 0 with `InsertAnchor`, which distinguishes a
+    concrete `Line(n)` from `EndOfTasksSection`. The emitter resolves the
+    latter against the source text, since a parsed `TaskFile` records task
+    line numbers but no section boundaries. New
+    `parser::header::tasks_section_body` returns the section's line span and
+    is markdown-aware, so a `##` inside a code fence does not close it. The
+    reported line now comes from where the task was actually written, so the
+    `:0` in the success message is gone too, as is the missing trailing
+    newline noted under the ID ticket below
 - [ ] `lash add` reports a task ID that does not match the indexed one #cli #bug #ux
   - The ID printed on creation cannot be used with `lash show` / `lash complete`
     / `@depends-on`, so any workflow that copies it fails. Observed repeatedly
