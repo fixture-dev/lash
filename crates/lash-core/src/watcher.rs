@@ -387,6 +387,14 @@ mod tests {
         let handle = start_with_debounce(root, tx, Duration::from_millis(50)).unwrap();
         std::thread::sleep(Duration::from_millis(80));
 
+        // Clear anything the watcher queued before the drop. macOS FSEvents
+        // reports changes from shortly before the stream opened, so the
+        // `initial` write above can still be sitting in the channel here, and
+        // the assertion below is about events caused *after* the drop. Without
+        // this the test failed intermittently on macOS runners with a single
+        // stray `tasks.md`.
+        drain_events(&rx, Duration::from_millis(150));
+
         // No settling sleep after this point on purpose: `drop` joins the
         // debouncer thread, so the channel must already be inert when it
         // returns. A sleep here would hide a regression back to detached
