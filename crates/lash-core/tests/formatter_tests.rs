@@ -41,7 +41,7 @@ fn test_format_basic_file() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     assert!(formatted.contains("# Test File"));
     assert!(formatted.contains("@id: test-file"));
@@ -70,7 +70,7 @@ fn test_format_preserves_hierarchy() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Verify hierarchy is preserved with exactly 2 spaces
     assert!(formatted.contains("- [ ] Parent\n"));
@@ -98,7 +98,7 @@ fn test_format_normalizes_indentation() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // All children should have exactly 2 spaces
     assert!(formatted.contains("  - [ ] Child with 2 spaces\n"));
@@ -127,7 +127,7 @@ fn test_annotation_sorting() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Find positions of annotations
     let id_pos = formatted.find("@id:").unwrap();
@@ -162,7 +162,7 @@ fn test_annotation_sorting_disabled() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Annotations should maintain original order (after @id)
     let id_pos = formatted.find("@id:").unwrap();
@@ -191,7 +191,7 @@ fn test_whitespace_normalization() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // No trailing spaces
     assert!(!formatted.lines().any(|line| line.ends_with(' ')));
@@ -225,7 +225,7 @@ fn test_auto_waive_children() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Children should be auto-waived
     assert!(formatted.contains("- [-] Waived parent\n"));
@@ -254,7 +254,7 @@ fn test_auto_fix_status_consistency() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Parent should be unmarked (changed to open)
     assert!(formatted.contains("- [ ] Parent marked done\n"));
@@ -282,7 +282,7 @@ fn test_auto_fix_disabled() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Without auto-fix, parent-child inconsistency remains
     assert!(formatted.contains("- [x] Parent done\n"));
@@ -306,11 +306,11 @@ fn test_round_trip_idempotence() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted1 = formatter.format_file(&file).unwrap();
+    let formatted1 = formatter.format_file("", &file).unwrap();
 
     // Parse the formatted output
     let file2 = parse_file_from_string(&formatted1, &config).unwrap();
-    let formatted2 = formatter.format_file(&file2).unwrap();
+    let formatted2 = formatter.format_file("", &file2).unwrap();
 
     // Second format should be identical to first
     assert_eq!(formatted1, formatted2);
@@ -337,11 +337,11 @@ fn test_round_trip_with_metadata() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted1 = formatter.format_file(&file).unwrap();
+    let formatted1 = formatter.format_file("", &file).unwrap();
 
     // Parse and format again
     let file2 = parse_file_from_string(&formatted1, &config).unwrap();
-    let formatted2 = formatter.format_file(&file2).unwrap();
+    let formatted2 = formatter.format_file("", &file2).unwrap();
 
     // Second format should be identical to first (idempotent)
     assert_eq!(
@@ -371,7 +371,7 @@ fn test_format_empty_file() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     assert!(formatted.contains("# Empty"));
     assert!(formatted.contains("@id: empty"));
@@ -395,7 +395,7 @@ fn test_format_deeply_nested() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Verify exact indentation
     assert!(formatted.contains("- [ ] Level 0\n"));
@@ -419,7 +419,7 @@ fn test_format_with_inline_labels() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Inline labels should be preserved
     assert!(formatted.contains("#label1"));
@@ -445,7 +445,7 @@ fn test_format_preserves_task_order() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     let first_pos = formatted.find("First").unwrap();
     let second_pos = formatted.find("Second").unwrap();
@@ -477,7 +477,7 @@ fn test_format_multiple_root_tasks() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // All root tasks should be at depth 0
     let lines: Vec<&str> = formatted.lines().collect();
@@ -513,7 +513,7 @@ fn test_format_mixed_statuses() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     assert!(formatted.contains("- [ ] Open"));
     assert!(formatted.contains("- [x] Done"));
@@ -542,7 +542,7 @@ fn test_format_nested_auto_waive() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Both child and grandchild should be waived
     assert!(formatted.contains("  - [-] Child\n"));
@@ -568,7 +568,7 @@ fn test_minimal_formatter() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Minimal formatter doesn't apply auto-fixes, so parent-child inconsistency remains
     // (done parent stays done even with open child when auto-fix is disabled)
@@ -600,7 +600,7 @@ fn test_strict_formatter() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Strict mode: max 1 blank line
     assert!(!formatted.contains("\n\n\n"));
@@ -617,7 +617,7 @@ fn test_format_file_ends_with_newline() {
 - [ ] Task"#; // No trailing newline
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     assert!(formatted.ends_with('\n'));
     assert!(!formatted.ends_with("\n\n"));
@@ -641,7 +641,7 @@ fn test_format_with_custom_annotations() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Custom annotations should be preserved
     assert!(formatted.contains("@priority: high"));
@@ -681,7 +681,7 @@ fn test_format_preserves_task_annotations_issue_6() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // Task-level @id annotations must be preserved
     assert!(
@@ -754,11 +754,11 @@ fn test_round_trip_preserves_task_annotations() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted1 = formatter.format_file(&file).unwrap();
+    let formatted1 = formatter.format_file("", &file).unwrap();
 
     // Parse and format again - should be idempotent
     let file2 = parse_file_from_string(&formatted1, &config).unwrap();
-    let formatted2 = formatter.format_file(&file2).unwrap();
+    let formatted2 = formatter.format_file("", &file2).unwrap();
 
     assert_eq!(
         formatted1, formatted2,
@@ -791,7 +791,7 @@ fn test_format_preserves_doc_annotation_singular() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // @doc must remain singular (not become @docs)
     assert!(
@@ -825,7 +825,7 @@ fn test_format_preserves_doc_after_contextual_notes() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // @doc must be preserved even when it appears after contextual notes
     assert!(
@@ -867,7 +867,7 @@ fn test_format_preserves_file_level_doc_annotation() {
 "#;
 
     let file = parse_file_from_string(content, &config).unwrap();
-    let formatted = formatter.format_file(&file).unwrap();
+    let formatted = formatter.format_file("", &file).unwrap();
 
     // File-level @doc must be preserved
     assert!(
@@ -883,5 +883,130 @@ fn test_format_preserves_file_level_doc_annotation() {
     assert!(
         formatted.contains("@depends-on:"),
         "File-level @depends-on should be preserved"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Sections the model does not represent, and idempotence
+//
+// `format_file` used to rebuild the file from the parsed model alone.
+// The model holds the header, the Description section and the task tree
+// and nothing else, so every other section was silently deleted: a file
+// with `## Notes` and `## References` came back with only the header and
+// the tasks, exit code 0, no warning.
+//
+// Separately, the parser leaves inline labels in the title as well as
+// recording them in metadata, and the formatter wrote both. Each run
+// appended another copy of every label, so `format --check` reported a
+// file as needing formatting forever.
+// ---------------------------------------------------------------------
+
+/// Format `content` once, the way `lash format` does.
+fn format(content: &str) -> String {
+    let config = make_config();
+    let formatter = Formatter::new(config.clone(), FormatOptions::default());
+    let file = parse_file_from_string(content, &config).unwrap();
+    formatter.format_file(content, &file).unwrap()
+}
+
+#[test]
+fn test_sections_after_tasks_survive() {
+    let content = "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n\n## Notes\n\nnotes prose\n\n## References\n\n- [link](target.md)\n";
+
+    let formatted = format(content);
+
+    for expected in [
+        "## Notes",
+        "notes prose",
+        "## References",
+        "- [link](target.md)",
+    ] {
+        assert!(
+            formatted.contains(expected),
+            "'{expected}' was deleted by formatting:\n{formatted}"
+        );
+    }
+}
+
+#[test]
+fn test_sections_before_tasks_survive() {
+    let content =
+        "# F\n\n@id: f\n\n## Background\n\nsome background prose\n\n## Tasks\n\n- [ ] one\n";
+
+    let formatted = format(content);
+
+    assert!(
+        formatted.contains("## Background") && formatted.contains("some background prose"),
+        "a section above ## Tasks was deleted:\n{formatted}"
+    );
+    // And it must still be above the tasks, not relocated.
+    assert!(
+        formatted.find("## Background").unwrap() < formatted.find("## Tasks").unwrap(),
+        "section order was not preserved:\n{formatted}"
+    );
+}
+
+#[test]
+fn test_a_fenced_heading_does_not_split_a_section() {
+    let content =
+        "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n\n## Notes\n\n```markdown\n## Tasks\n```\n";
+
+    let formatted = format(content);
+
+    assert!(
+        formatted.contains("```markdown\n## Tasks\n```"),
+        "the fenced block was treated as a real heading:\n{formatted}"
+    );
+}
+
+#[test]
+fn test_inline_labels_are_not_duplicated() {
+    let content = "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one #docs #infra\n";
+
+    let formatted = format(content);
+
+    assert_eq!(
+        formatted.matches("#docs").count(),
+        1,
+        "label emitted more than once:\n{formatted}"
+    );
+    assert_eq!(
+        formatted.matches("#infra").count(),
+        1,
+        "label emitted more than once:\n{formatted}"
+    );
+}
+
+#[test]
+fn test_formatting_is_idempotent() {
+    // The property that catches both bugs at once: whatever formatting does,
+    // doing it again must change nothing.
+    let cases = [
+        "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n",
+        "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one #docs #infra\n",
+        "# F\n\n@id: f\n\n## Description\n\ndesc\n\n## Tasks\n\n- [ ] one\n",
+        "# F\n\n@id: f\n\n## Background\n\nprose\n\n## Tasks\n\n- [ ] one\n\n## Notes\n\nmore prose\n",
+        "# F\n\n@id: f\n\n## Tasks\n\n- [ ] parent\n  - [ ] child #api\n    @agent-note: a note\n",
+        "# F\n\n@id: f\n@labels: a, b\n\n## Tasks\n\n- [ ] one\n",
+    ];
+
+    for content in cases {
+        let once = format(content);
+        let twice = format(&once);
+        assert_eq!(
+            once, twice,
+            "formatting is not idempotent for:\n{content}\nfirst pass:\n{once}\nsecond pass:\n{twice}"
+        );
+    }
+}
+
+#[test]
+fn test_an_already_canonical_file_is_left_byte_identical() {
+    let content = "# F\n\n@id: f\n\n## Background\n\nsome background prose\n\n## Tasks\n\n- [ ] one #docs\n\n## Notes\n\nnotes prose\n";
+
+    assert_eq!(
+        format(content),
+        content,
+        "a canonical file must not be rewritten"
     );
 }

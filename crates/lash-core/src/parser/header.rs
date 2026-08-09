@@ -348,19 +348,69 @@ pub fn content_has_tasks_section(content: &str) -> bool {
     false
 }
 
-/// Line span of the body of the `## Tasks` section
+/// Line span of a `## <name>` section, heading line included
 ///
-/// The range is 0-indexed and half-open: it starts at the first line after the
-/// `## Tasks` heading and ends at the line holding the next H1 or H2 heading,
-/// or at the end of the file. H3 and deeper headings sit inside the section
-/// (files often group tasks under `### Subsection` headings) and do not close
-/// it. Returns `None` if the file has no `## Tasks` heading.
+/// The range is 0-indexed and half-open: it starts at the heading and ends at
+/// the line holding the next H1 or H2 heading, or at the end of the file. H3
+/// and deeper headings sit inside the section (files often group tasks under
+/// `### Subsection` headings) and do not close it. Returns `None` if the file
+/// has no such H2. Matching on `name` is case-insensitive.
 ///
 /// A parsed [`lash_types::TaskFile`] records task line numbers but no section
-/// boundaries, so anything that needs the extent of the Tasks section (in
-/// particular appending to a section with no tasks in it yet) has to go back to
-/// the source text. Heading detection runs through pulldown-cmark, so a `##`
-/// inside a fenced code block does not close the section.
+/// boundaries, so anything that needs the extent of a section has to go back
+/// to the source text. Heading detection runs through pulldown-cmark, so a
+/// `##` inside a fenced code block neither opens nor closes a section.
+///
+/// # Example
+///
+/// ```
+/// use lash_core::parser::header::section_span;
+///
+/// let content = "# T\n\n## Tasks\n\n- [ ] One\n\n## Notes\n\nprose\n";
+/// assert_eq!(section_span(content, "tasks"), Some(2..6));
+/// assert_eq!(section_span(content, "notes"), Some(6..9));
+/// assert_eq!(section_span(content, "nope"), None);
+/// ```
+#[must_use]
+pub fn section_span(content: &str, name: &str) -> Option<std::ops::Range<usize>> {
+    let mut heading_level: Option<HeadingLevel> = None;
+    let mut heading_text = String::new();
+    let mut span: Option<std::ops::Range<usize>> = None;
+
+    for (event, range) in Parser::new(content).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                if let Some(started) = span.as_mut() {
+                    if matches!(level, HeadingLevel::H1 | HeadingLevel::H2) {
+                        started.end = line_at_byte(content, range.start);
+                        break;
+                    }
+                }
+                heading_level = Some(level);
+                heading_text.clear();
+            }
+            Event::Text(text) if heading_level.is_some() => heading_text.push_str(&text),
+            Event::End(TagEnd::Heading(level)) => {
+                if span.is_none()
+                    && level == HeadingLevel::H2
+                    && heading_text.trim().eq_ignore_ascii_case(name)
+                {
+                    let start = line_at_byte(content, range.start);
+                    span = Some(start..content.lines().count());
+                }
+                heading_level = None;
+            }
+            _ => {}
+        }
+    }
+
+    span
+}
+
+/// Line span of the body of the `## Tasks` section
+///
+/// Same as [`section_span`] for "tasks", minus the heading line, so it starts
+/// at the first line below `## Tasks`.
 ///
 /// # Example
 ///
@@ -378,38 +428,63 @@ pub fn content_has_tasks_section(content: &str) -> bool {
 /// ```
 #[must_use]
 pub fn tasks_section_body(content: &str) -> Option<std::ops::Range<usize>> {
-    let mut heading_level: Option<HeadingLevel> = None;
-    let mut heading_text = String::new();
-    let mut body_start_byte: Option<usize> = None;
-    let mut body_end_byte = content.len();
+    section_span(content, "tasks").map(|span| (span.start + 1).min(span.end)..span.end)
+}
 
-    for (event, range) in Parser::new(content).into_offset_iter() {
-        match event {
-            Event::Start(Tag::Heading { level, .. }) => {
-                if body_start_byte.is_some() && matches!(level, HeadingLevel::H1 | HeadingLevel::H2)
-                {
-                    body_end_byte = range.start;
-                    break;
-                }
-                heading_level = Some(level);
-                heading_text.clear();
-            }
-            Event::Text(text) if heading_level.is_some() => heading_text.push_str(&text),
-            Event::End(TagEnd::Heading(level)) => {
-                if body_start_byte.is_none()
-                    && level == HeadingLevel::H2
-                    && heading_text.trim().eq_ignore_ascii_case("tasks")
-                {
-                    body_start_byte = Some(range.end);
-                }
-                heading_level = None;
-            }
-            _ => {}
+/// Line span the formatter regenerates as the file header: the H1 and the
+/// annotation block below it
+///
+/// Everything below it belongs to whoever is rewriting the file. Overview
+/// prose and any section the model does not represent live there, and the
+/// formatter has to copy them through rather than regenerate them.
+///
+/// The range always starts at 0. It is empty when the file has no H1, which is
+/// the case where the parser synthesizes a title from the filename and the
+/// formatter writes a header that was not there before.
+///
+/// # Example
+///
+/// ```
+/// use lash_core::parser::header::header_span;
+///
+/// // The H1 and the `@id:` line, but not the prose below them.
+/// assert_eq!(header_span("# T\n\n@id: t\n\nsome prose\n"), 0..3);
+///
+/// // No H1 to regenerate around.
+/// assert_eq!(header_span("just prose\n"), 0..0);
+/// ```
+#[must_use]
+pub fn header_span(content: &str) -> std::ops::Range<usize> {
+    let lines: Vec<&str> = content.lines().collect();
+
+    let Some(h1) = lines.iter().position(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with("# ") && !trimmed.starts_with("##")
+    }) else {
+        return 0..0;
+    };
+
+    let mut end = h1 + 1;
+    let mut saw_annotation = false;
+    for (offset, line) in lines.iter().enumerate().skip(h1 + 1) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            // A blank line may separate the H1 from the annotations, or follow
+            // them. Either way it does not end the block on its own.
+            continue;
+        }
+        if trimmed.starts_with('@') {
+            saw_annotation = true;
+            end = offset + 1;
+        } else if saw_annotation && line.starts_with(' ') {
+            // Continuation of the annotation above.
+            end = offset + 1;
+        } else {
+            break;
         }
     }
 
-    let body_start_byte = body_start_byte?;
-    Some(line_at_byte(content, body_start_byte)..line_at_byte(content, body_end_byte))
+    0..end
 }
 
 /// 0-indexed line holding the given byte offset
