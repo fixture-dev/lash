@@ -37,12 +37,13 @@
 //!     description: None,
 //!     description_agent_notes: Vec::new(),
 //! };
-//! let formatted = formatter.format_file(&file).unwrap();
+//! let formatted = formatter.format_file("", &file).unwrap();
 //! assert!(formatted.contains("# Test File"));
 //! ```
 
 pub mod options;
 
+use crate::parser::header;
 use lash_types::{LashConfig, Result, TaskFile, TaskStatus};
 use std::path::Path;
 
@@ -125,11 +126,11 @@ impl Formatter {
     /// #     description: None,
     /// #     description_agent_notes: Vec::new(),
     /// # };
-    /// let formatted = formatter.format_file(&file).unwrap();
+    /// let formatted = formatter.format_file("", &file).unwrap();
     /// assert!(formatted.contains("# Test File"));
     /// ```
     #[allow(clippy::result_large_err)] // LashError is intentionally rich with context
-    pub fn format_file(&self, file: &TaskFile) -> Result<String> {
+    pub fn format_file(&self, source: &str, file: &TaskFile) -> Result<String> {
         // Apply auto-fixes if enabled
         let file = if self.options.apply_auto_fixes {
             self.apply_auto_fixes(file)?
@@ -137,29 +138,67 @@ impl Formatter {
             file.clone()
         };
 
-        // Build the formatted output
+        let lines: Vec<&str> = source.lines().collect();
+        let header = header::header_span(source);
+        let description = header::section_span(source, "description");
+        let tasks = header::section_span(source, "tasks");
+
         let mut output = String::new();
 
-        // 1. Format header (title, annotations, overview)
+        // The header is always regenerated, whether or not the source had one.
         self.format_header(&file, &mut output);
 
-        // 2. Format description section (if present)
-        if file.description.is_some() {
-            Self::format_description(&file, &mut output);
+        // Then walk the rest of the source. Two spans are ours to replace with
+        // generated text; everything else is copied through byte for byte,
+        // because the model does not represent it and regenerating the file
+        // from the model alone silently deletes it.
+        // Each generated block ends with its own blank separator, so the
+        // source's is skipped rather than copied; emitting both would add a
+        // blank line on every run and formatting would not be idempotent.
+        let skip_blanks = |line: &mut usize| {
+            while lines.get(*line).is_some_and(|l| l.trim().is_empty()) {
+                *line += 1;
+            }
+        };
+
+        let mut line = header.end;
+        skip_blanks(&mut line);
+
+        while line < lines.len() {
+            if description.as_ref().is_some_and(|span| span.start == line) {
+                Self::format_description(&file, &mut output);
+                line = description.as_ref().map_or(line + 1, |span| span.end);
+                skip_blanks(&mut line);
+            } else if tasks.as_ref().is_some_and(|span| span.start == line) {
+                self.format_tasks(&file, &mut output);
+                output.push('\n');
+                line = tasks.as_ref().map_or(line + 1, |span| span.end);
+                skip_blanks(&mut line);
+            } else {
+                output.push_str(lines[line]);
+                output.push('\n');
+                line += 1;
+            }
         }
 
-        // 3. Format tasks section
-        self.format_tasks(&file, &mut output);
+        // A source with no `## Tasks` heading still gets one. The parser treats
+        // such a file as all-tasks and warns, and emitting the section is what
+        // makes `lash format` able to repair it.
+        if tasks.is_none() {
+            if description.is_none() && file.description.is_some() {
+                Self::format_description(&file, &mut output);
+            }
+            self.format_tasks(&file, &mut output);
+        }
 
-        // 4. Format references section (if present)
-        // TODO: Implement once references are stored in TaskFile
-
-        // 4. Normalize whitespace
+        // Normalize whitespace. This only collapses runs of blank lines and
+        // trims trailing whitespace, so it is safe to run over copied-through
+        // content as well as generated content.
         if self.options.normalize_whitespace {
             output = self.normalize_whitespace(&output);
         }
 
-        // 5. Ensure file ends with single newline
+        // Ensure file ends with single newline
         if !output.ends_with('\n') {
             output.push('\n');
         } else if output.ends_with("\n\n") {
@@ -206,11 +245,18 @@ impl Formatter {
     /// ```
     #[allow(clippy::result_large_err)] // LashError is intentionally rich with context
     pub fn format_file_in_place(&self, path: &Path) -> Result<()> {
-        // Parse the file
+        // Parse the file, keeping the source: the formatter needs it to carry
+        // through sections the model does not represent.
+        let source = std::fs::read_to_string(path).map_err(|e| lash_types::LashError::IO {
+            code: lash_types::error::codes::E_IO_READ_ERROR,
+            message: format!("Failed to read file for formatting: {e}"),
+            path: Some(path.to_path_buf()),
+            io_error: Some(e.to_string()),
+        })?;
         let file = crate::parser::parse_file(path, &self.config)?;
 
         // Format it
-        let formatted = self.format_file(&file)?;
+        let formatted = self.format_file(&source, &file)?;
 
         // Write back atomically (tmp file + rename) so a crash mid-write
         // can't leave a partial Markdown file on disk. This shares the same
@@ -525,11 +571,21 @@ impl Formatter {
         output.push_str("- [");
         output.push(task.status.to_checkbox_char());
         output.push_str("] ");
-        output.push_str(&task.title);
+
+        // The parser leaves inline labels in the title *and* records them in
+        // metadata, so writing the title verbatim and then appending the
+        // labels emits each one twice. Formatting was therefore not
+        // idempotent: every run grew the line by another copy of every inline
+        // label, and `format --check` reported the file as needing formatting
+        // forever. Strip them from the title and let the canonical, sorted
+        // list below be the only place they appear.
+        output.push_str(&strip_inline_labels(&task.title));
 
         // Add inline labels if present
         if !task.metadata.labels.is_empty() {
-            for label in &task.metadata.labels {
+            let mut labels = task.metadata.labels.clone();
+            labels.sort();
+            for label in &labels {
                 output.push_str(" #");
                 output.push_str(label);
             }
@@ -679,6 +735,20 @@ impl Formatter {
     }
 }
 
+/// Remove inline `#label` words from a task title
+///
+/// The parser records inline labels in `TaskMetadata` without removing them
+/// from the title, so a formatter that writes both would emit each label
+/// twice. Only whole words that parsing would turn into labels are removed, so
+/// a `#` inside prose survives.
+fn strip_inline_labels(title: &str) -> String {
+    title
+        .split_whitespace()
+        .filter(|word| !lash_types::label::is_inline_label(word))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -779,7 +849,7 @@ mod tests {
             make_task("task2", "Second task", TaskStatus::Done, None, 0),
         ]);
 
-        let result = formatter.format_file(&file).unwrap();
+        let result = formatter.format_file("", &file).unwrap();
 
         assert!(result.contains("# Test File"));
         assert!(result.contains("@id: test"));
@@ -800,7 +870,7 @@ mod tests {
             make_task("child2", "Child 2", TaskStatus::Done, Some("parent"), 1),
         ]);
 
-        let result = formatter.format_file(&file).unwrap();
+        let result = formatter.format_file("", &file).unwrap();
 
         assert!(result.contains("- [ ] Parent task"));
         assert!(result.contains("  - [ ] Child 1"));
@@ -822,7 +892,7 @@ mod tests {
             make_task("child2", "Child 2", TaskStatus::Open, Some("parent"), 1),
         ]);
 
-        let result = formatter.format_file(&file).unwrap();
+        let result = formatter.format_file("", &file).unwrap();
 
         // Children should be auto-waived
         assert!(result.contains("- [-] Parent"));

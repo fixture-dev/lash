@@ -109,7 +109,7 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     — assert byte-exact preservation of every pre-existing task and note, and
     that the new task lands last. Plus a round-trip property test: parse → add →
     parse preserves all prior notes verbatim
-- [ ] Remove the `[llm]` section from `flawd.toml` (removed in Flawd v0.7.0) #flawd #config
+- [x] Remove the `[llm]` section from `flawd.toml` (removed in Flawd v0.7.0) #flawd #config
   - Our committed `flawd.toml` still carries an `[llm]` table (`mode = "off"`,
     `max_edit_chars = 120`). Flawd removed LLM semantic operators in v0.7.0 and
     treats a lingering `[llm]` table as a hard config error, so `flawd run` on a
@@ -120,7 +120,9 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
   - Consider a CI job running `flawd config show` against the committed config
     so version drift in our own tool is caught by the build, not by a human
     months later
-- [ ] Make `flawd.toml`'s coverage command work in container mode #flawd #docker #ci
+  - Done in #35. The CI job is not; it needs flawd installed on the runner,
+    which is a bigger change than the fix
+- [x] Make `flawd.toml`'s coverage command work in container mode #flawd #docker #ci
   - `flawd.toml` sets coverage to `cargo llvm-cov ...`, but the Dockerfile never
     installs `cargo-llvm-cov`. Flawd defaults to docker isolation, so the
     documented `flawd run` builds the image, runs coverage inside it, and fails
@@ -132,6 +134,12 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     point `[coverage] command` at a tool the image has; make the paths portable
     rather than machine-specific. Verify by running `flawd run` with default
     isolation and confirming per-test collection succeeds instead of falling back
+  - Done in #35. The Dockerfile installs `cargo-llvm-cov` from its prebuilt
+    release (arch picked by `uname -m`) plus `llvm-tools-preview`, which
+    supplies llvm-cov and llvm-profdata, so the command needs no path overrides
+    at all. The command also creates `coverage/` first, since it is gitignored
+    and so never exists in a fresh container. Verified with `flawd run` under
+    default isolation: per-test targeting 6/6, no full-suite fallback
 - [x] `@depends-on` comma form over-counts lines, appending outside the tasks section #cli #bug
   - Follow-up to the multi-line note fix, same function
     (`PlacementResolver::count_annotation_lines`). `count += depends_on.len()`
@@ -225,7 +233,7 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     reported line now comes from where the task was actually written, so the
     `:0` in the success message is gone too, as is the missing trailing
     newline noted under the ID ticket below
-- [ ] `lash format` deletes every section after `## Tasks` #cli #bug #data-loss #launch-blocker
+- [x] `lash format` deletes every section after `## Tasks` #cli #bug #data-loss #launch-blocker
   - Worse than the `lash add` bugs it was found next to, because `format` is
     documented as a normalizer and the README tells people to run it. Found
     2026-08-09 while checking that the empty-Tasks-section fix left files
@@ -248,7 +256,14 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     and assert byte-exact preservation of both; a file with a trailing section
     containing a fenced code block; and a round-trip property test asserting
     `format(format(x)) == format(x)`
-- [ ] `lash format` duplicates inline labels on every run #cli #bug
+  - Turned out to be broader than filed: sections *before* `## Tasks` were
+    destroyed too (a `## Background` between the header and the tasks), because
+    the parser folds them into "overview" text that `TaskFile` never stored.
+    Fixed by taking the source alongside the parsed file: `format_file` now
+    regenerates only the spans it owns (the H1 plus annotation block, the
+    Description section, the Tasks section) and copies every other line
+    through unchanged
+- [x] `lash format` duplicates inline labels on every run #cli #bug
   - Not idempotent, and the file grows without bound. `- [ ] task one #docs
     #infra` becomes `#docs #infra #docs #infra` after one run and
     `#docs #infra #docs #infra #docs #infra` after two
@@ -263,6 +278,10 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     the title verbatim and skip the label pass. Whichever, add the
     `format(format(x)) == format(x)` property test above; it catches this and
     the section-deletion bug at once
+  - Fixed on the emit side: the formatter strips inline labels from the title
+    and writes the sorted metadata list as the single source. Leaving them in
+    the parsed title keeps `lash list` and search working the way they do
+    today. The idempotence property test covers both bugs, as predicted
 - [x] `lash add` reports a task ID that does not match the indexed one #cli #bug #ux
   - The ID printed on creation cannot be used with `lash show` / `lash complete`
     / `@depends-on`, so any workflow that copies it fails. Observed repeatedly
@@ -300,7 +319,7 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     synthesized id needs updating; explicit `@id:` values are untouched
   - The trailing-newline half was fixed with the empty-Tasks-section ticket
     above, since it lives in the same function
-- [ ] `test_user_config_save_and_load` writes to the real `~/.lash/config.toml` and can leave the CLI broken #testing #bug #isolation
+- [x] `test_user_config_save_and_load` writes to the real `~/.lash/config.toml` and can leave the CLI broken #testing #bug #isolation
   - A unit test in `crates/lash-types/src/config.rs` (`test_user_config_save_and_land`
     at ~L727) constructs a `UserConfig` with `color_scheme = "Test Theme"` and
     calls `config.save()`, which writes the developer's REAL home-directory
@@ -327,3 +346,12 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     still skips it, and it still cannot restore settings it never captured
   - Audit the rest of the suite for the same pattern: `crates/lash-cli/tests/`
     has several files referencing `user_config_path`
+  - Done in #34. `UserConfig::load_from(path)` / `save_to(path)` take the path
+    explicitly and the tests point at a `TempDir`; `load()` and `save()` are
+    thin wrappers, so production behaviour is unchanged. Verified by running
+    the full suite and confirming the real `~/.lash/config.toml` came out
+    byte-identical
+  - Audit found nothing else. lash-cli's `Config::user_config_path` resolves a
+    different location (`dirs::config_dir`) and its test only inspects the
+    path; lash-tui's `apply_selected_theme` calls `save()` for real, which is
+    correct, and no test exercises it

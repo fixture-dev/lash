@@ -347,15 +347,16 @@ fn format_single_file(
     let task_file = parse_file(file_path, config)
         .with_context(|| format!("Failed to parse {}", file_path.display()))?;
 
+    // Read original content. The formatter needs it as well as the parsed
+    // file, to carry through sections the model does not represent.
+    let original = std::fs::read_to_string(file_path)
+        .with_context(|| format!("Failed to read {}", file_path.display()))?;
+
     // Format the file
     let formatter = Formatter::new(config.clone(), options.clone());
     let formatted = formatter
-        .format_file(&task_file)
+        .format_file(&original, &task_file)
         .with_context(|| format!("Failed to format {}", file_path.display()))?;
-
-    // Read original content
-    let original = std::fs::read_to_string(file_path)
-        .with_context(|| format!("Failed to read {}", file_path.display()))?;
 
     // Check if content changed
     let changed = formatted != original;
