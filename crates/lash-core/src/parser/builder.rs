@@ -570,40 +570,15 @@ impl TaskTreeBuilder {
     ///
     /// Returns a unique ID for the task.
     fn generate_synthetic_id(&mut self, title: &str, index: usize) -> String {
-        // Create slug from title
-        let slug = title
-            .to_lowercase()
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' {
-                    c
-                } else if c.is_whitespace() {
-                    '-'
-                } else {
-                    '\0' // Mark for removal
-                }
-            })
-            .filter(|&c| c != '\0')
-            .collect::<String>();
+        // Shared with `lash add`, so the ID reported on creation is the ID
+        // stored on the next index.
+        let slug = lash_types::task::synthesize_task_id(title);
 
-        // Truncate to reasonable length (40 chars)
-        let truncated = if slug.chars().count() > 40 {
-            slug.chars().take(40).collect::<String>()
-        } else {
-            slug
-        };
-
-        // Clean up: remove leading/trailing hyphens and collapse multiple hyphens
-        let mut cleaned = truncated.trim_matches('-').to_string();
-        while cleaned.contains("--") {
-            cleaned = cleaned.replace("--", "-");
-        }
-
-        // Use numeric fallback if slug is empty
-        let base_id = if cleaned.is_empty() {
+        // Use numeric fallback if the title slugs to nothing
+        let base_id = if slug.is_empty() {
             format!("task-{index}")
         } else {
-            cleaned
+            slug
         };
 
         // Check if ID is already used; if so, add numeric suffix

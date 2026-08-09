@@ -253,7 +253,7 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     the title verbatim and skip the label pass. Whichever, add the
     `format(format(x)) == format(x)` property test above; it catches this and
     the section-deletion bug at once
-- [ ] `lash add` reports a task ID that does not match the indexed one #cli #bug #ux
+- [x] `lash add` reports a task ID that does not match the indexed one #cli #bug #ux
   - The ID printed on creation cannot be used with `lash show` / `lash complete`
     / `@depends-on`, so any workflow that copies it fails. Observed repeatedly
     while filing tickets on 2026-08-08
@@ -275,6 +275,21 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     should be excluded from identity
   - Minor, same code path: the appended final line has no trailing newline, so
     the file ends mid-line and diffs show "\ No newline at end of file"
+  - Fixed by deriving the id in one place, `lash_types::task::synthesize_task_id`,
+    which both the parser and `lash add` now call. Inline labels are stripped
+    before slugging, so adding a label no longer changes a task's identity, and
+    the 40-char truncation applies to both. On top of that the creation service
+    re-reads the file it just wrote and reports the id the parser assigned,
+    which is the only way to get the numeric suffix right when a synthesized id
+    collides
+  - Behaviour change worth noting on upgrade: synthesized ids for existing
+    tasks change where a title contained an inline label or punctuation inside
+    a word (`implement-authentication-security` becomes
+    `implement-authentication`, `design-requestresponse-schemas` becomes
+    `design-request-response-schemas`). A `@depends-on` written against an old
+    synthesized id needs updating; explicit `@id:` values are untouched
+  - The trailing-newline half was fixed with the empty-Tasks-section ticket
+    above, since it lives in the same function
 - [ ] `test_user_config_save_and_load` writes to the real `~/.lash/config.toml` and can leave the CLI broken #testing #bug #isolation
   - A unit test in `crates/lash-types/src/config.rs` (`test_user_config_save_and_land`
     at ~L727) constructs a `UserConfig` with `color_scheme = "Test Theme"` and

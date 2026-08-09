@@ -135,23 +135,41 @@ pub fn is_valid_label(s: &str) -> bool {
 /// ```
 #[must_use]
 pub fn parse_inline_labels(text: &str) -> Vec<Label> {
-    let mut labels = HashSet::new();
+    text.split_whitespace()
+        .filter(|word| is_inline_label(word))
+        .map(|word| Label {
+            name: normalize(
+                word.trim_start_matches('#')
+                    .trim_end_matches(|c: char| !c.is_alphanumeric()),
+            ),
+        })
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect()
+}
 
-    // Find all #word patterns
-    for word in text.split_whitespace() {
-        if let Some(label_text) = word.strip_prefix('#') {
-            // Remove any trailing punctuation
-            let clean = label_text.trim_end_matches(|c: char| !c.is_alphanumeric());
-            if !clean.is_empty() {
-                let normalized = normalize(clean);
-                if is_valid_label(&normalized) {
-                    labels.insert(normalized);
-                }
-            }
-        }
-    }
-
-    labels.into_iter().map(|name| Label { name }).collect()
+/// Whether a whitespace-delimited word is an inline label (`#backend`)
+///
+/// Matches what [`parse_inline_labels`] accepts, so a caller stripping labels
+/// out of a title removes exactly the words that parsing turns into labels.
+///
+/// # Examples
+///
+/// ```
+/// use lash_types::label::is_inline_label;
+///
+/// assert!(is_inline_label("#backend"));
+/// assert!(is_inline_label("#backend,"));
+/// assert!(!is_inline_label("backend"));
+/// assert!(!is_inline_label("#"));
+/// ```
+#[must_use]
+pub fn is_inline_label(word: &str) -> bool {
+    let Some(label_text) = word.strip_prefix('#') else {
+        return false;
+    };
+    let clean = label_text.trim_end_matches(|c: char| !c.is_alphanumeric());
+    !clean.is_empty() && is_valid_label(&normalize(clean))
 }
 
 /// Parse annotation labels from text (e.g., "@labels: backend, api")

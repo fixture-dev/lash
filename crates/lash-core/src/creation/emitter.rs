@@ -523,7 +523,10 @@ impl MarkdownEmitter {
 
     /// Synthesize a task ID from the task title
     ///
-    /// Converts the title to a slug-like format (lowercase, hyphens for spaces).
+    /// Thin wrapper over [`lash_types::task::synthesize_task_id`], which is
+    /// also what the parser uses when a task carries no `@id:`. Sharing it is
+    /// the point: an ID reported by `lash add` has to be the ID the index
+    /// stores, or `lash show` and `@depends-on` cannot use it.
     ///
     /// # Examples
     ///
@@ -537,17 +540,7 @@ impl MarkdownEmitter {
     /// ```
     #[must_use]
     pub fn synthesize_id(title: &str) -> String {
-        title
-            .to_lowercase()
-            .chars()
-            .map(|c| if c.is_alphanumeric() { c } else { '-' })
-            .collect::<String>()
-            // Remove leading/trailing hyphens and collapse multiple hyphens
-            .trim_matches('-')
-            .split('-')
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join("-")
+        lash_types::task::synthesize_task_id(title)
     }
 
     /// Synthesize a file ID from the file path

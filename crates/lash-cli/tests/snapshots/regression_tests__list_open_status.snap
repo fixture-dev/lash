@@ -7,107 +7,107 @@ expression: normalized
 ┗┛┗┻┛┛┗
 └── backend/
     ├── ○ api.md (backend.api)
-    │   ├── [ ] Implement authentication #security (backend.api#implement-authentication-security) #security
-    │   │   ├── [ ] OAuth2 integration #p1 (backend.api#oauth2-integration-p1) #p1
+    │   ├── [ ] Implement authentication #security (backend.api#implement-authentication) #security
+    │   │   ├── [ ] OAuth2 integration #p1 (backend.api#oauth2-integration) #p1
     │   │   └── [ ] Session management (backend.api#session-management)
-    │   ├── [ ] Implement CRUD endpoints #core (backend.api#implement-crud-endpoints-core) #core
+    │   ├── [ ] Implement CRUD endpoints #core (backend.api#implement-crud-endpoints) #core
     │   │   ├── [ ] Task endpoints (backend.api#task-endpoints)
     │   │   └── [ ] Project endpoints (backend.api#project-endpoints)
-    │   └── [ ] Add API documentation #docs (backend.api#add-api-documentation-docs) #docs
+    │   └── [ ] Add API documentation #docs (backend.api#add-api-documentation) #docs
     │       ├── [ ] OpenAPI spec (backend.api#openapi-spec)
     │       └── [ ] Example requests (backend.api#example-requests)
     └── ○ tests.md (backend.tests)
-        ├── [ ] Unit tests #unit-testing (backend.tests#unit-tests-unit-testing) #unit-testing
+        ├── [ ] Unit tests #unit-testing (backend.tests#unit-tests) #unit-testing
         │   ├── [ ] Service tests (backend.tests#service-tests)
         │   └── [ ] Utility tests (backend.tests#utility-tests)
-        ├── [ ] Integration tests #integration-testing (backend.tests#integration-tests-integration-testing) #integration-testing
+        ├── [ ] Integration tests #integration-testing (backend.tests#integration-tests) #integration-testing
         │   ├── [ ] Database integration tests (backend.tests#database-integration-tests)
         │   └── [ ] Auth flow tests (backend.tests#auth-flow-tests)
-        └── [ ] Performance tests #performance (backend.tests#performance-tests-performance) #performance
+        └── [ ] Performance tests #performance (backend.tests#performance-tests) #performance
             ├── [ ] Load testing (backend.tests#load-testing)
             └── [ ] Stress testing (backend.tests#stress-testing)
 └── docs/
     ├── ○ api-docs.md (docs.api)
-    │   ├── [ ] API reference documentation #docs (docs.api#api-reference-documentation-docs) #docs
+    │   ├── [ ] API reference documentation #docs (docs.api#api-reference-documentation) #docs
     │   │   ├── [ ] Authentication endpoints (docs.api#authentication-endpoints)
     │   │   ├── [ ] User endpoints (docs.api#user-endpoints)
     │   │   ├── [ ] Task endpoints (docs.api#task-endpoints)
     │   │   └── [ ] Project endpoints (docs.api#project-endpoints)
-    │   ├── [ ] API guide #guides (docs.api#api-guide-guides) #guides
+    │   ├── [ ] API guide #guides (docs.api#api-guide) #guides
     │   │   ├── [ ] Getting started (docs.api#getting-started)
     │   │   ├── [ ] Authentication guide (docs.api#authentication-guide)
     │   │   ├── [ ] Rate limiting (docs.api#rate-limiting)
     │   │   └── [ ] Error handling (docs.api#error-handling)
-    │   └── [ ] Code examples #examples (docs.api#code-examples-examples) #examples
+    │   └── [ ] Code examples #examples (docs.api#code-examples) #examples
     │       ├── [ ] cURL examples (docs.api#curl-examples)
     │       ├── [ ] JavaScript examples (docs.api#javascript-examples)
     │       └── [ ] Python examples (docs.api#python-examples)
     └── ○ user-guide.md (docs.user-guide)
-        ├── [ ] Getting started guide #guides (docs.user-guide#getting-started-guide-guides) #guides
+        ├── [ ] Getting started guide #guides (docs.user-guide#getting-started-guide) #guides
         │   ├── [ ] Installation (docs.user-guide#installation)
         │   ├── [ ] Quick start (docs.user-guide#quick-start)
         │   └── [ ] Basic concepts (docs.user-guide#basic-concepts)
-        ├── [ ] Feature documentation #features (docs.user-guide#feature-documentation-features) #features
+        ├── [ ] Feature documentation #features (docs.user-guide#feature-documentation) #features
         │   ├── [ ] Task management (docs.user-guide#task-management)
         │   ├── [ ] Project organization (docs.user-guide#project-organization)
         │   ├── [ ] Collaboration (docs.user-guide#collaboration)
         │   └── [ ] Search and filtering (docs.user-guide#search-and-filtering)
-        ├── [ ] Tutorial #tutorials (docs.user-guide#tutorial-tutorials) #tutorials
+        ├── [ ] Tutorial #tutorials (docs.user-guide#tutorial) #tutorials
         │   ├── [ ] First project (docs.user-guide#first-project)
         │   ├── [ ] Team workflow (docs.user-guide#team-workflow)
         │   └── [ ] Advanced features (docs.user-guide#advanced-features)
-        └── [ ] FAQ #support (docs.user-guide#faq-support) #support
+        └── [ ] FAQ #support (docs.user-guide#faq) #support
             ├── [ ] Common questions (docs.user-guide#common-questions)
             ├── [ ] Troubleshooting (docs.user-guide#troubleshooting)
             └── [ ] Best practices (docs.user-guide#best-practices)
 └── frontend/
     ├── ○ components.md (frontend.components)
-    │   ├── [ ] Implement base components #components (frontend.components#implement-base-components-components) #components
+    │   ├── [ ] Implement base components #components (frontend.components#implement-base-components) #components
     │   │   ├── [ ] Modal (frontend.components#modal)
     │   │   └── [ ] Dropdown (frontend.components#dropdown)
-    │   ├── [ ] Implement feature components #features (frontend.components#implement-feature-components-features) #features
+    │   ├── [ ] Implement feature components #features (frontend.components#implement-feature-components) #features
     │   │   ├── [ ] Login form (frontend.components#login-form)
     │   │   ├── [ ] Task list (frontend.components#task-list)
     │   │   ├── [ ] Task detail (frontend.components#task-detail)
     │   │   └── [ ] Project dashboard (frontend.components#project-dashboard)
-    │   └── [ ] Add component tests #testing (frontend.components#add-component-tests-testing) #testing
+    │   └── [ ] Add component tests #testing (frontend.components#add-component-tests) #testing
     │       └── [ ] Visual regression tests (frontend.components#visual-regression-tests)
     ├── ○ state.md (frontend.state)
-    │   ├── [ ] Implement state slices #state (frontend.state#implement-state-slices-state) #state
+    │   ├── [ ] Implement state slices #state (frontend.state#implement-state-slices) #state
     │   │   ├── [ ] Tasks state (frontend.state#tasks-state)
     │   │   ├── [ ] Projects state (frontend.state#projects-state)
     │   │   └── [ ] UI state (frontend.state#ui-state)
-    │   ├── [ ] Add API integration #api (frontend.state#add-api-integration-api) #api
+    │   ├── [ ] Add API integration #api (frontend.state#add-api-integration) #api
     │   │   ├── [ ] Data fetching (frontend.state#data-fetching)
     │   │   ├── [ ] Caching strategy (frontend.state#caching-strategy)
     │   │   └── [ ] Error handling (frontend.state#error-handling)
-    │   └── [ ] Add state tests #testing (frontend.state#add-state-tests-testing) #testing
+    │   └── [ ] Add state tests #testing (frontend.state#add-state-tests) #testing
     │       ├── [ ] Reducer tests (frontend.state#reducer-tests)
     │       ├── [ ] Action tests (frontend.state#action-tests)
     │       └── [ ] Selector tests (frontend.state#selector-tests)
     └── ○ tests.md (frontend.tests)
-        ├── [ ] Component tests #component-testing (frontend.tests#component-tests-component-testing) #component-testing
+        ├── [ ] Component tests #component-testing (frontend.tests#component-tests) #component-testing
         │   ├── [ ] Feature component tests (frontend.tests#feature-component-tests)
         │   └── [ ] Integration tests (frontend.tests#integration-tests)
-        ├── [ ] E2E tests #e2e-testing (frontend.tests#e2e-tests-e2e-testing) #e2e-testing
+        ├── [ ] E2E tests #e2e-testing (frontend.tests#e2e-tests) #e2e-testing
         │   ├── [ ] User flows (frontend.tests#user-flows)
         │   ├── [ ] Critical paths (frontend.tests#critical-paths)
         │   └── [ ] Error scenarios (frontend.tests#error-scenarios)
-        └── [ ] Visual tests #visual-testing (frontend.tests#visual-tests-visual-testing) #visual-testing
+        └── [ ] Visual tests #visual-testing (frontend.tests#visual-tests) #visual-testing
             ├── [ ] Snapshot tests (frontend.tests#snapshot-tests)
             └── [ ] Visual regression (frontend.tests#visual-regression)
 └── ○ lash.index.md (medium-project)
-    ├── [ ] Backend development #backend (medium-project#backend-development-backend) #backend
+    ├── [ ] Backend development #backend (medium-project#backend-development) #backend
     │   ├── [ ] API implementation (medium-project#api-implementation)
     │   └── [ ] Backend tests (medium-project#backend-tests)
-    ├── [ ] Frontend development #frontend (medium-project#frontend-development-frontend) #frontend
+    ├── [ ] Frontend development #frontend (medium-project#frontend-development) #frontend
     │   ├── [ ] UI components (medium-project#ui-components)
     │   ├── [ ] State management (medium-project#state-management)
     │   └── [ ] Frontend tests (medium-project#frontend-tests)
-    ├── [ ] Documentation #docs (medium-project#documentation-docs) #docs
+    ├── [ ] Documentation #docs (medium-project#documentation) #docs
     │   ├── [ ] API docs (medium-project#api-docs)
     │   └── [ ] User guide (medium-project#user-guide)
-    └── [ ] Deployment #ops (medium-project#deployment-ops) #ops
+    └── [ ] Deployment #ops (medium-project#deployment) #ops
         ├── [ ] Staging environment (medium-project#staging-environment)
         └── [ ] Production deployment (medium-project#production-deployment)
 

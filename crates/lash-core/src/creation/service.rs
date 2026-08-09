@@ -9,7 +9,7 @@ use lash_types::config::LashConfig;
 use lash_types::creation::{FileTarget, TaskCreationRequest, TaskCreationResult};
 use lash_types::creation_errors::TaskCreationError;
 use lash_types::file::TaskFile;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::emitter::MarkdownEmitter;
 use super::placement::PlacementResolver;
@@ -120,9 +120,35 @@ impl TaskCreationService {
         let placement = PlacementResolver::resolve(&ctx, request).map_err(|e| vec![e])?;
 
         // Step 4: Emit to markdown
-        let result = MarkdownEmitter::emit(request, &ctx, &placement).map_err(|e| vec![e])?;
+        let mut result = MarkdownEmitter::emit(request, &ctx, &placement).map_err(|e| vec![e])?;
+
+        // Step 5: Report the ID the parser gives the task, not the one the
+        // emitter guessed. The two agree on the slug now that both go through
+        // `synthesize_task_id`, but only the parser can apply the numeric
+        // suffix it uses to break a collision, and it is the parser's answer
+        // that ends up in the index and in `lash show`.
+        if let Some(parsed_id) =
+            Self::parsed_id_at(&result.file_path, result.line_number, &self.config)
+        {
+            result.task_id = parsed_id;
+        }
 
         Ok(result)
+    }
+
+    /// The ID the parser assigns to the task written at `line_number`
+    ///
+    /// Returns `None` if the file cannot be re-read or holds no task on that
+    /// line, in which case the caller keeps the emitter's ID rather than
+    /// failing a write that already succeeded.
+    fn parsed_id_at(path: &Path, line_number: usize, config: &LashConfig) -> Option<String> {
+        parse_file(path, config)
+            .ok()?
+            .tasks
+            .tasks()
+            .iter()
+            .find(|task| task.line_number == line_number)
+            .map(|task| task.id.clone())
     }
 
     /// Load and parse the target file if it exists
