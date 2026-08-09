@@ -71,7 +71,7 @@ completion times.
 
 - [x] Seed via existing `TaskRepository::find_by_status(InProgress)` (already ordered by `full_id` — no new query needed)
 - [x] Seed `state.activity.in_progress` in `TuiApp::new_with_scheme`
-- [ ] Test: DB with two in-progress tasks → smaller full_id wins *(deferred — relies on TUI integration harness; ordering itself is covered by existing repository tests)*
+- [x] Test: DB with two in-progress tasks → smaller full_id wins *(`crates/lash-tui/tests/activity_bar_tests.rs`; the fixture lists `zulu` above `alpha` so row order and full_id order disagree)*
 
 ---
 
@@ -93,7 +93,7 @@ for its transient duration.
 - [x] Insert `record_transition` call after `update_markdown_task_status` succeeds (primary toggle path)
 - [x] Hook the three cascading handlers (`handle_confirm_cascading_complete`, `handle_confirm_linked_file_complete`, `handle_confirm_cascading_incomplete`) — initiating task only, not cascade results
 - [x] Existing tests for `handle_toggle_status` still pass
-- [ ] New end-to-end test: toggling Open→InProgress sets `activity.in_progress`; InProgress→Done clears it and pushes to recent *(deferred to Phase C when a more general TUI integration harness exists; covered indirectly by unit tests on `ActivityState::record_transition`)*
+- [x] New end-to-end test: toggling Open→InProgress sets `activity.in_progress`; InProgress→Done clears it and pushes to recent *(`crates/lash-tui/tests/activity_bar_tests.rs`, driven through `TestAppBuilder` and real Space key events)*
 
 ---
 

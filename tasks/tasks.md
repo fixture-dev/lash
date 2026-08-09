@@ -44,8 +44,8 @@ Tasks are organized by major module/component. Each task file contains:
 ### User Interfaces
 - [x] [tasks.tui.md](tasks.tui.md) - Terminal UI implementation ✅
 - [x] [tasks.task-creation-ui.md](tasks.task-creation-ui.md) - Task creation via CLI (`lash add`) and TUI form modal (Tasks 1-12 complete) ✅
-- [ ] [tasks.status-bar-activity.md](tasks.status-bar-activity.md) - Status bar in-progress + recently-completed activity sections
-- [ ] [tasks.live-updates.md](tasks.live-updates.md) - Live TUI updates (Store actor, file watcher, external-change reload)
+- [x] [tasks.status-bar-activity.md](tasks.status-bar-activity.md) - Status bar in-progress + recently-completed activity sections ✅
+- [x] [tasks.live-updates.md](tasks.live-updates.md) - Live TUI updates (Store actor, file watcher, external-change reload) ✅
 
 ### Advanced Features
 - [x] [tasks.agent-integration.md](tasks.agent-integration.md) - Agent prompts, token minimization (Tasks 1-6 complete) ✅
