@@ -423,6 +423,23 @@ impl MarkdownEmitter {
     /// assert!(lines.iter().any(|l| l.contains("@depends-on:")));
     /// assert!(lines.iter().any(|l| l.contains("@agent-note:")));
     /// ```
+    ///
+    /// A note spanning several lines becomes one `@agent-note:` line plus one
+    /// indented continuation line each, which is the shape the parser folds
+    /// back into a single value:
+    ///
+    /// ```
+    /// use lash_core::creation::emitter::MarkdownEmitter;
+    ///
+    /// let lines = MarkdownEmitter::format_task_annotations(
+    ///     0,
+    ///     None,
+    ///     &[],
+    ///     Some("first line\nsecond line"),
+    /// );
+    ///
+    /// assert_eq!(lines, ["  @agent-note: first line", "  second line"]);
+    /// ```
     #[must_use]
     pub fn format_task_annotations(
         indent: usize,
@@ -444,12 +461,64 @@ impl MarkdownEmitter {
             lines.push(format!("{annotation_indent}@depends-on: {dep}"));
         }
 
-        // Add @agent-note if present
+        // Add @agent-note if present. A note may span several lines; each
+        // continuation has to carry the annotation indent or the parser will
+        // stop at it and silently drop the rest of the note (it treats an
+        // unindented line as the end of the annotation block).
         if let Some(note) = agent_note {
-            lines.push(format!("{annotation_indent}@agent-note: {note}"));
+            let mut note_lines = note.lines();
+            let first = note_lines.next().unwrap_or("");
+            lines.push(format!("{annotation_indent}@agent-note: {first}"));
+            for continuation in note_lines {
+                lines.push(format!("{annotation_indent}{continuation}"));
+            }
         }
 
         lines
+    }
+
+    /// Whether an agent note survives being written and parsed back
+    ///
+    /// The parser folds indented continuation lines into a single value, but
+    /// the folding is lossy in two ways that matter here: it skips blank
+    /// lines, and it treats a line starting with `@` as the beginning of a new
+    /// annotation rather than as note text. A note containing either is
+    /// rejected at validation time instead of being written into a file the
+    /// parser will silently truncate.
+    ///
+    /// Leading whitespace on a continuation line is normalized away rather
+    /// than rejected: the parser trims it, so the indentation is lost but no
+    /// text is.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason the note cannot round-trip.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lash_core::creation::emitter::MarkdownEmitter;
+    ///
+    /// assert!(MarkdownEmitter::check_agent_note("one line").is_ok());
+    /// assert!(MarkdownEmitter::check_agent_note("first\nsecond").is_ok());
+    /// assert!(MarkdownEmitter::check_agent_note("first\n\nthird").is_err());
+    /// assert!(MarkdownEmitter::check_agent_note("first\n@owner: me").is_err());
+    /// ```
+    pub fn check_agent_note(note: &str) -> Result<(), String> {
+        for (offset, line) in note.lines().enumerate().skip(1) {
+            let line_number = offset + 1;
+            if line.trim().is_empty() {
+                return Err(format!(
+                    "line {line_number} is blank, and blank lines are dropped when the note is read back"
+                ));
+            }
+            if line.trim_start().starts_with('@') {
+                return Err(format!(
+                    "line {line_number} starts with '@', which would be read back as a separate annotation"
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Synthesize a task ID from the task title
@@ -922,5 +991,65 @@ mod tests {
         let content = "# T\n\n## Tasks\n";
         assert_eq!(insert_index(content, InsertAnchor::Line(2)), 1);
         assert_eq!(insert_index(content, InsertAnchor::Line(99)), 3);
+    }
+
+    /// Emit `note` as annotation lines, then read it back the way the parser
+    /// would when it encounters those lines under a task.
+    fn round_trip_agent_note(indent: usize, note: &str) -> Option<String> {
+        let lines = MarkdownEmitter::format_task_annotations(indent, None, &[], Some(note));
+        let block = crate::parser::annotations::parse_annotation_block(
+            lines.iter().map(String::as_str),
+            None,
+        )
+        .expect("emitted annotation lines must parse");
+        block.get_single("agent-note").map(str::to_string)
+    }
+
+    #[test]
+    fn test_agent_note_round_trips_across_line_counts_and_indents() {
+        let notes = [
+            "single line",
+            "first line\nsecond line",
+            "first\nsecond\nthird\nfourth",
+            "a note with: a colon\nand a second line",
+            "trailing words end here",
+        ];
+
+        for indent in 0..4 {
+            for note in notes {
+                assert_eq!(
+                    round_trip_agent_note(indent, note).as_deref(),
+                    Some(note),
+                    "note did not survive a round trip at indent {indent}: {note:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_agent_note_continuation_lines_carry_the_annotation_indent() {
+        let lines = MarkdownEmitter::format_task_annotations(1, None, &[], Some("first\nsecond"));
+        assert_eq!(lines, ["    @agent-note: first", "    second"]);
+    }
+
+    #[test]
+    fn test_check_agent_note_accepts_what_round_trips() {
+        assert!(MarkdownEmitter::check_agent_note("one line").is_ok());
+        assert!(MarkdownEmitter::check_agent_note("first\nsecond\nthird").is_ok());
+        // An `@` on the *first* line is part of the value, not a new annotation.
+        assert!(MarkdownEmitter::check_agent_note("ask @someone").is_ok());
+    }
+
+    #[test]
+    fn test_check_agent_note_rejects_what_would_be_dropped() {
+        // A blank continuation line is skipped by the parser, so the note
+        // would come back with the gap closed up.
+        let err = MarkdownEmitter::check_agent_note("first\n\nthird").unwrap_err();
+        assert!(err.contains("line 2"), "unexpected reason: {err}");
+
+        // A continuation starting with `@` is read back as its own annotation,
+        // truncating the note.
+        let err = MarkdownEmitter::check_agent_note("first\n@owner: me").unwrap_err();
+        assert!(err.contains("line 2"), "unexpected reason: {err}");
     }
 }

@@ -93,6 +93,12 @@ pub enum TaskCreationError {
         dependency: String,
     },
 
+    /// The agent note cannot be written and read back unchanged
+    InvalidAgentNote {
+        /// Explanation of which part of the note does not survive a round trip
+        reason: String,
+    },
+
     /// The specified insert position is invalid
     InvalidPosition {
         /// Explanation of why the position is invalid
@@ -155,6 +161,9 @@ impl TaskCreationError {
                     "creating task '{task_id}' with dependency '{dependency}' would create a cycle"
                 )
             }
+            Self::InvalidAgentNote { reason } => {
+                format!("agent note cannot be stored: {reason}")
+            }
             Self::InvalidPosition { reason } => {
                 format!("invalid insert position: {reason}")
             }
@@ -213,6 +222,9 @@ impl TaskCreationError {
             Self::WouldCreateCycle { dependency, .. } => {
                 format!("remove the dependency on '{dependency}' or restructure the task hierarchy")
             }
+            Self::InvalidAgentNote { .. } => {
+                "an agent note may span several lines, but each line must have non-whitespace content and must not begin with '@'".to_string()
+            }
             Self::InvalidPosition { .. } => {
                 "use a valid position: Append, AtIndex, Before, or After with an existing task ID".to_string()
             }
@@ -239,6 +251,7 @@ impl TaskCreationError {
             Self::InvalidEstimate { .. } => "E_CREATE_INVALID_ESTIMATE",
             Self::DependencyNotFound { .. } => "E_CREATE_DEPENDENCY_NOT_FOUND",
             Self::WouldCreateCycle { .. } => "E_CREATE_WOULD_CREATE_CYCLE",
+            Self::InvalidAgentNote { .. } => "E_CREATE_INVALID_AGENT_NOTE",
             Self::InvalidPosition { .. } => "E_CREATE_INVALID_POSITION",
             Self::IoError { .. } => "E_CREATE_IO_ERROR",
         }
