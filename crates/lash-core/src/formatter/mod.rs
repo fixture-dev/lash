@@ -49,6 +49,21 @@ use std::path::Path;
 
 pub use options::FormatOptions;
 
+/// Something the formatter regenerates, found at a source line
+///
+/// Everything inside `## Tasks` that is not one of these is copied through
+/// from the source, because the model does not represent it.
+enum Anchor<'a> {
+    /// A task's checkbox line, which also carries its annotation block.
+    Task(&'a lash_types::Task),
+
+    /// A single contextual-note bullet, with the depth of the task it belongs
+    /// to. Notes are anchored individually: only a note's first line lives in
+    /// the model, so its wrapped continuation lines are copied through and the
+    /// first line has to stay in front of them.
+    Note(usize, &'a lash_types::task::ContextualNote),
+}
+
 /// Formatter for Lash task files
 ///
 /// The formatter takes a parsed `TaskFile` and produces formatted Markdown
@@ -170,7 +185,14 @@ impl Formatter {
                 line = description.as_ref().map_or(line + 1, |span| span.end);
                 skip_blanks(&mut line);
             } else if tasks.as_ref().is_some_and(|span| span.start == line) {
-                self.format_tasks(&file, &mut output);
+                // The body is walked rather than regenerated: the model holds
+                // the checkbox lines, their annotations and their contextual
+                // notes, and nothing else in the section. Bodies, separators
+                // and anything else present are copied through.
+                let body = tasks.as_ref().map_or(line + 1..line + 1, |span| {
+                    (span.start + 1).min(span.end)..span.end
+                });
+                self.format_tasks(&file, Some((&lines[body.clone()], body.start)), &mut output);
                 output.push('\n');
                 line = tasks.as_ref().map_or(line + 1, |span| span.end);
                 skip_blanks(&mut line);
@@ -188,7 +210,7 @@ impl Formatter {
             if description.is_none() && file.description.is_some() {
                 Self::format_description(&file, &mut output);
             }
-            self.format_tasks(&file, &mut output);
+            self.format_tasks(&file, None, &mut output);
         }
 
         // Normalize whitespace. This only collapses runs of blank lines and
@@ -540,17 +562,121 @@ impl Formatter {
     }
 
     /// Format the tasks section
-    fn format_tasks(&self, file: &TaskFile, output: &mut String) {
+    ///
+    /// `body` is the source of the section below the heading, as the lines
+    /// themselves plus the 0-indexed position of the first of them. Given it,
+    /// the section is walked rather than rebuilt.
+    ///
+    /// Rebuilding was the bug. A parsed task carries its checkbox line, its
+    /// annotations and its contextual notes, and the model holds nothing else
+    /// that lives inside `## Tasks`. Everything else the section contained —
+    /// a task's free-text body of prose, numbered steps or acceptance
+    /// criteria, a `---` separator, a comment — had no representation to be
+    /// rebuilt from and was deleted, with exit code 0. #44 stopped `format`
+    /// from dropping whole sections the same way; this is the same fix
+    /// applied one level down, to the one section the formatter does own.
+    ///
+    /// So the formatter regenerates only the lines it can account for and
+    /// copies every other line through. Without a source (a file whose
+    /// `## Tasks` heading is missing entirely, which `format` adds) there is
+    /// nothing to walk and the whole section is generated from the model.
+    fn format_tasks(&self, file: &TaskFile, body: Option<(&[&str], usize)>, output: &mut String) {
         output.push_str("## Tasks\n");
         output.push('\n');
 
-        // Get all root tasks (tasks with no parent)
         let all_tasks = file.tasks.tasks();
-        let root_tasks: Vec<_> = all_tasks.iter().filter(|t| t.parent_id.is_none()).collect();
 
-        // Format each root task and its descendants
-        for task in root_tasks {
-            self.format_task(task, all_tasks, output);
+        let Some((body_lines, body_start)) = body else {
+            for task in all_tasks.iter().filter(|t| t.parent_id.is_none()) {
+                self.format_task(task, all_tasks, output);
+            }
+            return;
+        };
+
+        // 1-indexed source lines the walk covers.
+        let walked = body_start + 1..=body_start + body_lines.len();
+
+        // What the formatter regenerates, keyed by the source line it starts
+        // on. A task's checkbox line and each of its contextual notes are
+        // separate anchors: a note is regenerated where it sits, not alongside
+        // the task, because only a note's *first* line is in the model. Its
+        // wrapped continuation lines are copied through, so hoisting the first
+        // line up to the task would strand the rest of the note behind it.
+        let mut starts_at: std::collections::HashMap<usize, Anchor> =
+            std::collections::HashMap::new();
+
+        // Annotation lines, which the task's own anchor regenerates.
+        let mut owned: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+        for task in all_tasks {
+            if !walked.contains(&task.line_number) {
+                continue;
+            }
+            starts_at.insert(task.line_number, Anchor::Task(task));
+            for offset in 1..=task.annotation_line_count {
+                owned.insert(task.line_number + offset);
+            }
+            for note in &task.contextual_notes {
+                if walked.contains(&note.line_number()) {
+                    starts_at.insert(note.line_number(), Anchor::Note(task.depth as usize, note));
+                }
+            }
+        }
+
+        let mut emitted: std::collections::HashSet<&str> = std::collections::HashSet::new();
+
+        // Blank lines bounding the section are the separators around it, and
+        // both ends are written by the caller — the heading above carries its
+        // own, and the section is followed by one. Copying them through as
+        // well would double them on every run.
+        let leading_blanks = body_lines
+            .iter()
+            .position(|line| !line.trim().is_empty())
+            .unwrap_or(body_lines.len());
+        let body_end = body_lines
+            .iter()
+            .rposition(|line| !line.trim().is_empty())
+            .map_or(leading_blanks, |last| last + 1);
+
+        for (offset, line) in body_lines[..body_end]
+            .iter()
+            .enumerate()
+            .skip(leading_blanks)
+        {
+            let line_number = body_start + offset + 1;
+
+            match starts_at.get(&line_number) {
+                Some(Anchor::Task(task)) => {
+                    self.format_task_head(task, output);
+                    // A note with no line the walk will reach cannot be placed,
+                    // so it goes with its task rather than being dropped.
+                    for note in &task.contextual_notes {
+                        if !walked.contains(&note.line_number()) {
+                            self.format_contextual_note(task.depth as usize, note, output);
+                        }
+                    }
+                    emitted.insert(task.id.as_str());
+                }
+                Some(Anchor::Note(depth, note)) => {
+                    self.format_contextual_note(*depth, note, output);
+                }
+                None if !owned.contains(&line_number) => {
+                    output.push_str(line);
+                    output.push('\n');
+                }
+                None => {}
+            }
+        }
+
+        // A task the walk never reached has no source line to have been found
+        // at — it was built in memory, or `format_file` was handed a source
+        // that is not the one the file was parsed from. Dropping it would be
+        // the very data loss this walk exists to prevent, so it goes at the
+        // end of the section.
+        for task in all_tasks {
+            if !emitted.contains(task.id.as_str()) {
+                self.format_task_entry(task, output);
+            }
         }
     }
 
@@ -561,6 +687,45 @@ impl Formatter {
         all_tasks: &[lash_types::Task],
         output: &mut String,
     ) {
+        self.format_task_entry(task, output);
+
+        let children: Vec<_> = all_tasks
+            .iter()
+            .filter(|child| child.parent_id.as_deref() == Some(&task.id))
+            .collect();
+
+        for child in children {
+            self.format_task(child, all_tasks, output);
+        }
+    }
+
+    /// Format one task's own lines: checkbox, annotations, contextual notes
+    ///
+    /// Children are not included. Walking the source reaches each task at its
+    /// own line, so recursing here would emit a subtree twice.
+    fn format_task_entry(&self, task: &lash_types::Task, output: &mut String) {
+        self.format_task_head(task, output);
+        for note in &task.contextual_notes {
+            self.format_contextual_note(task.depth as usize, note, output);
+        }
+    }
+
+    /// Format one contextual note as a plain bullet
+    fn format_contextual_note(
+        &self,
+        depth: usize,
+        note: &lash_types::task::ContextualNote,
+        output: &mut String,
+    ) {
+        let indent_spaces = self.options.indent_spaces as usize;
+        output.push_str(&" ".repeat((depth + 1) * indent_spaces));
+        output.push_str("- ");
+        output.push_str(note.text());
+        output.push('\n');
+    }
+
+    /// Format a task's checkbox line and its annotation block
+    fn format_task_head(&self, task: &lash_types::Task, output: &mut String) {
         // Calculate indentation
         let indent_spaces = self.options.indent_spaces as usize;
         let indent = " ".repeat(task.depth as usize * indent_spaces);
@@ -595,24 +760,6 @@ impl Formatter {
 
         // Format task-level annotations (indented one level deeper)
         self.format_task_annotations(task, &annotation_indent, output);
-
-        // Format contextual notes as plain bullet points
-        for note in &task.contextual_notes {
-            output.push_str(&annotation_indent);
-            output.push_str("- ");
-            output.push_str(note.text());
-            output.push('\n');
-        }
-
-        // Format children
-        let children: Vec<_> = all_tasks
-            .iter()
-            .filter(|child| child.parent_id.as_deref() == Some(&task.id))
-            .collect();
-
-        for child in children {
-            self.format_task(child, all_tasks, output);
-        }
     }
 
     /// Format task-level annotations
