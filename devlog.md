@@ -2561,8 +2561,56 @@ now gets a blank line above it, because butting it against the tail of someone
 else's prose reads as more of that prose — the confusion the insertion point
 exists to avoid. Tasks with no body still sit flush against each other.
 
-Still open, same root cause: `lash format` deletes task bodies outright. The
-`## Tasks` span is regenerated from the model, and the model has no body to
-regenerate. #44 stopped `format` from deleting whole sections but the span it
-owns still loses anything the parser did not record. Fixing that needs the
-model to carry bodies, which is a larger change than this one.
+Same root cause, fixed next: `lash format` deleted task bodies outright.
+
+## `lash format` deleted everything inside `## Tasks` it could not rebuild (2026-08-10)
+
+Found while fixing the `add` placement bug above, and worse than it: `add`
+misattributes a body, `format` destroys it, and the README tells people to run
+`format`.
+
+#44 stopped `format` from deleting whole sections by having it regenerate only
+the spans the model owns and copy the rest through. But the `## Tasks` span was
+still rebuilt wholesale from the task tree, and the tree holds checkbox lines,
+their annotations, and the first line of each contextual note. Nothing else
+that lives in the section had anything to be rebuilt from.
+
+The repro was a task body. The actual blast radius was larger:
+
+- free-text bodies — prose, numbered steps, acceptance criteria
+- `---` separators and comments
+- `### Subsection` headings, which `section_span` explicitly supports and files
+  routinely use to group tasks
+- the wrapped continuation lines of every contextual note, since
+  `ContextualNote` records only the note's first line
+
+Formatting `lash.index.md` used to produce a 238-line diff, most of it
+deletion. It is 52 lines now, all of it label sorting.
+
+The fix is #44's rule applied one level down: walk the section's source,
+regenerate the lines the model can account for, copy every other line through.
+No new model state — extending `TaskFile` to carry bodies would have been a
+fourth thing to keep in sync with the source, which is the shape of bug this
+codebase keeps paying for.
+
+The note handling is the part worth remembering. Emitting a task's notes
+alongside the task looks right and is wrong: only a note's first line is in the
+model, so the continuation lines get copied through where they sit while the
+first line is hoisted up to the task, stranding each note's text behind an
+unrelated bullet. Notes are anchored individually at their own source line
+instead. This was invisible in the small repro and obvious the moment the
+formatter was pointed at a real file.
+
+Two guards on the walk. A task the walk never finds is written at the end of
+the section rather than dropped, which covers a caller handing `format_file` a
+source the model did not come from. And blank lines bounding the section are
+not copied, because the caller writes those separators — copying them too added
+a blank line per run and formatting stopped being idempotent.
+
+One deliberate behavior change: blank lines *between* tasks now survive.
+They belong to the author, and `lash add` writes one when it appends below a
+task with a body.
+
+The lint rule suggested on #48 is still not worth building. A misattributed
+body is syntactically indistinguishable from a correct one, so there is nothing
+for the linter to check against.

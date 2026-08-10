@@ -1010,3 +1010,148 @@ fn test_an_already_canonical_file_is_left_byte_identical() {
         "a canonical file must not be rewritten"
     );
 }
+
+// ---------------------------------------------------------------------
+// Content inside `## Tasks` that the model does not represent
+//
+// The same bug as above, one level down. #44 stopped `format` from
+// deleting whole sections, but the `## Tasks` span was still rebuilt from
+// the model — which holds checkbox lines, their annotations and the first
+// line of each contextual note, and nothing else that lives in the
+// section. A task's free-text body, a `---` separator, a comment, a
+// `### Subsection` heading and the wrapped continuation lines of every
+// note were all deleted, exit code 0.
+// ---------------------------------------------------------------------
+
+#[test]
+fn test_a_tasks_free_text_body_survives() {
+    let content = "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n  Body prose for one.\n    1. First step.\n    2. Second step.\n  Acceptance: this stays.\n";
+
+    let formatted = format(content);
+
+    for expected in [
+        "  Body prose for one.",
+        "    1. First step.",
+        "    2. Second step.",
+        "  Acceptance: this stays.",
+    ] {
+        assert!(
+            formatted.contains(expected),
+            "'{expected}' was deleted by formatting:\n{formatted}"
+        );
+    }
+}
+
+#[test]
+fn test_a_body_stays_with_the_task_it_belongs_to() {
+    let content =
+        "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n  Body of one.\n- [ ] two\n  Body of two.\n";
+
+    let formatted = format(content);
+
+    assert_eq!(
+        formatted, content,
+        "bodies were reordered or dropped:\n{formatted}"
+    );
+}
+
+#[test]
+fn test_separators_comments_and_subheadings_inside_tasks_survive() {
+    let content = "# F\n\n@id: f\n\n## Tasks\n\n### Group one\n\n- [ ] one\n\n---\n\n### Group two\n\n<!-- a comment -->\n\n- [ ] two\n";
+
+    let formatted = format(content);
+
+    for expected in [
+        "### Group one",
+        "---",
+        "### Group two",
+        "<!-- a comment -->",
+    ] {
+        assert!(
+            formatted.contains(expected),
+            "'{expected}' was deleted by formatting:\n{formatted}"
+        );
+    }
+}
+
+#[test]
+fn test_a_wrapped_contextual_note_is_not_split_from_its_own_text() {
+    // Only a note's first line is in the model. Regenerating notes alongside
+    // their task hoisted that line above the wrapped remainder, scrambling
+    // every multi-line note in the file.
+    let content = "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n  - first note, which wraps onto\n    a second line and then\n    a third\n  - second note, also wrapping\n    onto another line\n";
+
+    let formatted = format(content);
+
+    assert_eq!(
+        formatted, content,
+        "a wrapped note was reordered or dropped:\n{formatted}"
+    );
+}
+
+#[test]
+fn test_the_formatter_still_normalizes_what_it_owns_around_a_body() {
+    // Copying unowned lines through must not stop the formatter fixing the
+    // lines it does own: statuses, label order, trailing whitespace.
+    let content = "# F\n\n@id: f\n\n## Tasks\n\n- [-] parent\n  Body under the parent.\n  - [ ] child #b #a   \n    Body under the child.\n";
+
+    let formatted = format(content);
+
+    assert!(
+        formatted.contains("- [-] child #a #b\n"),
+        "the child was not auto-waived, sorted and trimmed:\n{formatted}"
+    );
+    assert!(
+        formatted.contains("  Body under the parent.")
+            && formatted.contains("    Body under the child."),
+        "a body was lost while normalizing:\n{formatted}"
+    );
+}
+
+#[test]
+fn test_blank_lines_between_tasks_are_left_alone() {
+    // They are the author's, not the formatter's. `lash add` writes one when
+    // it appends below a task that has a body (issue #48).
+    let content = "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n  Body of one.\n\n- [ ] two\n";
+
+    assert_eq!(format(content), content, "a blank separator was removed");
+}
+
+#[test]
+fn test_formatting_is_idempotent_over_unrepresented_content() {
+    let cases = [
+        "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n  Body prose.\n    1. A step.\n",
+        "# F\n\n@id: f\n\n## Tasks\n\n### Group\n\n---\n\n- [ ] one\n\n<!-- c -->\n",
+        "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n  - a note that wraps\n    onto a second line\n",
+        "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n  @owner: alice\n  - a note\n\n- [ ] two\n  Body.\n\n## Notes\n\nprose\n",
+    ];
+
+    for content in cases {
+        let once = format(content);
+        let twice = format(&once);
+        assert_eq!(
+            once, twice,
+            "formatting is not idempotent for:\n{content}\nfirst pass:\n{once}\nsecond pass:\n{twice}"
+        );
+    }
+}
+
+#[test]
+fn test_no_task_is_dropped_when_the_source_does_not_match_the_model() {
+    // `format_file` takes the source and the parsed model separately, so a
+    // caller can hand it a source the model did not come from. The walk finds
+    // no task at any line; they must still all be written out.
+    let config = make_config();
+    let formatter = Formatter::new(config.clone(), FormatOptions::default());
+
+    let parsed = "# F\n\n@id: f\n\n## Tasks\n\n- [ ] one\n- [ ] two\n";
+    let file = parse_file_from_string(parsed, &config).unwrap();
+
+    let other_source = "# F\n\n@id: f\n\n## Tasks\n\nprose where the tasks were\n";
+    let formatted = formatter.format_file(other_source, &file).unwrap();
+
+    assert!(
+        formatted.contains("- [ ] one") && formatted.contains("- [ ] two"),
+        "a task in the model was dropped:\n{formatted}"
+    );
+}

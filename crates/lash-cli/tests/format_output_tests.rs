@@ -1202,3 +1202,87 @@ fn test_format_json_mode_summary_has_correct_structure() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Content inside `## Tasks` that the model does not represent
+//
+// `format` rebuilt the `## Tasks` span from the parsed model, which holds
+// checkbox lines, their annotations and the first line of each contextual
+// note. A task's free-text body, a `---` separator and a `### Subsection`
+// heading had nothing to be rebuilt from and were deleted on disk, exit
+// code 0 and a "Formatted 1 file(s) successfully" message.
+// ---------------------------------------------------------------------------
+
+/// A file whose `## Tasks` section carries content the model cannot hold.
+const TASKS_WITH_BODIES: &str = "# Task List\n\n@id: example\n@created: 2024-01-15\n\n## Tasks\n\n### Group one\n\n- [ ] First task\n  Body prose belonging to the first task.\n    1. First numbered point.\n    2. Second numbered point.\n  Acceptance: this paragraph stays with the first task.\n\n---\n\n- [x] Done task\n  - a note that wraps\n    onto a second line\n";
+
+#[test]
+fn test_format_does_not_delete_task_bodies_on_disk() {
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "lash.index.md", TASKS_WITH_BODIES);
+
+    let output = lash()
+        .arg("format")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        0,
+        "format must succeed; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let after = fs::read_to_string(&path).expect("file must still be readable");
+
+    for expected in [
+        "### Group one",
+        "  Body prose belonging to the first task.",
+        "    1. First numbered point.",
+        "    2. Second numbered point.",
+        "  Acceptance: this paragraph stays with the first task.",
+        "---",
+        "  - a note that wraps",
+        "    onto a second line",
+    ] {
+        assert!(
+            after.contains(expected),
+            "`lash format` deleted '{expected}' from the file:\n{after}"
+        );
+    }
+}
+
+#[test]
+fn test_format_leaves_a_file_with_bodies_byte_identical() {
+    // Nothing in this file needs normalizing, so `format` must not touch it —
+    // and `--check` must agree that it is already formatted.
+    let td = TempDir::new().unwrap();
+    let path = write_md(&td, "lash.index.md", TASKS_WITH_BODIES);
+
+    lash()
+        .arg("format")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        TASKS_WITH_BODIES,
+        "a canonical file with bodies was rewritten"
+    );
+
+    let check = lash()
+        .arg("format")
+        .arg("--check")
+        .arg(&path)
+        .output()
+        .expect("lash must run");
+
+    assert_eq!(
+        check.status.code().unwrap_or(-1),
+        0,
+        "--check must report a file with bodies as already formatted; stderr={}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}

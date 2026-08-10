@@ -390,7 +390,7 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     line matches the file), plus bodies split into paragraphs, contextual note
     bullets, and unit coverage of the anchor walk including the cases that must
     still stop it
-- [ ] `lash format` deletes task bodies inside `## Tasks` #cli #bug #data-loss
+- [x] `lash format` deletes task bodies inside `## Tasks` #cli #bug #data-loss
   - Same root cause as the ticket above, found while fixing it. #44 stopped
     `format` from deleting whole sections, but the `## Tasks` span is still
     regenerated from the model, and the model has no body to regenerate. A task
@@ -400,10 +400,24 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     body is gone. The `---` separator inside the section goes too
   - Worse than the `add` bug it was found next to: `add` misattributes a body,
     `format` destroys it, and the README tells people to run `format`
-  - Fix needs `TaskFile` to carry the body lines the parser currently drops, so
-    the formatter can copy them through the same way it now copies unowned
-    sections. Larger than a placement fix — filing rather than folding in
-  - A lint rule was suggested on #48 for hand-edited files. Worth revisiting
-    once the model carries bodies; until then the linter has nothing to check
-    against, since a misattributed body is syntactically indistinguishable from
-    a correct one
+  - Scope was bigger than the repro showed. `### Subsection` headings inside
+    `## Tasks` went the same way, and so did the wrapped continuation lines of
+    every contextual note — `ContextualNote` holds only a note's first line.
+    Formatting this very file used to produce a 238-line diff, most of it
+    deletion; it is 52 lines now, all of it label sorting
+  - Fixed without extending the model. The formatter now walks the section's
+    source and regenerates only the lines it can account for — a task's
+    checkbox line, its annotation block, the first line of each note — copying
+    every other line through. That is exactly what #44 did one level up, so
+    `format` is now the same rule applied at both levels: rebuild what the
+    model owns, carry everything else
+  - Notes are anchored individually, at their own source line, rather than
+    emitted alongside their task. Emitting them with the task hoists each
+    note's first line above the wrapped remainder and scrambles it, which is
+    how the note handling was found in the first place
+  - A task the walk never finds — built in memory, or a `format_file` caller
+    passing a source the model did not come from — is still written out at the
+    end of the section rather than dropped
+  - A lint rule was suggested on #48 for hand-edited files. Still not worth
+    it: a misattributed body is syntactically indistinguishable from a correct
+    one, so there is nothing for the linter to check against
