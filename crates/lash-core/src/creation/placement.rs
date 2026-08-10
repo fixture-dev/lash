@@ -23,6 +23,16 @@ pub enum InsertAnchor {
     /// A concrete 1-indexed source line; the task is inserted before it.
     Line(usize),
 
+    /// Just past a task's block, starting the search at this 1-indexed line.
+    ///
+    /// Used when appending after an existing task. The line is the first one
+    /// the new task could take according to parsed data, but the parser
+    /// records only a task's checkbox line and its annotation lines — a
+    /// free-text body underneath (prose, numbered steps, acceptance criteria)
+    /// is invisible here. The emitter advances past that body before
+    /// inserting; see [`super::emitter::MarkdownEmitter`].
+    AfterTaskBlock(usize),
+
     /// After the last content line of the `## Tasks` section.
     ///
     /// Used when the section has no tasks to append after. If the file has no
@@ -33,12 +43,14 @@ pub enum InsertAnchor {
 impl InsertAnchor {
     /// The 1-indexed line this anchor names, if it names one
     ///
-    /// Returns `None` for [`Self::EndOfTasksSection`], which only the emitter
-    /// can turn into a line.
+    /// For [`Self::AfterTaskBlock`] this is the earliest line the task could
+    /// land on; the emitter may push it further down. Returns `None` for
+    /// [`Self::EndOfTasksSection`], which only the emitter can turn into a
+    /// line.
     #[must_use]
     pub fn line(self) -> Option<usize> {
         match self {
-            Self::Line(line_number) => Some(line_number),
+            Self::Line(line_number) | Self::AfterTaskBlock(line_number) => Some(line_number),
             Self::EndOfTasksSection => None,
         }
     }
@@ -142,12 +154,14 @@ impl PlacementResolver {
 
         let anchor = if let Some(last_sibling) = siblings.last() {
             // After the last sibling's subtree
-            InsertAnchor::Line(Self::find_end_of_task_subtree(&ctx.resolved_file, last_sibling) + 1)
+            InsertAnchor::AfterTaskBlock(
+                Self::find_end_of_task_subtree(&ctx.resolved_file, last_sibling) + 1,
+            )
         } else if let Some(parent) = &ctx.parent_task {
             // No siblings, insert right after parent (accounting for annotations)
             let parent_line = Self::get_task_line(&ctx.resolved_file, parent);
             let annotation_lines = Self::count_annotation_lines(parent);
-            InsertAnchor::Line(parent_line + annotation_lines + 1)
+            InsertAnchor::AfterTaskBlock(parent_line + annotation_lines + 1)
         } else {
             // Nothing to append after: the file has no tasks at this level and
             // no parent to hang off. Only the source text says where the
@@ -248,7 +262,7 @@ impl PlacementResolver {
         let line_number = Self::find_end_of_task_subtree(&ctx.resolved_file, task) + 1;
 
         Ok(PlacementInfo {
-            anchor: InsertAnchor::Line(line_number),
+            anchor: InsertAnchor::AfterTaskBlock(line_number),
             order_index,
             indent_level: ctx.computed_depth as usize,
         })

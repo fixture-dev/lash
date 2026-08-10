@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use super::placement::{InsertAnchor, PlacementInfo};
 use super::validation::ValidationContext;
-use crate::parser::header;
+use crate::parser::{checkbox, header};
 
 /// Markdown emitter for task creation
 ///
@@ -161,6 +161,17 @@ impl MarkdownEmitter {
         // Copy lines before insertion point
         new_lines.extend_from_slice(&lines[..insert_idx]);
 
+        // Separate the new task from a preceding task's body. Landing directly
+        // under the last line of someone else's prose reads as a continuation
+        // of it, which is the confusion this insertion point exists to avoid.
+        // Tasks with no body keep butting up against each other as before.
+        let follows_body = insert_idx
+            .checked_sub(1)
+            .is_some_and(|prev| Self::continues_task_block(lines[prev]));
+        if follows_body {
+            new_lines.push("");
+        }
+
         // Insert task line
         new_lines.push(task_line);
 
@@ -181,7 +192,11 @@ impl MarkdownEmitter {
         updated.push('\n');
         Self::write_file_atomic(file_path, &updated)?;
 
-        Ok(insert_idx + 1)
+        Ok(if follows_body {
+            insert_idx + 2
+        } else {
+            insert_idx + 1
+        })
     }
 
     /// Translate a [`InsertAnchor`] into a 0-indexed position in `lines`
@@ -195,6 +210,10 @@ impl MarkdownEmitter {
     fn resolve_insert_index(content: &str, lines: &[&str], anchor: InsertAnchor) -> usize {
         match anchor {
             InsertAnchor::Line(line_number) => line_number.saturating_sub(1).min(lines.len()),
+            InsertAnchor::AfterTaskBlock(line_number) => {
+                let start = line_number.saturating_sub(1).min(lines.len());
+                Self::skip_task_body(lines, start)
+            }
             InsertAnchor::EndOfTasksSection => {
                 // No `## Tasks` heading at all: append at the end of the file
                 // rather than guessing where the section would have been.
@@ -215,6 +234,65 @@ impl MarkdownEmitter {
                 }
             }
         }
+    }
+
+    /// Advance past the body lines that belong to the preceding task
+    ///
+    /// A parsed task records its checkbox line and its annotation lines and
+    /// nothing else, so the free-text body a task may carry underneath —
+    /// prose, numbered steps, acceptance criteria, indented contextual note
+    /// bullets — is invisible to the placement resolver. Anchoring on parsed
+    /// data alone therefore lands "after this task" between the task's title
+    /// and its own body, which silently reassigns that body to the newly
+    /// inserted task (GitHub issue #48). Only the source text says where the
+    /// block actually ends.
+    ///
+    /// A line continues the block when it is indented and is not itself a
+    /// checkbox; a checkbox at any depth starts a new task, and an
+    /// unindented line has left the block. Blank lines are consumed only when
+    /// indented content resumes after them, so a body split into paragraphs
+    /// stays whole while a blank line that genuinely ends the block still
+    /// stops the scan.
+    ///
+    /// `start` is a 0-indexed position in `lines`; the return value is the
+    /// 0-indexed position to insert at.
+    fn skip_task_body(lines: &[&str], start: usize) -> usize {
+        let mut idx = start;
+
+        while idx < lines.len() {
+            if lines[idx].trim().is_empty() {
+                // A blank line only belongs to the block if the block resumes
+                // after it. Otherwise the block ended at this blank line.
+                let resumes = lines[idx..]
+                    .iter()
+                    .position(|line| !line.trim().is_empty())
+                    .map(|offset| idx + offset)
+                    .filter(|&next| Self::continues_task_block(lines[next]));
+
+                match resumes {
+                    Some(next) => idx = next,
+                    None => break,
+                }
+            } else if Self::continues_task_block(lines[idx]) {
+                idx += 1;
+            } else {
+                break;
+            }
+        }
+
+        idx
+    }
+
+    /// Does this line continue the block that a task's checkbox line opened?
+    ///
+    /// Indented non-checkbox content belongs to the task above it: body prose,
+    /// folded annotation values, contextual note bullets. A checkbox at any
+    /// depth starts a new task, and an unindented line has left the block
+    /// entirely.
+    fn continues_task_block(line: &str) -> bool {
+        !line.trim().is_empty()
+            && line.starts_with(char::is_whitespace)
+            && checkbox::CheckboxLine::parse(line, 1).is_none()
     }
 
     /// Create a new task file with proper structure
@@ -984,6 +1062,98 @@ mod tests {
         let content = "# T\n\n## Tasks\n";
         assert_eq!(insert_index(content, InsertAnchor::Line(2)), 1);
         assert_eq!(insert_index(content, InsertAnchor::Line(99)), 3);
+    }
+
+    #[test]
+    fn test_after_task_block_steps_over_the_previous_tasks_body() {
+        // GitHub issue #48: the parser records the checkbox line and nothing
+        // about the body under it, so the resolver anchors on line 6 — between
+        // the task's title and its own body. The body must stay with its task.
+        let content = "# T\n\n## Tasks\n\n- [x] Second task\n  Body prose.\n    1. A step.\n  Acceptance: still the second task's.\n";
+        assert_eq!(insert_index(content, InsertAnchor::AfterTaskBlock(6)), 8);
+    }
+
+    #[test]
+    fn test_after_task_block_keeps_a_body_split_into_paragraphs_whole() {
+        // A blank line inside a body is not the end of the block: indented
+        // content resumes after it.
+        let content =
+            "# T\n\n## Tasks\n\n- [x] One\n  First paragraph.\n\n  Second paragraph.\n\n## Notes\n";
+        assert_eq!(insert_index(content, InsertAnchor::AfterTaskBlock(6)), 8);
+    }
+
+    #[test]
+    fn test_after_task_block_stops_at_a_blank_line_that_ends_the_block() {
+        // Nothing indented follows the blank, so the block really did end.
+        let content = "# T\n\n## Tasks\n\n- [x] One\n  Body.\n\nUnindented prose.\n";
+        assert_eq!(insert_index(content, InsertAnchor::AfterTaskBlock(6)), 6);
+    }
+
+    #[test]
+    fn test_after_task_block_stops_at_the_next_checkbox() {
+        // An indented checkbox is a child task, not body text.
+        let content = "# T\n\n## Tasks\n\n- [x] One\n  - [ ] Child\n- [ ] Two\n";
+        assert_eq!(insert_index(content, InsertAnchor::AfterTaskBlock(6)), 5);
+    }
+
+    #[test]
+    fn test_after_task_block_leaves_bodyless_tasks_where_they_were() {
+        // The common case must resolve exactly like `Line` did before.
+        let content = "# T\n\n## Tasks\n\n- [ ] One\n- [ ] Two\n";
+        assert_eq!(insert_index(content, InsertAnchor::AfterTaskBlock(6)), 5);
+        assert_eq!(insert_index(content, InsertAnchor::AfterTaskBlock(7)), 6);
+    }
+
+    #[test]
+    fn test_after_task_block_absorbs_indented_note_bullets() {
+        // Contextual note bullets belong to the task above them.
+        let content = "# T\n\n## Tasks\n\n- [x] One\n  - a note\n  - another note\n";
+        assert_eq!(insert_index(content, InsertAnchor::AfterTaskBlock(6)), 7);
+    }
+
+    /// Insert `task_line` into `content` at `anchor`, returning the new file
+    /// text and the 1-indexed line the task landed on.
+    fn insert_at(content: &str, anchor: InsertAnchor, task_line: &str) -> (String, usize) {
+        let temp_dir =
+            std::env::temp_dir().join(format!("lash-test-insert-{:p}", content.as_ptr()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+        let file_path = temp_dir.join("tasks.md");
+        fs::write(&file_path, content).unwrap();
+
+        let placement = PlacementInfo {
+            anchor,
+            order_index: 0,
+            indent_level: 0,
+        };
+        let line = MarkdownEmitter::insert_into_existing(&file_path, task_line, &[], &placement)
+            .expect("insert must succeed");
+        let updated = fs::read_to_string(&file_path).unwrap();
+        let _ = fs::remove_dir_all(&temp_dir);
+        (updated, line)
+    }
+
+    #[test]
+    fn test_insert_after_a_body_separates_the_new_task_from_it() {
+        // GitHub issue #48's expected output: the new task sits below the whole
+        // block, with a blank line so it does not read as more of that prose.
+        let content = "# T\n\n## Tasks\n\n- [x] One\n  Body prose.\n  Acceptance: mine.\n";
+        let (updated, line) = insert_at(content, InsertAnchor::AfterTaskBlock(6), "- [ ] New task");
+
+        assert_eq!(
+            updated,
+            "# T\n\n## Tasks\n\n- [x] One\n  Body prose.\n  Acceptance: mine.\n\n- [ ] New task\n"
+        );
+        assert_eq!(line, 9, "reported line must be where the task really is");
+    }
+
+    #[test]
+    fn test_insert_after_a_bodyless_task_adds_no_separator() {
+        let content = "# T\n\n## Tasks\n\n- [ ] One\n";
+        let (updated, line) = insert_at(content, InsertAnchor::AfterTaskBlock(6), "- [ ] New task");
+
+        assert_eq!(updated, "# T\n\n## Tasks\n\n- [ ] One\n- [ ] New task\n");
+        assert_eq!(line, 6);
     }
 
     /// Emit `note` as annotation lines, then read it back the way the parser

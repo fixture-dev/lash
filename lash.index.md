@@ -355,3 +355,55 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
     different location (`dirs::config_dir`) and its test only inspects the
     path; lash-tui's `apply_selected_theme` calls `save()` for real, which is
     correct, and no test exercises it
+
+### Post-0.3.0 (Flawd dogfooding, 2026-08-10)
+
+- [x] `lash add -f` inserts the new task between the previous task's title and its body #cli #bug #data-loss
+  - The placement bug the launch-blocker sweep did not reach. That sweep fixed
+    the *annotation* line count on the assumption that a task is its checkbox
+    line plus its annotation block. Tasks also carry free-text bodies — prose,
+    numbered steps, acceptance criteria, indented note bullets — and the parser
+    records none of it, so the insertion point lands one line below the title
+  - The previous task keeps its title and loses its body; the new task inherits
+    lines it has nothing to do with. Markdown is the source of truth, so the
+    file itself is now wrong for whoever reads it next. Reported from real use
+    in flawd's `tasks/tasks.polish.md`, where the last entry was a long task
+    with numbered steps and acceptance criteria; present since 0.1.0
+  - Easy to miss: `lash lint` passes on the damaged file, and `lash show`
+    prints ID, title, status, file and labels but never the body, so querying
+    either task looks normal
+  - Fixed the way `EndOfTasksSection` was — the source text is the only thing
+    that knows where a block ends, so the emitter computes it while it is
+    already holding the file. `InsertAnchor::AfterTaskBlock(line)` carries
+    "start looking here" through from the resolver, and the emitter walks past
+    every line that continues the block (indented, not a checkbox). Blank lines
+    belong to the block only when indented content resumes after them, so a
+    body split into paragraphs stays whole. Deriving this from the parsed model
+    instead would need a new `Task` field, a fourth thing to keep in sync, and
+    the same class of bug the sweep already fixed twice
+  - Bodyless tasks resolve to exactly the line they did before. One formatting
+    change: a task inserted directly below another task's body now gets a blank
+    line above it, since butting it against the tail of someone else's prose
+    reads as more of that prose
+  - Regression tests: the reported repro end to end (`lash add` after a task
+    with a multi-line body, asserting the body stays attached and the reported
+    line matches the file), plus bodies split into paragraphs, contextual note
+    bullets, and unit coverage of the anchor walk including the cases that must
+    still stop it
+- [ ] `lash format` deletes task bodies inside `## Tasks` #cli #bug #data-loss
+  - Same root cause as the ticket above, found while fixing it. #44 stopped
+    `format` from deleting whole sections, but the `## Tasks` span is still
+    regenerated from the model, and the model has no body to regenerate. A task
+    with prose or acceptance criteria under it comes back as a bare checkbox
+    line, exit code 0
+  - Repro: a file whose task carries an indented body, `lash format` it, the
+    body is gone. The `---` separator inside the section goes too
+  - Worse than the `add` bug it was found next to: `add` misattributes a body,
+    `format` destroys it, and the README tells people to run `format`
+  - Fix needs `TaskFile` to carry the body lines the parser currently drops, so
+    the formatter can copy them through the same way it now copies unowned
+    sections. Larger than a placement fix — filing rather than folding in
+  - A lint rule was suggested on #48 for hand-edited files. Worth revisiting
+    once the model carries bodies; until then the linter has nothing to check
+    against, since a misattributed body is syntactically indistinguishable from
+    a correct one
