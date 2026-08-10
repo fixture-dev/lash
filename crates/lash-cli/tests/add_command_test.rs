@@ -796,6 +796,143 @@ Prose that must stay under its heading.
 }
 
 // ---------------------------------------------------------------------
+// A task's body must stay with its task (GitHub issue #48)
+//
+// The parser records a task's checkbox line and its annotation lines and
+// nothing else, so free-text body under a task — prose, numbered steps,
+// acceptance criteria — was invisible when the insertion point was
+// computed. `lash add` landed the new task between the previous task's
+// title and its own body, silently reassigning that body to the new task.
+// `lash lint` passes on the result and `lash show` does not print bodies,
+// so nothing surfaced the damage.
+// ---------------------------------------------------------------------
+
+#[test]
+fn test_add_does_not_steal_the_previous_tasks_body() {
+    let project = TestProject::builder()
+        .with_index("test-project", "Test Project")
+        .with_file(
+            "polish.md",
+            r#"# Repro
+
+@id: polish
+
+## Tasks
+
+- [x] First task @id:rep-first
+  A one-line body belonging to the first task.
+
+- [x] Second task @id:rep-second
+  This body belongs to the SECOND task and must stay attached to it.
+    1. First numbered point.
+    2. Second numbered point.
+  Acceptance: this paragraph still reads as part of the second task.
+"#,
+        )
+        .build();
+    index(&project);
+
+    let stdout = add_task(&project, "New task", "polish.md");
+
+    let content = fs::read_to_string(project.file_path("polish.md")).unwrap();
+
+    let task = task_line_number(&content, "- [ ] New task");
+    assert!(
+        task > task_line_number(&content, "Acceptance: this paragraph"),
+        "the new task split the second task from its body:\n{content}"
+    );
+    assert!(
+        content.contains(
+            "- [x] Second task @id:rep-second\n  This body belongs to the SECOND task and must stay attached to it."
+        ),
+        "the second task lost its body:\n{content}"
+    );
+
+    // The reported line must be where the task actually is, not where the
+    // resolver first guessed.
+    let reported: usize = stdout
+        .lines()
+        .find_map(|line| line.rsplit_once(':'))
+        .and_then(|(_, line_num)| line_num.trim().parse().ok())
+        .unwrap_or_else(|| panic!("no line number in:\n{stdout}"));
+    assert_eq!(reported, task, "reported line disagrees with the file");
+}
+
+#[test]
+fn test_add_does_not_steal_a_body_split_into_paragraphs() {
+    // A blank line inside a body does not end the block; indented content
+    // resumes after it.
+    let project = TestProject::builder()
+        .with_index("test-project", "Test Project")
+        .with_file(
+            "tasks.md",
+            r#"# Tasks
+
+@id: tasks
+
+## Tasks
+
+- [ ] Only task
+  First paragraph of the body.
+
+  Second paragraph of the body.
+
+## Notes
+
+Prose that must stay under its heading.
+"#,
+        )
+        .build();
+    index(&project);
+
+    add_task(&project, "Second task", "tasks.md");
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+
+    let task = task_line_number(&content, "- [ ] Second task");
+    assert!(
+        task > task_line_number(&content, "Second paragraph of the body."),
+        "the new task split the body's paragraphs:\n{content}"
+    );
+    assert!(
+        task < task_line_number(&content, "## Notes"),
+        "task escaped the Tasks section:\n{content}"
+    );
+}
+
+#[test]
+fn test_add_does_not_steal_a_tasks_contextual_notes() {
+    // Indented plain bullets are contextual notes on the task above them.
+    let project = TestProject::builder()
+        .with_index("test-project", "Test Project")
+        .with_file(
+            "tasks.md",
+            r#"# Tasks
+
+@id: tasks
+
+## Tasks
+
+- [ ] Only task
+  - a contextual note
+  - another contextual note
+"#,
+        )
+        .build();
+    index(&project);
+
+    add_task(&project, "Second task", "tasks.md");
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+
+    assert!(
+        task_line_number(&content, "- [ ] Second task")
+            > task_line_number(&content, "- another contextual note"),
+        "the new task was spliced into the note bullets:\n{content}"
+    );
+}
+
+// ---------------------------------------------------------------------
 // The reported task ID must be the indexed one
 //
 // `lash add` printed an ID derived by the emitter while the index stored

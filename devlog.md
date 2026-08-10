@@ -2518,3 +2518,51 @@ copying every other line through. The test that catches both at once is
   changes from shortly before the stream opened.
 - The two tests `tasks/tasks.status-bar-activity.md` deferred for want of a TUI
   harness are written now that one exists (#45).
+
+## `lash add` stole the previous task's body (#48, 2026-08-10)
+
+The placement bug the launch-blocker sweep did not reach. That sweep fixed the
+*annotation* line count and stopped there, on the assumption that a task's
+checkbox line plus its annotation block is the whole task. It is not. Tasks
+also carry free-text bodies — prose, numbered steps, acceptance criteria,
+indented note bullets — and the parser records none of it.
+
+So appending to a file whose last task had a body anchored between that task's
+title and its own body:
+
+```markdown
+- [x] Second task @id:rep-second
+- [ ] New task #report
+  This body belongs to the SECOND task and must stay attached to it.
+```
+
+The body was reassigned to a task it has nothing to do with. Nothing surfaced
+it: `lash lint` passes on the result, and `lash show` prints a task's ID,
+title, status, file and labels but never its body. Reported from real use in
+flawd's `tasks/tasks.polish.md`, where the last entry was a long task with
+numbered steps; present since 0.1.0.
+
+Fixed the way `EndOfTasksSection` was: the source text is the only thing that
+knows where a task's block ends, so the answer is computed in the emitter,
+which is already holding the file. `InsertAnchor::AfterTaskBlock(line)` carries
+"start looking here" through from the resolver, and the emitter walks forward
+past every line that continues the block — indented, not a checkbox — before
+inserting. Blank lines count as part of the block only when indented content
+resumes after them, so a body split into paragraphs stays whole while a blank
+line that genuinely ends the block still stops the walk.
+
+Deriving this from the parsed model instead would have meant a new field on
+`Task`, a fourth thing to keep in sync, and the same class of bug the sweep
+already fixed twice. Bodyless tasks resolve to exactly the line they did
+before, so the common case is untouched.
+
+One formatting change: a new task inserted directly below another task's body
+now gets a blank line above it, because butting it against the tail of someone
+else's prose reads as more of that prose — the confusion the insertion point
+exists to avoid. Tasks with no body still sit flush against each other.
+
+Still open, same root cause: `lash format` deletes task bodies outright. The
+`## Tasks` span is regenerated from the model, and the model has no body to
+regenerate. #44 stopped `format` from deleting whole sections but the span it
+owns still loses anything the parser did not record. Fixing that needs the
+model to carry bodies, which is a larger change than this one.
