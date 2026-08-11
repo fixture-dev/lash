@@ -63,6 +63,13 @@ lash add [OPTIONS] <TITLE>
 | `--after <ID>` | | Insert after this task ID |
 | `--before <ID>` | | Insert before this task ID |
 
+**Position IDs**: `--before` and `--after` accept either the bare slug
+(`beta-task`) or the file-qualified form that `lash show` and `lash list`
+print (`tasks#beta-task`). The file is already fixed by `--file`, so the
+qualifier is redundant — but a qualifier naming a *different* file is
+rejected rather than ignored, since it means the task was expected somewhere
+it is not.
+
 #### Metadata Options
 
 | Option | Short | Description |
@@ -149,10 +156,30 @@ lash add "Fix regression bug" \
 ```bash
 # Check if task would be valid without creating it
 lash add "Test task" --file tasks.md --dry-run
-
-# On success: "Validation passed. Task would be created at line 15"
-# On failure: Shows validation errors
+# Validation passed. Task would be created:
+#   Title: Test task
+#   File: /path/to/tasks.md
+#   Parent: <none>
+#   Position: append
+#   Insert at: line 15
 ```
+
+A dry run resolves the request the same way the real add does: it parses the
+target file, validates against it, and locates the insert position. A
+`--before`/`--after` naming a task that does not exist fails the dry run
+rather than passing and then failing on the write:
+
+```bash
+lash add "Test task" --file tasks.md --before no-such-task --dry-run
+# Error [E_CREATE_INVALID_POSITION]: invalid insert position: task
+# 'no-such-task' not found in 'tasks'; available at this level: alpha-task,
+# beta-task
+```
+
+The reported `Insert at` line is exact when the position is fixed by a
+following task. When the task is appended after another one, the emitter
+steps past that task's free-text body first, so the dry run reports the line
+as a lower bound (`line N or below`).
 
 #### Creating Tasks Out of Dependency Order
 

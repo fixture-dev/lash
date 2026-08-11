@@ -211,11 +211,13 @@ impl PlacementResolver {
         ctx: &ValidationContext,
         task_id: &str,
     ) -> Result<PlacementInfo, TaskCreationError> {
-        let task = ctx.resolved_file.tasks.get_task(task_id).ok_or_else(|| {
-            TaskCreationError::InvalidPosition {
-                reason: format!("task '{task_id}' not found"),
-            }
-        })?;
+        let task_id = Self::local_position_id(&ctx.resolved_file, task_id)?;
+
+        let task = ctx
+            .resolved_file
+            .tasks
+            .get_task(task_id)
+            .ok_or_else(|| Self::position_task_not_found(ctx, task_id))?;
 
         // Verify task is at the right level (sibling of new task)
         let siblings = Self::get_siblings(&ctx.resolved_file, ctx.parent_task.as_ref());
@@ -240,11 +242,13 @@ impl PlacementResolver {
         ctx: &ValidationContext,
         task_id: &str,
     ) -> Result<PlacementInfo, TaskCreationError> {
-        let task = ctx.resolved_file.tasks.get_task(task_id).ok_or_else(|| {
-            TaskCreationError::InvalidPosition {
-                reason: format!("task '{task_id}' not found"),
-            }
-        })?;
+        let task_id = Self::local_position_id(&ctx.resolved_file, task_id)?;
+
+        let task = ctx
+            .resolved_file
+            .tasks
+            .get_task(task_id)
+            .ok_or_else(|| Self::position_task_not_found(ctx, task_id))?;
 
         // Verify task is at the right level (sibling of new task)
         let siblings = Self::get_siblings(&ctx.resolved_file, ctx.parent_task.as_ref());
@@ -266,6 +270,132 @@ impl PlacementResolver {
             order_index,
             indent_level: ctx.computed_depth as usize,
         })
+    }
+
+    /// The local task ID named by a `--before`/`--after` argument
+    ///
+    /// Read commands print IDs qualified with the file they live in
+    /// (`index#beta-task`), and that is the string people paste straight back
+    /// into `--before`. The target file is already fixed by `-f`, so the
+    /// qualifier carries no information — but it is still worth checking,
+    /// because a qualifier naming a *different* file means the caller expected
+    /// the task to be somewhere it is not, and silently ignoring it would
+    /// insert next to whatever unrelated task happens to share the slug.
+    ///
+    /// Accepts the `#task:` form of the reference syntax too, since
+    /// `@depends-on` is written as `path/to/file.md#task:id` and the two
+    /// forms turn up in the same invocation.
+    fn local_position_id<'a>(
+        file: &TaskFile,
+        task_id: &'a str,
+    ) -> Result<&'a str, TaskCreationError> {
+        let Some((qualifier, local_id)) = task_id.split_once('#') else {
+            return Ok(task_id);
+        };
+
+        if !Self::qualifier_names_file(file, qualifier) {
+            return Err(TaskCreationError::InvalidPosition {
+                reason: format!(
+                    "task '{task_id}' names file '{qualifier}', but the task is being added to '{}'",
+                    Self::file_label(file)
+                ),
+            });
+        }
+
+        Ok(local_id.strip_prefix("task:").unwrap_or(local_id))
+    }
+
+    /// Whether the `file#` part of a qualified ID names this file
+    ///
+    /// Matches any of the spellings a caller could reasonably have in hand:
+    /// the file's own `@id` (what `lash show` and `lash list` print), its
+    /// file name with or without the `.md` extension, and any trailing
+    /// portion of its path (so `tasks/backend.md` matches a file indexed at
+    /// that relative path).
+    fn qualifier_names_file(file: &TaskFile, qualifier: &str) -> bool {
+        let qualifier = qualifier.trim();
+        if qualifier.is_empty() {
+            // `#beta-task` — an empty qualifier is just the bare slug written
+            // the long way, and there is nothing to disagree with.
+            return true;
+        }
+
+        if qualifier.eq_ignore_ascii_case(&file.id) {
+            return true;
+        }
+
+        if file.id.is_empty() && file.path.as_os_str().is_empty() {
+            // The placeholder file a new-file request validates against has no
+            // identity to compare a qualifier with. Accept it and let the
+            // "not found" path report the real problem: the file holds no
+            // tasks to position against at all.
+            return true;
+        }
+
+        let path = file.path.to_string_lossy().replace('\\', "/");
+        let normalized = qualifier.replace('\\', "/");
+        let candidates = [
+            normalized.clone(),
+            format!("{normalized}.md"),
+            // `synthesize_file_id` spells separators as dots, so the dotted
+            // form of a nested path resolves too.
+            format!("{}.md", normalized.replace('.', "/")),
+        ];
+
+        candidates.iter().any(|candidate| {
+            path.eq_ignore_ascii_case(candidate)
+                || path
+                    .strip_suffix(candidate)
+                    .is_some_and(|prefix| prefix.is_empty() || prefix.ends_with('/'))
+        })
+    }
+
+    /// How to name the target file in an error message
+    fn file_label(file: &TaskFile) -> String {
+        if file.id.is_empty() {
+            file.path.display().to_string()
+        } else {
+            file.id.clone()
+        }
+    }
+
+    /// A "not found" error that names the IDs the caller could have meant
+    ///
+    /// The bare "not found" this replaced was actively misleading for the
+    /// commonest cause — a qualified ID copied out of `lash show` — because
+    /// the task really did exist. Listing the file's actual IDs makes the
+    /// mismatch visible without a second command.
+    fn position_task_not_found(ctx: &ValidationContext, task_id: &str) -> TaskCreationError {
+        /// Beyond a handful, the list stops helping and starts burying the
+        /// error, so it is truncated with a count of what was left out.
+        const MAX_LISTED: usize = 8;
+
+        let siblings = Self::get_siblings(&ctx.resolved_file, ctx.parent_task.as_ref());
+        let listed: Vec<&str> = siblings
+            .iter()
+            .take(MAX_LISTED)
+            .map(|t| t.id.as_str())
+            .collect();
+
+        let reason = format!(
+            "task '{task_id}' not found in '{}'",
+            Self::file_label(&ctx.resolved_file)
+        );
+
+        if listed.is_empty() {
+            return TaskCreationError::InvalidPosition { reason };
+        }
+
+        let available = listed.join(", ");
+        let elided = if siblings.len() > MAX_LISTED {
+            format!(", … ({} more)", siblings.len() - MAX_LISTED)
+        } else {
+            String::new()
+        };
+
+        TaskCreationError::InvalidPosition {
+            reason: format!("{reason}; available at this level: {available}{elided}"),
+        }
     }
 
     /// Find the end of a task's subtree (last descendant line number)
@@ -1160,6 +1290,183 @@ mod tests {
         // would append at 8, landing on top of the annotation.
         let file = file_with_agent_note("");
         assert_eq!(append_line_for(&file), 9);
+    }
+
+    // ------------------------------------------------------------------
+    // Qualified position IDs (GitHub issue #53)
+    //
+    // `lash show` and `lash list` print `file#slug`, so that is the string
+    // people paste into `--before`/`--after`. It used to be rejected as
+    // "not found" even though the task existed.
+    // ------------------------------------------------------------------
+
+    /// A two-task file at `test.md` with id `test-file`.
+    fn file_with_two_tasks() -> TaskFile {
+        let mut tasks = TaskTree::new();
+        tasks
+            .add_task(
+                TaskBuilder::new("Alpha task")
+                    .id("alpha-task")
+                    .order_index(0)
+                    .line_number(6)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        tasks
+            .add_task(
+                TaskBuilder::new("Beta task")
+                    .id("beta-task")
+                    .order_index(1)
+                    .line_number(8)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        create_test_file(tasks)
+    }
+
+    /// Resolve `--before {position}` against [`file_with_two_tasks`].
+    fn resolve_before(position: &str) -> Result<PlacementInfo, TaskCreationError> {
+        let config = ConfigBuilder::new().build().unwrap();
+        let validator = TaskValidator::new(config);
+        let file = file_with_two_tasks();
+
+        let request = TaskCreationRequestBuilder::new("New task")
+            .before(position)
+            .build();
+        let ctx = validator.validate(&request, Some(&file)).unwrap();
+        PlacementResolver::resolve(&ctx, &request)
+    }
+
+    #[test]
+    fn test_before_accepts_an_id_qualified_with_the_file_id() {
+        let placement = resolve_before("test-file#beta-task").unwrap();
+        assert_eq!(placement.order_index, 1);
+        assert_eq!(placement.anchor, InsertAnchor::Line(8));
+    }
+
+    #[test]
+    fn test_before_accepts_an_id_qualified_with_the_file_name() {
+        assert_eq!(resolve_before("test.md#beta-task").unwrap().order_index, 1);
+        assert_eq!(resolve_before("test#beta-task").unwrap().order_index, 1);
+    }
+
+    #[test]
+    fn test_before_accepts_the_task_prefixed_reference_form() {
+        // `@depends-on` is written as `path/to/file.md#task:id`, and both
+        // forms turn up in the same invocation.
+        assert_eq!(
+            resolve_before("test.md#task:beta-task")
+                .unwrap()
+                .order_index,
+            1
+        );
+    }
+
+    #[test]
+    fn test_before_accepts_a_bare_slug_unchanged() {
+        assert_eq!(resolve_before("beta-task").unwrap().order_index, 1);
+    }
+
+    #[test]
+    fn test_before_rejects_a_qualifier_naming_another_file() {
+        // Accepting the qualifier must not mean discarding it. A qualifier
+        // pointing elsewhere means the caller expected the task in a
+        // different file, and positioning against a same-named task here
+        // would silently do the wrong thing.
+        let err = resolve_before("other-file#beta-task").unwrap_err();
+        let TaskCreationError::InvalidPosition { reason } = err else {
+            panic!("Expected InvalidPosition error");
+        };
+        assert!(reason.contains("names file 'other-file'"), "got: {reason}");
+        assert!(reason.contains("test-file"), "got: {reason}");
+    }
+
+    #[test]
+    fn test_before_treats_an_empty_qualifier_as_a_bare_slug() {
+        // `#beta-task` is the bare slug written the long way; there is no
+        // file claim to disagree with.
+        assert_eq!(resolve_before("#beta-task").unwrap().order_index, 1);
+    }
+
+    #[test]
+    fn test_position_not_found_error_names_the_available_ids() {
+        // The bare "not found" was actively misleading when the ID had been
+        // copied out of `lash show`, because the task really did exist.
+        let err = resolve_before("no-such-task").unwrap_err();
+        let TaskCreationError::InvalidPosition { reason } = err else {
+            panic!("Expected InvalidPosition error");
+        };
+        assert!(reason.contains("not found in 'test-file'"), "got: {reason}");
+        assert!(reason.contains("alpha-task"), "got: {reason}");
+        assert!(reason.contains("beta-task"), "got: {reason}");
+    }
+
+    #[test]
+    fn test_position_not_found_error_truncates_a_long_id_list() {
+        // Past a handful the list buries the error instead of explaining it.
+        let config = ConfigBuilder::new().build().unwrap();
+        let validator = TaskValidator::new(config);
+
+        let mut tasks = TaskTree::new();
+        for i in 0..12 {
+            tasks
+                .add_task(
+                    TaskBuilder::new(format!("Task {i}"))
+                        .id(format!("task-{i}"))
+                        .order_index(i)
+                        .line_number(6 + i)
+                        .build()
+                        .unwrap(),
+                )
+                .unwrap();
+        }
+        let file = create_test_file(tasks);
+
+        let request = TaskCreationRequestBuilder::new("New task")
+            .before("no-such-task")
+            .build();
+        let ctx = validator.validate(&request, Some(&file)).unwrap();
+        let err = PlacementResolver::resolve(&ctx, &request).unwrap_err();
+
+        let TaskCreationError::InvalidPosition { reason } = err else {
+            panic!("Expected InvalidPosition error");
+        };
+        assert!(reason.contains("(4 more)"), "got: {reason}");
+    }
+
+    #[test]
+    fn test_after_accepts_an_id_qualified_with_the_file_id() {
+        let config = ConfigBuilder::new().build().unwrap();
+        let validator = TaskValidator::new(config);
+        let file = file_with_two_tasks();
+
+        let request = TaskCreationRequestBuilder::new("New task")
+            .after("test-file#alpha-task")
+            .build();
+        let ctx = validator.validate(&request, Some(&file)).unwrap();
+        let placement = PlacementResolver::resolve(&ctx, &request).unwrap();
+
+        assert_eq!(placement.order_index, 1);
+    }
+
+    #[test]
+    fn test_after_rejects_a_qualifier_naming_another_file() {
+        let config = ConfigBuilder::new().build().unwrap();
+        let validator = TaskValidator::new(config);
+        let file = file_with_two_tasks();
+
+        let request = TaskCreationRequestBuilder::new("New task")
+            .after("other-file#alpha-task")
+            .build();
+        let ctx = validator.validate(&request, Some(&file)).unwrap();
+        let err = PlacementResolver::resolve(&ctx, &request).unwrap_err();
+
+        let TaskCreationError::InvalidPosition { reason } = err else {
+            panic!("Expected InvalidPosition error");
+        };
+        assert!(reason.contains("names file 'other-file'"), "got: {reason}");
     }
 
     #[test]

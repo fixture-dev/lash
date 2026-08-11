@@ -814,8 +814,8 @@ lash add --interactive
 - `--file-title TEXT` - Title for new file
 - `--file-description TEXT` - Description for new file
 - `--parent ID` - Parent task ID
-- `--after ID` - Insert after this task
-- `--before ID` - Insert before this task
+- `--after ID` - Insert after this task (bare `id` or qualified `file#id`)
+- `--before ID` - Insert before this task (bare `id` or qualified `file#id`)
 - `--label TAG` - Add label (repeatable)
 - `--owner NAME` - Set owner
 - `--estimate DURATION` - Set estimate (e.g., 30m, 2h, 1d)

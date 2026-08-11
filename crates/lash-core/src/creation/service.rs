@@ -12,8 +12,23 @@ use lash_types::file::TaskFile;
 use std::path::{Path, PathBuf};
 
 use super::emitter::MarkdownEmitter;
-use super::placement::PlacementResolver;
-use super::validation::TaskValidator;
+use super::placement::{PlacementInfo, PlacementResolver};
+use super::validation::{TaskValidator, ValidationContext};
+
+/// Everything decided about a task before anything is written
+///
+/// Produced by [`TaskCreationService::plan_task`]. `create_task` turns a plan
+/// into a file write; `lash add --dry-run` reports it and stops. Both go
+/// through the same code so a dry run cannot pass on a request the real add
+/// would reject.
+#[derive(Debug, Clone)]
+pub struct TaskCreationPlan {
+    /// Validation context: resolved file, parent, depth, existing IDs
+    pub context: ValidationContext,
+
+    /// Where the task would be inserted
+    pub placement: PlacementInfo,
+}
 
 /// Service that orchestrates task creation
 ///
@@ -109,18 +124,13 @@ impl TaskCreationService {
         &self,
         request: &TaskCreationRequest,
     ) -> Result<TaskCreationResult, Vec<TaskCreationError>> {
-        // Step 1: Load target file (if existing file)
-        let file_content = self.load_target_file(&request.file_target)?;
-
-        // Step 2: Validate request
-        let validator = TaskValidator::new(self.config.clone());
-        let ctx = validator.validate(request, file_content.as_ref())?;
-
-        // Step 3: Resolve placement
-        let placement = PlacementResolver::resolve(&ctx, request).map_err(|e| vec![e])?;
+        // Steps 1-3: load the target file, validate, resolve placement
+        let plan = self.plan_task(request)?;
+        let TaskCreationPlan { context, placement } = plan;
 
         // Step 4: Emit to markdown
-        let mut result = MarkdownEmitter::emit(request, &ctx, &placement).map_err(|e| vec![e])?;
+        let mut result =
+            MarkdownEmitter::emit(request, &context, &placement).map_err(|e| vec![e])?;
 
         // Step 5: Report the ID the parser gives the task, not the one the
         // emitter guessed. The two agree on the slug now that both go through
@@ -134,6 +144,67 @@ impl TaskCreationService {
         }
 
         Ok(result)
+    }
+
+    /// Work out what would be created, without writing anything
+    ///
+    /// Runs every check `create_task` runs — loading and parsing the target
+    /// file, validating the request against it, resolving the insert position
+    /// — and stops short of the write. This is what backs
+    /// `lash add --dry-run`, which previously printed the request back
+    /// unexamined and so reported success for positions that did not exist
+    /// (GitHub issue #53).
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The task creation request to plan
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(TaskCreationPlan)` - The validated context and resolved placement
+    /// * `Err(Vec<TaskCreationError>)` - Every error the real add would raise
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Self::create_task`], minus the ones that
+    /// can only arise from the write itself (I/O failures).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use lash_core::creation::service::TaskCreationService;
+    /// use lash_types::config::ConfigBuilder;
+    /// use lash_types::creation::TaskCreationRequestBuilder;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = ConfigBuilder::new().build().unwrap();
+    /// let service = TaskCreationService::new(config);
+    ///
+    /// let request = TaskCreationRequestBuilder::new("New task")
+    ///     .file_path(PathBuf::from("tasks.md"))
+    ///     .before("existing-task")
+    ///     .build();
+    ///
+    /// match service.plan_task(&request) {
+    ///     Ok(plan) => println!("would insert at index {}", plan.placement.order_index),
+    ///     Err(errors) => eprintln!("{} problem(s)", errors.len()),
+    /// }
+    /// ```
+    pub fn plan_task(
+        &self,
+        request: &TaskCreationRequest,
+    ) -> Result<TaskCreationPlan, Vec<TaskCreationError>> {
+        // Step 1: Load target file (if existing file)
+        let file_content = self.load_target_file(&request.file_target)?;
+
+        // Step 2: Validate request
+        let validator = TaskValidator::new(self.config.clone());
+        let context = validator.validate(request, file_content.as_ref())?;
+
+        // Step 3: Resolve placement
+        let placement = PlacementResolver::resolve(&context, request).map_err(|e| vec![e])?;
+
+        Ok(TaskCreationPlan { context, placement })
     }
 
     /// The ID the parser assigns to the task written at `line_number`

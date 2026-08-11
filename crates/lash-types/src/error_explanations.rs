@@ -522,11 +522,11 @@ pub fn explain_error(code: &str) -> Option<ErrorExplanation> {
         codes::E_CREATE_INVALID_POSITION => Some(ErrorExplanation {
             code: codes::E_CREATE_INVALID_POSITION,
             summary: "Insert position is invalid",
-            description: "The position specified with --before or --after references a task that doesn't exist or is invalid.",
+            description: "The position specified with --before or --after references a task that doesn't exist in the target file, lives at a different nesting level, or belongs to another file.",
             why_it_matters: "Task ordering requires valid position references to maintain the correct sequence.",
-            how_to_fix: "Ensure the task ID used with --before or --after exists in the target file, or omit these options to append at the end.",
-            example_bad: Some("lash add \"Task\" --after nonexistent-task"),
-            example_good: Some("lash add \"Task\" --after existing-task-id\nlash add \"Task\"  # Appends at end"),
+            how_to_fix: "Use a task ID from the target file. Both the bare ID and the qualified 'file#id' form that `lash show` prints are accepted, but the file part must name the file you are adding to. Omit these options to append at the end.",
+            example_bad: Some("lash add \"Task\" --after nonexistent-task\nlash add \"Task\" -f a.md --after other-file#some-task"),
+            example_good: Some("lash add \"Task\" --after existing-task-id\nlash add \"Task\" -f lash.index.md --after index#existing-task-id\nlash add \"Task\"  # Appends at end"),
         }),
 
         codes::E_CREATE_IO_ERROR => Some(ErrorExplanation {
