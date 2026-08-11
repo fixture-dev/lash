@@ -8,6 +8,35 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-11
+
+Two fixes to the root cause the 0.3.0 sweep left standing. The parsed model
+does not record a task's free-text body, and both write paths assumed a task
+was its checkbox line plus its annotation block. Both lost content and exited 0.
+
+### Fixed
+
+- `lash add` no longer inserts a new task between the previous task's title and
+  its body, which reassigned that body to a task it had nothing to do with.
+  Tasks carry prose, numbered steps and acceptance criteria that the parser does
+  not record, so the insertion point landed one line below the title. Nothing
+  surfaced it: `lash lint` passes on the damaged file, and `lash show` prints a
+  task's ID, title, status, file and labels but never its body. Present since
+  0.1.0.
+- `lash format` no longer deletes what it cannot rebuild from the parsed model.
+  0.3.0 stopped it from dropping whole sections, but the `## Tasks` span was
+  still regenerated wholesale from the task tree, so free-text bodies, `---`
+  separators, comments, `### Subsection` headings and the wrapped continuation
+  lines of every contextual note were lost on each run. Formatting
+  `lash.index.md` produced a 238-line diff, nearly all of it deletion; it is 52
+  lines now. The formatter regenerates the lines the model accounts for and
+  copies every other line through.
+
+### Changed
+
+- Blank lines between tasks survive `lash format`. They belong to the author,
+  and `lash add` writes one when it appends below a task that has a body.
+
 ## [0.3.0] - 2026-08-09
 
 A sweep of the Markdown write path. `lash add` and `lash format` both
@@ -91,7 +120,8 @@ Initial release.
 - Project scaffolding: `lash init` and the PixelQuest `lash playground`
 - Configuration management, shell completions, and `lash explain` error catalog
 
-[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/fixture-dev/lash/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/fixture-dev/lash/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fixture-dev/lash/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fixture-dev/lash/releases/tag/v0.1.0
