@@ -1903,6 +1903,31 @@ More text
         assert_eq!(task.metadata.docs.len(), 1);
     }
 
+    /// A blank line is allowed between a checkbox and its annotation block.
+    ///
+    /// The parsed *values* are not enough to pin this: when the block is not
+    /// consumed here, the annotations are still recovered downstream, so
+    /// `owner` and `labels` look correct either way. What breaks is
+    /// `annotation_line_count`, which drops to 0 because these lines were
+    /// never attributed to the task. That count is what the write paths use to
+    /// find where a task's annotations end, so a wrong count is how `lash add`
+    /// splices a new task into the middle of a previous task's block — the
+    /// data-loss class fixed in 0.3.1. Assert the count, not just the values.
+    #[test]
+    fn test_blank_line_before_annotations_still_counts_them() {
+        let content = "# Test File\n\n## Tasks\n\n- [ ] Task one\n\n@owner: bob\n@labels: x, y\n";
+        let config = LashConfig::default();
+
+        let file = parse_file_from_string(content, &config).expect("fixture should parse");
+        let task = file.tasks.tasks().first().expect("one task expected");
+
+        assert_eq!(
+            task.annotation_line_count, 2,
+            "both annotation lines belong to the task even across the blank line"
+        );
+        assert_eq!(task.metadata.owner, Some("bob".to_string()));
+    }
+
     // ==================== Description Section Integration Tests ====================
 
     #[test]

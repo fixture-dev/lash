@@ -1044,4 +1044,129 @@ mod tests {
         let blockers = analyzer.find_blockers("test#task1");
         assert_eq!(blockers.len(), 0);
     }
+
+    /// Walking a chain past its second link.
+    ///
+    /// `test_find_blocker_chains` stops at task1 → task2 → task3, which is one
+    /// hop: the walk pushes task3 and then exits because task3 is not itself
+    /// blocked. The loop's own "did I find anything this pass?" guard is never
+    /// what ends it, so breaking on that guard's inverse produced the same
+    /// two-element chain and nothing failed. A fourth node forces a second
+    /// hop, which is the first case that distinguishes them.
+    #[test]
+    fn test_blocker_chain_follows_more_than_one_hop() {
+        let mut graph = DependencyGraph::new();
+        for (id, title) in [
+            ("test#task1", "Task 1"),
+            ("test#task2", "Task 2"),
+            ("test#task3", "Task 3"),
+            ("test#task4", "Task 4"),
+        ] {
+            graph.add_node(
+                id.to_string(),
+                create_node(title, TaskStatus::Open, "test", 0),
+            );
+        }
+        for (from, to) in [
+            ("test#task1", "test#task2"),
+            ("test#task2", "test#task3"),
+            ("test#task3", "test#task4"),
+        ] {
+            graph.add_edge(
+                from.to_string(),
+                to.to_string(),
+                EdgeData::new(DependencyKind::ExplicitId, None),
+            );
+        }
+
+        let computer = StatusComputer::new(&graph);
+        let statuses = computer.compute_all();
+        let analyzer = BlockerAnalyzer::new(&graph, &statuses);
+
+        let chains = analyzer.find_blocker_chains("test#task1");
+        assert_eq!(chains.len(), 1);
+
+        let chain = &chains[0];
+        assert_eq!(
+            chain.len(),
+            3,
+            "the walk should follow task2 → task3 → task4, not stop after the first hop"
+        );
+        assert_eq!(chain.direct_blocker().unwrap().task_id, "test#task2");
+        assert_eq!(chain.root_blocker().unwrap().task_id, "test#task4");
+    }
+
+    fn blocker_with_status(task_id: &str, status: ComputedStatus) -> BlockerInfo {
+        BlockerInfo::new(
+            task_id.to_string(),
+            format!("Title of {task_id}"),
+            "test".to_string(),
+            0,
+            DependencyKind::ExplicitId,
+            status,
+        )
+    }
+
+    /// `BlockerReport::format` is rendered for the user but only its blocker
+    /// counts were asserted, so the per-blocker status word and the chains
+    /// section were unpinned.
+    #[test]
+    fn test_report_format_labels_each_blocker_status() {
+        let blocked = blocker_with_status("test#blocked", ComputedStatus::Blocked(Vec::new()));
+        let incomplete = blocker_with_status("test#incomplete", ComputedStatus::Incomplete);
+        let report = BlockerReport::new(
+            "test#task1".to_string(),
+            "Task 1".to_string(),
+            vec![blocked.clone(), incomplete.clone()],
+            vec![BlockerChain::new(
+                "test#task1".to_string(),
+                vec![blocked, incomplete.clone()],
+            )],
+            vec![incomplete],
+            Vec::new(),
+        );
+
+        let output = report.format();
+
+        assert!(
+            output.contains("[blocked]"),
+            "a blocker that is itself blocked should be labelled, got:\n{output}"
+        );
+        assert!(
+            output.contains("[incomplete]"),
+            "a root blocker should be labelled incomplete, got:\n{output}"
+        );
+        assert!(
+            output.contains("Blocker Chains:"),
+            "a report carrying chains should show the chains section, got:\n{output}"
+        );
+    }
+
+    /// The other side of the chains-section condition: with no chains the
+    /// heading must not appear above an empty list.
+    #[test]
+    fn test_report_format_omits_chains_section_when_there_are_none() {
+        let report = BlockerReport::new(
+            "test#task1".to_string(),
+            "Task 1".to_string(),
+            vec![blocker_with_status(
+                "test#incomplete",
+                ComputedStatus::Incomplete,
+            )],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        );
+
+        let output = report.format();
+
+        assert!(
+            !output.contains("Blocker Chains:"),
+            "no chains means no chains section, got:\n{output}"
+        );
+        assert!(
+            output.contains("All Blockers:"),
+            "the blocker list itself should still render, got:\n{output}"
+        );
+    }
 }
