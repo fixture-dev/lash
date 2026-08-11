@@ -33,16 +33,19 @@
 //! # Ok::<(), lash_db::DbError>(())
 //! ```
 
+use crate::connection::{get_id_derivation_version, set_id_derivation_version};
 use crate::dependency_updater::DependencyUpdater;
 use crate::diff::{compute_index_diff_scoped, IndexDiff};
 use crate::error::{DbError, DbResult};
 use crate::profiler::{IndexProfiler, ProfileReport};
-use crate::repository::{FileRepository, TaskRepository};
+use crate::repository::{FileRepository, IdMigrationRepository, TaskIdRename, TaskRepository};
 use crate::walker::{FileMetadata, FileWalker, FileWalkerConfig};
 use lash_core::parser::{is_valid_task_file, parse_file};
+use lash_types::task::ID_DERIVATION_VERSION;
 use lash_types::{LashConfig, TaskFile};
 use rayon::prelude::*;
 use rusqlite::Connection;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -318,6 +321,23 @@ pub struct IndexReport {
     /// Whether any changes were made to the database
     pub has_changes: bool,
 
+    /// Whether every file was re-derived because the ID rules had changed
+    ///
+    /// Set when the index was built under a different
+    /// [`ID_DERIVATION_VERSION`] than this build derives IDs with, which
+    /// forces a full re-parse regardless of content hashes. Worth reporting:
+    /// stored IDs move, and any `@depends-on` written against the old ones
+    /// starts failing to resolve in the same moment.
+    pub id_derivation_rebuild: bool,
+
+    /// Task IDs the re-derive actually moved
+    ///
+    /// Empty on an ordinary index, and empty even on a re-derive when the rule
+    /// change happened not to affect any title in this project. Non-empty is
+    /// the signal worth acting on: every reference written against one of
+    /// these old IDs stopped resolving at this moment.
+    pub id_renames: Vec<TaskIdRename>,
+
     /// Performance profile (if profiling was enabled)
     pub profile: Option<ProfileReport>,
 }
@@ -335,6 +355,8 @@ impl IndexReport {
             files_skipped: 0,
             errors: Vec::new(),
             has_changes: false,
+            id_derivation_rebuild: false,
+            id_renames: Vec::new(),
             profile: None,
         }
     }
@@ -355,6 +377,8 @@ impl IndexReport {
     ///     files_skipped: 0,
     ///     errors: vec![],
     ///     has_changes: true,
+    ///     id_derivation_rebuild: false,
+    ///     id_renames: vec![],
     ///     profile: None,
     /// };
     ///
@@ -381,6 +405,8 @@ impl IndexReport {
     ///     files_skipped: 0,
     ///     errors: vec![],
     ///     has_changes: true,
+    ///     id_derivation_rebuild: false,
+    ///     id_renames: vec![],
     ///     profile: None,
     /// };
     ///
@@ -553,9 +579,18 @@ impl<'conn> Indexer<'conn> {
             Some(scope_paths.as_slice())
         };
 
+        // An index built under different ID-derivation rules holds IDs this
+        // build would not derive, and no amount of hash comparison will
+        // notice: the files did not change, the rules did. Re-derive
+        // everything in that case, so an upgrade repairs itself here rather
+        // than lying until someone happens to edit each file.
+        let derivation_is_current =
+            get_id_derivation_version(self.conn)? == Some(ID_DERIVATION_VERSION);
+        report.id_derivation_rebuild = !derivation_is_current;
+
         let diff = {
             let _guard = profiler.start_phase("diff");
-            if self.config.incremental {
+            if self.config.incremental && derivation_is_current {
                 compute_index_diff_scoped(self.conn, &files, scope)?
             } else {
                 // For full reindex, treat all files as new
@@ -619,7 +654,7 @@ impl<'conn> Indexer<'conn> {
         }
 
         // Phase 4: Update database
-        let (normalized_files, path_to_id) = {
+        let (normalized_files, path_to_id, existing_hashes) = {
             let _db_guard = profiler.start_phase("database");
             let file_repo = FileRepository::new(self.conn);
 
@@ -642,15 +677,19 @@ impl<'conn> Indexer<'conn> {
                 })
                 .collect();
 
-            // Get list of existing paths BEFORE upsert for accurate reporting
-            let existing_paths: std::collections::HashSet<_> = normalized_files
+            // Record each file's stored hash BEFORE the upsert overwrites it.
+            // Presence answers "added or updated?" for the report; the hash
+            // itself is what tells a re-derive whether the file is unchanged
+            // on disk, which is the precondition for matching old task rows to
+            // new ones by line number.
+            let existing_hashes: HashMap<PathBuf, String> = normalized_files
                 .iter()
                 .filter_map(|file| {
                     file_repo
                         .get_by_path(&file.path)
                         .ok()
                         .flatten()
-                        .map(|_| file.path.clone())
+                        .map(|record| (file.path.clone(), record.hash))
                 })
                 .collect();
 
@@ -660,14 +699,14 @@ impl<'conn> Indexer<'conn> {
 
             // Count updates vs inserts based on which files existed before upsert
             for file in &normalized_files {
-                if existing_paths.contains(&file.path) {
+                if existing_hashes.contains_key(&file.path) {
                     report.files_updated += 1;
                 } else {
                     report.files_added += 1;
                 }
             }
 
-            (normalized_files, path_to_id)
+            (normalized_files, path_to_id, existing_hashes)
         };
 
         // Now process tasks for each file (outside the phase guard to allow profiling)
@@ -680,6 +719,20 @@ impl<'conn> Indexer<'conn> {
             let file_db_id = path_to_id
                 .get(&task_file.path)
                 .ok_or_else(|| DbError::Other("File ID not found after upsert".to_string()))?;
+
+            // The rows about to be deleted are the only surviving record of
+            // what these tasks' IDs used to be. If the rules moved them, the
+            // mapping has to come out now or it is gone.
+            if report.id_derivation_rebuild {
+                let unchanged_on_disk = existing_hashes
+                    .get(&task_file.path)
+                    .is_some_and(|stored| stored == &task_file.hash);
+                if unchanged_on_disk {
+                    report
+                        .id_renames
+                        .extend(self.detect_id_renames(*file_db_id, &task_file)?);
+                }
+            }
 
             // Delete existing tasks and doc refs for this file (ensures clean re-index)
             // Note: Deleting tasks will cascade delete task-level doc refs via foreign key
@@ -777,6 +830,23 @@ impl<'conn> Indexer<'conn> {
             dep_repo.rebuild_closure()?;
         }
 
+        // Park the renames for `lash migrate-ids`. The stored IDs have just
+        // been corrected; the references in the Markdown still say what they
+        // said, and this is the last point at which anything knows what they
+        // used to mean.
+        if !report.id_renames.is_empty() {
+            IdMigrationRepository::new(self.conn).record_all(&report.id_renames)?;
+        }
+
+        // Stamp the derivation version, but only when this run can vouch for
+        // the whole project. A scoped index re-derives some files and leaves
+        // the rest alone, and a run with parse errors leaves those files' old
+        // rows in place; stamping after either would claim a freshness the
+        // index does not have, and the next run would skip the repair.
+        if scope.is_none() && report.errors.is_empty() {
+            set_id_derivation_version(self.conn, ID_DERIVATION_VERSION)?;
+        }
+
         // Final progress report
         if self.config.report_progress {
             if let Some(ref callback) = self.progress_callback {
@@ -792,6 +862,94 @@ impl<'conn> Indexer<'conn> {
         report.profile = Some(profiler.finish());
 
         Ok(report)
+    }
+
+    /// Task IDs in this file that the current rules derive differently
+    ///
+    /// Called with the stored rows still in place, just before they are
+    /// deleted and rewritten — the one moment both spellings of an ID exist.
+    ///
+    /// The caller has already established that the file's content hash is
+    /// unchanged, so the stored rows and the freshly parsed tasks describe the
+    /// same file and stand in one-to-one correspondence. What is left is
+    /// naming that correspondence without using the ID, which is the thing
+    /// under suspicion. The key is title plus structural position (`depth`,
+    /// `order_index`): none of the three is derived from the ID rules, and
+    /// together they identify a task in a file that has not changed.
+    ///
+    /// Any key held by more than one task on either side is dropped rather
+    /// than guessed at. An ambiguous pairing would produce a rename that
+    /// `lash migrate-ids` then writes into someone's Markdown, so a missed
+    /// rename — which surfaces as an unresolved reference the author reads
+    /// and fixes — is the better failure.
+    fn detect_id_renames(
+        &self,
+        file_db_id: i64,
+        task_file: &TaskFile,
+    ) -> DbResult<Vec<TaskIdRename>> {
+        /// Title plus position in the tree, neither of which the ID rules touch
+        type TaskKey = (String, i64, i64);
+
+        let mut stmt = self
+            .conn
+            .prepare("SELECT local_id, title, depth, order_index FROM tasks WHERE file_id = ?1")?;
+
+        let mut stored: HashMap<TaskKey, Option<String>> = HashMap::new();
+        let rows = stmt.query_map([file_db_id], |row| {
+            let local_id: String = row.get(0)?;
+            let title: String = row.get(1)?;
+            let depth: i64 = row.get(2)?;
+            let order_index: i64 = row.get(3)?;
+            Ok(((title, depth, order_index), local_id))
+        })?;
+        for row in rows {
+            let (key, local_id) = row?;
+            // `None` marks a key claimed by more than one task: ambiguous, so
+            // no task holding it can be matched.
+            stored
+                .entry(key)
+                .and_modify(|slot| *slot = None)
+                .or_insert(Some(local_id));
+        }
+
+        // The parsed side needs the same treatment, for the same reason.
+        let mut parsed_key_counts: HashMap<TaskKey, usize> = HashMap::new();
+        for task in task_file.tasks.tasks() {
+            *parsed_key_counts.entry(Self::task_key(task)).or_insert(0) += 1;
+        }
+
+        let mut renames = Vec::new();
+        for task in task_file.tasks.tasks() {
+            let key = Self::task_key(task);
+            if parsed_key_counts.get(&key) != Some(&1) {
+                continue;
+            }
+            let Some(Some(old_local_id)) = stored.get(&key) else {
+                continue;
+            };
+            if old_local_id == &task.id {
+                continue;
+            }
+
+            renames.push(TaskIdRename {
+                file_path: task_file.path.clone(),
+                file_id: task_file.id.clone(),
+                old_local_id: old_local_id.clone(),
+                new_local_id: task.id.clone(),
+                title: task.title.clone(),
+            });
+        }
+
+        Ok(renames)
+    }
+
+    /// The title-and-position key used to pair stored rows with parsed tasks
+    fn task_key(task: &lash_types::Task) -> (String, i64, i64) {
+        (
+            task.title.clone(),
+            i64::from(task.depth),
+            i64::try_from(task.order_index).unwrap_or(i64::MAX),
+        )
     }
 
     /// Parse files in parallel using rayon
@@ -908,6 +1066,176 @@ mod tests {
         .unwrap();
 
         temp_dir
+    }
+
+    // ------------------------------------------------------------------
+    // ID derivation drift (GitHub issue #54)
+    // ------------------------------------------------------------------
+
+    /// Index the project once, then put it in the state an upgrade leaves:
+    /// a stored ID the current rules would not derive, and no record of which
+    /// rules built the index.
+    fn indexed_project_with_a_stale_id(project_dir: &TempDir, conn: &Connection) {
+        let config = IndexerConfig::new(project_dir.path().to_path_buf());
+        let parser_config = LashConfig::default();
+        Indexer::new(conn, config, &parser_config)
+            .index_project()
+            .unwrap();
+
+        conn.execute(
+            "UPDATE tasks SET local_id = 'task-1-legacy', full_id = 'test1#task-1-legacy'
+             WHERE local_id = 'task-1'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "DELETE FROM metadata WHERE key = 'id_derivation_version'",
+            [],
+        )
+        .unwrap();
+    }
+
+    fn stored_local_ids(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn.prepare("SELECT local_id FROM tasks").unwrap();
+        let ids = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        ids
+    }
+
+    #[test]
+    fn test_a_stale_derivation_version_forces_a_re_derive() {
+        // Neither file changed, so the hash-based diff has nothing to report.
+        // Only the recorded version says the stored IDs came from other rules.
+        let project_dir = create_test_project();
+        let conn = init_database(&project_dir.path().join("test.db")).unwrap();
+        indexed_project_with_a_stale_id(&project_dir, &conn);
+
+        let config = IndexerConfig::new(project_dir.path().to_path_buf()).with_incremental(true);
+        let parser_config = LashConfig::default();
+        let report = Indexer::new(&conn, config, &parser_config)
+            .index_project()
+            .unwrap();
+
+        assert!(report.id_derivation_rebuild);
+        assert_eq!(report.files_unchanged, 0, "nothing may be skipped");
+        assert!(stored_local_ids(&conn).contains(&"task-1".to_string()));
+        assert!(!stored_local_ids(&conn).contains(&"task-1-legacy".to_string()));
+    }
+
+    #[test]
+    fn test_the_re_derive_reports_the_exact_old_and_new_ids() {
+        // The mapping is the only thing that can repair a reference later, and
+        // this run is the last moment both halves of it exist.
+        let project_dir = create_test_project();
+        let conn = init_database(&project_dir.path().join("test.db")).unwrap();
+        indexed_project_with_a_stale_id(&project_dir, &conn);
+
+        let config = IndexerConfig::new(project_dir.path().to_path_buf());
+        let parser_config = LashConfig::default();
+        let report = Indexer::new(&conn, config, &parser_config)
+            .index_project()
+            .unwrap();
+
+        assert_eq!(report.id_renames.len(), 1);
+        let rename = &report.id_renames[0];
+        assert_eq!(rename.old_local_id, "task-1-legacy");
+        assert_eq!(rename.new_local_id, "task-1");
+        assert_eq!(rename.old_full_id(), "test1#task-1-legacy");
+        assert_eq!(rename.new_full_id(), "test1#task-1");
+        assert_eq!(rename.title, "Task 1");
+    }
+
+    #[test]
+    fn test_renames_are_persisted_for_migrate_ids() {
+        let project_dir = create_test_project();
+        let conn = init_database(&project_dir.path().join("test.db")).unwrap();
+        indexed_project_with_a_stale_id(&project_dir, &conn);
+
+        let config = IndexerConfig::new(project_dir.path().to_path_buf());
+        let parser_config = LashConfig::default();
+        Indexer::new(&conn, config, &parser_config)
+            .index_project()
+            .unwrap();
+
+        let pending = IdMigrationRepository::new(&conn).list_pending().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].old_local_id, "task-1-legacy");
+    }
+
+    #[test]
+    fn test_the_version_stamp_stops_the_repair_repeating() {
+        let project_dir = create_test_project();
+        let conn = init_database(&project_dir.path().join("test.db")).unwrap();
+        indexed_project_with_a_stale_id(&project_dir, &conn);
+
+        let parser_config = LashConfig::default();
+        Indexer::new(
+            &conn,
+            IndexerConfig::new(project_dir.path().to_path_buf()),
+            &parser_config,
+        )
+        .index_project()
+        .unwrap();
+
+        let second = Indexer::new(
+            &conn,
+            IndexerConfig::new(project_dir.path().to_path_buf()),
+            &parser_config,
+        )
+        .index_project()
+        .unwrap();
+
+        assert!(!second.id_derivation_rebuild);
+        assert!(second.id_renames.is_empty());
+        assert_eq!(
+            get_id_derivation_version(&conn).unwrap(),
+            Some(ID_DERIVATION_VERSION)
+        );
+    }
+
+    #[test]
+    fn test_a_scoped_index_does_not_claim_the_whole_project_is_fresh() {
+        // Only some files were re-derived, so stamping the version would make
+        // the next full run skip the repair the rest still need.
+        let project_dir = create_test_project();
+        let conn = init_database(&project_dir.path().join("test.db")).unwrap();
+        indexed_project_with_a_stale_id(&project_dir, &conn);
+
+        let config = IndexerConfig::new(project_dir.path().to_path_buf())
+            .with_paths(vec![project_dir.path().join("test1.md")]);
+        let parser_config = LashConfig::default();
+        Indexer::new(&conn, config, &parser_config)
+            .index_project()
+            .unwrap();
+
+        assert_eq!(
+            get_id_derivation_version(&conn).unwrap(),
+            None,
+            "a scoped run must leave the version unstamped"
+        );
+    }
+
+    #[test]
+    fn test_an_ordinary_index_records_no_renames() {
+        let project_dir = create_test_project();
+        let conn = init_database(&project_dir.path().join("test.db")).unwrap();
+
+        let config = IndexerConfig::new(project_dir.path().to_path_buf());
+        let parser_config = LashConfig::default();
+        let report = Indexer::new(&conn, config, &parser_config)
+            .index_project()
+            .unwrap();
+
+        // A fresh database has no version either, so the first index counts as
+        // a re-derive — but there are no stored IDs to have moved.
+        assert!(report.id_renames.is_empty());
+        assert_eq!(
+            get_id_derivation_version(&conn).unwrap(),
+            Some(ID_DERIVATION_VERSION)
+        );
     }
 
     #[test]

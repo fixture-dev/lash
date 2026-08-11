@@ -20,7 +20,7 @@ CREATE TABLE metadata (
 );
 
 -- Initialize schema version
-INSERT INTO metadata (key, value) VALUES ('schema_version', '8');
+INSERT INTO metadata (key, value) VALUES ('schema_version', '9');
 
 -- ============================================================================
 -- Files table (task files from the project)
@@ -387,3 +387,37 @@ CREATE TRIGGER task_labels_ad AFTER DELETE ON task_labels BEGIN
     JOIN files f ON f.id = t.file_id
     WHERE t.id = old.task_id;
 END;
+
+-- ============================================================================
+-- ID migrations table (task IDs moved by a derivation-rule change)
+-- ============================================================================
+
+-- A derived task ID is a function of the derivation rules, and those rules can
+-- change between releases. The re-derive that follows such a change is the only
+-- moment both spellings of an ID exist at once, so it is the only moment the
+-- old->new mapping can be recorded exactly rather than guessed at. Rows here
+-- are pending work for `lash migrate-ids`, which rewrites references and clears
+-- them.
+
+CREATE TABLE id_migrations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Path of the file the task lives in, relative to project root
+    file_path TEXT NOT NULL,
+
+    -- The file's own id, the left half of a qualified task id
+    file_id TEXT NOT NULL,
+
+    -- The id stored before the derivation rules changed
+    old_local_id TEXT NOT NULL,
+
+    -- The id the current rules derive for the same task
+    new_local_id TEXT NOT NULL,
+
+    -- Task title, so the record is legible without re-reading the file
+    title TEXT NOT NULL,
+
+    UNIQUE(file_path, old_local_id)
+);
+
+CREATE INDEX idx_id_migrations_old ON id_migrations(file_id, old_local_id);

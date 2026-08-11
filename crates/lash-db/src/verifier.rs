@@ -38,9 +38,10 @@ use crate::error::DbResult;
 use crate::repository::files::FileRecord;
 use crate::repository::FileRepository;
 use crate::walker::{FileMetadata, FileWalker, FileWalkerConfig};
-use lash_core::parser::is_valid_task_file;
+use lash_core::parser::{is_valid_task_file, parse_file};
+use lash_types::LashConfig;
 use rusqlite::Connection;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -57,6 +58,14 @@ pub enum IssueKind {
     OrphanedTasks,
     /// Dependencies reference files that don't exist
     OrphanedDependencies,
+    /// Stored task IDs differ from what the current rules derive
+    ///
+    /// The file's content matches its stored hash, so nothing about the file
+    /// changed — the ID derivation rules did, in a release the index has not
+    /// caught up with. Hash comparison alone reports this as in sync, which is
+    /// how a project ends up where `lash show` prints an ID that `lash lint`
+    /// cannot resolve.
+    StaleTaskIds,
 }
 
 impl fmt::Display for IssueKind {
@@ -67,6 +76,7 @@ impl fmt::Display for IssueKind {
             Self::HashMismatch => write!(f, "Hash Mismatch"),
             Self::OrphanedTasks => write!(f, "Orphaned Tasks"),
             Self::OrphanedDependencies => write!(f, "Orphaned Dependencies"),
+            Self::StaleTaskIds => write!(f, "Stale Task IDs"),
         }
     }
 }
@@ -168,6 +178,33 @@ impl VerificationIssue {
             PathBuf::from("<multiple>"),
             format!("{dep_count} orphaned dependency record(s) reference non-existent files"),
             "Run `lash index` or use auto-fix to clean up orphaned dependencies".to_string(),
+        )
+    }
+
+    /// Create a stale task IDs issue
+    ///
+    /// `examples` are stored IDs the current rules no longer derive, listed so
+    /// the report is actionable without a second command — these are exactly
+    /// the IDs that `lash show` would still print and `lash lint` would
+    /// already refuse to resolve.
+    #[must_use]
+    pub fn stale_task_ids(path: &Path, stale_count: usize, examples: &[String]) -> Self {
+        let sample = if examples.is_empty() {
+            String::new()
+        } else {
+            format!(" (e.g. {})", examples.join(", "))
+        };
+
+        Self::new(
+            IssueKind::StaleTaskIds,
+            path.to_path_buf(),
+            format!(
+                "{} stored task ID(s) in '{}' do not match what lash derives today{sample}",
+                stale_count,
+                path.display()
+            ),
+            "Run `lash index` to re-derive them, then `lash migrate-ids` to update references"
+                .to_string(),
         )
     }
 }
@@ -282,6 +319,18 @@ pub struct VerifierConfig {
     pub check_orphaned_tasks: bool,
     /// Whether to check for orphaned dependencies
     pub check_orphaned_dependencies: bool,
+
+    /// Whether to compare stored task IDs against freshly derived ones
+    ///
+    /// Costs a parse of every file whose hash already matches — which is
+    /// otherwise the cheap path — but it is the only check that catches an
+    /// index whose IDs were derived under rules that have since changed.
+    /// Nothing about such a file's content differs, so hash comparison calls
+    /// it in sync.
+    pub check_task_ids: bool,
+
+    /// Parser configuration used when re-deriving task IDs
+    pub parser_config: LashConfig,
 }
 
 impl VerifierConfig {
@@ -305,7 +354,49 @@ impl VerifierConfig {
             walker_config,
             check_orphaned_tasks: true,
             check_orphaned_dependencies: true,
+            check_task_ids: true,
+            parser_config: LashConfig::default(),
         }
+    }
+
+    /// Set the parser configuration used when re-deriving task IDs
+    ///
+    /// Defaults to [`LashConfig::default`]. Pass the project's own config so
+    /// the IDs compared against are the ones the project would actually get.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_db::verifier::VerifierConfig;
+    /// use lash_types::LashConfig;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = VerifierConfig::new(PathBuf::from("/project"))
+    ///     .with_parser_config(LashConfig::default());
+    /// assert!(config.check_task_ids);
+    /// ```
+    #[must_use]
+    pub fn with_parser_config(mut self, parser_config: LashConfig) -> Self {
+        self.parser_config = parser_config;
+        self
+    }
+
+    /// Set whether to compare stored task IDs against freshly derived ones
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lash_db::verifier::VerifierConfig;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = VerifierConfig::new(PathBuf::from("/project"))
+    ///     .with_task_id_check(false);
+    /// assert!(!config.check_task_ids);
+    /// ```
+    #[must_use]
+    pub fn with_task_id_check(mut self, check: bool) -> Self {
+        self.check_task_ids = check;
+        self
     }
 
     /// Set custom walker configuration
@@ -522,7 +613,80 @@ impl<'conn> IndexVerifier<'conn> {
             self.check_orphaned_dependencies(&fs_map, &mut report)?;
         }
 
+        // Phase 7: Compare stored task IDs against freshly derived ones.
+        // Everything above compares content hashes, which by construction
+        // cannot see a change in how IDs are derived from unchanged content.
+        if self.config.check_task_ids {
+            self.check_task_ids(&fs_files, &db_map, &mut report)?;
+        }
+
         Ok(report)
+    }
+
+    /// Check that stored task IDs match what the current rules derive
+    ///
+    /// Only files whose content hash already matches are examined. A file with
+    /// a hash mismatch is reported by that check and will be re-parsed by the
+    /// next `lash index` anyway; a file whose hash matches is precisely the
+    /// one that gets skipped, and so the only one that can carry IDs from an
+    /// older derivation indefinitely.
+    fn check_task_ids(
+        &self,
+        fs_files: &[FileMetadata],
+        db_map: &HashMap<PathBuf, (String, i64)>,
+        report: &mut VerificationReport,
+    ) -> DbResult<()> {
+        /// Stale IDs named in the issue before it becomes unreadable
+        const MAX_EXAMPLES: usize = 3;
+
+        for fs_file in fs_files {
+            let Some((db_hash, db_id)) = db_map.get(&fs_file.relative_path) else {
+                continue;
+            };
+            if &fs_file.content_hash != db_hash {
+                continue;
+            }
+
+            // A file that will not parse cannot be compared against. It is not
+            // silently fine, but it is a parse error rather than ID drift, and
+            // `lash index` reports it as one.
+            let Ok(parsed) = parse_file(&fs_file.absolute_path, &self.config.parser_config) else {
+                continue;
+            };
+
+            let derived: HashSet<&str> =
+                parsed.tasks.tasks().iter().map(|t| t.id.as_str()).collect();
+
+            let mut stmt = self
+                .conn
+                .prepare("SELECT local_id FROM tasks WHERE file_id = ?1")?;
+            let stored: Vec<String> = stmt
+                .query_map([db_id], |row| row.get(0))?
+                .collect::<Result<Vec<String>, _>>()?;
+
+            let stale: Vec<&String> = stored
+                .iter()
+                .filter(|id| !derived.contains(id.as_str()))
+                .collect();
+
+            if stale.is_empty() {
+                continue;
+            }
+
+            let examples: Vec<String> = stale
+                .iter()
+                .take(MAX_EXAMPLES)
+                .map(|id| (*id).clone())
+                .collect();
+
+            report.issues.push(VerificationIssue::stale_task_ids(
+                &fs_file.relative_path,
+                stale.len(),
+                &examples,
+            ));
+        }
+
+        Ok(())
     }
 
     /// Check for orphaned tasks
@@ -708,6 +872,93 @@ mod tests {
         let config = VerifierConfig::new(PathBuf::from("/project"));
         assert!(config.check_orphaned_tasks);
         assert!(config.check_orphaned_dependencies);
+        assert!(config.check_task_ids);
+    }
+
+    /// A one-task file, its index row, and the task row the index holds for it
+    ///
+    /// `stored_local_id` is written straight into the tasks table, so a test
+    /// can put an ID there that the current rules would not derive — which is
+    /// what a pre-upgrade index looks like.
+    fn project_with_stored_task_id(temp_dir: &TempDir, conn: &Connection, stored_local_id: &str) {
+        let path = temp_dir.path().join("test.md");
+        fs::write(&path, "# Test\n\n@id: test\n\n## Tasks\n\n- [ ] Task one\n").unwrap();
+
+        let file_meta = FileMetadata::from_path(&path, temp_dir.path()).unwrap();
+        let file_repo = FileRepository::new(conn);
+        let task_file = create_task_file("test.md", &file_meta.content_hash, file_meta.mtime);
+        let file_db_id = file_repo.insert(&task_file).unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (file_id, local_id, full_id, title, status, depth, order_index)
+             VALUES (?1, ?2, 'test#' || ?2, 'Task one', 'open', 0, 0)",
+            rusqlite::params![file_db_id, stored_local_id],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_verify_reports_a_stored_id_the_current_rules_do_not_derive() {
+        // The file's hash matches, so every other check calls this in sync.
+        // That is the whole bug: an unchanged file is exactly the one whose
+        // IDs never get re-derived.
+        let temp_dir = TempDir::new().unwrap();
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        project_with_stored_task_id(&temp_dir, &conn, "taskone-legacy");
+
+        let config = VerifierConfig::new(temp_dir.path().to_path_buf());
+        let report = IndexVerifier::new(&conn, config).verify().unwrap();
+
+        assert_eq!(report.count_by_kind(IssueKind::HashMismatch), 0);
+        assert_eq!(report.count_by_kind(IssueKind::StaleTaskIds), 1);
+
+        let issue = &report.issues_of_kind(IssueKind::StaleTaskIds)[0];
+        assert!(
+            issue.description.contains("taskone-legacy"),
+            "the issue must name the stale ID: {}",
+            issue.description
+        );
+        assert!(issue.fix_suggestion.contains("lash index"));
+    }
+
+    #[test]
+    fn test_verify_passes_when_stored_ids_match_the_derivation() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        project_with_stored_task_id(&temp_dir, &conn, "task-one");
+
+        let config = VerifierConfig::new(temp_dir.path().to_path_buf());
+        let report = IndexVerifier::new(&conn, config).verify().unwrap();
+
+        assert_eq!(report.count_by_kind(IssueKind::StaleTaskIds), 0);
+    }
+
+    #[test]
+    fn test_task_id_check_can_be_turned_off() {
+        // It costs a parse per otherwise-cheap file, so callers that only want
+        // the hash comparison can say so.
+        let temp_dir = TempDir::new().unwrap();
+        let temp_db = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_db.path()).unwrap();
+
+        project_with_stored_task_id(&temp_dir, &conn, "taskone-legacy");
+
+        let config = VerifierConfig::new(temp_dir.path().to_path_buf()).with_task_id_check(false);
+        let report = IndexVerifier::new(&conn, config).verify().unwrap();
+
+        assert_eq!(report.count_by_kind(IssueKind::StaleTaskIds), 0);
+    }
+
+    #[test]
+    fn test_stale_task_ids_issue_without_examples_is_still_readable() {
+        let issue = VerificationIssue::stale_task_ids(Path::new("tasks.md"), 4, &[]);
+        assert_eq!(issue.kind, IssueKind::StaleTaskIds);
+        assert!(issue.description.contains("4 stored task ID"));
+        assert!(!issue.description.contains("e.g."));
     }
 
     #[test]

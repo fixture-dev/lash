@@ -357,6 +357,28 @@ impl<'conn> TaskRepository<'conn> {
         Ok(ids)
     }
 
+    /// Get all task local IDs in the database
+    ///
+    /// The unqualified half of a task's identity, which is the form that
+    /// appears in an unresolved-reference message. Used to tell an ordinary
+    /// broken reference apart from one the index still recognises — the latter
+    /// being the signature of an ID derivation change rather than a typo.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if query fails
+    pub fn get_all_local_ids(&self) -> DbResult<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT local_id FROM tasks ORDER BY local_id")?;
+
+        let ids = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+
+        Ok(ids)
+    }
+
     /// Find tasks by label
     ///
     /// Finds tasks that have the label directly (via `task_labels`) OR

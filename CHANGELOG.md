@@ -8,6 +8,38 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `lash migrate-ids` rewrites `@depends-on` references left dangling by a
+  task-ID derivation change. It reports by default and writes only with
+  `--write`; `--forget` discards the pending renames for a project that would
+  rather repair by hand. Only whole references on `@depends-on:` lines are
+  rewritten — prose mentioning an old ID is left alone, and so is the
+  unqualified `old-id` form, since a bare token can name a file as readily as
+  a task.
+
+### Fixed
+
+- Stale task IDs no longer survive `lash index`. A task's ID is derived from
+  its title and is not written to the Markdown unless pinned with `@id:`, so a
+  release that changes the derivation rules moves every unpinned ID while every
+  content hash stays identical — and incremental indexing, which keys off those
+  hashes, never re-derives. A file nobody had edited kept serving IDs from
+  rules no longer in force: `lash show` printed the stored ID, `lash lint`
+  derived a different one and refused to resolve it, and `lash check-index`
+  called the index in sync throughout. The index now records the derivation
+  version it was built under and re-derives every file when that does not
+  match, so an upgrade repairs itself on the next `lash index`. The IDs that
+  moved are reported, and recorded for `lash migrate-ids` — the re-derive is
+  the only moment both spellings exist.
+- `lash check-index` compares stored task IDs against freshly derived ones
+  instead of only comparing content hashes, which by construction cannot see a
+  change in how IDs are derived from unchanged content.
+- `lash lint` now says when an unresolved reference points at a task ID that a
+  derivation change moved, rather than at a task that is missing. Without it
+  the error reads as a false positive: the ID it names is exactly the one
+  `lash show` prints back.
+
 ## [0.3.1] - 2026-08-11
 
 Two fixes to the root cause the 0.3.0 sweep left standing. The parsed model

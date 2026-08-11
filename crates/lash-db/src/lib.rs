@@ -25,7 +25,10 @@ pub mod search;
 pub mod verifier;
 pub mod walker;
 
-pub use connection::{get_schema_version, init_database, open_database, set_schema_version};
+pub use connection::{
+    get_id_derivation_version, get_schema_version, init_database, open_database,
+    set_id_derivation_version, set_schema_version,
+};
 pub use dependency_updater::DependencyUpdater;
 pub use diff::{compute_index_diff, compute_index_diff_parallel, IndexDiff};
 pub use error::{DbError, DbResult};
@@ -38,8 +41,8 @@ pub use project_root::{
     ProjectRootConfig,
 };
 pub use repository::{
-    DependencyRepository, DocRefRepository, FileRepository, LabelRepository, StatusCounts,
-    TaskRepository,
+    DependencyRepository, DocRefRepository, FileRepository, IdMigrationRepository, LabelRepository,
+    StatusCounts, TaskIdRename, TaskRepository,
 };
 pub use search::{
     parse_query, search, search_with_profiling, SearchMetrics, SearchQuery, SearchResult,

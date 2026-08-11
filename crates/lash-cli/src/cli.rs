@@ -203,6 +203,18 @@ pub enum Commands {
         diff: bool,
     },
 
+    /// Rewrite references to task IDs that a derivation change moved
+    #[command()]
+    MigrateIds {
+        /// Rewrite the references (without this, only reports what would change)
+        #[arg(long)]
+        write: bool,
+
+        /// Discard the pending renames without rewriting anything
+        #[arg(long, conflicts_with = "write")]
+        forget: bool,
+    },
+
     /// List tasks matching specified criteria
     List {
         /// Filter by task ID (supports fuzzy matching)

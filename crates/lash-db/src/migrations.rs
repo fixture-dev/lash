@@ -12,6 +12,7 @@ mod v5_fts_description;
 mod v6_contextual_notes;
 mod v7_fts_contextual_notes;
 mod v8_add_in_progress_status;
+mod v9_id_migrations;
 
 use v2_enhanced_fts::MigrationV2EnhancedFts;
 use v3_doc_refs::MigrationV3DocRefs;
@@ -20,9 +21,10 @@ use v5_fts_description::MigrationV5FtsDescription;
 use v6_contextual_notes::MigrationV6ContextualNotes;
 use v7_fts_contextual_notes::MigrationV7FtsContextualNotes;
 use v8_add_in_progress_status::MigrationV8AddInProgressStatus;
+use v9_id_migrations::MigrationV9IdMigrations;
 
 /// Current schema version
-pub const CURRENT_SCHEMA_VERSION: i32 = 8;
+pub const CURRENT_SCHEMA_VERSION: i32 = 9;
 
 /// A database migration
 pub trait Migration {
@@ -136,6 +138,7 @@ fn get_migrations() -> Vec<Box<dyn Migration>> {
         Box::new(MigrationV6ContextualNotes),
         Box::new(MigrationV7FtsContextualNotes),
         Box::new(MigrationV8AddInProgressStatus),
+        Box::new(MigrationV9IdMigrations),
     ]
 }
 

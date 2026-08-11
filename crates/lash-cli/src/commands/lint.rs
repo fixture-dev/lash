@@ -240,10 +240,20 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
     }
 
     // Convert LintDiagnostic to Diagnostic for output
-    let diagnostics: Vec<Diagnostic> = filtered_diagnostics
+    let mut diagnostics: Vec<Diagnostic> = filtered_diagnostics
         .iter()
         .map(lint_diagnostic_to_diagnostic)
         .collect();
+
+    // An unresolved reference whose target the index still recognises is not
+    // an ordinary broken link; it is the signature of a task-ID derivation
+    // change. Saying so here saves the reader from concluding lint is wrong,
+    // which is the natural reading when `lash show` prints the very ID lint
+    // just rejected (GitHub issue #54).
+    let id_drift = project_root.as_deref().map_or_else(
+        crate::commands::migrate_ids::IdDriftNotice::default,
+        |root| crate::commands::migrate_ids::annotate_id_drift(&mut diagnostics, root),
+    );
 
     // Output results
     if args.json {
@@ -258,12 +268,49 @@ pub fn execute(args: LintArgs) -> anyhow::Result<i32> {
             args.verbosity,
             args.suggest,
         )?;
+
+        // The per-diagnostic help only surfaces under `-v`. This note is not
+        // routine help — it is the reason the errors above are not the typos
+        // they look like — so it goes after the summary, once, at normal
+        // verbosity.
+        print_id_drift_notice(id_drift, theme.as_ref());
     }
 
     // Determine exit code based on errors
     let has_errors = diagnostics.iter().any(|d| d.severity == Severity::Error);
 
     Ok(if has_errors { 2 } else { 0 })
+}
+
+/// Print the ID-drift footer, if any references were explained by one
+///
+/// Kept out of `print_summary` because it is not a count of anything — it
+/// reframes errors already printed, and only appears when there is something
+/// to reframe.
+fn print_id_drift_notice(
+    notice: crate::commands::migrate_ids::IdDriftNotice,
+    theme: Option<&CliTheme>,
+) {
+    let Some(advice) = notice.advice() else {
+        return;
+    };
+
+    // The references above were correct when they were written; the rules
+    // moved underneath them. Saying which of the two it is turns a list of
+    // apparent typos into one known problem with one known fix.
+    let explained = notice.pending_migration + notice.stale_index;
+    let headline = format!(
+        "{explained} of these reference(s) point at task IDs that a derivation change \
+         moved, not at tasks that are missing."
+    );
+
+    println!();
+    if let Some(t) = theme {
+        println!("{}", t.style_warning(&headline));
+    } else {
+        println!("{headline}");
+    }
+    println!("  {advice}");
 }
 
 /// Output diagnostics in JSON format to stdout
