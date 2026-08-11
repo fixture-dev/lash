@@ -2614,3 +2614,41 @@ task with a body.
 The lint rule suggested on #48 is still not worth building. A misattributed
 body is syntactically indistinguishable from a correct one, so there is nothing
 for the linter to check against.
+
+## `lash add --before` rejected the ID lash prints, and `--dry-run` never looked (#53, 2026-08-11)
+
+Two halves of one report, and the second is what made the first expensive.
+
+`lash show` and `lash list` qualify task IDs with their file — `index#beta-task`
+— so that is the string people have in hand. `--before`/`--after` only accepted
+the bare slug and reported the qualified form as "task not found", which reads
+as the task being missing rather than the argument being spelled the way the
+tool spells it. `--depends-on` on the same command line accepts the qualified
+form, so a single invocation could need both.
+
+Position IDs now go through `PlacementResolver::local_position_id`, which
+strips a `file#` qualifier when it names the target file and errors when it
+names a different one. Accepting the qualifier is not the same as ignoring it:
+a qualifier pointing at another file means the caller expected the task
+somewhere it is not, and positioning against whatever local task happens to
+share the slug would be silently wrong. The qualifier matches against the
+file's `@id`, its name with or without `.md`, and any trailing portion of its
+path, and a `#task:` prefix on the local part is tolerated because that is how
+`@depends-on` references are written.
+
+The not-found error now names the IDs that do exist at that level. The bare
+"not found" was actively misleading for the commonest cause, since the task
+really did exist.
+
+`--dry-run` was the worse half. It printed the request back field by field and
+exited 0 — it never opened the target file, so it reported success for a
+`--before` naming a task that did not exist. Using it to check placement, which
+is the one thing it is for, confirmed an argument the real add then rejected.
+
+`create_task` now splits into `plan_task` (load, validate, resolve placement)
+and the emit that follows it, and dry run calls `plan_task`. There is no
+separate dry-run code path left to drift out of agreement with the real one.
+Dry run also reports the line it resolved rather than the argument it was
+handed — exact when a following task fixes the position, and stated as a lower
+bound when the emitter still has to step past a preceding task's free-text
+body, which the parsed model does not record.

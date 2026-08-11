@@ -226,7 +226,7 @@ impl TaskCreationError {
                 "an agent note may span several lines, but each line must have non-whitespace content and must not begin with '@'".to_string()
             }
             Self::InvalidPosition { .. } => {
-                "use a valid position: Append, AtIndex, Before, or After with an existing task ID".to_string()
+                "--before/--after take a task ID from the target file, either bare ('beta-task') or qualified with the file ('index#beta-task'); --at-index takes a 0-based position among siblings".to_string()
             }
             Self::IoError { .. } => {
                 "check file permissions and disk space".to_string()
@@ -407,7 +407,10 @@ mod tests {
         };
         assert_eq!(err.error_code(), "E_CREATE_INVALID_POSITION");
         assert!(err.message().contains("referenced task not found"));
-        assert!(err.help().contains("valid position"));
+        // The help names both accepted spellings of a position ID, because
+        // the qualified one is what `lash show` prints (GitHub issue #53).
+        assert!(err.help().contains("--before/--after"));
+        assert!(err.help().contains("index#beta-task"));
     }
 
     #[test]
