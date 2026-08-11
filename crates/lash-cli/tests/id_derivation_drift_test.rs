@@ -181,6 +181,107 @@ fn test_the_repair_does_not_repeat_itself() {
     assert_eq!(pending, 1, "the same rename must not accumulate");
 }
 
+#[test]
+fn test_force_rebuild_does_not_destroy_the_rename_mapping() {
+    // `--force` was the workaround people reached for, and it wipes the
+    // database — the only place a task's previous ID survives. It used to
+    // correct the stored IDs and leave every reference dangling with nothing
+    // left to explain them.
+    let project = project_with_a_reference();
+    index(&project);
+    simulate_pre_upgrade_index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("index")
+        .arg("--force")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("task ID changed"));
+
+    let conn = db(&project);
+    let pending: i64 = conn
+        .query_row("SELECT COUNT(*) FROM id_migrations", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(pending, 1, "the mapping must survive the rebuild");
+    assert!(stored_ids(&project).contains(&CURRENT_ID.to_string()));
+}
+
+#[test]
+fn test_force_rebuild_then_migrate_recovers_fully() {
+    let project = project_with_a_reference();
+    index(&project);
+    simulate_pre_upgrade_index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("index")
+        .arg("--force")
+        .assert()
+        .success();
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("migrate-ids")
+        .arg("--write")
+        .assert()
+        .success();
+
+    assert!(index_file(&project).contains(&format!("@depends-on: index#{CURRENT_ID}")));
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("lint")
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_force_rebuild_on_a_healthy_index_stays_quiet() {
+    // The salvage pass must not make an ordinary `--force` noisy.
+    let project = project_with_a_reference();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("index")
+        .arg("--force")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("task ID changed").not());
+}
+
+#[test]
+fn test_force_rebuild_carries_an_already_recorded_rename() {
+    // A rename detected by an earlier run, not yet migrated, when someone
+    // then runs --force.
+    let project = project_with_a_reference();
+    index(&project);
+    simulate_pre_upgrade_index(&project);
+    index(&project); // records the rename
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("index")
+        .arg("--force")
+        .assert()
+        .success();
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("migrate-ids")
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("Would rewrite 1 reference"));
+}
+
 // ---------------------------------------------------------------------
 // check-index reports the drift instead of passing
 // ---------------------------------------------------------------------

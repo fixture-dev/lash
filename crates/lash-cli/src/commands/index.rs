@@ -68,6 +68,23 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
     // Determine database path
     let db_path = get_database_path(&project_root)?;
 
+    // Load project configuration
+    let parser_config = LashConfig::from_root(&project_root).unwrap_or_else(|_| {
+        tracing::debug!("No project config found, using defaults");
+        LashConfig::default()
+    });
+
+    // A force rebuild throws the old records away, and those records are the
+    // only place a task's previous ID survives. Salvage any pending renames
+    // first, so `--force` — which is what people reach for when the index
+    // looks wrong — does not destroy the one thing that can repair the
+    // references it is about to break (GitHub issue #54).
+    let preserved_renames = if args.force && db_path.exists() {
+        salvage_pending_renames(&db_path, &project_root, &parser_config)
+    } else {
+        Vec::new()
+    };
+
     // Initialize or open database
     let conn = if args.force || !db_path.exists() {
         // Force rebuild or DB doesn't exist - initialize fresh
@@ -83,12 +100,6 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
 
     // Run migrations to ensure schema is up to date
     run_migrations(&conn).context("Failed to run database migrations")?;
-
-    // Load project configuration
-    let parser_config = LashConfig::from_root(&project_root).unwrap_or_else(|_| {
-        tracing::debug!("No project config found, using defaults");
-        LashConfig::default()
-    });
 
     // Configure indexer
     let mut indexer_config = IndexerConfig::new(project_root.clone())
@@ -160,7 +171,20 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
     }
 
     // Execute indexing
-    let report = indexer.index_project().context("Failed to index project")?;
+    let mut report = indexer.index_project().context("Failed to index project")?;
+
+    // Carry the salvaged renames across the rebuild that just wiped them.
+    if !preserved_renames.is_empty() {
+        lash_db::IdMigrationRepository::new(&conn)
+            .record_all(&preserved_renames)
+            .context("Failed to preserve pending ID renames across the rebuild")?;
+        for rename in preserved_renames {
+            if !report.id_renames.contains(&rename) {
+                report.id_renames.push(rename);
+            }
+        }
+    }
+    let report = report;
 
     // Convert parse errors to LashError types and report them
     // (Do this before clearing the progress bar so we can use it for suspended output)
@@ -211,6 +235,47 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
         tracing::info!("Indexing completed successfully");
         Ok(0)
     }
+}
+
+/// Pending ID renames worth carrying across a `--force` rebuild
+///
+/// Two sources, both of which the rebuild is about to erase:
+///
+/// - renames already recorded by an earlier run and not yet migrated;
+/// - renames not yet detected, because the index has never been re-derived
+///   since the rules changed. Those only exist while the old task rows do, so
+///   an incremental pass runs first to draw them out.
+///
+/// Best-effort throughout. A database too broken to read is exactly why
+/// someone reached for `--force`, and refusing to rebuild because the salvage
+/// failed would be the wrong trade.
+fn salvage_pending_renames(
+    db_path: &Path,
+    project_root: &Path,
+    parser_config: &LashConfig,
+) -> Vec<lash_db::TaskIdRename> {
+    let Ok(conn) = open_database(db_path) else {
+        return Vec::new();
+    };
+    if run_migrations(&conn).is_err() {
+        return Vec::new();
+    }
+
+    // Draw out any drift the index has not noticed yet. Doing the work twice
+    // costs one extra pass on the single run that finds something, and it is
+    // the only chance to see both spellings of an ID at once.
+    if lash_db::get_id_derivation_version(&conn).ok().flatten()
+        != Some(lash_types::task::ID_DERIVATION_VERSION)
+    {
+        let config = IndexerConfig::new(project_root.to_path_buf())
+            .with_incremental(true)
+            .with_progress(false);
+        let _ = Indexer::new(&conn, config, parser_config).index_project();
+    }
+
+    lash_db::IdMigrationRepository::new(&conn)
+        .list_pending()
+        .unwrap_or_default()
 }
 
 /// Get the database path for a project

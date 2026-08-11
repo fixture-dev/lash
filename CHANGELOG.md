@@ -31,7 +31,10 @@ While the major version is 0, minor version bumps may contain breaking changes.
   version it was built under and re-derives every file when that does not
   match, so an upgrade repairs itself on the next `lash index`. The IDs that
   moved are reported, and recorded for `lash migrate-ids` — the re-derive is
-  the only moment both spellings exist.
+  the only moment both spellings exist. `lash index --force`, which wipes the
+  database, salvages the mapping before doing so — it was the workaround people
+  reached for, and it used to destroy the one record that could repair the
+  references it broke.
 - `lash check-index` compares stored task IDs against freshly derived ones
   instead of only comparing content hashes, which by construction cannot see a
   change in how IDs are derived from unchanged content.
