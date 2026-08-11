@@ -18,7 +18,8 @@ use anyhow::{Context, Result};
 use clap::Args;
 use lash::theme::CliTheme;
 use lash_db::{
-    open_database, IdMigrationRepository, Indexer, IndexerConfig, TaskIdRename, TaskRepository,
+    open_database, FileWalker, FileWalkerConfig, IdMigrationRepository, Indexer, IndexerConfig,
+    TaskIdRename, TaskRepository,
 };
 use lash_types::error::Diagnostic;
 use lash_types::LashConfig;
@@ -209,47 +210,24 @@ fn depends_on_value(line: &str) -> Option<&str> {
     line.trim_start().strip_prefix("@depends-on:")
 }
 
-/// Every Markdown file under the project root
+/// Every Markdown file the project considers its own
 ///
-/// Deliberately not restricted to files the indexer considers task files: a
-/// file with no `## Tasks` section of its own can still carry a `@depends-on`
-/// pointing at one that does.
+/// Uses the same walker `lash index` does, so the set of files whose
+/// references get rewritten is the set the project already treats as part of
+/// itself — same excludes, same gitignore handling. It is deliberately *not*
+/// narrowed to files the indexer accepts as task files: a file with no
+/// `## Tasks` section of its own can still carry a `@depends-on` pointing at
+/// one that does.
 fn markdown_files(project_root: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    collect_markdown(project_root, &mut files)?;
+    let walker = FileWalker::new(FileWalkerConfig::new(project_root.to_path_buf()));
+    let mut files: Vec<PathBuf> = walker
+        .discover_files()
+        .context("Failed to scan the project for Markdown files")?
+        .into_iter()
+        .map(|meta| meta.absolute_path)
+        .collect();
     files.sort();
     Ok(files)
-}
-
-/// Recursive half of [`markdown_files`]
-fn collect_markdown(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Ok(());
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-
-        // `.lash` holds the index, `.git` holds history, and neither contains
-        // task references. Other dot-directories are skipped for the same
-        // reason `lash index` ignores them.
-        if name.starts_with('.') {
-            continue;
-        }
-        if name == "target" || name == "node_modules" {
-            continue;
-        }
-
-        if path.is_dir() {
-            collect_markdown(&path, out)?;
-        } else if path.extension().is_some_and(|ext| ext == "md") {
-            out.push(path);
-        }
-    }
-
-    Ok(())
 }
 
 /// Matches a written reference against the recorded renames
@@ -350,6 +328,12 @@ fn normalize_spelling(spelling: &str) -> String {
 ///
 /// Each file is read, edited and written once. Only the exact reference tokens
 /// found by [`find_rewrites`] are replaced, on the lines they were found on.
+///
+/// Lines are split with their terminators attached and put back untouched, so
+/// a CRLF file stays CRLF and a file with no trailing newline keeps not having
+/// one. Splitting on content and rejoining with `\n` would rewrite every line
+/// ending in the file as a side effect of changing one reference — a diff the
+/// author did not ask for, on Windows checkouts especially.
 fn apply_rewrites(project_root: &Path, rewrites: &[ReferenceRewrite]) -> Result<()> {
     let mut by_file: HashMap<&PathBuf, Vec<&ReferenceRewrite>> = HashMap::new();
     for rewrite in rewrites {
@@ -364,26 +348,39 @@ fn apply_rewrites(project_root: &Path, rewrites: &[ReferenceRewrite]) -> Result<
         let content = std::fs::read_to_string(&absolute_path)
             .with_context(|| format!("Failed to read {}", absolute_path.display()))?;
 
-        let ends_with_newline = content.ends_with('\n');
-        let mut lines: Vec<String> = content.lines().map(String::from).collect();
+        let mut lines: Vec<String> = content.split_inclusive('\n').map(String::from).collect();
 
         for rewrite in file_rewrites {
             let Some(line) = lines.get_mut(rewrite.line_number - 1) else {
                 continue;
             };
-            *line = replace_reference(line, &rewrite.old_reference, &rewrite.new_reference);
+            // Hold the terminator aside so the replacement cannot disturb it.
+            let (text, terminator) = split_terminator(line);
+            *line = format!(
+                "{}{terminator}",
+                replace_reference(text, &rewrite.old_reference, &rewrite.new_reference)
+            );
         }
 
-        let mut updated = lines.join("\n");
-        if ends_with_newline {
-            updated.push('\n');
-        }
-
-        std::fs::write(&absolute_path, updated)
+        std::fs::write(&absolute_path, lines.concat())
             .with_context(|| format!("Failed to write {}", absolute_path.display()))?;
     }
 
     Ok(())
+}
+
+/// Split a line into its text and its line terminator
+///
+/// The terminator is `"\r\n"`, `"\n"`, or `""` for a final line with no
+/// trailing newline.
+fn split_terminator(line: &str) -> (&str, &str) {
+    if let Some(text) = line.strip_suffix("\r\n") {
+        (text, "\r\n")
+    } else if let Some(text) = line.strip_suffix('\n') {
+        (text, "\n")
+    } else {
+        (line, "")
+    }
 }
 
 /// Replace one whole reference on a `@depends-on:` line
@@ -807,6 +804,89 @@ mod tests {
             replace_reference(line, "tasks#old-id", "tasks#new-id"),
             line
         );
+    }
+
+    #[test]
+    fn test_split_terminator_recognises_each_ending() {
+        assert_eq!(split_terminator("text\r\n"), ("text", "\r\n"));
+        assert_eq!(split_terminator("text\n"), ("text", "\n"));
+        // A final line with no trailing newline.
+        assert_eq!(split_terminator("text"), ("text", ""));
+    }
+
+    #[test]
+    fn test_rewriting_preserves_crlf_line_endings() {
+        // Splitting on content and rejoining with \n would rewrite every line
+        // ending in the file as a side effect of changing one reference.
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("tasks.md");
+        std::fs::write(&path, "# T\r\n\r\n@depends-on: tasks#old-id\r\n- [ ] A\r\n").unwrap();
+
+        apply_rewrites(
+            temp.path(),
+            &[ReferenceRewrite {
+                source_path: PathBuf::from("tasks.md"),
+                line_number: 3,
+                old_reference: "tasks#old-id".to_string(),
+                new_reference: "tasks#new-id".to_string(),
+            }],
+        )
+        .unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            content, "# T\r\n\r\n@depends-on: tasks#new-id\r\n- [ ] A\r\n",
+            "only the reference may change"
+        );
+    }
+
+    #[test]
+    fn test_rewriting_does_not_add_a_trailing_newline() {
+        // A file that did not end in a newline must not start doing so.
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("tasks.md");
+        std::fs::write(&path, "@depends-on: tasks#old-id").unwrap();
+
+        apply_rewrites(
+            temp.path(),
+            &[ReferenceRewrite {
+                source_path: PathBuf::from("tasks.md"),
+                line_number: 1,
+                old_reference: "tasks#old-id".to_string(),
+                new_reference: "tasks#new-id".to_string(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "@depends-on: tasks#new-id"
+        );
+    }
+
+    #[test]
+    fn test_find_and_apply_agree_on_line_numbers() {
+        // `find_rewrites` counts with `lines()` and `apply_rewrites` indexes
+        // into `split_inclusive('\n')`. They must stay in step or a rewrite
+        // lands on the wrong line.
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("tasks.md");
+        std::fs::write(
+            &path,
+            "# T\n\n## Tasks\n\n- [ ] A\n- [ ] B\n  @depends-on: tasks#old-id\n",
+        )
+        .unwrap();
+
+        let renames = vec![rename("tasks.md", "tasks", "old-id", "new-id")];
+        let found = find_rewrites(temp.path(), &renames).unwrap();
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line_number, 7);
+
+        apply_rewrites(temp.path(), &found).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("  @depends-on: tasks#new-id"));
+        assert!(content.contains("- [ ] B\n"));
     }
 
     #[test]
