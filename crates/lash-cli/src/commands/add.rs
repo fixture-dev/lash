@@ -5,6 +5,7 @@
 use anyhow::{Context as AnyhowContext, Result};
 use clap::Args;
 use lash::theme::CliTheme;
+use lash_core::creation::placement::InsertAnchor;
 use lash_core::creation::service::TaskCreationService;
 use lash_types::creation::{
     FileTarget, InsertPosition, ParentRef, TaskCreationRequest, TaskCreationRequestBuilder,
@@ -166,15 +167,16 @@ pub fn execute(args: &AddArgs) -> Result<i32> {
         depends_on_warnings = validation.warnings;
     }
 
-    // 4. Handle dry-run mode
-    if args.dry_run {
-        return handle_dry_run(&request, args);
-    }
-
-    // 5. Create service and execute
+    // 4. Create the service. Dry run needs it too: it reports what would
+    // happen by actually resolving it, not by echoing the request back.
     let config = lash_types::config::LashConfig::from_root(&project_root)
         .unwrap_or_else(|_| lash_types::config::LashConfig::default());
     let service = TaskCreationService::new(config.clone());
+
+    // 5. Handle dry-run mode
+    if args.dry_run {
+        return handle_dry_run(&service, &request, args, theme.as_ref());
+    }
 
     match service.create_task(&request) {
         Ok(result) => {
@@ -388,9 +390,27 @@ fn output_errors(
 }
 
 /// Handle dry-run mode
-#[allow(clippy::unnecessary_wraps)]
-fn handle_dry_run(request: &TaskCreationRequest, _args: &AddArgs) -> Result<i32> {
-    // In dry-run mode, we just validate and show what would be created
+///
+/// Resolves the request exactly as a real add would — parsing the target
+/// file, validating against it, and locating the insert position — and
+/// reports the outcome without writing. Reporting the request back
+/// unexamined, as this used to, made `--dry-run` a false green: it passed for
+/// a `--before` naming a task that did not exist, and the real add then failed
+/// on the same argument (GitHub issue #53).
+fn handle_dry_run(
+    service: &TaskCreationService,
+    request: &TaskCreationRequest,
+    args: &AddArgs,
+    theme: Option<&CliTheme>,
+) -> Result<i32> {
+    let plan = match service.plan_task(request) {
+        Ok(plan) => plan,
+        Err(errors) => {
+            output_errors(&errors, &args.format, theme)?;
+            return Ok(1);
+        }
+    };
+
     println!("Validation passed. Task would be created:");
     println!("  Title: {}", request.title);
 
@@ -415,12 +435,23 @@ fn handle_dry_run(request: &TaskCreationRequest, _args: &AddArgs) -> Result<i32>
         ParentRef::AppendAtDepth(depth) => println!("  Parent: at depth {depth}"),
     }
 
-    // Position
+    // Position, as asked for and as resolved
     match &request.position {
         InsertPosition::Append => println!("  Position: append"),
         InsertPosition::AtIndex(idx) => println!("  Position: at index {idx}"),
         InsertPosition::Before(id) => println!("  Position: before {id}"),
         InsertPosition::After(id) => println!("  Position: after {id}"),
+    }
+    match plan.placement.anchor {
+        InsertAnchor::Line(line) => println!("  Insert at: line {line}"),
+        // The parser records a task's checkbox and annotation lines but not
+        // the free-text body underneath it, so the emitter may push the
+        // insertion further down than this. Saying so beats printing a line
+        // number that turns out to be wrong.
+        InsertAnchor::AfterTaskBlock(line) => {
+            println!("  Insert at: line {line} or below, past the preceding task's body");
+        }
+        InsertAnchor::EndOfTasksSection => println!("  Insert at: end of the ## Tasks section"),
     }
 
     // Status

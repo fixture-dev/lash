@@ -1072,3 +1072,282 @@ fn test_add_reported_id_resolves_as_a_dependency_target() {
         .success()
         .stderr(predicate::str::contains("Warning").not());
 }
+
+// ---------------------------------------------------------------------
+// Issue #53: `--before`/`--after` reject the qualified ID lash prints,
+// and `--dry-run` does not resolve the position at all
+// ---------------------------------------------------------------------
+
+/// A two-task file, so there is something to position against.
+fn project_with_two_tasks() -> TestProject {
+    TestProject::builder()
+        .with_index("test-project", "Test Project")
+        .with_file(
+            "tasks.md",
+            r#"# Tasks
+
+@id: tasks
+
+## Tasks
+
+- [ ] Alpha task
+- [ ] Beta task
+"#,
+        )
+        .build()
+}
+
+/// The order top-level task titles appear in `tasks.md`.
+fn task_titles(project: &TestProject) -> Vec<String> {
+    fs::read_to_string(project.file_path("tasks.md"))
+        .unwrap()
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix("- [ ] ").map(str::to_string))
+        .collect()
+}
+
+#[test]
+fn test_add_before_accepts_the_qualified_id_that_show_prints() {
+    // `lash show` reports `tasks#beta-task`; pasting that back into --before
+    // used to fail with "task not found" even though the task existed.
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Gamma")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--before")
+        .arg("tasks#beta-task")
+        .assert()
+        .success();
+
+    assert_eq!(
+        task_titles(&project),
+        vec!["Alpha task", "Gamma", "Beta task"],
+        "Gamma should sit between Alpha and Beta"
+    );
+}
+
+#[test]
+fn test_add_after_accepts_the_qualified_id_that_show_prints() {
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Gamma")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--after")
+        .arg("tasks#alpha-task")
+        .assert()
+        .success();
+
+    assert_eq!(
+        task_titles(&project),
+        vec!["Alpha task", "Gamma", "Beta task"]
+    );
+}
+
+#[test]
+fn test_add_before_still_accepts_the_bare_slug() {
+    // The form that already worked must keep working.
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Gamma")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--before")
+        .arg("beta-task")
+        .assert()
+        .success();
+
+    assert_eq!(
+        task_titles(&project),
+        vec!["Alpha task", "Gamma", "Beta task"]
+    );
+}
+
+#[test]
+fn test_add_before_accepts_the_file_path_as_qualifier() {
+    // `tasks.md#beta-task` is the other spelling a caller can have in hand,
+    // since `@depends-on` references are written against paths.
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Gamma")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--before")
+        .arg("tasks.md#task:beta-task")
+        .assert()
+        .success();
+
+    assert_eq!(
+        task_titles(&project),
+        vec!["Alpha task", "Gamma", "Beta task"]
+    );
+}
+
+#[test]
+fn test_add_before_rejects_a_qualifier_naming_a_different_file() {
+    // Accepting the qualifier must not mean ignoring it: a qualifier naming
+    // another file means the caller expected the task somewhere it is not,
+    // and inserting next to a same-named task here would be wrong.
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Gamma")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--before")
+        .arg("index#beta-task")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("names file 'index'"));
+
+    assert_eq!(
+        task_titles(&project),
+        vec!["Alpha task", "Beta task"],
+        "nothing should have been written"
+    );
+}
+
+#[test]
+fn test_add_dry_run_fails_on_a_position_that_does_not_exist() {
+    // Dry run used to echo the requested position back and exit 0, so it
+    // passed for arguments the real add rejected.
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Epsilon")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--before")
+        .arg("no-such-task-at-all")
+        .arg("--dry-run")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not found"))
+        .stdout(predicate::str::contains("Validation passed").not());
+}
+
+#[test]
+fn test_add_dry_run_error_names_the_ids_that_do_exist() {
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Epsilon")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--before")
+        .arg("no-such-task-at-all")
+        .arg("--dry-run")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("alpha-task"))
+        .stderr(predicate::str::contains("beta-task"));
+}
+
+#[test]
+fn test_add_dry_run_reports_the_resolved_insert_line() {
+    // The point of dry run is to check placement, so it has to report the
+    // placement it resolved rather than the argument it was handed.
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Gamma")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--before")
+        .arg("tasks#beta-task")
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Validation passed"))
+        // `- [ ] Beta task` is on line 8 of the fixture.
+        .stdout(predicate::str::contains("Insert at: line 8"));
+
+    assert_eq!(
+        task_titles(&project),
+        vec!["Alpha task", "Beta task"],
+        "dry run must not write"
+    );
+}
+
+#[test]
+fn test_add_dry_run_still_fails_on_other_validation_errors() {
+    // Position resolution is the new check, but dry run must keep catching
+    // everything it caught before it reached the file at all.
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Gamma")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--estimate")
+        .arg("not-a-duration")
+        .arg("--dry-run")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("E_CREATE_INVALID_ESTIMATE"));
+}
+
+#[test]
+fn test_add_dry_run_passes_for_a_plain_append() {
+    let project = project_with_two_tasks();
+    index(&project);
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("add")
+        .arg("Gamma")
+        .arg("--file")
+        .arg("tasks.md")
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Validation passed"));
+
+    assert_eq!(
+        task_titles(&project),
+        vec!["Alpha task", "Beta task"],
+        "dry run must not write"
+    );
+}

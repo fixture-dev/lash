@@ -561,9 +561,15 @@ Task A depends on B, B depends on A
 **Example:**
 ```bash
 lash add "Task" --before nonexistent-task
+
+# Or: a qualifier naming a file other than the one being added to
+lash add "Task" -f tasks.md --before other-file#some-task
 ```
 
-**How to fix:** Use a valid task ID for `--before` or `--after` position
+**How to fix:** Use a task ID from the target file. Both the bare ID
+(`beta-task`) and the qualified form `lash show` prints (`tasks#beta-task`)
+are accepted; the file part must name the file you are adding to. The error
+lists the IDs available at that level.
 
 ---
 

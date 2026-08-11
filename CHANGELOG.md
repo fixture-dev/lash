@@ -8,6 +8,22 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- `lash add --before/--after` now accept the file-qualified task ID that `lash
+  show` and `lash list` print (`index#beta-task`), not just the bare slug. The
+  target file is already fixed by `--file`, so the qualifier was redundant, but
+  passing it back failed with "task not found" — which read as the task being
+  missing rather than the argument being spelled the way lash spells it. A
+  qualifier naming a *different* file is still rejected, since that means the
+  task was expected somewhere it is not. The not-found error now lists the IDs
+  that do exist at that level.
+- `lash add --dry-run` now resolves the request instead of echoing it back. It
+  never opened the target file, so it reported success for a `--before` naming
+  a task that did not exist and the real add then failed on the same argument.
+  Dry run and the real add now share one code path, and dry run reports the
+  insert line it resolved.
+
 ## [0.3.1] - 2026-08-11
 
 Two fixes to the root cause the 0.3.0 sweep left standing. The parsed model
