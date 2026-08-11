@@ -1061,4 +1061,84 @@ mod tests {
         // Multiple blank lines collapsed
         assert!(!result.contains("\n\n\n\n"));
     }
+
+    /// Format `source` with `normalize_whitespace` set either way.
+    ///
+    /// The parse is what production does — `format_file_in_place` parses the
+    /// same source it hands the formatter — so these tests exercise the real
+    /// path rather than a hand-built `TaskFile`.
+    fn format_with_normalize(source: &str, normalize: bool) -> String {
+        let config = LashConfig::default();
+        let file =
+            crate::parser::parse_file_from_string(source, &config).expect("fixture should parse");
+        let options = FormatOptions {
+            normalize_whitespace: normalize,
+            ..FormatOptions::default()
+        };
+        Formatter::new(config, options)
+            .format_file(source, &file)
+            .expect("formatting should succeed")
+    }
+
+    /// `test_whitespace_normalization` above calls `normalize_whitespace`
+    /// directly, so nothing pinned the flag that decides whether it runs at
+    /// all: inverting it left every test passing. This asserts both settings
+    /// produce their own result.
+    #[test]
+    fn normalize_whitespace_option_decides_whether_blank_runs_collapse() {
+        let source = "# Demo\n\n@id: demo\n\n## Notes\n\nalpha\n\n\n\n\nbeta\n\n## Tasks\n\n- [ ] First task\n";
+
+        let collapsed = format_with_normalize(source, true);
+        assert!(
+            !collapsed.contains("\n\n\n\n"),
+            "normalize_whitespace = true should collapse the blank run, got: {collapsed:?}"
+        );
+
+        let preserved = format_with_normalize(source, false);
+        assert!(
+            preserved.contains("\n\n\n\n"),
+            "normalize_whitespace = false should leave the blank run alone, got: {preserved:?}"
+        );
+    }
+
+    /// The trailing-newline branch only runs when the output actually ends in
+    /// a blank line, which `normalize_whitespace` otherwise hides by stripping
+    /// trailing blanks first. With it off, the generated tasks section leaves a
+    /// blank line at EOF and this is the only thing that trims it.
+    #[test]
+    fn format_ends_file_with_exactly_one_newline() {
+        let source = "# Demo\n\n@id: demo\n\n## Tasks\n\n- [ ] First task\n";
+
+        let formatted = format_with_normalize(source, false);
+
+        assert!(
+            formatted.ends_with('\n'),
+            "formatted file should end with a newline, got: {formatted:?}"
+        );
+        assert!(
+            !formatted.ends_with("\n\n"),
+            "formatted file should not end with a blank line, got: {formatted:?}"
+        );
+    }
+
+    /// A file with no `## Tasks` heading gets one synthesized. The description
+    /// must not be synthesized alongside it when the source already had a
+    /// `## Description` section — the walk copied that through already, so
+    /// emitting it again duplicates it.
+    #[test]
+    fn synthesized_tasks_section_does_not_duplicate_an_existing_description() {
+        let source = "# Demo\n\n@id: demo\n\n## Description\n\nProse that belongs to the file.\n";
+
+        let formatted = format_with_normalize(source, true);
+
+        assert_eq!(
+            formatted.matches("Prose that belongs to the file.").count(),
+            1,
+            "description should appear exactly once, got: {formatted:?}"
+        );
+        assert!(
+            formatted.contains("## Tasks"),
+            "a missing tasks section should still be synthesized, got: {formatted:?}"
+        );
+    }
 }
