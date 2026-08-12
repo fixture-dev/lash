@@ -176,11 +176,89 @@ pub fn set_metadata(conn: &Connection, key: &str, value: &str) -> DbResult<()> {
     Ok(())
 }
 
+/// Metadata key holding the task-ID derivation version the index was built under
+///
+/// See [`lash_types::task::ID_DERIVATION_VERSION`] for what the version means
+/// and why the index has to record it.
+pub const ID_DERIVATION_VERSION_KEY: &str = "id_derivation_version";
+
+/// The task-ID derivation version this index was built under
+///
+/// Returns `None` for an index written before the version was recorded at all
+/// — which is the case this exists to catch, since those are exactly the
+/// indexes that may hold IDs derived by rules no longer in force. Callers
+/// treat `None` the same as a mismatch.
+///
+/// # Errors
+///
+/// Returns error if the metadata query fails. A value that is present but not
+/// a number is reported as `None` rather than an error: an unreadable version
+/// is not a version, and forcing a re-derive is the safe response.
+///
+/// # Example
+///
+/// ```no_run
+/// # use lash_db::connection::{init_database, get_id_derivation_version};
+/// # use std::path::Path;
+/// # let conn = init_database(Path::new("/tmp/lash.db")).unwrap();
+/// // A freshly created index has not been stamped until it is first indexed.
+/// assert_eq!(get_id_derivation_version(&conn).unwrap(), None);
+/// ```
+pub fn get_id_derivation_version(conn: &Connection) -> DbResult<Option<u32>> {
+    Ok(get_metadata(conn, ID_DERIVATION_VERSION_KEY)?.and_then(|value| value.trim().parse().ok()))
+}
+
+/// Record the task-ID derivation version this index was built under
+///
+/// Only correct to call after every task file in the project has been
+/// re-derived. Stamping it after a partial index would claim freshness for
+/// files that still hold IDs from the old rules.
+///
+/// # Errors
+///
+/// Returns error if the metadata write fails
+pub fn set_id_derivation_version(conn: &Connection, version: u32) -> DbResult<()> {
+    set_metadata(conn, ID_DERIVATION_VERSION_KEY, &version.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::migrations::CURRENT_SCHEMA_VERSION;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_id_derivation_version_absent_on_a_fresh_database() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_file.path()).unwrap();
+
+        // An index that was never stamped is indistinguishable from one built
+        // under rules that have since changed, and must be treated that way.
+        assert_eq!(get_id_derivation_version(&conn).unwrap(), None);
+    }
+
+    #[test]
+    fn test_id_derivation_version_round_trip() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_file.path()).unwrap();
+
+        set_id_derivation_version(&conn, 2).unwrap();
+        assert_eq!(get_id_derivation_version(&conn).unwrap(), Some(2));
+
+        set_id_derivation_version(&conn, 3).unwrap();
+        assert_eq!(get_id_derivation_version(&conn).unwrap(), Some(3));
+    }
+
+    #[test]
+    fn test_unparseable_id_derivation_version_reads_as_absent() {
+        // Garbage in the metadata table must force a re-derive, not an error
+        // that blocks indexing entirely.
+        let temp_file = NamedTempFile::new().unwrap();
+        let conn = init_database(temp_file.path()).unwrap();
+
+        set_metadata(&conn, ID_DERIVATION_VERSION_KEY, "not-a-number").unwrap();
+        assert_eq!(get_id_derivation_version(&conn).unwrap(), None);
+    }
 
     #[test]
     fn test_init_database() {

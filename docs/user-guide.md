@@ -597,6 +597,48 @@ lash check-index --diff
 - `0` - Database is consistent
 - `1` - Inconsistencies found
 
+Alongside the usual checks (stale records, missing files, hash mismatches),
+`check-index` compares the stored task IDs against what Lash derives today.
+A file whose content has not changed still drifts if the derivation rules
+changed under it, and hash comparison alone cannot see that.
+
+#### `lash migrate-ids`
+
+Rewrite `@depends-on` references left dangling by a task-ID derivation change.
+
+```bash
+# Show what changed and which references it affects
+lash migrate-ids
+
+# Rewrite them, then re-index
+lash migrate-ids --write
+
+# Discard the pending renames without rewriting anything
+lash migrate-ids --forget
+```
+
+**Options:**
+- `--write` - Apply the rewrites (without it, nothing is written)
+- `--forget` - Discard the pending renames, for repairs done by hand
+- `--json` - JSON output
+
+**Exit codes:**
+- `0` - Nothing pending, or the rewrite succeeded
+- `1` - Renames are pending and nothing has been written yet
+
+**Background:** a task with no explicit `@id:` gets its ID derived from its
+title, so a release that changes the derivation rules moves every such ID.
+`lash index` notices, re-derives the stored IDs, and records what each one used
+to be — the only moment both spellings exist. `lash migrate-ids` consumes that
+record.
+
+Only whole references on `@depends-on:` lines are rewritten. Prose that happens
+to mention an old ID is left alone, and so is the unqualified `old-id` form,
+since a bare token can name a file as readily as a task. Run `lash lint` after
+migrating to catch anything left.
+
+To keep an ID stable across future changes, pin it with `@id:`.
+
 ### Querying Tasks
 
 #### `lash list`

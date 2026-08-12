@@ -1,6 +1,5 @@
 ---
 source: crates/lash-cli/tests/regression_tests.rs
-assertion_line: 343
 expression: normalized
 ---
 ┓    ┓
@@ -277,6 +276,8 @@ lash format [PATH...]           # Normalize formatting
 # Indexing
 lash index                      # Update SQLite index after changes
 lash check-index                # Verify database consistency
+lash migrate-ids                # Show references left dangling by an ID rule change
+lash migrate-ids --write        # Rewrite those references
 
 # Dependencies & Links
 lash graph                      # Show dependency graph (ascii)
@@ -337,6 +338,22 @@ If search results seem stale or incorrect:
 lash index --force    # Force full reindex
 lash check-index      # Verify consistency
 ```
+
+### Task IDs That Moved
+
+A task without an explicit `@id:` gets its ID derived from its title, so a
+release that changes the derivation rules moves every such ID. `lash index`
+detects this, re-derives the stored IDs, and records what each one used to be.
+References written against the old IDs stop resolving at that moment:
+
+```bash
+lash migrate-ids            # Show what changed and which references it affects
+lash migrate-ids --write    # Rewrite the references, then re-index
+```
+
+`lash check-index` reports stored IDs that no longer match the current rules,
+and `lash lint` says when an unresolved reference is one of these rather than a
+typo. Pin an ID with `@id:` to keep it stable across future changes.
 
 ### Broken References
 

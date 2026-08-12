@@ -18,6 +18,31 @@ pub const NOTE_LENGTH_ERROR_THRESHOLD: usize = 500;
 /// Longest synthesized task ID, in characters.
 pub const MAX_SYNTHESIZED_ID_LENGTH: usize = 40;
 
+/// Version of the rules [`synthesize_task_id`] applies
+///
+/// A derived task ID is never written to the Markdown — only an explicit
+/// `@id:` is. So the ID of every unpinned task is a function of this code, and
+/// changing the code silently moves those IDs. Anything holding an ID from
+/// before the change (an index record, an `@depends-on` written against it)
+/// then disagrees with what lash derives today, with nothing to say why.
+///
+/// The index records the version it was built under. When it does not match,
+/// the indexer re-derives every file instead of trusting content hashes,
+/// because the file did not change — the rules did. That makes an upgrade
+/// repair itself on the next `lash index` rather than waiting for someone to
+/// happen to edit each file.
+///
+/// **Bump this whenever [`synthesize_task_id`] changes what it returns for any
+/// input.** Version history:
+///
+/// - `1` — through 0.2.x. Non-alphanumerics were dropped rather than replaced,
+///   so `RELEASES_MIRROR_TOKEN` slugged to `releasesmirrortoken`, and
+///   truncation could leave a trailing separator.
+/// - `2` — 0.3.0 onward. Every non-alphanumeric becomes a separator, empty
+///   parts collapse, inline labels are stripped, and truncation never leaves a
+///   trailing `-`.
+pub const ID_DERIVATION_VERSION: u32 = 2;
+
 /// Derive a task ID from a task title
 ///
 /// This is the one place a task ID is derived from a title. Both the parser,

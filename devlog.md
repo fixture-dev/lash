@@ -2652,3 +2652,75 @@ Dry run also reports the line it resolved rather than the argument it was
 handed — exact when a following task fixes the position, and stated as a lower
 bound when the emitter still has to step past a preceding task's free-text
 body, which the parsed model does not record.
+
+## Stale task IDs survived `lash index` (#54, 2026-08-11)
+
+A derived value cached behind a hash of its input, where the derivation is the
+other input and nothing watches it.
+
+A task's ID comes from its title and is not written to the Markdown unless the
+author pins it with `@id:`. So the ID is a function of the derivation code as
+much as of the file. 0.3.0 changed that code — underscores became separators
+instead of vanishing — and every unpinned ID moved while every content hash
+stayed byte-identical. Incremental indexing keys off those hashes, so a file
+nobody had edited since the upgrade was never re-parsed and kept serving IDs
+derived under rules no longer in force.
+
+The failure was silent in all four directions at once. `lash show` read the
+stored record and printed the old ID. `lash lint` derived a new one and
+rejected the reference. `lash check-index` compared hashes, found them equal,
+and said in sync. `lash index` said "Unchanged: 1". The reporter assumed lint
+was wrong, which is the only conclusion available from the output.
+
+Four changes, one per surface.
+
+**The index records what derived it.** `ID_DERIVATION_VERSION` names the
+current rules and is stamped into the `metadata` table. On mismatch — or
+absence, which is the same thing — the hash diff is ignored and every file is
+re-parsed. An upgrade repairs itself on the next `lash index` instead of
+waiting for someone to happen to edit each file.
+
+The stamp is written only after a run that can vouch for the whole project:
+unscoped, no parse errors. A scoped run re-derives part of the project and a
+failed parse leaves that file's old rows in place; stamping after either claims
+a freshness the index does not have, and the next run skips the repair.
+
+**The repair captures what it moved.** Correcting the stored IDs is half of it.
+A `@depends-on` written against an old ID is text in a file and stops resolving
+the moment the stored IDs move — all of them together, which is why `--force`
+made the rebuild look like the cause of the damage rather than the fix. The
+re-derive is the only moment both spellings exist: old rows still in place,
+new tasks in hand. So the mapping is taken there, into `id_migrations`.
+
+Matching old rows to new tasks is the part worth remembering. The obvious key
+is the ID, which is the thing under suspicion. Line number would be exact, but
+the tasks table does not persist one. What is left is title plus structural
+position (`depth`, `order_index`) — none of which the ID rules touch — and that
+is exact only because the caller has already established the file's hash is
+unchanged. Any key claimed twice on either side is dropped rather than guessed:
+an ambiguous pairing becomes a rename that `migrate-ids` writes into someone's
+Markdown, whereas a missed rename surfaces as an unresolved reference the
+author reads and fixes.
+
+**`check-index` re-derives instead of trusting hashes.** It now parses each
+file whose hash already matches and compares the IDs. That is the expensive
+path for the otherwise-cheap case, and it is the only one that catches this: an
+unchanged file is precisely the file whose IDs never get re-derived.
+
+**`lint` names the cause.** An `E_LINK_NOT_FOUND` whose target the index still
+recognises, or that matches a pending rename, is not a typo. The note goes in
+the diagnostic's `help` for JSON and `-v`, and — because help is hidden at
+normal verbosity, and this is the difference between "lint is wrong" and "here
+is what happened" — once more after the summary where it will actually be read.
+
+`lash migrate-ids` consumes the recorded renames. It previews by default and
+writes only when asked, since it edits files the user owns. It touches whole
+references on `@depends-on:` lines and nothing else: prose mentioning an old ID
+is someone's notes, and the unqualified `old-id` form is left alone because a
+bare token can name a file as readily as a task — rewriting one that turned out
+to be a file id would break a reference that currently works. That gap is
+printed rather than left implicit.
+
+The deeper fix available to any project is `@id:`. A pinned ID is the only one
+a future derivation change cannot move, and the docs now say so in the three
+places someone would be reading when they care.

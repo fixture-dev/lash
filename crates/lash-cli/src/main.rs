@@ -296,6 +296,22 @@ fn run(cli: LashCli) -> Result<()> {
             process::exit(exit_code);
         }
 
+        Commands::MigrateIds { write, forget } => {
+            let args = commands::migrate_ids::MigrateIdsArgs {
+                write,
+                forget,
+                format: if cli.json {
+                    "json".to_string()
+                } else {
+                    "text".to_string()
+                },
+                no_color: cli.no_color,
+                project_root,
+            };
+            let exit_code = commands::migrate_ids::execute(&args)?;
+            process::exit(exit_code);
+        }
+
         Commands::List {
             filter,
             label,

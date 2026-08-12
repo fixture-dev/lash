@@ -68,6 +68,23 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
     // Determine database path
     let db_path = get_database_path(&project_root)?;
 
+    // Load project configuration
+    let parser_config = LashConfig::from_root(&project_root).unwrap_or_else(|_| {
+        tracing::debug!("No project config found, using defaults");
+        LashConfig::default()
+    });
+
+    // A force rebuild throws the old records away, and those records are the
+    // only place a task's previous ID survives. Salvage any pending renames
+    // first, so `--force` — which is what people reach for when the index
+    // looks wrong — does not destroy the one thing that can repair the
+    // references it is about to break (GitHub issue #54).
+    let preserved_renames = if args.force && db_path.exists() {
+        salvage_pending_renames(&db_path, &project_root, &parser_config)
+    } else {
+        Vec::new()
+    };
+
     // Initialize or open database
     let conn = if args.force || !db_path.exists() {
         // Force rebuild or DB doesn't exist - initialize fresh
@@ -83,12 +100,6 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
 
     // Run migrations to ensure schema is up to date
     run_migrations(&conn).context("Failed to run database migrations")?;
-
-    // Load project configuration
-    let parser_config = LashConfig::from_root(&project_root).unwrap_or_else(|_| {
-        tracing::debug!("No project config found, using defaults");
-        LashConfig::default()
-    });
 
     // Configure indexer
     let mut indexer_config = IndexerConfig::new(project_root.clone())
@@ -160,7 +171,20 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
     }
 
     // Execute indexing
-    let report = indexer.index_project().context("Failed to index project")?;
+    let mut report = indexer.index_project().context("Failed to index project")?;
+
+    // Carry the salvaged renames across the rebuild that just wiped them.
+    if !preserved_renames.is_empty() {
+        lash_db::IdMigrationRepository::new(&conn)
+            .record_all(&preserved_renames)
+            .context("Failed to preserve pending ID renames across the rebuild")?;
+        for rename in preserved_renames {
+            if !report.id_renames.contains(&rename) {
+                report.id_renames.push(rename);
+            }
+        }
+    }
+    let report = report;
 
     // Convert parse errors to LashError types and report them
     // (Do this before clearing the progress bar so we can use it for suspended output)
@@ -213,6 +237,47 @@ pub fn execute(args: IndexArgs) -> Result<i32> {
     }
 }
 
+/// Pending ID renames worth carrying across a `--force` rebuild
+///
+/// Two sources, both of which the rebuild is about to erase:
+///
+/// - renames already recorded by an earlier run and not yet migrated;
+/// - renames not yet detected, because the index has never been re-derived
+///   since the rules changed. Those only exist while the old task rows do, so
+///   an incremental pass runs first to draw them out.
+///
+/// Best-effort throughout. A database too broken to read is exactly why
+/// someone reached for `--force`, and refusing to rebuild because the salvage
+/// failed would be the wrong trade.
+fn salvage_pending_renames(
+    db_path: &Path,
+    project_root: &Path,
+    parser_config: &LashConfig,
+) -> Vec<lash_db::TaskIdRename> {
+    let Ok(conn) = open_database(db_path) else {
+        return Vec::new();
+    };
+    if run_migrations(&conn).is_err() {
+        return Vec::new();
+    }
+
+    // Draw out any drift the index has not noticed yet. Doing the work twice
+    // costs one extra pass on the single run that finds something, and it is
+    // the only chance to see both spellings of an ID at once.
+    if lash_db::get_id_derivation_version(&conn).ok().flatten()
+        != Some(lash_types::task::ID_DERIVATION_VERSION)
+    {
+        let config = IndexerConfig::new(project_root.to_path_buf())
+            .with_incremental(true)
+            .with_progress(false);
+        let _ = Indexer::new(&conn, config, parser_config).index_project();
+    }
+
+    lash_db::IdMigrationRepository::new(&conn)
+        .list_pending()
+        .unwrap_or_default()
+}
+
 /// Get the database path for a project
 fn get_database_path(project_root: &Path) -> Result<PathBuf> {
     let lash_dir = project_root.join(".lash");
@@ -239,6 +304,13 @@ fn output_json_report(report: &lash_db::IndexReport, error_reporter: &ErrorRepor
         "files_deleted": report.files_deleted,
         "files_unchanged": report.files_unchanged,
         "has_changes": report.has_changes,
+        "id_derivation_rebuild": report.id_derivation_rebuild,
+        "id_renames": report.id_renames.iter().map(|r| json!({
+            "file": r.file_path.display().to_string(),
+            "old_id": r.old_full_id(),
+            "new_id": r.new_full_id(),
+            "title": r.title,
+        })).collect::<Vec<_>>(),
         "errors": {
             "count": summary.error_count,
             "files_affected": summary.files_affected.len(),
@@ -252,6 +324,12 @@ fn output_json_report(report: &lash_db::IndexReport, error_reporter: &ErrorRepor
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
 }
+
+/// How many renamed IDs `lash index` spells out before summarising the rest
+///
+/// Past a handful the list stops being readable in a terminal, and
+/// `lash migrate-ids` shows the whole thing anyway.
+const MAX_LISTED_RENAMES: usize = 10;
 
 /// Output indexing report as human-readable text
 fn output_text_report(
@@ -306,6 +384,46 @@ fn output_text_report(
 
     if report.files_unchanged > 0 {
         println!("  Unchanged: {}", report.files_unchanged);
+    }
+
+    // A re-derive that actually moved IDs is not a routine reindex: every
+    // reference written against one of the old IDs stopped resolving in this
+    // same moment. Say so here rather than letting `lash lint` be the first
+    // thing that mentions it, several commands later, without the context.
+    //
+    // Keyed on renames rather than on the re-derive itself, because a rule
+    // change need not affect any title in a given project, and warning about
+    // a repair that changed nothing would train people to ignore it.
+    if !report.id_renames.is_empty() {
+        println!();
+        let notice = format!(
+            "{} task ID{} changed: this index was built under older ID rules.",
+            report.id_renames.len(),
+            if report.id_renames.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
+        );
+        if let Some(t) = theme {
+            println!("{}", t.style_warning(&notice));
+        } else {
+            println!("{notice}");
+        }
+        for rename in report.id_renames.iter().take(MAX_LISTED_RENAMES) {
+            println!("  {} → {}", rename.old_full_id(), rename.new_full_id());
+        }
+        if report.id_renames.len() > MAX_LISTED_RENAMES {
+            println!(
+                "  … and {} more",
+                report.id_renames.len() - MAX_LISTED_RENAMES
+            );
+        }
+        println!();
+        println!("Stored IDs now match what lash derives today. References written");
+        println!("against the old IDs will not resolve until they are updated:");
+        println!("  lash migrate-ids            # show what would change");
+        println!("  lash migrate-ids --write    # rewrite the references");
     }
 
     // Print error summary
@@ -433,6 +551,8 @@ mod tests {
                 error: "Parse error".to_string(),
             }],
             has_changes: true,
+            id_derivation_rebuild: false,
+            id_renames: vec![],
             profile: None,
         };
 
@@ -1023,6 +1143,8 @@ mod tests {
                 error: "Unexpected token".to_string(),
             }],
             has_changes: false,
+            id_derivation_rebuild: false,
+            id_renames: vec![],
             profile: None,
         };
 
@@ -1528,6 +1650,8 @@ mod tests {
             files_skipped: 0,
             errors: vec![],
             has_changes: false,
+            id_derivation_rebuild: false,
+            id_renames: vec![],
             profile: None,
         };
         output_text_report(&report_zero, false, &reporter, None);
@@ -1546,9 +1670,72 @@ mod tests {
                 files_skipped: 0,
                 errors: vec![],
                 has_changes: added > 0 || updated > 0 || deleted > 0,
+                id_derivation_rebuild: false,
+                id_renames: vec![],
                 profile: None,
             };
             output_text_report(&r, false, &reporter, None);
         }
+    }
+
+    /// Build a report carrying `count` renamed IDs.
+    fn report_with_renames(count: usize) -> lash_db::IndexReport {
+        let id_renames = (0..count)
+            .map(|i| lash_db::TaskIdRename {
+                file_path: PathBuf::from("tasks.md"),
+                file_id: "tasks".to_string(),
+                old_local_id: format!("old-{i}"),
+                new_local_id: format!("new-{i}"),
+                title: format!("Task {i}"),
+            })
+            .collect();
+
+        lash_db::IndexReport {
+            files_processed: 1,
+            files_added: 0,
+            files_updated: 1,
+            files_deleted: 0,
+            files_unchanged: 0,
+            files_skipped: 0,
+            errors: vec![],
+            has_changes: true,
+            id_derivation_rebuild: true,
+            id_renames,
+            profile: None,
+        }
+    }
+
+    #[test]
+    fn test_json_report_carries_the_renamed_ids() {
+        // Machine consumers need the mapping, not just the count: it is the
+        // only record of what a reference used to mean.
+        let report = report_with_renames(2);
+        let reporter = ErrorReporter::new(ErrorReporterConfig {
+            verbosity: Verbosity::Normal,
+            output_format: OutputFormat::JsonPretty,
+            display_mode: ErrorDisplayMode::Batch,
+            theme: None,
+            show_summary: false,
+        });
+
+        assert!(output_json_report(&report, &reporter).is_ok());
+    }
+
+    #[test]
+    fn test_a_long_rename_list_is_truncated_not_dropped() {
+        // Silently printing only the first ten would read as "that was all".
+        let report = report_with_renames(MAX_LISTED_RENAMES + 3);
+        assert!(report.id_renames.len() > MAX_LISTED_RENAMES);
+
+        // Exercised for panics and for the truncation arithmetic; the text
+        // itself is asserted end-to-end in the integration tests.
+        output_text_report(&report, false, &text_reporter(), None);
+    }
+
+    #[test]
+    fn test_report_with_no_renames_is_the_quiet_path() {
+        let report = report_with_renames(0);
+        assert!(report.id_renames.is_empty());
+        output_text_report(&report, false, &text_reporter(), None);
     }
 }

@@ -11,7 +11,9 @@ This document defines the Rust architecture for the Lash indexing engine, which 
 ## Design Goals
 
 1. **Performance**: Index 1000 files in <5 seconds
-2. **Incremental**: Only reparse files that have changed (hash-based detection)
+2. **Incremental**: Only reparse files that have changed (hash-based detection),
+   *plus* a full re-derive when the ID rules themselves change — see
+   [ID derivation versioning](#id-derivation-versioning)
 3. **Parallel**: Parse files concurrently to maximize throughput
 4. **Robust**: Aggregate errors rather than fail-fast; leave DB in consistent state
 5. **Verifiable**: Detect drift between filesystem and database
@@ -1272,3 +1274,67 @@ This architecture provides:
 - **Extensibility**: Easy to add watch mode, incremental dep resolution, etc.
 
 The design prioritizes simplicity and maintainability while meeting all performance targets. The public API is minimal and easy to use from the CLI, while the internal architecture is modular and testable.
+
+## ID Derivation Versioning
+
+Hash-based incremental indexing rests on an assumption that is true of file
+content and false of derived data: *if the input has not changed, the output
+has not changed either*. A task's ID is derived from its title and is not
+written to the Markdown unless the author pins it with `@id:`, so the ID is a
+function of the derivation code as much as of the file. Change that code and
+every unpinned ID moves — while every content hash stays exactly the same.
+
+Without a guard, the result is silent and long-lived. A file nobody has edited
+since the upgrade is never re-parsed, so it keeps serving IDs derived under
+rules no longer in force. `lash show` reports the stored ID; `lash lint` derives
+a different one and refuses to resolve it; `lash check-index` compares hashes,
+finds them equal, and calls the index in sync. Nothing points at the cause.
+
+### The version stamp
+
+`lash_types::task::ID_DERIVATION_VERSION` names the current rules. The index
+records it under the `id_derivation_version` key in the `metadata` table.
+
+- **Match** — index incrementally, as before.
+- **Mismatch or absent** — ignore the hash diff entirely and re-parse every
+  file, because the files are not what changed.
+
+The stamp is written only after a run that can vouch for the whole project: an
+unscoped run with no parse errors. A scoped run (`lash index tasks/`) re-derives
+part of the project, and a run with parse errors leaves those files' old rows in
+place; stamping after either would claim a freshness the index does not have,
+and the next run would skip the repair.
+
+**Bump the constant whenever `synthesize_task_id` changes what it returns for
+any input.** An upgrade then repairs itself on the next `lash index`.
+
+### Capturing what moved
+
+Correcting the stored IDs is only half the repair. A `@depends-on` written
+against an old ID is text in a file, and it stops resolving the moment the
+stored IDs move — all of them at once, which makes the rebuild look like the
+thing that caused the damage.
+
+The re-derive is the only moment both spellings of an ID exist: the stored rows
+are still in place and the freshly parsed tasks are in hand. So that is where
+the mapping is captured, into the `id_migrations` table, for `lash migrate-ids`
+to consume.
+
+Old rows are matched to new tasks by **title plus structural position**
+(`depth`, `order_index`) — none of which the ID rules touch. That pairing is
+exact only because the file's content hash is unchanged, which the indexer
+checks first; a file that was edited has had its structure shift underneath the
+stored rows, and is re-indexed on its own hash anyway. Any key claimed by more
+than one task on either side is dropped rather than guessed at: an ambiguous
+pairing would produce a rename that `lash migrate-ids` writes into someone's
+Markdown, so a missed rename — which surfaces as an unresolved reference the
+author reads and fixes — is the better failure.
+
+### Verification
+
+`IndexVerifier` re-parses each file whose hash already matches and compares the
+derived IDs against the stored ones. That is the expensive path for an
+otherwise cheap check, and it is the only one that catches this: an unchanged
+file is precisely the file whose IDs never get re-derived. It reports
+`IssueKind::StaleTaskIds`, naming the stale IDs. Set
+`VerifierConfig::with_task_id_check(false)` to skip it.

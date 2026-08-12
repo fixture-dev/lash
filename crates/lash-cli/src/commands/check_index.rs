@@ -95,6 +95,11 @@ pub fn execute(args: CheckIndexArgs) -> Result<i32> {
         verifier_config = verifier_config.with_paths(absolute_paths);
     }
 
+    // Re-deriving task IDs has to use the project's own parser settings, or
+    // the IDs compared against are not the ones this project would get.
+    let parser_config = lash_types::LashConfig::from_root(&project_root).unwrap_or_default();
+    verifier_config = verifier_config.with_parser_config(parser_config);
+
     let verifier = IndexVerifier::new(&conn, verifier_config);
 
     // Run verification
@@ -159,6 +164,7 @@ fn output_json_report(report: &lash_db::VerificationReport) -> Result<()> {
             "hash_mismatches": report.count_by_kind(lash_db::IssueKind::HashMismatch),
             "orphaned_tasks": report.count_by_kind(lash_db::IssueKind::OrphanedTasks),
             "orphaned_dependencies": report.count_by_kind(lash_db::IssueKind::OrphanedDependencies),
+            "stale_task_ids": report.count_by_kind(lash_db::IssueKind::StaleTaskIds),
         }),
     });
 
@@ -222,6 +228,11 @@ fn output_text_report(
     print_issue_count_if_any(
         "Orphaned dependencies",
         report.count_by_kind(lash_db::IssueKind::OrphanedDependencies),
+        theme,
+    );
+    print_issue_count_if_any(
+        "Stale task IDs (derived under older ID rules)",
+        report.count_by_kind(lash_db::IssueKind::StaleTaskIds),
         theme,
     );
 

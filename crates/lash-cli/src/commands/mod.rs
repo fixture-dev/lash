@@ -15,6 +15,7 @@ pub mod index;
 pub mod init;
 pub mod lint;
 pub mod list;
+pub mod migrate_ids;
 pub mod playground;
 pub mod search;
 pub mod show;
