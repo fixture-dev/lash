@@ -8,6 +8,15 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-11
+
+A task's ID is derived from its title rather than stored, so a change to the
+derivation rules moves every unpinned ID while every content hash stays
+identical — and incremental indexing, which keys off those hashes, never
+notices. This release makes the index aware of the rules it was built under,
+and adds `lash migrate-ids` to repair the `@depends-on` references a past move
+left dangling.
+
 ### Added
 
 - `lash migrate-ids` rewrites `@depends-on` references left dangling by a
@@ -168,7 +177,8 @@ Initial release.
 - Project scaffolding: `lash init` and the PixelQuest `lash playground`
 - Configuration management, shell completions, and `lash explain` error catalog
 
-[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/fixture-dev/lash/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/fixture-dev/lash/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/fixture-dev/lash/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fixture-dev/lash/compare/v0.1.0...v0.2.0
