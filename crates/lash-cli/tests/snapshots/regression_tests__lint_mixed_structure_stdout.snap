@@ -5,20 +5,21 @@ expression: normalized_stdout
 ┓    ┓
 ┃ ┏┓┏┣┓
 ┗┛┗┻┛┛┗
-warning[W_INDEX_ORPHAN]: File './nested/nested-task-1.md' is not referenced in the root index
+warning[W_INDEX_ORPHAN]: File './nested/nested-task-1.md' is not referenced in the root index (add it to .lashignore if it is not a task file)
   at ./nested/nested-task-1.md:0:0
-warning[W_INDEX_ORPHAN]: File './nested/sub1/deep-task-1.md' is not referenced in the root index
+warning[W_INDEX_ORPHAN]: File './nested/sub1/deep-task-1.md' is not referenced in the root index (add it to .lashignore if it is not a task file)
   at ./nested/sub1/deep-task-1.md:0:0
-warning[W_INDEX_ORPHAN]: File './nested/sub1/sub2/deepest-task.md' is not referenced in the root index
+warning[W_INDEX_ORPHAN]: File './nested/sub1/sub2/deepest-task.md' is not referenced in the root index (add it to .lashignore if it is not a task file)
   at ./nested/sub1/sub2/deepest-task.md:0:0
-warning[W_INDEX_ORPHAN]: File './root-task-1.md' is not referenced in the root index
+warning[W_INDEX_ORPHAN]: File './root-task-1.md' is not referenced in the root index (add it to .lashignore if it is not a task file)
   at ./root-task-1.md:0:0
-warning[W_INDEX_ORPHAN]: File './root-task-2.md' is not referenced in the root index
+warning[W_INDEX_ORPHAN]: File './root-task-2.md' is not referenced in the root index (add it to .lashignore if it is not a task file)
   at ./root-task-2.md:0:0
-warning[W_INDEX_ORPHAN]: File './root-task-3.md' is not referenced in the root index
+warning[W_INDEX_ORPHAN]: File './root-task-3.md' is not referenced in the root index (add it to .lashignore if it is not a task file)
   at ./root-task-3.md:0:0
 ✓ Linting passed (with warnings)
 
 Summary:
   0 errors, 6 warnings, 0 info, 0 hints
   6 files affected
+  Run 'lash explain W_INDEX_ORPHAN' for details on any code above.

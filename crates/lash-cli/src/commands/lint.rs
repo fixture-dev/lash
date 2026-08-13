@@ -546,6 +546,41 @@ fn print_summary(
     if !files_affected.is_empty() {
         println!("  {} files affected", files_affected.len());
     }
+
+    print_explain_hint(diagnostics, theme);
+}
+
+/// Point at `lash explain` for the codes just reported
+///
+/// The codes above are the only thing a reader has to go on, and every one of
+/// them has an explanation (GitHub issue #58). Naming a code that is actually
+/// on screen makes the next command obvious.
+fn print_explain_hint(diagnostics: &[Diagnostic], theme: Option<&CliTheme>) {
+    let Some(hint) = explain_hint(diagnostics) else {
+        return;
+    };
+
+    if let Some(t) = theme {
+        println!("  {}", t.style_muted(&hint));
+    } else {
+        println!("  {hint}");
+    }
+}
+
+/// Build the `lash explain` hint, using a reported code as the example
+///
+/// Picks the first code `explain` actually knows: an example it would reject
+/// sends the reader to the dead end this hint exists to prevent. Returns `None`
+/// when nothing explainable was reported.
+fn explain_hint(diagnostics: &[Diagnostic]) -> Option<String> {
+    let example = diagnostics
+        .iter()
+        .map(|d| d.code)
+        .find(|code| lash_types::error_explanations::explain_error(code).is_some())?;
+
+    Some(format!(
+        "Run 'lash explain {example}' for details on any code above."
+    ))
 }
 
 /// Load project configuration
@@ -1808,6 +1843,78 @@ mod tests {
         // error_count==0 AND warning_count==0 AND info_count==0 AND hint_count==0:
         // enters the "all passed" branch and returns early
         print_summary(&[], 1, None, false);
+    }
+
+    // GitHub issue #58: the codes in lint output are a dead end unless the
+    // reader knows `lash explain` takes them.
+    #[test]
+    fn test_explain_hint_names_a_reported_code() {
+        let diag = Diagnostic {
+            code: "W_INDEX_ORPHAN",
+            severity: Severity::Warning,
+            message: "orphan".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
+        };
+
+        let hint = explain_hint(&[diag]).expect("hint expected when a code was reported");
+        assert!(
+            hint.contains("lash explain W_INDEX_ORPHAN"),
+            "hint must name a reported code, got: {hint}"
+        );
+    }
+
+    #[test]
+    fn test_explain_hint_absent_when_nothing_reported() {
+        assert!(explain_hint(&[]).is_none());
+    }
+
+    // Suggesting a code `lash explain` would reject is the dead end this hint
+    // exists to prevent, so an unexplainable code is skipped over.
+    #[test]
+    fn test_explain_hint_skips_codes_explain_does_not_know() {
+        let unknown = Diagnostic {
+            code: "X_NOT_A_REAL_CODE",
+            severity: Severity::Error,
+            message: "unknown".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
+        };
+        let known = Diagnostic {
+            code: "E_LINK_NOT_FOUND",
+            severity: Severity::Error,
+            message: "broken link".to_string(),
+            location: None,
+            snippet: None,
+            help: None,
+            labels: None,
+            recovery_command: None,
+            fix_steps: None,
+            explanation: None,
+            docs_url: None,
+        };
+
+        let hint = explain_hint(&[unknown.clone(), known]).expect("hint expected");
+        assert!(
+            hint.contains("lash explain E_LINK_NOT_FOUND"),
+            "hint must skip the unexplainable code, got: {hint}"
+        );
+        assert!(
+            explain_hint(&[unknown]).is_none(),
+            "no hint when nothing reported is explainable"
+        );
     }
 
     /// `print_summary` with only one Error diagnostic must not panic.

@@ -291,7 +291,7 @@ lash skill install --target T   # Install Lash skill into a coding agent (claude
 lash config <SUBCOMMAND>        # Manage configuration (get, set, list, path)
 
 # Error Help
-lash explain <CODE>             # Explain error code (e.g., E001)
+lash explain <CODE>             # Explain any code lint reports (e.g., W_INDEX_ORPHAN)
 lash explain --list             # List all error codes
 ```
 

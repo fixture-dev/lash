@@ -5,12 +5,13 @@ expression: normalized_stdout
 ┓    ┓
 ┃ ┏┓┏┣┓
 ┗┛┗┻┛┛┗
-warning[W_INDEX_ORPHAN]: File './bugs.md' is not referenced in the root index
+warning[W_INDEX_ORPHAN]: File './bugs.md' is not referenced in the root index (add it to .lashignore if it is not a task file)
   at ./bugs.md:0:0
-warning[W_INDEX_ORPHAN]: File './tasks.md' is not referenced in the root index
+warning[W_INDEX_ORPHAN]: File './tasks.md' is not referenced in the root index (add it to .lashignore if it is not a task file)
   at ./tasks.md:0:0
 ✓ Linting passed (with warnings)
 
 Summary:
   0 errors, 2 warnings, 0 info, 0 hints
   2 files affected
+  Run 'lash explain W_INDEX_ORPHAN' for details on any code above.

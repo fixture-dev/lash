@@ -22,6 +22,11 @@ const LOGO_FOR_HELP: &str = "\
     about = "Minimalist Markdown-native task tracker",
     long_about = "Lash is an ultra-fast, Markdown-native task tracker designed for developers and AI agents.\n\
                   It uses Markdown as the single source of truth and SQLite as an acceleration layer.\n\n\
+                  FILE DISCOVERY:\n  \
+                  Commands that walk the project (lint, format, index, check-index) visit every .md\n  \
+                  file under the project root, skipping anything excluded by .gitignore or by a\n  \
+                  .lashignore file. .lashignore uses .gitignore syntax — one pattern per line, e.g.\n  \
+                  'content/' — and is the way to keep non-task Markdown out of Lash entirely.\n\n\
                   EXIT CODES:\n  \
                   0 - Success\n  \
                   1 - General error\n  \
@@ -128,7 +133,17 @@ pub struct LashCli {
 #[allow(clippy::large_enum_variant)]
 pub enum Commands {
     /// Validate Lash task files for errors
-    #[command(alias = "check")]
+    #[command(
+        alias = "check",
+        long_about = "Validate Lash task files for errors.\n\n\
+                      With no PATH, lints every .md file under the project root, skipping anything\n\
+                      excluded by .gitignore or .lashignore. Add a .lashignore at the project root\n\
+                      (.gitignore syntax, one pattern per line, e.g. 'content/') to keep Markdown\n\
+                      that is not a task file out of linting — that is the fix for a directory of\n\
+                      prose reporting W_INDEX_ORPHAN once per file.\n\n\
+                      Run 'lash explain <CODE>' for a detailed explanation of any code reported\n\
+                      here, or 'lash explain --list' to see them all."
+    )]
     Lint {
         /// Files or directories to lint (defaults to current project)
         #[arg(value_name = "PATH")]

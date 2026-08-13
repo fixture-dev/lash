@@ -421,3 +421,22 @@ filed in the flawd repo under `tasks/tasks.fail-fast-degradation.md`.
   - A lint rule was suggested on #48 for hand-edited files. Still not worth
     it: a misattributed body is syntactically indistinguishable from a correct
     one, so there is nothing for the linter to check against
+
+### Post-0.4.0 (dogfooding, 2026-08-13)
+
+- [x] `.lashignore` was undiscoverable, and `lash explain` did not know the linter's codes (#58) #cli #docs
+  - `.lashignore` already worked and was reachable from nothing a user reads
+    when they hit `W_INDEX_ORPHAN` — not the warning, not `lash lint --help`,
+    not `lash --help`. A directory of non-task Markdown produced one warning
+    per file with no visible way out, so the reasonable conclusion was that no
+    ignore mechanism existed
+  - The warning now names `.lashignore` in its message text, not just its
+    `help` field, since help only surfaces under `-v`. Both `--help` surfaces
+    describe file discovery; README and the user guide each gained a section
+  - Second half: `lash explain` knew 46 codes, one of them a warning, and none
+    of the per-rule codes `lash lint` emits. Following the output's own advice
+    dead-ended. All 29 missing codes now have entries, and a registry test
+    fails if a new rule ships without one
+  - `explain --list` was silently dropping every code its if-else prefix chain
+    did not match — all `W_` and `I_` codes. Replaced with a prefix table plus
+    an explicit fallback bucket

@@ -8,6 +8,26 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `lash explain` now knows every code `lash lint` emits. The per-rule syntax,
+  semantic and cross-file codes (`E_SYNTAX_*`, `E_SEM_*`, `E_NOTE_*`,
+  `E_LINK_*`, `W_INDEX_ORPHAN`, and the `W_`/`I_` variants) previously answered
+  "Unknown error code", so following the advice in lint's own output was a dead
+  end. Warnings and info-level codes are also labelled as such rather than
+  introduced as errors.
+- Lint's summary names one of the codes it just reported alongside the
+  `lash explain` invocation for it.
+
+### Fixed
+
+- `.lashignore` is reachable from where users hit it. The `W_INDEX_ORPHAN`
+  warning names it in the message text, `lash lint --help` and `lash --help`
+  describe file discovery, and the README, user guide and error-code reference
+  document it. The mechanism already worked; nothing pointed at it (#58).
+- `lash explain --list` no longer drops codes whose prefix matched no category.
+  Every `W_` and `I_` code was silently missing from the listing.
+
 ## [0.4.0] - 2026-08-11
 
 A task's ID is derived from its title rather than stored, so a change to the
