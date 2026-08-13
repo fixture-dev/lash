@@ -412,6 +412,37 @@ mod tests {
         assert_eq!(registry.category_count(RuleCategory::CrossFile), 5);
     }
 
+    // GitHub issue #58: lint diagnostics tell users to run `lash explain
+    // <CODE>`, so every rule's code must have an explanation. A new rule
+    // without one sends the reader to a dead end.
+    #[test]
+    fn test_every_default_rule_code_is_explainable() {
+        use lash_types::error_explanations::explain_error;
+
+        for rule in register_default_rules(None).all_rules() {
+            let code = rule.code();
+            assert!(
+                explain_error(code).is_some(),
+                "rule {code} has no entry in lash_types::error_explanations — \
+                 add one so `lash explain {code}` works"
+            );
+        }
+    }
+
+    // The severity-dependent codes are emitted by rules whose code() reports
+    // only the warning-level variant, so they need checking separately.
+    #[test]
+    fn test_severity_variant_codes_are_explainable() {
+        use lash_types::error_explanations::explain_error;
+
+        for code in ["E_SEM_DESC_TOO_LONG", "E_NOTE_EXCESSIVE_LENGTH"] {
+            assert!(
+                explain_error(code).is_some(),
+                "{code} is emitted by a rule but has no explanation"
+            );
+        }
+    }
+
     #[test]
     fn test_registry_with_custom_description_length() {
         let config = LintConfig {

@@ -2724,3 +2724,56 @@ printed rather than left implicit.
 The deeper fix available to any project is `@id:`. A pinned ID is the only one
 a future derivation change cannot move, and the docs now say so in the three
 places someone would be reading when they care.
+
+## `.lashignore` and the linter's own codes were unreachable (#58, 2026-08-13)
+
+Two discoverability failures reported from one session of real use, and both
+end at the same place: the user is looking at a diagnostic and the thing that
+resolves it is documented somewhere they are not.
+
+`.lashignore` already worked. It is honoured by both walkers, it has a test,
+and this repo uses one. It appeared in `docs/agent-workflows.md`, `devlog.md`
+and a passing mention in `lash.index.md` — none of which is where someone
+stands when a `content/` directory of prose starts reporting `W_INDEX_ORPHAN`
+once per file and once more with every file added. `lash --help`, `lash lint
+--help` and `lash config list` said nothing, so the reasonable conclusion was
+that no ignore mechanism existed.
+
+It is now named in the warning itself. The per-diagnostic `help` field only
+surfaces under `-v`, which is why the pointer is in the message text: the
+warning is the only surface guaranteed to be read, and one of these per file is
+exactly the situation where the escape hatch has to be on screen. `lash lint
+--help` and the top-level `--help` describe file discovery, and the README and
+user guide each carry a short section.
+
+The second half is what made the first expensive. `lash explain`, which the
+output points at, knew none of the codes `lash lint` emits. `--list` showed 46
+codes, of which one was a warning; `lash explain W_INDEX_ORPHAN` and `lash
+explain E_LINK_NOT_FOUND` both answered "Unknown error code". Following the
+advice in the error output landed on a dead end at the moment of confusion.
+
+The linter's codes and the explanation table were simply never connected: the
+`E_LINT_*` entries in `error_explanations` predate the per-rule `E_SYNTAX_*` /
+`E_SEM_*` / `E_LINK_*` codes the rules actually emit, and nothing forced the
+two sets to agree. All 29 missing codes now have entries, including the two
+that only appear at a different severity (`E_SEM_DESC_TOO_LONG`,
+`E_NOTE_EXCESSIVE_LENGTH`) and are therefore invisible to a rule's `code()`.
+A test in the rule registry walks `register_default_rules` and fails if any
+rule's code has no explanation, so a new rule cannot reintroduce the gap.
+
+`explain --list` was dropping codes silently. Its categoriser was an if-else
+chain over nine prefixes with no fallback, so anything unmatched — every `W_`
+and `I_` code — was collected into no bucket and never printed. It is now a
+prefix table with an explicit "Other Codes" bucket: a code with a new prefix
+shows up in the wrong-looking category instead of vanishing, which is the
+failure mode worth having. Order matters in the table, since
+`E_INDEX_FILE_MISSING` is a cross-file lint rule and would otherwise be claimed
+by the `E_INDEX` database prefix.
+
+`error_explanations.rs` was split into a module directory along the way — it
+was already past the repo's 500-line guideline and this change nearly doubled
+it. The split is by emitting surface (parse, syntax, semantic, cross-file,
+runtime, creation), which is also the grouping `--list` prints.
+
+Finally, the lint summary now closes the loop it opens: it names one of the
+codes it just reported and the `lash explain` invocation for it.

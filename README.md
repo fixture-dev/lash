@@ -167,7 +167,7 @@ This project follows strict quality standards:
 - **Pre-commit hooks**: Auto-enforces formatting, linting, and tests
 - **Zero warnings**: All clippy lints must pass with `clippy::pedantic`
 - **Comprehensive tests**: 3,000+ tests across all crates (>80% coverage target)
-- **Error taxonomy**: 50+ documented error codes in `docs/error-codes.md`
+- **Error taxonomy**: 75+ documented error codes in `docs/error-codes.md`, all queryable with `lash explain`
 - **Doctests**: All public APIs include executable examples
 - **CI/CD**: Automated testing on Linux, macOS, and Windows
 
@@ -264,7 +264,27 @@ lash lint [PATH...] [--fix] [--interactive]
 
 # Format task files (alias: fmt)
 lash format [PATH...] [--check] [--diff]
+
+# Explain any code the linter reports
+lash explain W_INDEX_ORPHAN
+lash explain --list
 ```
+
+### Excluding Files
+
+Commands that walk the project (`lint`, `format`, `index`, `check-index`,
+`check-links`) read every `.md` file under the project root, skipping anything
+excluded by `.gitignore` or by a `.lashignore` at the project root.
+`.lashignore` uses `.gitignore` syntax, so a directory of Markdown that is not
+task files is one line:
+
+```bash
+printf 'content/\n' >> .lashignore
+```
+
+Without it, each such file is reported once per run as `W_INDEX_ORPHAN` ("not
+referenced in the root index"). Common documentation filenames and the `docs/`
+directory are exempt already.
 
 ### Indexing & Database
 

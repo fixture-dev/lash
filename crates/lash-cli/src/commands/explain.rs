@@ -91,52 +91,9 @@ fn list_error_codes(args: &ExplainArgs, theme: Option<&CliTheme>) -> Result<i32>
         }
         println!();
 
-        // Group by category
-        let mut parse_errors = Vec::new();
-        let mut lint_errors = Vec::new();
-        let mut dep_errors = Vec::new();
-        let mut index_errors = Vec::new();
-        let mut query_errors = Vec::new();
-        let mut config_errors = Vec::new();
-        let mut io_errors = Vec::new();
-        let mut create_errors = Vec::new();
-        let mut internal_errors = Vec::new();
-        let mut semantic_warnings = Vec::new();
-
-        for code in &codes {
-            if code.starts_with("E_PARSE") {
-                parse_errors.push(*code);
-            } else if code.starts_with("E_LINT") {
-                lint_errors.push(*code);
-            } else if code.starts_with("E_DEP") {
-                dep_errors.push(*code);
-            } else if code.starts_with("E_INDEX") {
-                index_errors.push(*code);
-            } else if code.starts_with("E_QUERY") {
-                query_errors.push(*code);
-            } else if code.starts_with("E_CONFIG") {
-                config_errors.push(*code);
-            } else if code.starts_with("E_IO") {
-                io_errors.push(*code);
-            } else if code.starts_with("E_CREATE") {
-                create_errors.push(*code);
-            } else if code.starts_with("E_INTERNAL") {
-                internal_errors.push(*code);
-            } else if code.starts_with("W_SEM") {
-                semantic_warnings.push(*code);
-            }
+        for (name, group) in categorize(&codes) {
+            print_category(name, &group, theme);
         }
-
-        print_category("Parse Errors", &parse_errors, theme);
-        print_category("Lint Errors", &lint_errors, theme);
-        print_category("Semantic Warnings", &semantic_warnings, theme);
-        print_category("Dependency Errors", &dep_errors, theme);
-        print_category("Index Errors", &index_errors, theme);
-        print_category("Query Errors", &query_errors, theme);
-        print_category("Config Errors", &config_errors, theme);
-        print_category("IO Errors", &io_errors, theme);
-        print_category("Task Creation Errors", &create_errors, theme);
-        print_category("Internal Errors", &internal_errors, theme);
 
         println!();
         let total_msg = format!("Total: {} error codes available", codes.len());
@@ -150,6 +107,68 @@ fn list_error_codes(args: &ExplainArgs, theme: Option<&CliTheme>) -> Result<i32>
     }
 
     Ok(0)
+}
+
+/// Categories for `--list`, in display order
+///
+/// Each entry is a heading and the code prefixes that belong under it. The
+/// first matching entry wins, so more specific prefixes must come before the
+/// broader ones they would otherwise fall into (`E_INDEX_FILE_MISSING` is a
+/// cross-file lint rule, not a database error).
+const CATEGORIES: &[(&str, &[&str])] = &[
+    ("Parse Errors", &["E_PARSE"]),
+    ("Lint Errors", &["E_LINT"]),
+    ("Syntax Rules", &["E_SYNTAX", "W_SYNTAX", "I_SYNTAX"]),
+    (
+        "Semantic Rules",
+        &["E_SEM", "W_SEM", "I_SEM", "E_NOTE", "W_NOTE"],
+    ),
+    (
+        "Cross-File Rules",
+        &["E_LINK", "E_INDEX_FILE_MISSING", "W_INDEX"],
+    ),
+    ("Dependency Errors", &["E_DEP"]),
+    ("Index Errors", &["E_INDEX"]),
+    ("Query Errors", &["E_QUERY"]),
+    ("Config Errors", &["E_CONFIG"]),
+    ("IO Errors", &["E_IO"]),
+    ("Task Creation Errors", &["E_CREATE"]),
+    ("Internal Errors", &["E_INTERNAL"]),
+];
+
+/// Heading for codes that match no category
+///
+/// A new code should get a category, but landing here beats being silently
+/// dropped from `--list` — which is how the linter's own codes went missing.
+const UNCATEGORIZED: &str = "Other Codes";
+
+/// Group codes into the display categories
+///
+/// Returns one entry per non-empty category, in [`CATEGORIES`] order, with any
+/// unmatched codes last under [`UNCATEGORIZED`].
+fn categorize<'a>(codes: &[&'a str]) -> Vec<(&'static str, Vec<&'a str>)> {
+    let mut groups: Vec<(&'static str, Vec<&'a str>)> = CATEGORIES
+        .iter()
+        .map(|(name, _)| (*name, Vec::new()))
+        .collect();
+    let mut other = Vec::new();
+
+    for code in codes {
+        let category = CATEGORIES
+            .iter()
+            .position(|(_, prefixes)| prefixes.iter().any(|prefix| code.starts_with(prefix)));
+
+        match category {
+            Some(index) => groups[index].1.push(code),
+            None => other.push(*code),
+        }
+    }
+
+    groups.retain(|(_, group)| !group.is_empty());
+    if !other.is_empty() {
+        groups.push((UNCATEGORIZED, other));
+    }
+    groups
 }
 
 /// Print a category of error codes
@@ -178,6 +197,21 @@ fn print_category(name: &str, codes: &[&str], theme: Option<&CliTheme>) {
     println!();
 }
 
+/// Heading label for a code, taken from its severity prefix
+///
+/// `lash explain` now answers for warnings and info-level rules too, so calling
+/// every one of them "Error:" would contradict the diagnostic the reader came
+/// from.
+fn severity_label(code: &str) -> &'static str {
+    if code.starts_with('W') {
+        "Warning:"
+    } else if code.starts_with('I') {
+        "Info:"
+    } else {
+        "Error:"
+    }
+}
+
 /// Print explanation in human-readable format
 fn print_human(
     explanation: &lash_types::error_explanations::ErrorExplanation,
@@ -185,12 +219,15 @@ fn print_human(
 ) {
     println!();
 
+    let label = severity_label(explanation.code);
+
     if let Some(t) = theme {
-        println!(
-            "{} {}",
-            t.style_error("Error:"),
-            t.style_warning(explanation.code)
-        );
+        let styled_label = match label {
+            "Warning:" => t.style_warning(label),
+            "Info:" => t.style_info(label),
+            _ => t.style_error(label),
+        };
+        println!("{} {}", styled_label, t.style_warning(explanation.code));
         println!();
         println!("{}", t.style_label(explanation.summary));
         println!();
@@ -228,7 +265,7 @@ fn print_human(
             println!();
         }
     } else {
-        println!("Error: {}", explanation.code);
+        println!("{label} {}", explanation.code);
         println!();
         println!("{}", explanation.summary);
         println!();
@@ -582,6 +619,126 @@ mod tests {
         // (kills mut-000263 through mut-000271 by traversing each branch)
         let result = execute(&args).unwrap();
         assert_eq!(result, 0);
+    }
+
+    // GitHub issue #58: codes that matched no prefix were dropped from --list
+    // without a trace. Every listed code must now appear under some heading.
+    #[test]
+    fn test_categorize_covers_every_listed_code() {
+        use lash_types::error_explanations::all_error_codes;
+
+        let codes = all_error_codes();
+        let grouped: Vec<&str> = categorize(&codes)
+            .into_iter()
+            .flat_map(|(_, group)| group)
+            .collect();
+
+        assert_eq!(
+            grouped.len(),
+            codes.len(),
+            "every code must land in exactly one category"
+        );
+        for code in &codes {
+            assert!(grouped.contains(code), "{code} was dropped by categorize()");
+        }
+    }
+
+    // No code should currently need the fallback bucket.
+    #[test]
+    fn test_categorize_leaves_nothing_uncategorized() {
+        use lash_types::error_explanations::all_error_codes;
+
+        let codes = all_error_codes();
+        let uncategorized = categorize(&codes)
+            .into_iter()
+            .find(|(name, _)| *name == UNCATEGORIZED);
+
+        assert!(
+            uncategorized.is_none(),
+            "unexpected uncategorized codes: {uncategorized:?}"
+        );
+    }
+
+    // E_INDEX_FILE_MISSING is a cross-file lint rule; the broader E_INDEX
+    // prefix (database errors) must not claim it first.
+    #[test]
+    fn test_categorize_routes_index_file_missing_to_cross_file_rules() {
+        let codes = vec!["E_INDEX_FILE_MISSING", "E_INDEX_CORRUPTED"];
+        let grouped = categorize(&codes);
+
+        let cross_file = grouped
+            .iter()
+            .find(|(name, _)| *name == "Cross-File Rules")
+            .expect("Cross-File Rules category expected");
+        assert_eq!(cross_file.1, vec!["E_INDEX_FILE_MISSING"]);
+
+        let index = grouped
+            .iter()
+            .find(|(name, _)| *name == "Index Errors")
+            .expect("Index Errors category expected");
+        assert_eq!(index.1, vec!["E_INDEX_CORRUPTED"]);
+    }
+
+    // Empty categories are omitted rather than printed with no codes.
+    #[test]
+    fn test_categorize_omits_empty_categories() {
+        let codes = vec!["E_PARSE_INVALID_CHECKBOX"];
+        let grouped = categorize(&codes);
+
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].0, "Parse Errors");
+    }
+
+    // A code matching no prefix falls into the fallback bucket instead of
+    // vanishing from the listing.
+    #[test]
+    fn test_categorize_puts_unknown_prefix_in_fallback() {
+        let codes = vec!["X_BRAND_NEW_PREFIX"];
+        let grouped = categorize(&codes);
+
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].0, UNCATEGORIZED);
+        assert_eq!(grouped[0].1, vec!["X_BRAND_NEW_PREFIX"]);
+    }
+
+    #[test]
+    fn test_severity_label_follows_code_prefix() {
+        assert_eq!(severity_label("E_LINK_NOT_FOUND"), "Error:");
+        assert_eq!(severity_label("W_INDEX_ORPHAN"), "Warning:");
+        assert_eq!(severity_label("I_SEM_AUTO_WAIVE"), "Info:");
+    }
+
+    // A warning must not be introduced as "Error:" — it would contradict the
+    // diagnostic the reader came from.
+    #[test]
+    fn test_binary_explain_warning_code_is_labelled_warning() {
+        let Some(stdout) = run_lash(&["--no-color", "explain", "W_INDEX_ORPHAN"]) else {
+            return;
+        };
+        assert!(
+            stdout.contains("Warning: W_INDEX_ORPHAN"),
+            "warning code must be labelled Warning:, got: {stdout}"
+        );
+    }
+
+    // The linter's own codes must be explainable — the lint output tells users
+    // to run `lash explain <CODE>`.
+    #[test]
+    fn test_execute_with_linter_rule_codes() {
+        for code in [
+            "W_INDEX_ORPHAN",
+            "E_LINK_NOT_FOUND",
+            "E_SYNTAX_CHECKBOX",
+            "E_SEM_DUPLICATE_ID",
+        ] {
+            let args = ExplainArgs {
+                code: code.to_string(),
+                list: false,
+                json: false,
+                no_color: true,
+            };
+            assert_eq!(execute(&args).unwrap(), 0, "{code} must be explainable");
+        }
     }
 
     // Kill mut-000274: print_category skips empty slices

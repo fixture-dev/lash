@@ -2,7 +2,98 @@
 
 This document describes all error codes used by Lash, organized by category.
 
+Every code listed here is also available from the CLI:
+
+```bash
+lash explain W_INDEX_ORPHAN   # one code, in detail
+lash explain --list           # every code, grouped by category
+```
+
+## Linter Rule Codes
+
+These are the codes `lash lint` emits. Run `lash explain <CODE>` for the full
+entry — what the rule checks, why it matters, and how to fix it — with examples.
+
+### Syntax rules
+
+| Code | Meaning |
+| --- | --- |
+| `E_SYNTAX_CHECKBOX` | Checkbox marker is not one of `[ ]`, `[x]`, `[-]`, `[!]` |
+| `E_SYNTAX_INDENT` | Checkbox indentation is not a multiple of 2 spaces |
+| `E_SYNTAX_DEPTH` | Task nesting exceeds the configured `max_depth` |
+| `E_SYNTAX_ANNOTATION` | Annotation line does not match `@key: value` |
+| `E_SYNTAX_UNKNOWN_KEY` | Annotation key is neither built-in nor declared in `custom_annotation_keys` |
+| `E_SYNTAX_DUPLICATE_DESCRIPTION` | File has more than one `## Description` section |
+| `W_SYNTAX_HEADER` | File is missing its H1 title or `## Tasks` section |
+| `I_SYNTAX_ORDER` | Annotations are not in the conventional order |
+
+### Semantic rules
+
+| Code | Meaning |
+| --- | --- |
+| `E_SEM_DUPLICATE_ID` | Two tasks in the same file share an ID |
+| `E_SEM_EMPTY_TITLE` | Task has an empty title |
+| `E_SEM_INVALID_DATE` | Date annotation is not a valid `YYYY-MM-DD` date |
+| `E_SEM_INVALID_DOC` | `@doc:` points at a file that does not exist |
+| `E_SEM_INVALID_ESTIMATE` | `@estimate:` is not a number plus a unit (`h`/`d`/`w`/`m`/`y`) |
+| `E_SEM_INVALID_LABEL` | Label is not lowercase alphanumeric with hyphens/underscores |
+| `E_SEM_DESC_TOO_LONG` | Description exceeds the hard length limit |
+| `W_SEM_DESC_TOO_LONG` | Description exceeds the recommended length |
+| `W_SEM_DOC_FRAGMENT` | `@doc:` fragment matches no heading in the target document |
+| `W_SEM_OWNER_FORMAT` | `@owner:` is empty or implausibly long |
+| `W_SEM_STATUS_INCONSISTENT` | Parent is marked done while a child is still open |
+| `I_SEM_AUTO_WAIVE` | Children of a waived parent can be auto-waived |
+| `E_NOTE_INVALID_INDENT` | Contextual note is not indented 2 spaces past its task |
+| `E_NOTE_HAS_CHILDREN` | Contextual note has nested children |
+| `E_NOTE_EXCESSIVE_LENGTH` | Contextual note exceeds the hard length limit (500 chars) |
+| `W_NOTE_TOO_LONG` | Contextual note exceeds the recommended length (200 chars) |
+| `W_NOTE_AFTER_CHILD_TASKS` | Contextual note appears after child tasks |
+
+### Cross-file rules
+
+| Code | Meaning |
+| --- | --- |
+| `E_LINK_NOT_FOUND` | `@depends-on:` target file or task does not exist |
+| `E_LINK_CYCLE` | Dependency references form a cycle |
+| `E_LINK_INVALID_PATH` | Dependency path is malformed or escapes the project root |
+| `E_INDEX_FILE_MISSING` | Root index references a file that does not exist |
+| `W_INDEX_ORPHAN` | Markdown file is not referenced in the root index |
+
+#### W_INDEX_ORPHAN and `.lashignore`
+
+`W_INDEX_ORPHAN` fires once per unreferenced `.md` file, so a directory of
+non-task Markdown produces a warning per file and one more with every file
+added. Two ways out:
+
+- The file **is** a task file → add a link to it in `lash.index.md`.
+- The file **is not** a task file → add it to `.lashignore` at the project root.
+  `.lashignore` uses `.gitignore` syntax (one pattern per line, trailing `/` for
+  a directory) and removes the path from file discovery for every command that
+  walks the project.
+
+```
+# .lashignore
+content/
+vendor/
+NOTES.md
+```
+
+Common documentation filenames (`README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
+`devlog.md`, …) and the `docs/`, `doc/`, `documentation/` and `.github/`
+directories are exempt from this warning without any configuration.
+
+---
+
 ## Parse Errors (E_PARSE_*)
+
+### E_PARSE
+
+**Description:** A file could not be parsed; the diagnostic message carries the
+specific reason and the line it stopped on. The codes below describe the
+individual causes.
+
+**How to fix:** Fix the line named in the message. `lash format` resolves the
+common causes (checkbox markers, annotation spacing, indentation).
 
 ### E_PARSE_INVALID_CHECKBOX
 
@@ -71,6 +162,10 @@ This document describes all error codes used by Lash, organized by category.
 ---
 
 ## Lint Errors (E_LINT_*)
+
+These are the older generic lint codes. `lash lint` now reports the per-rule
+codes listed under [Linter Rule Codes](#linter-rule-codes); the `E_LINT_*` codes
+remain valid input to `lash explain` so older output and scripts keep resolving.
 
 ### E_LINT_DEPTH_EXCEEDED
 

@@ -1132,6 +1132,8 @@ impl fmt::Display for Severity {
 /// - Agent integration
 pub mod codes {
     // Parse errors (E_PARSE_*)
+    /// A file could not be parsed; the message carries the specific reason
+    pub const E_PARSE: &str = "E_PARSE";
     /// Invalid checkbox syntax
     pub const E_PARSE_INVALID_CHECKBOX: &str = "E_PARSE_INVALID_CHECKBOX";
     /// Malformed annotation
@@ -1158,8 +1160,75 @@ pub mod codes {
     pub const E_LINT_BAD_INDENTATION: &str = "E_LINT_BAD_INDENTATION";
     /// Invalid label format
     pub const E_LINT_INVALID_LABEL: &str = "E_LINT_INVALID_LABEL";
+    // Linter rule codes — the codes `lash lint` actually emits.
+    //
+    // Syntax rules (E_SYNTAX_*, W_SYNTAX_*, I_SYNTAX_*)
+    /// Checkbox marker is not one of `[ ]`, `[x]`, `[-]`, `[!]`
+    pub const E_SYNTAX_CHECKBOX: &str = "E_SYNTAX_CHECKBOX";
+    /// Checkbox indentation is not a multiple of 2 spaces
+    pub const E_SYNTAX_INDENT: &str = "E_SYNTAX_INDENT";
+    /// Task nesting exceeds the configured depth limit
+    pub const E_SYNTAX_DEPTH: &str = "E_SYNTAX_DEPTH";
+    /// Annotation line does not match `@key: value`
+    pub const E_SYNTAX_ANNOTATION: &str = "E_SYNTAX_ANNOTATION";
+    /// Annotation key is neither built-in nor explicitly allowed
+    pub const E_SYNTAX_UNKNOWN_KEY: &str = "E_SYNTAX_UNKNOWN_KEY";
+    /// File has more than one `## Description` section
+    pub const E_SYNTAX_DUPLICATE_DESCRIPTION: &str = "E_SYNTAX_DUPLICATE_DESCRIPTION";
+    /// File is missing its H1 title or `## Tasks` section
+    pub const W_SYNTAX_HEADER: &str = "W_SYNTAX_HEADER";
+    /// Annotations are not in the conventional order
+    pub const I_SYNTAX_ORDER: &str = "I_SYNTAX_ORDER";
+
+    // Semantic rules (E_SEM_*, W_SEM_*, I_SEM_*)
+    /// Two tasks in the same file share an ID
+    pub const E_SEM_DUPLICATE_ID: &str = "E_SEM_DUPLICATE_ID";
+    /// Task has an empty title
+    pub const E_SEM_EMPTY_TITLE: &str = "E_SEM_EMPTY_TITLE";
+    /// Date annotation is not a valid `YYYY-MM-DD` date
+    pub const E_SEM_INVALID_DATE: &str = "E_SEM_INVALID_DATE";
+    /// `@doc:` annotation points at a file that does not exist
+    pub const E_SEM_INVALID_DOC: &str = "E_SEM_INVALID_DOC";
+    /// `@estimate:` value is not a number followed by h/d/w/m/y
+    pub const E_SEM_INVALID_ESTIMATE: &str = "E_SEM_INVALID_ESTIMATE";
+    /// Label is not lowercase alphanumeric with hyphens/underscores
+    pub const E_SEM_INVALID_LABEL: &str = "E_SEM_INVALID_LABEL";
+    /// Description exceeds the hard length limit
+    pub const E_SEM_DESC_TOO_LONG: &str = "E_SEM_DESC_TOO_LONG";
+    /// Description exceeds the recommended length
+    pub const W_SEM_DESC_TOO_LONG: &str = "W_SEM_DESC_TOO_LONG";
     /// `@doc:` fragment does not match any heading in the target document
     pub const W_SEM_DOC_FRAGMENT: &str = "W_SEM_DOC_FRAGMENT";
+    /// `@owner:` value is empty or implausibly long
+    pub const W_SEM_OWNER_FORMAT: &str = "W_SEM_OWNER_FORMAT";
+    /// Parent is marked done while a child is still open
+    pub const W_SEM_STATUS_INCONSISTENT: &str = "W_SEM_STATUS_INCONSISTENT";
+    /// Children of a waived parent can be auto-waived
+    pub const I_SEM_AUTO_WAIVE: &str = "I_SEM_AUTO_WAIVE";
+
+    // Contextual note rules (E_NOTE_*, W_NOTE_*)
+    /// Contextual note is not indented 2 spaces past its task
+    pub const E_NOTE_INVALID_INDENT: &str = "E_NOTE_INVALID_INDENT";
+    /// Contextual note has nested children
+    pub const E_NOTE_HAS_CHILDREN: &str = "E_NOTE_HAS_CHILDREN";
+    /// Contextual note exceeds the hard length limit
+    pub const E_NOTE_EXCESSIVE_LENGTH: &str = "E_NOTE_EXCESSIVE_LENGTH";
+    /// Contextual note exceeds the recommended length
+    pub const W_NOTE_TOO_LONG: &str = "W_NOTE_TOO_LONG";
+    /// Contextual note appears after child tasks
+    pub const W_NOTE_AFTER_CHILD_TASKS: &str = "W_NOTE_AFTER_CHILD_TASKS";
+
+    // Cross-file rules (E_LINK_*, E_INDEX_FILE_MISSING, W_INDEX_ORPHAN)
+    /// `@depends-on:` target file or task does not exist
+    pub const E_LINK_NOT_FOUND: &str = "E_LINK_NOT_FOUND";
+    /// Dependency references form a cycle
+    pub const E_LINK_CYCLE: &str = "E_LINK_CYCLE";
+    /// Dependency path is malformed or escapes the project root
+    pub const E_LINK_INVALID_PATH: &str = "E_LINK_INVALID_PATH";
+    /// Root index references a file that does not exist
+    pub const E_INDEX_FILE_MISSING: &str = "E_INDEX_FILE_MISSING";
+    /// Markdown file is not referenced in the root index
+    pub const W_INDEX_ORPHAN: &str = "W_INDEX_ORPHAN";
 
     // Dependency errors (E_DEP_*)
     /// Dependency target not found

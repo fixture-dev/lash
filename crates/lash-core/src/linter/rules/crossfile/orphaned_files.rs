@@ -15,6 +15,11 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// This rule checks that all task files in the project are referenced in the root
 /// index. Files not in the index are considered "orphaned" and generate a warning.
 ///
+/// Common documentation filenames (README.md, CHANGELOG.md, …) and documentation
+/// directories (`docs/`, `.github/`, …) are exempt. Anything else that is not a
+/// task file — prose, generated content — belongs in a `.lashignore` at the
+/// project root, which removes it from file discovery entirely.
+///
 /// # Examples
 ///
 /// Valid (no orphaned files):
@@ -258,15 +263,22 @@ impl LintRule for OrphanedFilesRule {
                 LintDiagnostic::warning(
                     self.code(),
                     format!(
-                        "File '{}' is not referenced in the root index",
+                        "File '{}' is not referenced in the root index \
+                         (add it to .lashignore if it is not a task file)",
                         file.path.display()
                     ),
                     file.path.clone(),
                     0,
                     0,
                 )
+                // The per-diagnostic help only surfaces under `-v`, which is
+                // why the .lashignore pointer is in the message too: a
+                // directory of non-task Markdown produces one of these per
+                // file, and the escape hatch has to be visible from the
+                // warning itself (GitHub issue #58).
                 .with_help(format!(
-                    "Add '{}' to {} or move to an archive directory",
+                    "Add '{}' to {}, list it in .lashignore if it is not a task file, \
+                     or move it to an archive directory",
                     file.path.display(),
                     index_file.path.display()
                 )),
@@ -389,6 +401,45 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, "W_INDEX_ORPHAN");
         assert!(diagnostics[0].message.contains("orphan.md"));
+    }
+
+    // GitHub issue #58: a directory of non-task Markdown produces one of these
+    // per file, and `.lashignore` — the fix — was reachable from no surface a
+    // user looks at. The message itself carries the pointer because help text
+    // only shows under `-v`.
+    #[test]
+    fn test_orphan_message_points_at_lashignore() {
+        let rule = OrphanedFilesRule::new();
+        let config = LashConfig::default();
+
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("lash.index.md"),
+            make_index_file("lash.index.md", &["tasks.md"]),
+        );
+        files.insert(
+            PathBuf::from("content/a-post.md"),
+            make_regular_file("content/a-post.md", "a-post"),
+        );
+
+        let ctx = LintContext::new(&config, PathBuf::from("content/a-post.md"), &files);
+        let orphan_file = files.get(&PathBuf::from("content/a-post.md")).unwrap();
+
+        let diagnostics = rule.check_file(orphan_file, &ctx);
+        assert_eq!(diagnostics.len(), 1);
+        assert!(
+            diagnostics[0].message.contains(".lashignore"),
+            "message must name .lashignore, got: {}",
+            diagnostics[0].message
+        );
+        assert!(
+            diagnostics[0]
+                .help
+                .as_ref()
+                .is_some_and(|help| help.contains(".lashignore")),
+            "help must name .lashignore, got: {:?}",
+            diagnostics[0].help
+        );
     }
 
     #[test]

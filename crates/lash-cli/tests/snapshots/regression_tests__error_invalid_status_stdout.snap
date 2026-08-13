@@ -11,3 +11,4 @@ error[E_PARSE]: Failed to parse file: parse error: Invalid checkbox status '?': 
 Summary:
   1 errors, 0 warnings, 0 info, 0 hints
   1 files affected
+  Run 'lash explain E_PARSE' for details on any code above.

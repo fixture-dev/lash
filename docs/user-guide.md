@@ -141,6 +141,36 @@ my-project/
 - Reference task files from your index
 - Add `.lash/lash.db` to `.gitignore`
 
+### Excluding Files with `.lashignore`
+
+Every command that walks the project — `lash lint`, `lash format`, `lash index`,
+`lash check-index`, `lash check-links` — visits every `.md` file under the
+project root. Files excluded by `.gitignore` are skipped automatically, and so
+are files matched by a `.lashignore` at the project root.
+
+`.lashignore` uses `.gitignore` syntax: one pattern per line, a trailing `/` for
+a directory.
+
+```
+# .lashignore
+content/          # prose that ships with the site, never tasks
+vendor/
+NOTES.md
+```
+
+Reach for it when a directory of Markdown is not task files. Without it, every
+such file is reported once per lint run:
+
+```
+warning[W_INDEX_ORPHAN]: File 'content/a-post.md' is not referenced in the root index
+  (add it to .lashignore if it is not a task file)
+```
+
+Common documentation names (`README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
+`devlog.md`, …) and the `docs/`, `doc/`, `documentation/` and `.github/`
+directories are already exempt from that warning — you only need `.lashignore`
+for everything else.
+
 ### Try the Playground
 
 Want to explore Lash features without setting up your own project? Use the playground:
@@ -514,6 +544,19 @@ lash lint --fix --diff
 - Duplicate IDs within files
 - Contextual note placement
 - Indentation consistency
+- Cross-file links and root-index coverage
+
+**Which files it reads:** every `.md` file under the project root, minus
+anything excluded by `.gitignore` or `.lashignore`. See
+[Excluding Files with `.lashignore`](#excluding-files-with-lashignore).
+
+**Understanding a diagnostic:** every code the linter reports is explained by
+`lash explain`:
+
+```bash
+lash explain W_INDEX_ORPHAN   # what the code means, why, and how to fix it
+lash explain --list           # every code, grouped by category
+```
 
 #### `lash format`
 
