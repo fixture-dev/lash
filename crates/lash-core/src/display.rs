@@ -21,23 +21,83 @@ use std::path::Path;
 /// ```
 #[must_use]
 pub fn extract_link_path(text: &str) -> Option<String> {
-    // Try to match [link text](path) pattern
-    let open_bracket = text.find('[')?;
-    let close_bracket = text.find("](")?;
+    extract_link_paths(text).into_iter().next()
+}
 
-    if open_bracket >= close_bracket {
-        return None;
+/// Extract every Markdown link destination on a line, in order
+///
+/// Unlike [`extract_link_path`], this collects all links rather than just the
+/// first, and each destination ends at the parenthesis that closes *its* link
+/// rather than at the last parenthesis on the line. Parentheses nested inside a
+/// destination are balanced; angle-bracketed destinations (`[a](<b c.md>)`) are
+/// unwrapped.
+///
+/// # Examples
+///
+/// ```
+/// use lash_core::display::extract_link_paths;
+///
+/// assert_eq!(
+///     extract_link_paths("[A](a.md) and [B](b.md) (see also)"),
+///     vec!["a.md".to_string(), "b.md".to_string()]
+/// );
+/// assert_eq!(extract_link_paths("Plain text"), Vec::<String>::new());
+/// ```
+#[must_use]
+pub fn extract_link_paths(text: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(offset) = text[cursor..].find("](") {
+        let close_bracket = cursor + offset;
+        let dest_start = close_bracket + 2; // Skip "]("
+
+        // A destination only counts as a link if some `[` opens it.
+        if !text[cursor..close_bracket].contains('[') {
+            cursor = dest_start;
+            continue;
+        }
+
+        let Some(dest_end) = find_dest_end(text, dest_start) else {
+            break;
+        };
+
+        let dest = text[dest_start..dest_end].trim();
+        let dest = dest
+            .strip_prefix('<')
+            .and_then(|inner| inner.strip_suffix('>'))
+            .unwrap_or(dest);
+        if !dest.is_empty() {
+            paths.push(dest.to_string());
+        }
+
+        cursor = dest_end + 1; // Skip the closing ')'
     }
 
-    let path_start = close_bracket + 2; // Skip "]("
-    let close_paren = text[path_start..].find(')')?;
-    let path = &text[path_start..path_start + close_paren];
+    paths
+}
 
-    if path.is_empty() {
-        None
-    } else {
-        Some(path.to_string())
+/// Find the parenthesis that closes a link destination starting at `start`
+///
+/// Parentheses inside the destination are balanced, so `[a](f(1).md)` ends at
+/// the final `)` rather than the one after `1`.
+fn find_dest_end(text: &str, start: usize) -> Option<usize> {
+    let mut depth = 0usize;
+
+    for (offset, ch) in text[start..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                if depth == 0 {
+                    return Some(start + offset);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
     }
+
+    None
 }
 
 /// Extract link text from Markdown links
@@ -223,6 +283,54 @@ mod tests {
 
         // Backtick path (no transformation - not a link)
         assert_eq!(extract_link_text("`path/file.md`"), "`path/file.md`");
+    }
+
+    #[test]
+    fn test_extract_link_paths() {
+        // Every link on the line is collected, in order
+        assert_eq!(
+            extract_link_paths("[A](a.md) and [B](b.md)"),
+            vec!["a.md".to_string(), "b.md".to_string()]
+        );
+
+        // A later ')' does not extend the destination (GitHub issue #60)
+        assert_eq!(
+            extract_link_paths("[A](a.md) (see also)"),
+            vec!["a.md".to_string()]
+        );
+
+        // Parentheses inside the destination are balanced
+        assert_eq!(
+            extract_link_paths("[Copy](a(1).md)"),
+            vec!["a(1).md".to_string()]
+        );
+
+        // Angle brackets are unwrapped
+        assert_eq!(
+            extract_link_paths("[A](<my file.md>)"),
+            vec!["my file.md".to_string()]
+        );
+
+        // Empty destinations and non-links are skipped
+        assert!(extract_link_paths("[A]()").is_empty());
+        assert!(extract_link_paths("Plain text").is_empty());
+        assert!(extract_link_paths("not a link](a.md)").is_empty());
+
+        // Unterminated destination
+        assert!(extract_link_paths("[A](a.md").is_empty());
+    }
+
+    #[test]
+    fn test_extract_link_path_first_link_only() {
+        assert_eq!(
+            extract_link_path("[A](a.md) and [B](b.md)"),
+            Some("a.md".to_string())
+        );
+        assert_eq!(
+            extract_link_path("[A](a.md) (see also)"),
+            Some("a.md".to_string())
+        );
+        assert_eq!(extract_link_path("Plain text"), None);
     }
 
     #[test]

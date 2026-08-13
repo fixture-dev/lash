@@ -2777,3 +2777,41 @@ runtime, creation), which is also the grouping `--list` prints.
 
 Finally, the lint summary now closes the loop it opens: it names one of the
 codes it just reported and the `lash explain` invocation for it.
+
+## A trailing parenthetical hid an index entry (#60, 2026-08-13)
+
+`W_INDEX_ORPHAN` reported files the index does reference. Annotating an entry
+was enough to trigger it:
+
+```markdown
+- [Alpha](tasks/alpha.md) (historical, superseded)
+```
+
+`extract_markdown_link_path` took the destination from the first `](` to
+`rfind(')')` — the last parenthesis on the line, not the one closing the link.
+For that entry the path became `tasks/alpha.md) (historical, superseded`, which
+matches nothing on disk. The `.md` extension guard below usually dropped the
+garbage silently, so the reference simply went missing and the file looked
+orphaned.
+
+The two-link case was worse: `[Alpha](a.md) and [Beta](b.md)` yields
+`a.md) and [Beta](b.md`, whose last component still ends in `.md`. The guard
+passed, a nonsense path was recorded as a legitimate reference, and both real
+files were reported as orphans. `find` for the opening delimiter also meant
+only the first link on a line was ever considered.
+
+Destinations now end at the parenthesis that closes their own link, with nested
+parentheses balanced, and the scan continues along the line so every link is
+collected. The scanner lives in `display::extract_link_paths`, since
+`display::extract_link_path` was already doing the forward scan for a single
+link and now delegates to it; the orphan rule keeps only the destinations that
+name a Markdown file or a directory. Angle-bracketed destinations are unwrapped
+and a CommonMark link title is stripped, but only as a fallback — a bare path
+containing spaces is tried whole first, so `[A](tasks/my file.md)` still
+resolves.
+
+What made this expensive to diagnose is that the diagnostic names the orphaned
+file, not the index line that failed to parse, so the obvious repair is the one
+thing already done. Worth remembering the next time a cross-file rule reports
+an absence: the report points at the symptom, and the parse that produced it is
+never on screen.

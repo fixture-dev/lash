@@ -21,6 +21,15 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ### Fixed
 
+- `W_INDEX_ORPHAN` no longer fires for files the root index does reference. A
+  link destination ended at the last `)` on the line, so an entry annotated
+  with a parenthetical — `- [Alpha](tasks/alpha.md) (superseded)` — recorded a
+  path matching no file, and only the first link on a line was read at all, so
+  two links on one line reported both files as orphans. Destinations now end at
+  the parenthesis that closes their own link, parentheses inside a path are
+  balanced, angle-bracketed and titled destinations are understood, and every
+  link on a line is collected (#60).
+
 - `.lashignore` is reachable from where users hit it. The `W_INDEX_ORPHAN`
   warning names it in the message text, `lash lint --help` and `lash --help`
   describe file discovery, and the README, user guide and error-code reference
