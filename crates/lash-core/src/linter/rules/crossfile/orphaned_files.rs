@@ -118,18 +118,18 @@ impl OrphanedFilesRule {
         for task in file.tasks.tasks() {
             let title = task.title.trim();
 
-            // Try to extract path from markdown link [text](path)
-            if let Some(path) = Self::extract_markdown_link_path(title) {
-                references.push(path);
+            // Try to extract paths from markdown links [text](path)
+            let linked = Self::extract_markdown_link_paths(title);
+            if !linked.is_empty() {
+                for path in linked {
+                    Self::push_reference(&mut references, path);
+                }
                 continue;
             }
 
             // Fall back to checking if the title itself is a path
-            if std::path::Path::new(title)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-            {
-                references.push(title.to_string());
+            if Self::is_markdown_path(title) {
+                Self::push_reference(&mut references, title.to_string());
             }
         }
 
@@ -145,11 +145,9 @@ impl OrphanedFilesRule {
                 {
                     continue;
                 }
-                // Check for markdown link on this line
-                if let Some(path) = Self::extract_markdown_link_path(line) {
-                    if !references.contains(&path) {
-                        references.push(path);
-                    }
+                // Check for markdown links on this line
+                for path in Self::extract_markdown_link_paths(line) {
+                    Self::push_reference(&mut references, path);
                 }
             }
         }
@@ -157,26 +155,50 @@ impl OrphanedFilesRule {
         references
     }
 
-    /// Extract path from a markdown link format: `\[text\](path)`
-    ///
-    /// Returns Some(path) if found, None otherwise
-    fn extract_markdown_link_path(text: &str) -> Option<String> {
-        // Look for pattern [...](...)
-        let open_paren = text.find("](")?;
-        let close_paren = text.rfind(')')?;
+    /// Record a reference, skipping ones already collected
+    fn push_reference(references: &mut Vec<String>, path: String) {
+        if !references.contains(&path) {
+            references.push(path);
+        }
+    }
 
-        if open_paren + 2 < close_paren {
-            let path = &text[open_paren + 2..close_paren];
-            // Accept paths ending in .md or directories ending in /
-            let is_md = std::path::Path::new(path)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
-            if is_md || path.ends_with('/') {
-                return Some(path.to_string());
-            }
+    /// Extract every task-file path linked from a line of the index
+    ///
+    /// A line may carry more than one link, and a link may be followed by a
+    /// parenthetical, so each destination is delimited by the parenthesis that
+    /// closes its own link (GitHub issue #60). Destinations that do not name a
+    /// Markdown file or a directory are ignored.
+    fn extract_markdown_link_paths(text: &str) -> Vec<String> {
+        crate::display::extract_link_paths(text)
+            .iter()
+            .filter_map(|dest| Self::link_dest_as_file_reference(dest))
+            .collect()
+    }
+
+    /// Narrow a link destination to a file reference, if it is one
+    ///
+    /// A destination may carry a link title (`path.md "Title"`), so when the
+    /// destination as a whole does not name a file, its first token is tried.
+    /// Bare paths containing spaces still resolve, since they are checked first.
+    fn link_dest_as_file_reference(dest: &str) -> Option<String> {
+        if Self::is_file_reference(dest) {
+            return Some(dest.to_string());
         }
 
-        None
+        let first_token = dest.split_whitespace().next()?;
+        Self::is_file_reference(first_token).then(|| first_token.to_string())
+    }
+
+    /// Check whether a link destination names a Markdown file or a directory
+    fn is_file_reference(path: &str) -> bool {
+        Self::is_markdown_path(path) || path.ends_with('/')
+    }
+
+    /// Check whether a path names a Markdown file
+    fn is_markdown_path(path: &str) -> bool {
+        Path::new(path)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
     }
 
     /// Find the root index file in the context
@@ -589,38 +611,137 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_markdown_link_path() {
+    fn test_extract_markdown_link_paths() {
         // Standard markdown link
         assert_eq!(
-            OrphanedFilesRule::extract_markdown_link_path("[Title](path/to/file.md)"),
-            Some("path/to/file.md".to_string())
+            OrphanedFilesRule::extract_markdown_link_paths("[Title](path/to/file.md)"),
+            vec!["path/to/file.md".to_string()]
         );
 
         // Link with annotations after
         assert_eq!(
-            OrphanedFilesRule::extract_markdown_link_path(
+            OrphanedFilesRule::extract_markdown_link_paths(
                 "[Physics](systems/physics.md) @id:`systems.physics`"
             ),
-            Some("systems/physics.md".to_string())
+            vec!["systems/physics.md".to_string()]
         );
 
         // Directory reference
         assert_eq!(
-            OrphanedFilesRule::extract_markdown_link_path("[World 1](worlds/forest/)"),
-            Some("worlds/forest/".to_string())
+            OrphanedFilesRule::extract_markdown_link_paths("[World 1](worlds/forest/)"),
+            vec!["worlds/forest/".to_string()]
         );
 
         // Plain text (no link)
-        assert_eq!(
-            OrphanedFilesRule::extract_markdown_link_path("Just plain text"),
-            None
-        );
+        assert!(OrphanedFilesRule::extract_markdown_link_paths("Just plain text").is_empty());
 
         // Plain path (no markdown link format)
+        assert!(OrphanedFilesRule::extract_markdown_link_paths("path/to/file.md").is_empty());
+    }
+
+    // GitHub issue #60: the destination used to end at the last ')' on the
+    // line, so a trailing parenthetical swallowed the rest of the line into
+    // the path and the linked file was reported as an orphan.
+    #[test]
+    fn test_extract_link_paths_ignores_trailing_parentheses() {
+        for line in [
+            "- [Alpha](tasks/alpha.md) (trailing parenthetical)",
+            "- [Alpha](tasks/alpha.md) mentions (a parenthetical) mid-sentence",
+            "- [Alpha](tasks/alpha.md)(immediately adjacent)",
+        ] {
+            assert_eq!(
+                OrphanedFilesRule::extract_markdown_link_paths(line),
+                vec!["tasks/alpha.md".to_string()],
+                "failed for line: {line}"
+            );
+        }
+    }
+
+    // GitHub issue #60: only the first link on a line was considered, and the
+    // over-long path it produced still ended in `.md`, so both files linked on
+    // a shared line were reported as orphans.
+    #[test]
+    fn test_extract_link_paths_collects_every_link_on_a_line() {
         assert_eq!(
-            OrphanedFilesRule::extract_markdown_link_path("path/to/file.md"),
-            None
+            OrphanedFilesRule::extract_markdown_link_paths(
+                "- [Alpha](tasks/alpha.md) and [Beta](tasks/beta.md) on one line"
+            ),
+            vec!["tasks/alpha.md".to_string(), "tasks/beta.md".to_string()]
         );
+    }
+
+    #[test]
+    fn test_extract_link_paths_handles_titles_and_nesting() {
+        // CommonMark link title after the destination
+        assert_eq!(
+            OrphanedFilesRule::extract_markdown_link_paths("[Alpha](tasks/alpha.md \"Alpha\")"),
+            vec!["tasks/alpha.md".to_string()]
+        );
+
+        // Parentheses inside the path are balanced
+        assert_eq!(
+            OrphanedFilesRule::extract_markdown_link_paths("[Copy](tasks/alpha(1).md)"),
+            vec!["tasks/alpha(1).md".to_string()]
+        );
+
+        // Angle-bracketed destination with a space in the path
+        assert_eq!(
+            OrphanedFilesRule::extract_markdown_link_paths("[Alpha](<tasks/my alpha.md>)"),
+            vec!["tasks/my alpha.md".to_string()]
+        );
+
+        // Bare destination with a space still resolves
+        assert_eq!(
+            OrphanedFilesRule::extract_markdown_link_paths("[Alpha](tasks/my alpha.md)"),
+            vec!["tasks/my alpha.md".to_string()]
+        );
+    }
+
+    // GitHub issue #60, end to end: files linked from index lines that carry
+    // parentheticals or share a line are referenced, not orphaned.
+    #[test]
+    fn test_annotated_index_entries_are_not_orphans() {
+        let rule = OrphanedFilesRule::new();
+        let config = LashConfig::default();
+
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("lash.index.md"),
+            make_index_file(
+                "lash.index.md",
+                &[
+                    "[Alpha](tasks/alpha.md) (trailing parenthetical)",
+                    "[Delta](tasks/delta.md) mentions (a parenthetical) mid-sentence",
+                    "[Epsilon](tasks/epsilon.md)(immediately adjacent)",
+                    "[Zeta](tasks/zeta.md) and [Eta](tasks/eta.md) on one line",
+                ],
+            ),
+        );
+
+        for name in ["alpha", "delta", "epsilon", "zeta", "eta"] {
+            let path = format!("tasks/{name}.md");
+            files.insert(PathBuf::from(&path), make_regular_file(&path, name));
+        }
+        files.insert(
+            PathBuf::from("tasks/orphan.md"),
+            make_regular_file("tasks/orphan.md", "orphan"),
+        );
+
+        for name in ["alpha", "delta", "epsilon", "zeta", "eta"] {
+            let path = PathBuf::from(format!("tasks/{name}.md"));
+            let ctx = LintContext::new(&config, path.clone(), &files);
+            let diagnostics = rule.check_file(files.get(&path).unwrap(), &ctx);
+            assert_eq!(
+                diagnostics.len(),
+                0,
+                "{name} is linked from the index but was flagged: {diagnostics:?}"
+            );
+        }
+
+        // A genuinely unreferenced file is still flagged
+        let path = PathBuf::from("tasks/orphan.md");
+        let ctx = LintContext::new(&config, path.clone(), &files);
+        assert_eq!(rule.check_file(files.get(&path).unwrap(), &ctx).len(), 1);
     }
 
     #[test]

@@ -1673,3 +1673,98 @@ fn test_mut000491_494_exact_severity_counts_warning_file() {
         "hints must be 0 (mut-000494); summary={summary}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// W_INDEX_ORPHAN: index entries annotated with parentheses (GitHub issue #60)
+//
+// The index link parser used to end a destination at the last `)` on the line,
+// so `- [Alpha](tasks/alpha.md) (note)` recorded a path no file matched and the
+// linked file was reported as an orphan. Two links on one line broke both.
+// ---------------------------------------------------------------------------
+
+/// Run `lash --json lint <dir>` and return the codes of every diagnostic.
+fn lint_json_codes(path: &std::path::Path) -> Vec<String> {
+    let output = lash()
+        .arg("--json")
+        .arg("lint")
+        .arg(path)
+        .output()
+        .expect("lash must run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| {
+        panic!("stdout was not valid JSON: {e}\nstdout={stdout}");
+    });
+    json["diagnostics"]
+        .as_array()
+        .map(|diags| {
+            diags
+                .iter()
+                .filter_map(|d| d["code"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn test_annotated_index_links_are_not_orphans() {
+    let td = TempDir::new().unwrap();
+    fs::create_dir(td.path().join("tasks")).unwrap();
+
+    write_md(
+        &td,
+        "lash.index.md",
+        "# Demo Project\n\
+         \n\
+         @id: index\n\
+         \n\
+         ## Epic Task Files\n\
+         \n\
+         - [Alpha](tasks/alpha.md) (trailing parenthetical)\n\
+         - [Beta](tasks/beta.md) — trailing em dash\n\
+         - [Gamma](tasks/gamma.md) plain trailing words\n\
+         - [Delta](tasks/delta.md) mentions (a parenthetical) mid-sentence\n\
+         - [Epsilon](tasks/epsilon.md)(immediately adjacent)\n\
+         - [Zeta](tasks/zeta.md) and [Eta](tasks/eta.md) on one line\n",
+    );
+
+    for name in ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta"] {
+        write_md(
+            &td,
+            &format!("tasks/{name}.md"),
+            &format!("# {name}\n\n@id: {name}\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] A task\n"),
+        );
+    }
+
+    let codes = lint_json_codes(td.path());
+    assert!(
+        !codes.iter().any(|code| code == "W_INDEX_ORPHAN"),
+        "every task file is linked from the index; got diagnostics: {codes:?}"
+    );
+}
+
+#[test]
+fn test_unreferenced_file_is_still_an_orphan() {
+    let td = TempDir::new().unwrap();
+    fs::create_dir(td.path().join("tasks")).unwrap();
+
+    write_md(
+        &td,
+        "lash.index.md",
+        "# Demo Project\n\n@id: index\n\n## Epic Task Files\n\n\
+         - [Alpha](tasks/alpha.md) (trailing parenthetical)\n",
+    );
+    for name in ["alpha", "stray"] {
+        write_md(
+            &td,
+            &format!("tasks/{name}.md"),
+            &format!("# {name}\n\n@id: {name}\n@created: 2024-01-15\n\n## Tasks\n\n- [ ] A task\n"),
+        );
+    }
+
+    let codes = lint_json_codes(td.path());
+    assert_eq!(
+        codes.iter().filter(|c| *c == "W_INDEX_ORPHAN").count(),
+        1,
+        "only tasks/stray.md is unreferenced; got diagnostics: {codes:?}"
+    );
+}
