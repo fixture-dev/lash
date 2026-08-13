@@ -15,8 +15,8 @@ use crate::linter::{LintContext, LintDiagnostic, LintRule};
 /// This rule checks that all task files in the project are referenced in the root
 /// index. Files not in the index are considered "orphaned" and generate a warning.
 ///
-/// Common documentation filenames and documentation directories are exempt (see
-/// [`OrphanedFilesRule::should_skip_orphan_check`]). Anything else that is not a
+/// Common documentation filenames (README.md, CHANGELOG.md, …) and documentation
+/// directories (`docs/`, `.github/`, …) are exempt. Anything else that is not a
 /// task file — prose, generated content — belongs in a `.lashignore` at the
 /// project root, which removes it from file discovery entirely.
 ///
