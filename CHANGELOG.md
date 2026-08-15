@@ -8,6 +8,13 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-15
+
+Lint's output pointed at advice that did not exist: every per-rule code it
+printed answered "Unknown error code" when passed to `lash explain`. This
+release closes that loop, and stops `W_INDEX_ORPHAN` from reporting files the
+root index plainly references.
+
 ### Added
 
 - `lash explain` now knows every code `lash lint` emits. The per-rule syntax,
@@ -206,7 +213,8 @@ Initial release.
 - Project scaffolding: `lash init` and the PixelQuest `lash playground`
 - Configuration management, shell completions, and `lash explain` error catalog
 
-[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/fixture-dev/lash/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/fixture-dev/lash/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/fixture-dev/lash/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/fixture-dev/lash/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/fixture-dev/lash/compare/v0.2.0...v0.3.0
