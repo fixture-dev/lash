@@ -1,0 +1,74 @@
+# CI rehearsal for the upcoming flawd mutation gate (dogfooding).
+# This branch is a measurement probe and will NOT be merged: it times the
+# pieces the real workflow needs on a hosted runner — flawd install from the
+# public mirror, the unentitled failure mode, coverage generation, and the
+# Docker image build — so the real mutation.yml lands with honest numbers.
+name: Mutation CI rehearsal
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install flawd from the public mirror
+        run: |
+          t0=$SECONDS
+          curl -fsSL --retry 3 -o /usr/local/bin/flawd \
+            "https://github.com/fixture-dev/flawd-releases/releases/latest/download/flawd-linux-x86_64"
+          curl -fsSL --retry 3 -o /tmp/flawd.sha256 \
+            "https://github.com/fixture-dev/flawd-releases/releases/latest/download/flawd-linux-x86_64.sha256"
+          cd /usr/local/bin && echo "$(cut -d' ' -f1 /tmp/flawd.sha256)  flawd" | sha256sum -c -
+          chmod +x /usr/local/bin/flawd
+          flawd --version
+          echo "### Install timing: $((SECONDS - t0))s" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Unentitled failure mode (expected exit 5)
+        continue-on-error: true
+        run: |
+          set +e
+          flawd ci --diff "${{ github.event.pull_request.base.sha || 'HEAD~1' }}" > /tmp/unentitled.log 2>&1
+          code=$?
+          echo "exit code: $code"
+          cat /tmp/unentitled.log
+          {
+            echo "### Unentitled flawd ci"
+            echo "- exit code: $code (expect 5)"
+            echo '```'
+            tail -8 /tmp/unentitled.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$code" -eq 5 ] || echo "::warning::expected exit 5, got $code"
+
+      - name: Preflight (flawd check)
+        continue-on-error: true
+        run: flawd check || true
+
+      - name: Coverage generation timing (host toolchain)
+        run: |
+          rustup toolchain install stable --profile minimal --component llvm-tools-preview --no-self-update
+          curl -fsSL "https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar xzf - -C "$HOME/.cargo/bin"
+          t0=$SECONDS
+          mkdir -p coverage
+          cargo llvm-cov --workspace --lcov --output-path coverage/lcov.info
+          dur=$((SECONDS - t0))
+          echo "### Coverage generation (cold): ${dur}s" >> "$GITHUB_STEP_SUMMARY"
+          wc -l coverage/lcov.info >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Baseline test timing (host toolchain, warm build)
+        run: |
+          t0=$SECONDS
+          cargo test --workspace
+          echo "### cargo test (after coverage build): $((SECONDS - t0))s" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Docker image build timing (flawd Dockerfile)
+        run: |
+          t0=$SECONDS
+          docker build -t lash-flawd-probe -f Dockerfile .
+          echo "### Docker image build (cold): $((SECONDS - t0))s" >> "$GITHUB_STEP_SUMMARY"
