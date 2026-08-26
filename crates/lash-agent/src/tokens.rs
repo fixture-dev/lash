@@ -61,7 +61,7 @@ pub fn summarize_task_file(
     };
 
     let mut parts = vec![
-        format!("{}", path),
+        path.to_string(),
         format!("{} tasks", total_tasks),
         format!("{}% complete", completion_pct),
     ];
