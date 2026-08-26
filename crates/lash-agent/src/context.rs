@@ -66,7 +66,7 @@ pub struct InclusionRules {
 impl Default for InclusionRules {
     fn default() -> Self {
         Self {
-            include_dependencies: true,
+            include_dependencies: false,
             include_blockers: true,
             include_completed: false,
             max_dependency_depth: 2,

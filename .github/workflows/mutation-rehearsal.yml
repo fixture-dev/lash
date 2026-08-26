@@ -16,6 +16,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Restore cargo + target cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: flawd-rehearsal-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            flawd-rehearsal-${{ runner.os }}-
+
       - name: Install flawd from the public mirror
         run: |
           t0=$SECONDS
