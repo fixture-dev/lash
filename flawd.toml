@@ -8,8 +8,21 @@ inputs = [
 command = "mkdir -p coverage && cargo llvm-cov --workspace --lcov --output-path coverage/lcov.info"
 timeout_seconds = 300
 
+[coverage.per_test]
+# auto mode: flawd collects per-test coverage on first run
+mode = "auto"
+granularity = "test_function"
+# coverage.command above is a compound shell command; declare how to COLLECT
+# per-test coverage directly (execution still uses [test] command).
+collect_language = "rust"
+collect_command = "cargo test --workspace"
+
 [test]
 command = "cargo test"
+# Compile-once step for schemata batches (gets a 3x timeout allowance);
+# without it the first run of each batch pays the rebuild inside its own
+# timeout — and historically, batch compile failures scored as fake kills.
+build_command = "cargo test --no-run"
 timeout_seconds = 600
 baseline_required = true
 
@@ -23,8 +36,15 @@ risky_operators = false
 dedupe = true
 sampling = "weighted"
 cache = true
+max_batch_seconds = 300
+max_batch_mutants = 25
 
 [docker]
 dockerfile = "Dockerfile"
 workdir = "/app"
 network = "bridge"
+# The Dockerfile embeds the source tree (and warm cargo caches) at /app.
+# Bind-mount coverage would deliver the host target/ into the container —
+# wrong-architecture binaries on PATH for subprocess tests, and container
+# builds writing into the host cargo cache.
+coverage_source = "image"
