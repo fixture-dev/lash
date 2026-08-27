@@ -385,7 +385,7 @@ impl DiffDisplay {
 
     fn format_line(line: &str) -> String {
         if line.len() > MAX_LINE_LENGTH {
-            let truncated = &line[..MAX_LINE_LENGTH];
+            let truncated = &line[..lash_types::text::floor_char_boundary(line, MAX_LINE_LENGTH)];
             format!("{truncated}...")
         } else {
             line.to_string()

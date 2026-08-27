@@ -656,11 +656,7 @@ fn truncate_description(description: &str, max_len: usize) -> String {
     if collapsed.len() <= max_len {
         collapsed
     } else {
-        // Find a valid char boundary at or before max_len
-        let mut boundary = max_len;
-        while !collapsed.is_char_boundary(boundary) && boundary > 0 {
-            boundary -= 1;
-        }
+        let boundary = lash_types::text::floor_char_boundary(&collapsed, max_len);
         format!("{}...", &collapsed[..boundary])
     }
 }

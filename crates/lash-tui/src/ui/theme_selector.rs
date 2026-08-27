@@ -105,7 +105,10 @@ fn render_scheme_list(
 
             // Scheme name (truncate if too long)
             let display_name = if name.len() > 28 {
-                format!("{}… ", &name[..27])
+                format!(
+                    "{}… ",
+                    &name[..lash_types::text::floor_char_boundary(name, 27)]
+                )
             } else {
                 format!("{name:<30}")
             };

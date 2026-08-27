@@ -1,6 +1,23 @@
 # Lash Development Log
 
-## 2026-08-07 - Rename `lash-cli` package to `lash`; first release (v0.1.0)
+## 2026-08-27 - Fix `lash lint` panic on multi-byte chars at truncation boundaries
+
+### Summary
+
+`lash lint` crashed with exit 101 when a note long enough for
+`W_NOTE_TOO_LONG` had a multi-byte character straddling byte 57 (issue
+#70). `ContextualNote::truncated_text` sliced the text by byte index, and
+`&text[..57]` panics when byte 57 falls inside a character such as an em
+dash. Added a `lash_types::text` module with `floor_char_boundary` and
+`truncate_with_ellipsis`, and rewrote `truncated_text` on top of it.
+
+The audit suggested in the issue turned up the same latent panic in five
+more places, all now fixed via the shared helpers: diff display line
+truncation, ASCII graph titles, the TUI logo title, TUI theme-selector
+names, and agent token-budget truncation. Search snippets and `lash list`
+descriptions already walked back to a char boundary by hand; both now call
+the shared helper instead. Regression tests cover the exact repro from the
+issue plus exhaustive cut points over multi-byte text.
 
 ### Summary
 

@@ -94,7 +94,7 @@ fn truncate_title(title: &str, max_width: usize) -> String {
     if title.len() <= max_width {
         title.to_string()
     } else if max_width > 3 {
-        format!("{}...", &title[..max_width - 3])
+        lash_types::text::truncate_with_ellipsis(title, max_width)
     } else {
         title.chars().take(max_width).collect()
     }

@@ -209,18 +209,15 @@ impl ContextualNote {
 
     /// Get a truncated version of the text for display purposes.
     ///
+    /// Truncation is UTF-8-safe: a multi-byte character straddling the cut
+    /// point is dropped rather than split.
+    ///
     /// # Arguments
     ///
-    /// * `max_len` - Maximum length before truncation (including ellipsis)
+    /// * `max_len` - Maximum length in bytes before truncation (including ellipsis)
     #[must_use]
     pub fn truncated_text(&self, max_len: usize) -> String {
-        if self.text.len() <= max_len {
-            self.text.clone()
-        } else if max_len <= 3 {
-            "...".to_string()
-        } else {
-            format!("{}...", &self.text[..max_len - 3])
-        }
+        crate::text::truncate_with_ellipsis(&self.text, max_len)
     }
 }
 
@@ -1169,6 +1166,23 @@ mod tests {
         // Very short max
         assert_eq!(note.truncated_text(3), "...");
         assert_eq!(note.truncated_text(2), "...");
+    }
+
+    #[test]
+    fn test_contextual_note_truncated_text_multibyte_boundary() {
+        // Regression test for issue #70: a note long enough to trigger
+        // W_NOTE_TOO_LONG with an em dash straddling the truncation point
+        // (bytes 55..58) made truncated_text(60) panic on a byte slice.
+        let text = format!("{}— trailing text {}", "a".repeat(55), "b".repeat(150));
+        let note = ContextualNote::new(&text, 1);
+        assert!(note.exceeds_warning_threshold());
+        assert_eq!(note.truncated_text(60), format!("{}...", "a".repeat(55)));
+
+        // No cut point may panic, whatever the multi-byte layout.
+        let note = ContextualNote::new("héllo wörld — ünïcode täsk nôte", 1);
+        for max_len in 0..=note.text.len() + 3 {
+            let _ = note.truncated_text(max_len);
+        }
     }
 
     #[test]

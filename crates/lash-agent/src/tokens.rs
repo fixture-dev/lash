@@ -143,8 +143,10 @@ pub fn truncate_to_budget(text: &str, token_budget: usize) -> String {
         return "...".to_string();
     }
 
-    // Truncate to character budget, accounting for ellipsis
-    let truncate_at = char_budget.saturating_sub(3).min(text.len());
+    // Truncate to character budget, accounting for ellipsis; clamp to a char
+    // boundary so slicing can't land inside a multi-byte character
+    let truncate_at =
+        lash_types::text::floor_char_boundary(text, char_budget.saturating_sub(3).min(text.len()));
 
     // Try to truncate at a word boundary
     let truncated = if let Some(last_space) = text[..truncate_at].rfind(char::is_whitespace) {
