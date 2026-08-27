@@ -73,10 +73,19 @@ jobs:
             --diff "${{ github.event.pull_request.base.sha }}" \
             --threshold 0 --out flawd-report
 
+      # Scheduled audits feed the future gate threshold, so they use the
+      # Docker backend (flawd.toml): native mode currently under-kills on
+      # suites that spawn the project's own binary (false survivors in
+      # lash-cli/lash-tui; flawd defect filed as
+      # tasks.native-subprocess-false-survivors — first audit's 77.5% is
+      # invalidated by it; Docker-verified baseline is 98.7%). PR runs
+      # stay native for speed while the gate is report-only; survivors
+      # reported in subprocess-tested code may be false until the flawd
+      # fix lands.
       - name: Mutation test (scheduled, full depth)
         if: github.event_name != 'pull_request'
         run: |
-          flawd run --config flawd.ci.toml --ci-mode --yes \
+          flawd run --config flawd.toml --ci-mode --yes \
             --baseline-retries 3 --out flawd-report
 
       # flawd v0.14.0 writes no SARIF on a zero-mutant diff pass (fixed in
