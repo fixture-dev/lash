@@ -1,0 +1,109 @@
+# Mutation testing gate — dogfooding flawd ci, report-only while it soaks.
+#
+# PRs get a diff-scoped run: mutants from changed source lines, judged by
+# this branch's tests. A weekly full-depth run on main feeds the score
+# history that will eventually set the enforced threshold. Threshold stays
+# 0 (report-only) until the soak holds; the gate is flipped deliberately,
+# not by default.
+#
+# The runner uses flawd.ci.toml (identical scope/budgets to flawd.toml,
+# native execution backend — the documented hosted-runner setup).
+name: Mutation Testing
+on:
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1" # weekly full audit on main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write # SARIF upload to code scanning
+
+env:
+  FLAWD_VERSION: v0.14.0 # pinned; bump deliberately
+
+jobs:
+  mutation:
+    # Repo secrets are unavailable to fork PRs; the notice job below
+    # explains the skip instead of red-Xing outside contributors.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for git merge-base
+
+      - name: Restore cargo + target cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: flawd-mutation-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            flawd-mutation-${{ runner.os }}-
+
+      - name: Install coverage toolchain
+        run: |
+          rustup component add llvm-tools-preview
+          curl -fsSL "https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar xzf - -C "$HOME/.cargo/bin"
+
+      - name: Install flawd
+        run: |
+          curl -fsSL --retry 3 -o /usr/local/bin/flawd \
+            "https://github.com/fixture-dev/flawd-releases/releases/download/${FLAWD_VERSION}/flawd-linux-x86_64"
+          curl -fsSL --retry 3 -o /tmp/flawd.sha256 \
+            "https://github.com/fixture-dev/flawd-releases/releases/download/${FLAWD_VERSION}/flawd-linux-x86_64.sha256"
+          cd /usr/local/bin && echo "$(cut -d' ' -f1 /tmp/flawd.sha256)  flawd" | sha256sum -c -
+          chmod +x /usr/local/bin/flawd
+          flawd --version
+
+      - name: Activate flawd
+        run: flawd activate "${{ secrets.FLAWD_LICENSE_KEY }}"
+
+      - name: Mutation test (PR, diff-scoped)
+        if: github.event_name == 'pull_request'
+        run: |
+          flawd ci --config flawd.ci.toml \
+            --diff "${{ github.event.pull_request.base.sha }}" \
+            --threshold 0 --out flawd-report
+
+      - name: Mutation test (scheduled, full depth)
+        if: github.event_name != 'pull_request'
+        run: |
+          flawd run --config flawd.ci.toml --ci-mode --yes \
+            --baseline-retries 3 --out flawd-report
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: flawd-report/results.sarif
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flawd-report-${{ github.run_id }}
+          path: flawd-report/
+          retention-days: 30
+
+  mutation-fork-notice:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain the skip
+        run: |
+          {
+            echo "### Mutation testing skipped"
+            echo "Fork PRs cannot access the flawd license secret, so the"
+            echo "mutation check does not run here. A maintainer pushing the"
+            echo "branch to this repo will exercise it."
+          } >> "$GITHUB_STEP_SUMMARY"

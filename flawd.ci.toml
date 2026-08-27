@@ -1,0 +1,43 @@
+# CI-runner flawd config: identical scope/budgets to flawd.toml, but the
+# execution backend is native — GitHub-hosted runners are ephemeral VMs
+# with the Rust toolchain preinstalled, where a per-run Docker image build
+# costs more than it isolates (measured; see flawd's ci-integration docs).
+# Local development keeps the Docker setup in flawd.toml.
+
+[languages]
+enabled = ["rs"]
+
+[coverage]
+inputs = [
+  { format = "lcov", path = "coverage/lcov.info" }
+]
+command = "mkdir -p coverage && cargo llvm-cov --workspace --lcov --output-path coverage/lcov.info"
+timeout_seconds = 300
+
+[coverage.per_test]
+mode = "auto"
+granularity = "test_function"
+collect_language = "rust"
+collect_command = "cargo test --workspace"
+
+[test]
+command = "cargo test"
+build_command = "cargo test --no-run"
+timeout_seconds = 600
+baseline_required = true
+
+[mutations]
+budget = 400
+per_file_budget = 80
+operators = ["core", "comparisons", "boolean", "returns"]
+risky_operators = false
+
+[pare]
+dedupe = true
+sampling = "weighted"
+cache = true
+max_batch_seconds = 300
+max_batch_mutants = 25
+
+[runner]
+isolation = "native"
