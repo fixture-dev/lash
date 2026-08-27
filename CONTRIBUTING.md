@@ -881,3 +881,5 @@ Contributors will be recognized in:
 - Mentioned in release notes (for significant contributions)
 
 Thank you for contributing to Lash!
+
+Note: the mutation-testing check does not run on fork PRs (repository secrets are unavailable to them); a maintainer pushing the branch to the main repo exercises it.
