@@ -33,6 +33,7 @@ pub mod path_utils;
 pub mod report;
 pub mod status;
 pub mod task;
+pub mod text;
 pub mod tree;
 
 pub use config::{ConfigBuilder, LashConfig, TreeViewConfig, UserConfig};

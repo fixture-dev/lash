@@ -820,13 +820,7 @@ fn generate_snippet(
 
         // Find a safe character boundary for truncation
         if body_text.len() > 100 {
-            // Find the last character boundary at or before index 100
-            let truncate_at = body_text
-                .char_indices()
-                .take_while(|(idx, _)| *idx <= 100)
-                .last()
-                .map_or(0, |(idx, ch)| idx + ch.len_utf8());
-
+            let truncate_at = lash_types::text::floor_char_boundary(body_text, 100);
             snippet.push_str(&body_text[..truncate_at]);
             snippet.push_str("...");
         } else {
@@ -842,12 +836,7 @@ fn generate_snippet(
 
             // Truncate long notes
             if note_text.len() > 100 {
-                let truncate_at = note_text
-                    .char_indices()
-                    .take_while(|(idx, _)| *idx <= 100)
-                    .last()
-                    .map_or(0, |(idx, ch)| idx + ch.len_utf8());
-
+                let truncate_at = lash_types::text::floor_char_boundary(&note_text, 100);
                 snippet.push_str(&note_text[..truncate_at]);
                 snippet.push_str("...");
             } else {

@@ -537,7 +537,7 @@ impl<'a> AsciiGraphRenderer<'a> {
         let max_title_len = terminal_width.saturating_sub(20);
 
         if title.len() > max_title_len && max_title_len > 3 {
-            format!("{}...", &title[..max_title_len - 3])
+            lash_types::text::truncate_with_ellipsis(title, max_title_len)
         } else {
             title.to_string()
         }
