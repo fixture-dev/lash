@@ -28,3 +28,7 @@ cache = true
 dockerfile = "Dockerfile"
 workdir = "/app"
 network = "bridge"
+
+[runner]
+# rehearsal branch only: native is the hosted-runner recommendation
+isolation = "native"
