@@ -39,11 +39,40 @@ jobs:
           flawd --version
           echo "### Install timing: $((SECONDS - t0))s" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Activate flawd (repo secret)
+        run: |
+          flawd activate "${{ secrets.FLAWD_LICENSE_KEY }}"
+          echo "### Activation: OK (headless, ephemeral runner)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Malformed-key failure mode (expected clean nonzero, no panic)
+        continue-on-error: true
+        run: |
+          set +e
+          FLAWD_CONFIG_DIR="$RUNNER_TEMP/flawd-badkey" flawd activate "flawd_deadbeefdeadbeefdeadbeefdeadbeef" > /tmp/badkey.log 2>&1
+          code=$?
+          echo "malformed-key exit: $code"
+          tail -4 /tmp/badkey.log
+          { echo "### Malformed key: exit $code (expect nonzero, actionable message)"; echo '```'; tail -3 /tmp/badkey.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -eq 0 ]; then echo "::error::malformed key was accepted"; exit 1; fi
+          if grep -qi "panicked" /tmp/badkey.log; then echo "::error::panic on malformed key"; exit 1; fi
+
+      - name: Entitled diff-scoped run (real verdict)
+        run: |
+          t0=$SECONDS
+          set +e
+          flawd ci --diff origin/main --out flawd-report
+          code=$?
+          set -e
+          dur=$((SECONDS - t0))
+          echo "### Entitled flawd ci: exit $code in ${dur}s" >> "$GITHUB_STEP_SUMMARY"
+          test -f flawd-report/report.json && echo "report.json written" >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
       - name: Unentitled failure mode (expected exit 5)
         continue-on-error: true
         run: |
           set +e
-          flawd ci --diff "${{ github.event.pull_request.base.sha || 'HEAD~1' }}" > /tmp/unentitled.log 2>&1
+          FLAWD_CONFIG_DIR="$RUNNER_TEMP/flawd-noentitlement" flawd ci --diff "${{ github.event.pull_request.base.sha || 'HEAD~1' }}" > /tmp/unentitled.log 2>&1
           code=$?
           echo "exit code: $code"
           cat /tmp/unentitled.log
