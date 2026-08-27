@@ -114,7 +114,16 @@ impl FuzzyMatcher {
         let mut scored: Vec<FuzzyCandidate> = candidates
             .iter()
             .map(|candidate| {
-                let score = self.compute_similarity(query, candidate);
+                let mut score = self.compute_similarity(query, candidate);
+                // Boost candidates that share the query's leading characters:
+                // typos cluster at the end of IDs, so a shared prefix is a
+                // stronger signal than the raw edit distance alone.
+                let prefix_len = query.len().min(3);
+                if let Some(prefix) = query.get(..prefix_len) {
+                    if !prefix.is_empty() && candidate.starts_with(prefix) {
+                        score = (score + 0.02).min(1.0);
+                    }
+                }
                 FuzzyCandidate {
                     task_id: candidate.clone(),
                     score,
