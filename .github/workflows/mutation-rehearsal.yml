@@ -56,6 +56,18 @@ jobs:
           if [ "$code" -eq 0 ]; then echo "::error::malformed key was accepted"; exit 1; fi
           if grep -qi "panicked" /tmp/badkey.log; then echo "::error::panic on malformed key"; exit 1; fi
 
+      - name: Coverage generation timing (host toolchain)
+        run: |
+          rustup toolchain install stable --profile minimal --component llvm-tools-preview --no-self-update
+          curl -fsSL "https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar xzf - -C "$HOME/.cargo/bin"
+          t0=$SECONDS
+          mkdir -p coverage
+          cargo llvm-cov --workspace --lcov --output-path coverage/lcov.info
+          dur=$((SECONDS - t0))
+          echo "### Coverage generation (cold): ${dur}s" >> "$GITHUB_STEP_SUMMARY"
+          wc -l coverage/lcov.info >> "$GITHUB_STEP_SUMMARY"
+
       - name: Entitled diff-scoped run (real verdict)
         run: |
           t0=$SECONDS
@@ -88,18 +100,6 @@ jobs:
       - name: Preflight (flawd check)
         continue-on-error: true
         run: flawd check || true
-
-      - name: Coverage generation timing (host toolchain)
-        run: |
-          rustup toolchain install stable --profile minimal --component llvm-tools-preview --no-self-update
-          curl -fsSL "https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar xzf - -C "$HOME/.cargo/bin"
-          t0=$SECONDS
-          mkdir -p coverage
-          cargo llvm-cov --workspace --lcov --output-path coverage/lcov.info
-          dur=$((SECONDS - t0))
-          echo "### Coverage generation (cold): ${dur}s" >> "$GITHUB_STEP_SUMMARY"
-          wc -l coverage/lcov.info >> "$GITHUB_STEP_SUMMARY"
 
       - name: Baseline test timing (host toolchain, warm build)
         run: |
