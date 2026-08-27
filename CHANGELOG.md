@@ -8,12 +8,13 @@ While the major version is 0, minor version bumps may contain breaking changes.
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-08-15
+## [0.5.0] - 2026-08-27
 
 Lint's output pointed at advice that did not exist: every per-rule code it
 printed answered "Unknown error code" when passed to `lash explain`. This
-release closes that loop, and stops `W_INDEX_ORPHAN` from reporting files the
-root index plainly references.
+release closes that loop, stops `W_INDEX_ORPHAN` from reporting files the
+root index plainly references, and stops `lash lint` from crashing outright
+when a long note carries a multi-byte character at the truncation point.
 
 ### Added
 
@@ -28,6 +29,12 @@ root index plainly references.
 
 ### Fixed
 
+- `lash lint` no longer panics while rendering `W_NOTE_TOO_LONG`. The
+  warning's snippet truncated the note by byte index, so a multi-byte
+  character straddling the cut point — an em dash, an accented letter, a CJK
+  character — crashed the whole run with exit 101 instead of printing a
+  warning. Truncation now lands on a character boundary, here and in every
+  other place that shortens user text for display (#70, #71).
 - `W_INDEX_ORPHAN` no longer fires for files the root index does reference. A
   link destination ended at the last `)` on the line, so an entry annotated
   with a parenthetical — `- [Alpha](tasks/alpha.md) (superseded)` — recorded a
