@@ -20,7 +20,7 @@ permissions:
   security-events: write # SARIF upload to code scanning
 
 env:
-  FLAWD_VERSION: v0.14.0 # pinned; bump deliberately
+  FLAWD_VERSION: v0.15.0 # pinned; bump deliberately
 
 jobs:
   mutation:
