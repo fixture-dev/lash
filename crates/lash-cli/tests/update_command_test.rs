@@ -448,6 +448,93 @@ fn test_update_agent_note_replace_and_append() {
     assert!(!content.contains("Second note"));
 }
 
+/// GitHub issue #74: when free-text body lines sit between the checkbox and
+/// the `@agent-note`, `--append-agent-note` used to insert a second
+/// `@agent-note:` line directly under the checkbox — reporting success while
+/// leaving a file that `lash lint` rejects ("cannot appear multiple times")
+/// and `lash index` skips, stranding the file behind E_INDEX_STALE.
+#[test]
+fn test_update_append_agent_note_with_body_text_before_note_stays_lintable() {
+    let project = TestProject::builder()
+        .with_index("test-project", "Test Project")
+        .with_file(
+            "tasks.md",
+            r#"# Tasks
+
+@id: tasks
+
+## Tasks
+
+- [ ] Beta task with body text before the note #demo
+  Some free-text body line recorded earlier.
+  @agent-note: Route: original first line of the note.
+    Second line of the note with more detail.
+"#,
+        )
+        .build();
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("index")
+        .assert()
+        .success();
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("update")
+        .arg("tasks#beta-task-with-body-text-before-the-note")
+        .arg("--append-agent-note")
+        .arg("APPEND ONE: first appended line.")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+    // Exactly one @agent-note annotation — no duplicate inserted above the
+    // body text.
+    assert_eq!(content.matches("@agent-note:").count(), 1);
+    // The appended line extends the existing note, after its continuation.
+    let second_idx = content.find("Second line of the note").unwrap();
+    let appended_idx = content.find("APPEND ONE").unwrap();
+    assert!(second_idx < appended_idx);
+    // The body text survives, still before the note.
+    assert!(content.contains("Some free-text body line recorded earlier."));
+
+    // The write must leave the file lintable and indexable — the corruption
+    // in issue #74 only surfaced here, far from the reported success.
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("lint")
+        .assert()
+        .success();
+
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("index")
+        .assert()
+        .success();
+
+    // And later mutations against the file keep working (no E_INDEX_STALE).
+    run_lash_command()
+        .arg("--root")
+        .arg(project.path())
+        .arg("update")
+        .arg("tasks#beta-task-with-body-text-before-the-note")
+        .arg("--append-agent-note")
+        .arg("APPEND TWO: second appended line.")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(project.file_path("tasks.md")).unwrap();
+    assert_eq!(content.matches("@agent-note:").count(), 1);
+    let one_idx = content.find("APPEND ONE").unwrap();
+    let two_idx = content.find("APPEND TWO").unwrap();
+    assert!(one_idx < two_idx);
+}
+
 #[test]
 fn test_update_add_depends_on_dangling_is_hard_error_file_untouched() {
     let project = TestProject::builder()
