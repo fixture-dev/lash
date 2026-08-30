@@ -218,23 +218,56 @@ impl TaskLines {
         (start, j)
     }
 
-    /// Locate the line index of the `@key:` line within the annotation
-    /// block, if present.
+    /// End (exclusive) of the task's whole body region: every line up to
+    /// the next checkbox line or `## ` heading. The parser merges `@key:`
+    /// lines found past free-text body lines into the most recent task as
+    /// orphaned annotations (see `parse_task_section_internal`), so an edit
+    /// that only searched the contiguous annotation block would miss such
+    /// an annotation and write a duplicate `@key:` line that lint then
+    /// rejects (GitHub issue #74).
+    fn task_body_end(&self) -> usize {
+        let mut j = self.task_idx + 1;
+        while j < self.lines.len() {
+            let trimmed = self.lines[j].trim();
+            if trimmed.starts_with("- [") || trimmed.starts_with("## ") {
+                break;
+            }
+            j += 1;
+        }
+        j
+    }
+
+    /// Locate the line index of the `@key:` line belonging to this task, if
+    /// present: within the annotation block, or anywhere later in the
+    /// task's body (an orphaned annotation after free-text body lines,
+    /// which the parser still attributes to this task).
     fn find_annotation_line(&self, key: &str) -> Option<usize> {
-        let (start, end) = self.annotation_block_range();
+        let start = self.task_idx + 1;
+        let end = self.task_body_end();
         let prefix = format!("@{key}:");
         (start..end).find(|&i| self.lines[i].trim_start().starts_with(&prefix))
     }
 
     /// `[start, end)` range of continuation lines directly following an
-    /// annotation start line at `idx` (its multi-line value), stopping at
-    /// the next annotation line or the end of the block.
+    /// annotation start line at `idx` (its multi-line value). Within the
+    /// annotation block, any non-blank non-`@` line continues the value
+    /// (mirroring the parser's lookahead); for an orphaned annotation past
+    /// the block, only lines indented deeper than the annotation itself
+    /// count, so trailing body text is never swallowed.
     fn continuation_range(&self, idx: usize) -> (usize, usize) {
         let (_, block_end) = self.annotation_block_range();
+        let body_end = self.task_body_end();
+        let annotation_indent = leading_space_count(&self.lines[idx]);
         let mut j = idx + 1;
-        while j < block_end {
-            let trimmed = self.lines[j].trim();
+        while j < body_end {
+            let line = &self.lines[j];
+            let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with('@') {
+                break;
+            }
+            if j >= block_end
+                && (trimmed.starts_with("- ") || leading_space_count(line) <= annotation_indent)
+            {
                 break;
             }
             j += 1;
@@ -298,7 +331,7 @@ impl TaskLines {
             return;
         };
         let (_, cont_end) = self.continuation_range(idx);
-        let continuation_indent = " ".repeat(self.task_indent + 4);
+        let continuation_indent = " ".repeat(leading_space_count(&self.lines[idx]) + 2);
         let new_lines: Vec<String> = text
             .lines()
             .map(|l| format!("{continuation_indent}{l}"))
@@ -641,6 +674,100 @@ mod tests {
         let cont_idx = rendered.find("continuation line").unwrap();
         let extra_idx = rendered.find("Extra detail").unwrap();
         assert!(cont_idx < extra_idx);
+    }
+
+    /// GitHub issue #74: free-text body lines between the checkbox and the
+    /// `@agent-note` must not hide the note from `--append-agent-note` —
+    /// appending used to insert a second `@agent-note:` line that lint then
+    /// rejected as a duplicate annotation.
+    fn sample_with_body_text() -> &'static str {
+        "# Tasks\n\
+         \n\
+         @id: tasks\n\
+         \n\
+         ## Tasks\n\
+         \n\
+         - [ ] Beta task with body text #demo\n  \
+         Some free-text body line recorded earlier.\n  \
+         @agent-note: Route: original first line.\n    \
+         Second line of the note.\n"
+    }
+
+    #[test]
+    fn append_agent_note_past_body_text_extends_existing_note() {
+        let content = sample_with_body_text();
+        let ln = line_number_of(content, "Beta task");
+        let mut tl = TaskLines::from_content(content, ln);
+        tl.append_agent_note("APPEND ONE: first appended line.");
+        let rendered = tl.render();
+        assert_eq!(rendered.matches("@agent-note:").count(), 1);
+        // Appended line lands after the note's existing continuation, at
+        // continuation indent.
+        let second_idx = rendered.find("Second line of the note.").unwrap();
+        let appended_idx = rendered.find("APPEND ONE").unwrap();
+        assert!(second_idx < appended_idx);
+        assert!(rendered.contains("\n    APPEND ONE: first appended line."));
+    }
+
+    #[test]
+    fn set_agent_note_past_body_text_replaces_in_place() {
+        let content = sample_with_body_text();
+        let ln = line_number_of(content, "Beta task");
+        let mut tl = TaskLines::from_content(content, ln);
+        tl.set_agent_note("Replacement note");
+        let rendered = tl.render();
+        assert_eq!(rendered.matches("@agent-note:").count(), 1);
+        assert!(rendered.contains("@agent-note: Replacement note"));
+        assert!(!rendered.contains("Second line of the note."));
+        // The body text before the note survives untouched.
+        assert!(rendered.contains("Some free-text body line recorded earlier."));
+    }
+
+    #[test]
+    fn set_single_annotation_past_body_text_replaces_in_place() {
+        let content = "- [ ] Task\n  \
+             Body text line.\n  \
+             @owner: alice\n";
+        let mut tl = TaskLines::from_content(content, 1);
+        tl.set_single_annotation("owner", Some("bob"));
+        let rendered = tl.render();
+        assert_eq!(rendered.matches("@owner:").count(), 1);
+        assert!(rendered.contains("@owner: bob"));
+    }
+
+    #[test]
+    fn find_past_body_text_does_not_reach_next_task() {
+        let content = "- [ ] First task\n  \
+             Body text line.\n\
+             - [ ] Second task\n  \
+             @agent-note: Belongs to second task.\n";
+        let mut tl = TaskLines::from_content(content, 1);
+        tl.append_agent_note("Note for first task.");
+        let rendered = tl.render();
+        // A new note is created for the first task; the second task's note
+        // is untouched.
+        assert_eq!(rendered.matches("@agent-note:").count(), 2);
+        assert!(rendered.contains("@agent-note: Note for first task."));
+        let first_note = rendered.find("Note for first task.").unwrap();
+        let second_task = rendered.find("- [ ] Second task").unwrap();
+        assert!(first_note < second_task);
+    }
+
+    #[test]
+    fn append_past_body_text_does_not_swallow_trailing_body_text() {
+        let content = "- [ ] Task\n  \
+             Body text before.\n  \
+             @agent-note: The note.\n  \
+             Body text after, same indent as the note.\n";
+        let mut tl = TaskLines::from_content(content, 1);
+        tl.append_agent_note("Appended line.");
+        let rendered = tl.render();
+        assert_eq!(rendered.matches("@agent-note:").count(), 1);
+        // Appended continuation goes directly after the note line, before
+        // the same-indent trailing body text.
+        let appended_idx = rendered.find("Appended line.").unwrap();
+        let trailing_idx = rendered.find("Body text after").unwrap();
+        assert!(appended_idx < trailing_idx);
     }
 
     #[test]

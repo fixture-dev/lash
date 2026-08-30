@@ -31,3 +31,6 @@ Fixes for the task-mutation and display gaps reported while dogfooding
   - [x] `--agent-note` (replace) / `--append-agent-note`
   - [x] `--add-depends-on` / `--remove-depends-on`, validated against index
   - [x] Tests: each field, ID stability on retitle, dangling-dep rejection
+- [x] Fix `--append-agent-note` duplicating `@agent-note` when body text precedes the note (#74)
+  - [x] Annotation lookup scans the task's whole body (mirrors the parser's orphaned-annotation merge)
+  - [x] Tests: append/replace past body text, no reach into next task, lint-clean round trip

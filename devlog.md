@@ -2832,3 +2832,36 @@ file, not the index line that failed to parse, so the obvious repair is the one
 thing already done. Worth remembering the next time a cross-file rule reports
 an absence: the report points at the symptom, and the parse that produced it is
 never on screen.
+
+## `--append-agent-note` duplicated the annotation past body text (#74, 2026-08-30)
+
+`lash update --append-agent-note` corrupted any task whose `@agent-note` sat
+below free-text body lines: it wrote a second `@agent-note:` directly under
+the checkbox, printed `appended to @agent-note`, and exited 0. The failure
+surfaced only later — `lash lint` rejects the duplicate annotation, `lash
+index` skips the file, and every subsequent mutation dies on `E_INDEX_STALE`
+until the file is repaired by hand.
+
+The root cause was a disagreement between the parser and the editing
+primitives about where a task's annotations can live. `TaskLines` in
+`update/mutations.rs` searched only the contiguous annotation block
+immediately after the checkbox, stopping at the first non-`@` line. The
+parser is more forgiving: a `@key:` line found after intervening body text
+becomes an "orphaned annotation" and is merged into the most recent task
+(`parse_task_section_internal`). So the note belonged to the task in the
+parsed model, but the editor could not see it and concluded the task had
+none — then `append_agent_note` fell through to the create path.
+
+`find_annotation_line` now scans the task's whole body region — up to the
+next checkbox line or `## ` heading, the same boundary that ends the
+parser's orphan merging — and `continuation_range` handles the orphaned
+position with a stricter rule (deeper-indented lines only) so trailing
+same-indent body text is never swallowed. This fixes `--agent-note`
+(replace) and the single-value annotations too, which had the same latent
+duplicate-insert path.
+
+One gap remains, out of scope here: the parser attaches an orphaned
+annotation as a single line and silently drops its indented continuation
+lines, so `lash show` renders only the first line of a note in this
+position. That predates the fix (the note's original second line was
+already invisible) and is a lash-core parsing issue, not an editing one.
